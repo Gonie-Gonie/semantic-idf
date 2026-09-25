@@ -174,3 +174,15 @@ remaining packages passing or cached, and the production Wails build in
 8.58 seconds. The default test timeout is unchanged. The normal commit hook
 is still required before push. The fixture approval count is 13/19, not a
 claim that the remaining six cases or the goal are complete.
+
+The subsequent normal hook passes on `f03e3b4`: simulation 557.774 seconds,
+frontend/browser 181.437 seconds, App 17.543 seconds and Wails 6.273 seconds.
+That checkpoint is pushed and synchronized with `origin/main`. Later
+engineering changes require their own current-code and full repository gates.
+
+The later engineering checkpoint on 2026-09-25 has nineteen separately approved
+native fixtures, including the three older Large Office versions, Furnace,
+SimpleVentilation and simultaneous Central heat pump. The 13/19 figures and
+`f03e3b4` gate above are historical. See the final engineering section of
+`energy-path-progress.md` for current replay/build completion; the PV approval
+and its native capture remain unchanged.

@@ -1,0 +1,15 @@
+{
+  "schema": "semantic-idf.energy-path-real-model-expected/v1",
+  "fixtureId": "simultaneous-25-1",
+  "version": "25.1",
+  "modelSHA256": "84d389f1c40ab098eea05105664dd71d54c58509a4d812bf6d5dfe4e933c28f0",
+  "weatherSHA256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c",
+  "review": "Root explicitly reviewed and approved independent pending SHA256 a9ed36e969193a75fbc43db8db0038fe3b0be8fc211519caec679cbdd8750ac1 on 2026-09-25 KST. Current-production diagnostic03 passes all 17074 original-wire metrics across eight groups with zero numeric/contract failures and zero coverage gaps. The complete coverage ledger of 4746 records and 10349 required fields remains in the immutable SHA256-bound pending artifact and separately retained diagnostic evidence, and is independently revalidated during saved acceptance. The lossless companion contains the 17074 metrics, including 6524 observed-zero metrics and 834 typed nulls. Root separately reviewed and reran the native-only audit and its frozen 164-obligation comparator against this exact pending artifact: 164 passed. That representative scalar comparison does not replace full graph/source/ratio/coverage validation. Native report SHA256 e11eddb43277b1fe9007050ab655fbb04b2c05fb646b47aa3f8ddce5cfa4afc8; recipe SHA256 2cb680f9b4a9dc121f24d25d6b9c6b9806b5445d456ad01a0156d1920e5d12e4; SQL SHA256 4724b4aa590373e1962bb84840a51fddc9239bf644a801ccedc3bb6ad6a67786. Native simultaneous heating/cooling intervals, both distinct paid electricity streams, all three water-side streams, original module semantics and the complete five-recipient coil/plant cohort were independently checked. Cooling-only electricity supports COP; Heating retains the load/site ratio. Components are not multiplied by the three-module count or duplicated through broad parent meters. The unserved plenum and unassigned pumps are not assigned fabricated paid ownership. Positive source-local reservations retain the correct service/carrier source on all 85 positive Zone/period carrier branches; the prior diagnostics that rejected missing lineage remain preserved. A separate real-parser-to-wire regression and disjoint-Zone positive-sibling regression reject cross-service/carrier/Zone, facility and thermal-weight source borrowing. Monthly-first bounded allocation and the declared original transport precision are retained without changing SQL, physical inputs or acceptance tolerances. This approval covers this model and the declared accounting/source contracts, not general HVAC design certification or completion of the overall goal. Final current-code saved acceptance and repository/Wails gates are recorded separately in docs/energy-path-progress.md.",
+  "metricPayload": {
+    "file": "simultaneous-25-1.metrics.json.gz",
+    "sha256": "650c7c27ae29d00af8e5478b5ee4a600b1a718b2896d64e456d2ab64a2d6072a",
+    "uncompressedSHA256": "5b957c9ccd44088171729dc1c2b490215d60da0f7ea4781c5b66ca1a83aaed0d",
+    "count": 17074,
+    "requiredKeysSHA256": "54ef212ba5422c10bd4382ae6de1a3cc6505be302399a080224b5a8581082278"
+  }
+}

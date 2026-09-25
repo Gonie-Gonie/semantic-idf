@@ -64,6 +64,10 @@ func allocateEnergyPathReportedFanPools(plan *energyPathZoneAuxiliaryAllocationP
 	methods := map[string]bool{}
 	allKnownAndResolved := validCount == len(pools)
 	for _, pool := range pools {
+		if topology.heatOnlyBlockedFanLoops[""] || topology.heatOnlyBlockedFanLoops[normalizePurposeToken(pool.AirLoopName)] {
+			allKnownAndResolved = false
+			continue // Never allocate this incomplete native cohort over surviving siblings.
+		}
 		value, known := energyPathFanPoolValue(pool, record.Period)
 		if !known {
 			allKnownAndResolved = false

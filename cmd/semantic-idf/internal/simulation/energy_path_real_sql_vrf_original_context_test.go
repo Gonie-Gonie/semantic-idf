@@ -16,7 +16,13 @@ func epathBindRealSQLVRFOriginal(evidence epathRealRunEvidence, recipe epathReal
 	if recipe.SQLModel == nil {
 		return nil
 	}
-	needsOriginal := len(recipe.SQLModel.NativeVRFSystems) > 0 || len(recipe.SQLModel.BaseboardContexts) > 0 || len(recipe.SQLModel.HVACConsumptionPools) > 0 || len(recipe.SQLModel.AirLoopFans) > 0 || len(recipe.SQLModel.PoolSystems) > 0 || len(recipe.SQLModel.PVSystems) > 0 || len(recipe.SQLModel.PVHVACLoops) > 0
+	heatOnly := evidence.Fixture.ID == "no-cooling-25-1" && evidence.Fixture.Version == "25.1" || len(recipe.SQLModel.HeatOnlyFurnaces) > 0
+	central := evidence.Fixture.ID == "simultaneous-25-1" && evidence.Fixture.Version == "25.1"
+	simpleVentilation := evidence.Fixture.ID == "no-heating-ventilation-25-1" && evidence.Fixture.Version == "25.1"
+	for _, component := range recipe.SQLModel.DirectHVACComponents {
+		simpleVentilation = simpleVentilation || component.ID == epathSQLSimpleVentilationFanFamily
+	}
+	needsOriginal := central || heatOnly || simpleVentilation || recipe.SQLModel.OriginalZoneMultiplierProof != "" || len(recipe.SQLModel.NativeVRFSystems) > 0 || len(recipe.SQLModel.BaseboardContexts) > 0 || len(recipe.SQLModel.HVACConsumptionPools) > 0 || len(recipe.SQLModel.AirLoopFans) > 0 || len(recipe.SQLModel.PoolSystems) > 0 || len(recipe.SQLModel.PVSystems) > 0 || len(recipe.SQLModel.PVHVACLoops) > 0
 	for _, load := range recipe.SQLModel.Loads {
 		needsOriginal = needsOriginal || load.NativeRadiant != nil
 	}
@@ -37,7 +43,7 @@ func epathBindRealSQLVRFOriginal(evidence epathRealRunEvidence, recipe epathReal
 		return fmt.Errorf("native VRF original model bytes differ from the reviewed catalog")
 	}
 	var executed string
-	if len(recipe.SQLModel.BaseboardContexts) > 0 || len(recipe.SQLModel.PoolSystems) > 0 || len(recipe.SQLModel.PVSystems) > 0 || len(recipe.SQLModel.PVHVACLoops) > 0 {
+	if central || heatOnly || simpleVentilation || len(recipe.SQLModel.BaseboardContexts) > 0 || len(recipe.SQLModel.PoolSystems) > 0 || len(recipe.SQLModel.PVSystems) > 0 || len(recipe.SQLModel.PVHVACLoops) > 0 {
 		if evidence.InputPath == "" || evidence.RunDirectory == "" || len(evidence.ExecutedSHA256) != 64 || !epathRealSamePath(filepath.Dir(evidence.InputPath), evidence.RunDirectory) {
 			return fmt.Errorf("baseboard recipient indexes lack exact executed input path/hash binding")
 		}
@@ -50,6 +56,18 @@ func epathBindRealSQLVRFOriginal(evidence epathRealRunEvidence, recipe epathReal
 			return fmt.Errorf("baseboard executed input bytes differ from the successful original run")
 		}
 		executed = string(runData)
+	}
+	if central {
+		proof, err := epathSQLValidateCentralOriginal(string(data))
+		if err != nil {
+			return err
+		}
+		if proof.OriginalSHA256 != "84d389f1c40ab098eea05105664dd71d54c58509a4d812bf6d5dfe4e933c28f0" {
+			return fmt.Errorf("finite Central catalog original is not the reviewed literal model")
+		}
+		if _, err := epathSQLBindCentralExecuted(string(data), executed, proof); err != nil {
+			return err
+		}
 	}
 	observed.originalText, observed.executedText = string(data), executed
 	return nil

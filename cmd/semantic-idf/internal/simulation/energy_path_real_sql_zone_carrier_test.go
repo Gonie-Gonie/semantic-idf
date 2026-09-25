@@ -438,12 +438,20 @@ func epathSQLZoneCarrierPlainMonthlyIDs(frames epathSQLFrames, model epathRealSQ
 	return out, nil
 }
 
-func epathSQLModelZoneCarrierChecks(frames epathSQLFrames, model epathRealSQLModel, checks *epathSQLModelChecks) error {
+func epathSQLModelZoneCarrierChecks(frames epathSQLFrames, model epathRealSQLModel, checks *epathSQLModelChecks, observed ...epathRealOracleEvidence) error {
 	parts, carriers, err := epathSQLZoneCarrierInputs(frames, model, *checks)
 	if err != nil {
 		return err
 	}
+	simpleVentilationIDs, err := epathSQLSimpleVentilationPlainCarrierIDs(frames, model, parts, observed...)
+	if err != nil {
+		return err
+	}
 	plainMonthlyIDs, err := epathSQLZoneCarrierPlainMonthlyIDs(frames, model)
+	if err != nil {
+		return err
+	}
+	heatOnlyMonthlyIDs, err := epathSQLHeatOnlyPlainMonthlyIDs(frames, model, checks.HeatOnly, parts)
 	if err != nil {
 		return err
 	}
@@ -527,7 +535,7 @@ func epathSQLModelZoneCarrierChecks(frames epathSQLFrames, model epathRealSQLMod
 					checks.Rows[len(checks.Rows)-1].ZoneCarrier = proof
 				}
 				ids, err := epathSQLZoneCarrierRowIDs(carrier, proof.ZoneName, period, monthly)
-				if plainMonthlyIDs[carrier] || directMonthlyIDs || nativeMonthlyIDs {
+				if plainMonthlyIDs[carrier] || directMonthlyIDs || nativeMonthlyIDs || simpleVentilationIDs && carrier == "electricity" || period != "annual" && heatOnlyMonthlyIDs[epathSQLZoneCarrierContext(zone, period)] && dlow > 0 {
 					// The annual sum of plain M# rows also has a plain annual ID;
 					// this does not apply to annual-only purchased-energy fallback.
 					ids = []string{"reconcile.energy." + carrier + "." + period}

@@ -42,7 +42,13 @@ func epathSQLSiteFlowMonth(frames epathSQLFrames, model epathRealSQLModel, site 
 	}
 	if selected == nil {
 		if site.EndUse == "cooling" || site.EndUse == "heating" {
-			return nil, fmt.Errorf("thermal end use lacks reviewed service membership %s", site.ID)
+			// An observed exact zero proves zero flow, not a served path.
+			// Inspect the original interval: positive() must not turn an
+			// uncertain negative-to-zero quantity into this exception.
+			low, high := values[month-1].bounds()
+			if values[month-1].Value != 0 || low != 0 || high != 0 {
+				return nil, fmt.Errorf("thermal end use lacks reviewed service membership %s", site.ID)
+			}
 		}
 		return out, nil
 	}

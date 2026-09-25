@@ -176,6 +176,9 @@ func epathSQLModelSourceChecks(frames epathSQLFrames, observed []epathRealSQLSou
 
 func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRealSQLModel) (epathSQLModelChecks, error) {
 	checks := epathSQLModelChecks{RequireCoverage: true}
+	if err := epathSQLBindHeatOnlyChecks(observed, model, &checks); err != nil {
+		return checks, err
+	}
 	if err := epathSQLBindPVHVACChecks(observed, model, &checks); err != nil {
 		return checks, err
 	}
@@ -187,6 +190,9 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 		return checks, err
 	}
 	if err := epathSQLBindVRFFrames(observed, model, &frames); err != nil {
+		return checks, err
+	}
+	if err := epathSQLValidateSimpleVentilationOutdoorEvidence(observed, frames, model); err != nil {
 		return checks, err
 	}
 	if err := epathSQLBindPoolSources(observed, model, &frames); err != nil {
@@ -201,10 +207,10 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 	if err := epathCompileSQLBaseboardContexts(observed.sqlPath, observed.originalText, observed.outputPlan, observed.Sources, model, &frames, observed.executedText); err != nil {
 		return checks, err
 	}
-	if err := epathSQLValidateHVACConsumptionOriginalModel(observed.originalText, model.HVACConsumptionPools); err != nil {
+	if err := epathSQLValidateHVACConsumptionOriginalModel(observed.originalText, model.HVACConsumptionPools, observed.executedText); err != nil {
 		return checks, err
 	}
-	if err := epathCompileSQLHVACConsumptionPoolFrames(observed.sqlPath, observed.Sources, model, &frames, observed.outputPlan); err != nil {
+	if err := epathCompileSQLHVACConsumptionPoolFrames(observed.sqlPath, observed.Sources, model, &frames, observed.outputPlan, observed.originalText, observed.executedText); err != nil {
 		return checks, err
 	}
 	if err := epathSQLBindAirLoopFans(observed.originalText, model, &frames); err != nil {
@@ -225,22 +231,23 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 		func() error { return epathSQLModelPoolSurfaceChecks(poolSurface, &checks) },
 		func() error { return epathSQLModelDirectHVACSourceChecks(frames, &checks) },
 		func() error { return epathSQLModelBaseboardContextSourceChecks(frames, &checks) },
+		func() error { return epathSQLModelHeatOnlyContextChecks(frames, &checks) },
 		func() error { return epathSQLModelHVACSharedSourceChecks(frames, &checks) },
 		func() error { return epathSQLModelVRFSourceChecks(frames, &checks) },
 		func() error { return epathSQLModelSiteChecks(frames, model, &checks) },
 		func() error { return epathSQLModelSiteFlowChecks(frames, model, &checks) },
 		func() error { return epathSQLModelSiteResidualChecks(frames, model, &checks) },
 		func() error {
-			return epathSQLModelFanPoolChecks(observed, frames, model.FanPools, model.Precision, &checks)
+			return epathSQLModelFanPoolChecks(observed, frames, model.FanPools, model.Precision, &checks, checks.HeatOnly)
 		},
-		func() error { return epathSQLModelServiceChecks(frames, model, &checks) },
+		func() error { return epathSQLModelServiceChecks(frames, model, &checks, observed) },
 		func() error { return epathSQLModelDirectFanChecks(frames, model, &checks) },
-		func() error { return epathSQLModelZoneServiceChecks(frames, model, &checks) },
+		func() error { return epathSQLModelZoneServiceChecks(frames, model, &checks, observed) },
 		func() error { return epathSQLModelDirectUseChecks(observed.Sources, frames, model, &checks) },
 		func() error { return epathSQLModelFanFlowChecks(observed, frames, model, &checks) },
 		func() error { return epathSQLModelAuxiliaryZoneChecks(frames, model, &checks) },
 		func() error { return epathSQLModelAuxiliaryFlowChecks(frames, model, &checks) },
-		func() error { return epathSQLModelZoneCarrierChecks(frames, model, &checks) },
+		func() error { return epathSQLModelZoneCarrierChecks(frames, model, &checks, observed) },
 		func() error {
 			return epathSQLModelQualityChecks(observed, frames, model, &checks)
 		},
@@ -261,6 +268,9 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 		return checks, err
 	}
 	if err := epathSQLSealPVHVACChecks(&checks, model); err != nil {
+		return checks, err
+	}
+	if err := epathSQLSealHeatOnlyChecks(&checks, model); err != nil {
 		return checks, err
 	}
 	return checks, nil
@@ -454,6 +464,18 @@ func epathCheckSQLModelAllocation(bundle PurposeResultBundle, check epathSQLMode
 func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeResultBundle, checks epathSQLModelChecks, models ...*epathRealSQLModel) []epathSQLModelFailure {
 	out.CheckedGroups = nil
 	out.modelCoverage = nil
+	if err := epathSQLPrepareHeatOnlyChecks(checks, models...); err != nil {
+		out.Metrics = nil
+		return []epathSQLModelFailure{{Group: "coverage", Key: "heat_only/original_native", Message: err.Error()}}
+	}
+	if checks.HeatOnly != nil && (out.sqlPath != checks.HeatOnly.SQLPath || out.originalText != checks.HeatOnly.OriginalText || out.executedText != checks.HeatOnly.ExecutedText || out.outputPlan == nil || !reflect.DeepEqual(*out.outputPlan, checks.HeatOnly.OutputPlan)) {
+		out.Metrics = nil
+		return []epathSQLModelFailure{{Group: "coverage", Key: "heat_only/external_run", Message: "HeatOnly retained evidence differs from the actual evaluated run"}}
+	}
+	if err := epathSQLCheckHeatOnlyInactiveFanGraph(bundle, checks); err != nil {
+		out.Metrics = nil
+		return []epathSQLModelFailure{{Group: "coverage", Key: "heat_only/inactive_fan", Message: err.Error()}}
+	}
 	if err := epathSQLPreparePVHVACChecks(checks, models...); err != nil {
 		out.Metrics = nil
 		return []epathSQLModelFailure{{Group: "coverage", Key: "pv_hvac/original", Message: err.Error()}}
@@ -506,6 +528,8 @@ func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeRes
 			err = epathCheckSQLDirectHVACSource(bundle, check)
 		} else if check.BaseboardContextSource != nil {
 			err = epathCheckSQLBaseboardContextSource(bundle, check)
+		} else if check.HeatOnlyContext != nil {
+			err = epathCheckSQLHeatOnlyContextSource(bundle, check)
 		} else if check.HVACSharedSource != nil {
 			err = epathCheckSQLHVACSharedSource(bundle, check)
 		} else if check.NativeVRFSource != nil {

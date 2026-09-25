@@ -2329,6 +2329,32 @@ type point3 struct {
 var vertexCommentPattern = regexp.MustCompile(`(?i)vertex\s+(\d+)\s+([xyz])-coordinate`)
 
 func detailedVertices(obj Object) ([]point3, bool) {
+	// The catalog pins the start of XYZ extensibles for each detailed object.
+	// Do not infer a count from arbitrary comments or another autocalculate
+	// field (for example View Factor to Ground). Validate the entire tail
+	// before the legacy comment path can accept an incomplete subset.
+	for index, field := range obj.Fields {
+		spec, ok := fieldSpecAt(obj.Type, index)
+		if !ok || normalizeFieldName(spec.Name) != normalizeFieldName("Number of Vertices") ||
+			!strings.EqualFold(strings.TrimSpace(field.Value), "autocalculate") {
+			continue
+		}
+		remaining := len(obj.Fields) - index - 1
+		if remaining < 9 || remaining%3 != 0 {
+			return nil, false
+		}
+		vertices := make([]point3, 0, remaining/3)
+		for offset := index + 1; offset < len(obj.Fields); offset += 3 {
+			x, okX := parseFloatField(obj.Fields[offset].Value)
+			y, okY := parseFloatField(obj.Fields[offset+1].Value)
+			z, okZ := parseFloatField(obj.Fields[offset+2].Value)
+			if !okX || !okY || !okZ {
+				return nil, false
+			}
+			vertices = append(vertices, point3{x: x, y: y, z: z})
+		}
+		return vertices, true
+	}
 	values := map[int]map[string]float64{}
 	for _, field := range obj.Fields {
 		matches := vertexCommentPattern.FindStringSubmatch(field.Comment)

@@ -2709,7 +2709,7 @@ func TestBuildServiceChainsFromRuleGraphRequiresDirectedPath(t *testing.T) {
 		},
 	}
 
-	paths := buildServiceChainsFromRuleGraph(relation, graph)
+	paths := buildServiceChainsFromRuleGraph(nil, relation, graph)
 	if len(paths) != 3 {
 		t.Fatalf("service path count = %d, want terminal + Air 1 + Plant 1 paths: %#v", len(paths), paths)
 	}

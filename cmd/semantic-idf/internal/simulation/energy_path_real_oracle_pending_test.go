@@ -49,6 +49,12 @@ func epathWriteOraclePending(root, destination, candidatePath string, evidence e
 	if err := epathSQLPreparePVHVACChecks(checks, recipe.SQLModel); err != nil {
 		return err
 	}
+	if err := epathSQLPrepareHeatOnlyChecks(checks, recipe.SQLModel); err != nil {
+		return err
+	}
+	if checks.HeatOnly != nil && (observed.sqlPath != checks.HeatOnly.SQLPath || observed.originalText != checks.HeatOnly.OriginalText || observed.executedText != checks.HeatOnly.ExecutedText || observed.outputPlan == nil || !reflect.DeepEqual(*observed.outputPlan, checks.HeatOnly.OutputPlan)) {
+		return fmt.Errorf("HeatOnly pending evidence differs from the actual run")
+	}
 	if _, _, err := epathSQLPreparePVAndCogenerationSourceChecksForModel(checks, recipe.SQLModel, &observed); err != nil {
 		return err
 	}

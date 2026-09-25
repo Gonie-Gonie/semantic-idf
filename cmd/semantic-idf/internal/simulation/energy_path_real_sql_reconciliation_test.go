@@ -326,6 +326,10 @@ func epathSQLModelThermalReconciliationChecks(frames epathSQLFrames, model epath
 // The finite bindings below refer to reviewed recipe equations, not production
 // kind/name classifiers. Unknown families cannot silently become an aggregate.
 func epathSQLDriverReconciliationChecks(frames epathSQLFrames, model epathRealSQLModel, zones, periods []string, checks *epathSQLModelChecks) error {
+	finiteOutdoor, err := epathSQLSimpleVentilationOutdoorDeclaration(model)
+	if err != nil {
+		return err
+	}
 	definitions := map[string]epathRealSQLFamily{}
 	for _, family := range model.Families {
 		if _, duplicate := definitions[family.ID]; duplicate {
@@ -339,6 +343,10 @@ func epathSQLDriverReconciliationChecks(frames epathSQLFrames, model epathRealSQ
 		surfaces                     bool
 	}
 	equations := []equation{}
+	if finiteOutdoor {
+		family := definitions["outdoor.balance"]
+		equations = append(equations, equation{"outdoor_air", "sensible", family.ID, append([]string(nil), family.Subtract...), false})
+	}
 	if _, ok := definitions["surface.balance"]; ok {
 		equations = append(equations, equation{"surface", "sensible", "surface.balance", nil, true})
 	}
@@ -421,7 +429,8 @@ func epathSQLDriverReconciliationChecks(frames epathSQLFrames, model epathRealSQ
 						}
 						seen[id] = true
 						definition, ok := definitions[id]
-						if !ok || definition.Component != eq.component || definition.Role != "pressure" || eq.family == "internal" && (!strings.HasPrefix(definition.Category, "internal.") || definition.Category == "internal.other") || eq.family == "outdoor_air" && id != eq.aggregate && definition.Category != "air.infiltration" {
+						outdoorDetail := definition.Category == "air.infiltration" || finiteOutdoor && eq.aggregate == "outdoor.balance" && definition.Category == "air.mechanical_ventilation"
+						if !ok || definition.Component != eq.component || definition.Role != "pressure" || eq.family == "internal" && (!strings.HasPrefix(definition.Category, "internal.") || definition.Category == "internal.other") || eq.family == "outdoor_air" && id != eq.aggregate && !outdoorDetail {
 							return fmt.Errorf("unreviewed reconciliation detail %s", id)
 						}
 						key := epathSQLKey(zone, id, month)

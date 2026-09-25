@@ -17,6 +17,12 @@ func epathOracleUnitSQL(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer db.Close()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
 	for _, query := range []string{
 		`CREATE TABLE EnvironmentPeriods(EnvironmentPeriodIndex INTEGER PRIMARY KEY,EnvironmentName TEXT,EnvironmentType INTEGER)`,
 		`INSERT INTO EnvironmentPeriods VALUES(1,'FULL WEATHER 2017',3),(2,'SUMMER DESIGN DAY',1)`,
@@ -25,20 +31,20 @@ func epathOracleUnitSQL(t *testing.T) string {
 		`CREATE TABLE ReportData(ReportDataIndex INTEGER PRIMARY KEY,ReportDataDictionaryIndex INTEGER,TimeIndex INTEGER,Value REAL)`,
 		`INSERT INTO ReportDataDictionary VALUES(1,'Cooling:Electricity','',1,'Monthly','J','Facility'),(2,'Observed Rate','Office',0,'Timestep','W','Zone'),(3,'Missing Observation','Office',0,'Monthly','J','Zone'),(4,'Cooling:Electricity','',1,'Run Period','J','Facility'),(5,'Rate With Unknown Interval','Office',0,'Timestep','W','Zone'),(6,'Yearly energy','',1,'Annual','J','Facility')`,
 	} {
-		if _, err := db.Exec(query); err != nil {
+		if _, err := tx.Exec(query); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for month := 1; month <= 12; month++ {
 		last := time.Date(2017, time.Month(month+1), 0, 0, 0, 0, 0, time.UTC)
-		if _, err := db.Exec(`INSERT INTO "Time" VALUES(?,1,2017,?,?,24,0,?,NULL,3,?)`, month, month, last.Day(), last.Day()*24*60, last.YearDay()); err != nil {
+		if _, err := tx.Exec(`INSERT INTO "Time" VALUES(?,1,2017,?,?,24,0,?,NULL,3,?)`, month, month, last.Day(), last.Day()*24*60, last.YearDay()); err != nil {
 			t.Fatal(err)
 		}
 		value := float64(month) * 3600000
 		if month == 2 {
 			value = 0
 		}
-		if _, err := db.Exec(`INSERT INTO ReportData VALUES(?,1,?,?),(?,3,?,NULL)`, month, month, value, 100+month, month); err != nil {
+		if _, err := tx.Exec(`INSERT INTO ReportData VALUES(?,1,?,?),(?,3,?,NULL)`, month, month, value, 100+month, month); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -46,9 +52,12 @@ func epathOracleUnitSQL(t *testing.T) string {
 		`INSERT INTO "Time" VALUES(1001,1,2017,1,1,1,30,30,0,0,1),(1002,1,2017,1,1,2,0,30,0,0,1),(1003,1,2017,1,1,2,30,NULL,0,0,1),(2001,2,2017,7,21,24,0,1440,NULL,2,1),(2002,1,2017,1,1,24,0,1440,1,0,1),(4001,1,NULL,NULL,NULL,NULL,NULL,525600,NULL,4,365),(5001,1,2017,NULL,NULL,NULL,NULL,NULL,NULL,5,NULL),(6001,1,2017,1,1,3,0,30,NULL,0,1)`,
 		`INSERT INTO ReportData VALUES(301,2,1001,1000),(302,2,1002,1000),(303,5,1001,1000),(304,5,1003,1000),(401,4,4001,273600000),(501,1,2001,999999999999),(502,1,2002,999999999999),(601,6,5001,273600000),(701,2,6001,999999999999)`,
 	} {
-		if _, err := db.Exec(query); err != nil {
+		if _, err := tx.Exec(query); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)

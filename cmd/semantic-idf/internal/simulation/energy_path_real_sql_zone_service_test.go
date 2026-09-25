@@ -25,7 +25,10 @@ type epathSQLZoneServiceProof struct {
 	LoadDetails                         map[string]epathSQLLoadDetailIdentity        // Exact non-additive context, never the numeric authority.
 }
 
-func epathSQLModelZoneServiceChecks(frames epathSQLFrames, model epathRealSQLModel, checks *epathSQLModelChecks) error {
+func epathSQLModelZoneServiceChecks(frames epathSQLFrames, model epathRealSQLModel, checks *epathSQLModelChecks, observed ...epathRealOracleEvidence) error {
+	if len(observed) > 1 {
+		return fmt.Errorf("Zone service compiler received ambiguous native evidence")
+	}
 	if model.Precision.DecimalPlaces != 3 || model.Precision.SourceStages < 1 || model.Precision.SourceStages > 3 || model.Precision.ContributionStages < 1 || model.Precision.ContributionStages > 3 {
 		return fmt.Errorf("Zone service proof requires reviewed source/contribution precision")
 	}
@@ -97,6 +100,12 @@ func epathSQLModelZoneServiceChecks(frames epathSQLFrames, model epathRealSQLMod
 		directFrames, err := epathSQLCompileDirectHVACService(frames, model, service)
 		if err != nil {
 			return err
+		}
+		if directFrames == nil && checks.HeatOnly != nil {
+			directFrames, err = epathSQLCompileHeatOnlyService(frames, model, service, checks.HeatOnly)
+			if err != nil {
+				return err
+			}
 		}
 		if directFrames != nil {
 			if err := epathSQLDirectHVACZoneServiceChecks(frames, model, service, directFrames, zones, checks); err != nil {
@@ -295,7 +304,13 @@ func epathSQLModelZoneServiceChecks(frames epathSQLFrames, model epathRealSQLMod
 		}
 	}
 	if len(seen) != 2 {
-		return fmt.Errorf("Zone service proof requires both reviewed services")
+		if len(seen) == 0 && len(observed) == 1 {
+			if err := epathSQLSimpleVentilationZeroServices(frames, model, observed[0]); err != nil {
+				return fmt.Errorf("zero Zone services require finite original/native ventilation proof: %w", err)
+			}
+		} else if err := epathSQLHeatOnlySingleService(frames, model, checks.HeatOnly); err != nil {
+			return fmt.Errorf("Zone service proof requires both reviewed services unless finite HeatOnly absence is proved: %w", err)
+		}
 	}
 	return nil
 }

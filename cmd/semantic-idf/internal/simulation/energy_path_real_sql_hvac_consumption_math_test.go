@@ -18,13 +18,14 @@ type epathSQLHVACConsumptionSourceShare struct {
 }
 
 type epathSQLHVACConsumptionServiceFrames struct {
-	Direct       epathSQLDirectHVACServiceFrames
-	Sources      [12]map[int]epathSQLHVACConsumptionSourceShare
-	PoolCarriers map[string]bool
-	Overmapped   [12]map[string]epathSQLQuantity
-	frames       epathSQLFrames
-	model        epathRealSQLModel
-	service      epathRealSQLService
+	Direct            epathSQLDirectHVACServiceFrames
+	Sources           [12]map[int]epathSQLHVACConsumptionSourceShare
+	PoolCarriers      map[string]bool
+	Overmapped        [12]map[string]epathSQLQuantity
+	centralCoolingCOP bool // Recomputed finite native/source qualification; not serialized authority.
+	frames            epathSQLFrames
+	model             epathRealSQLModel
+	service           epathRealSQLService
 }
 
 // The packaged-terminal compiler remains the control for untouched carriers.
@@ -63,6 +64,11 @@ func epathSQLCompileHVACConsumptionService(frames epathSQLFrames, model epathRea
 		}
 		seenSites[site.ID] = true
 		for _, member := range pool.Shared {
+			if member.Member.ObjectType == epathSQLCentralSharedType {
+				if err := epathSQLCentralSharedSite(member.Member, site, frames); err != nil {
+					return nil, err
+				}
+			}
 			if seenMembers[member.Member.ID] || seenSources[member.Source.DictionaryIndex] {
 				return nil, fmt.Errorf("duplicated native shared member or original source")
 			}
@@ -83,7 +89,7 @@ func epathSQLCompileHVACConsumptionService(frames epathSQLFrames, model epathRea
 	if len(model.NativeVRFSystems) > 0 {
 		return nil, fmt.Errorf("native VRF coexistence needs its separately reviewed source roster")
 	}
-	base, err := epathSQLCompileDirectHVACService(frames, model, service)
+	base, err := epathSQLCompileDirectHVACService(frames, model, service, epathSQLCentralSharedOnlyService(frames, model, service, selected))
 	if err != nil || base == nil {
 		return nil, fmt.Errorf("native mixed pool needs independently validated direct component frames: %v", err)
 	}
@@ -91,7 +97,7 @@ func epathSQLCompileHVACConsumptionService(frames epathSQLFrames, model epathRea
 	if err != nil || len(served) == 0 {
 		return nil, fmt.Errorf("native mixed pool requires reviewed served Zones: %v", err)
 	}
-	out := &epathSQLHVACConsumptionServiceFrames{Direct: *base, PoolCarriers: poolCarriers, frames: frames, model: model, service: service}
+	out := &epathSQLHVACConsumptionServiceFrames{Direct: *base, PoolCarriers: poolCarriers, frames: frames, model: model, service: service, centralCoolingCOP: epathSQLCentralCoolingCOP(frames, model, service, selected)}
 	for month := 1; month <= 12; month++ {
 		out.Sources[month-1] = map[int]epathSQLHVACConsumptionSourceShare{}
 		out.Overmapped[month-1] = map[string]epathSQLQuantity{}
@@ -238,7 +244,7 @@ func epathSQLValidateHVACConsumptionService(proof *epathSQLHVACConsumptionServic
 		return fmt.Errorf("missing independent native source-pool proof")
 	}
 	fresh, err := epathSQLCompileHVACConsumptionService(proof.frames, proof.model, proof.service)
-	if err != nil || fresh == nil || !epathSQLHVACConsumptionSameDirect(fresh.Direct, proof.Direct) || !reflect.DeepEqual(fresh.Sources, proof.Sources) || !reflect.DeepEqual(fresh.PoolCarriers, proof.PoolCarriers) || !reflect.DeepEqual(fresh.Overmapped, proof.Overmapped) {
+	if err != nil || fresh == nil || fresh.centralCoolingCOP != proof.centralCoolingCOP || !epathSQLHVACConsumptionSameDirect(fresh.Direct, proof.Direct) || !reflect.DeepEqual(fresh.Sources, proof.Sources) || !reflect.DeepEqual(fresh.PoolCarriers, proof.PoolCarriers) || !reflect.DeepEqual(fresh.Overmapped, proof.Overmapped) {
 		return fmt.Errorf("native consumption allocation differs from its original source-local arithmetic: %v", err)
 	}
 	return nil

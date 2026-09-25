@@ -44,6 +44,7 @@ func energyPathDirectHVACComponentDefinitions() []energyPathDirectHVACComponentD
 	}
 	definitions = append(definitions, energyPathBaseboardElectricityDefinitions()...)
 	definitions = append(definitions, energyPathWindowACFanElectricityDefinition())
+	definitions = append(definitions, energyPathSimpleVentilationFanDefinition())
 	return definitions
 }
 

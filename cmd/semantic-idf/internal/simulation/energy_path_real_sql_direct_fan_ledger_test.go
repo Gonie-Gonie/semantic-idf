@@ -25,6 +25,7 @@ func epathSQLDirectFanLedgerPresentation(fans *epathSQLDirectFanFrames, period s
 		return out, nil, err
 	}
 	directMonths := [12]float64{}
+	family := ""
 	round := func(v float64) float64 { return math.Round(v*1000) / 1000 }
 	for zone, sources := range fans.Sources {
 		zoneMonthly := [12]epathSQLQuantity{}
@@ -41,9 +42,10 @@ func epathSQLDirectFanLedgerPresentation(fans *epathSQLDirectFanFrames, period s
 				return out, nil, fmt.Errorf("duplicate native fan ledger source")
 			}
 			allowed[key] = proof
-			if identity.FamilyID != epathSQLDirectFanFamily || identity.SiteID != fans.SiteID {
+			if !epathSQLSupportedDirectFanFamily(identity.FamilyID) || family != "" && family != identity.FamilyID || identity.SiteID != fans.SiteID {
 				return out, nil, fmt.Errorf("foreign native fan ledger role")
 			}
+			family = identity.FamilyID
 			monthly, err := epathSQLMonthly(identity.Source, identity.Precision)
 			if err != nil {
 				return out, nil, err

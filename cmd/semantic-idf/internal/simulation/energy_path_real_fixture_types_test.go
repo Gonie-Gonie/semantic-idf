@@ -276,8 +276,33 @@ func (s epathRealStructure) assertKind(kind string) {
 		// Furnace contains a SingleCooling thermostat schedule. A control
 		// object is not physical cooling equipment or a reported cooling load.
 	case "no_heating":
-		s.require("Coil:Cooling:DX:SingleSpeed", 1)
-		s.require("Coil:Cooling:Water", 1)
+		if len(s.objects("ZoneVentilation:DesignFlowRate")) > 0 {
+			// Separate uncontrolled-ventilation original, not a repaired
+			// DataCenter or evidence of mechanically cooled operation.
+			for objectType, want := range map[string]int{"Zone": 3, "ZoneVentilation:DesignFlowRate": 3, "ZoneVentilation:WindandStackOpenArea": 1} {
+				if got := len(s.objects(objectType)); got != want {
+					s.t.Fatalf("uncontrolled simple ventilation requires %d actual %s objects, got %d", want, objectType, got)
+				}
+			}
+			owners, methods := map[string]bool{}, map[string]bool{}
+			for _, object := range s.objects("ZoneVentilation:DesignFlowRate") {
+				owner := strings.ToLower(epathRealTypeField(object, 1))
+				method := strings.ToLower(epathRealTypeField(object, 8))
+				if owner == "" || owners[owner] || !s.named("Zone", owner) || methods[method] || method != "natural" && method != "intake" && method != "exhaust" {
+					s.t.Fatal("uncontrolled original requires distinct actual Zone owners and Natural/Intake/Exhaust methods")
+				}
+				owners[owner], methods[method] = true, true
+			}
+			if !s.named("Zone", epathRealTypeField(s.objects("ZoneVentilation:WindandStackOpenArea")[0], 1)) {
+				s.t.Fatal("WindAndStack opening lacks an actual Zone owner")
+			}
+			s.noPrefixes("AirLoopHVAC", "PlantLoop", "ZoneHVAC:", "ZoneControl:", "Coil:", "CoilSystem:", "Fan:", "Pump:", "Boiler:", "Chiller:", "District", "AirConditioner:", "CentralHeatPumpSystem")
+		} else {
+			// Preserve the original DataCenter subtype's positive cooling
+			// equipment checks and its separate failed-run evidence.
+			s.require("Coil:Cooling:DX:SingleSpeed", 1)
+			s.require("Coil:Cooling:Water", 1)
+		}
 		s.noPrefixes("Coil:Heating:", "CoilSystem:Heating:", "Boiler:", "DistrictHeating", "ZoneHVAC:Baseboard:", "ZoneHVAC:LowTemperatureRadiant:", "ZoneHVAC:IdealLoads", "ZoneHVAC:PackagedTerminalHeatPump", "AirConditioner:VariableRefrigerantFlow", "CentralHeatPumpSystem")
 	case "simultaneous_heating_cooling":
 		s.require("CentralHeatPumpSystem", 1)

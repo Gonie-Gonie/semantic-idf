@@ -8,6 +8,8 @@ import (
 )
 
 type epathSQLModelCheck struct {
+	HeatOnlyContext        *epathSQLHeatOnlyContext
+	HeatOnlyBound          bool
 	PVHVACProofSHA256      string
 	PVCogenerationSource   *epathSQLPVSourceProof
 	PVSource               *epathSQLPVSourceProof
@@ -43,6 +45,7 @@ type epathSQLModelCheck struct {
 	AnnualServiceAbsent    bool
 }
 type epathSQLModelChecks struct {
+	HeatOnly               *epathSQLHeatOnlyBinding
 	PVHVACRequired         bool
 	PVHVAC                 *epathSQLPVHVACStamp
 	RequiredPVCogeneration *epathRealSQLPVCogeneration

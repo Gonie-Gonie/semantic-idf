@@ -156,7 +156,11 @@ WHERE r.ReportDataDictionaryIndex=? AND e.EnvironmentType=3 AND `+epathOracleNon
 	return nil
 }
 
-func epathSQLModelFanPoolChecks(observed epathRealOracleEvidence, frames epathSQLFrames, pools []epathRealSQLFanPool, precision epathRealSQLPrecision, checks *epathSQLModelChecks) error {
+func epathSQLModelFanPoolChecks(observed epathRealOracleEvidence, frames epathSQLFrames, pools []epathRealSQLFanPool, precision epathRealSQLPrecision, checks *epathSQLModelChecks, heatOnly ...*epathSQLHeatOnlyBinding) error {
+	zeroMonths, err := epathSQLHeatOnlyFanZeroOptIn(observed, frames, pools, heatOnly...)
+	if err != nil {
+		return err
+	}
 	if len(pools) == 0 {
 		return nil
 	}
@@ -197,6 +201,9 @@ func epathSQLModelFanPoolChecks(observed epathRealOracleEvidence, frames epathSQ
 			return fmt.Errorf("fan pool lacks exact broad meter %s", id)
 		}
 		for month, sum := range sums {
+			if sum == 0 && zeroMonths[month] {
+				continue // Exact native/observed/site zero was independently proved above.
+			}
 			if meter[month] == nil || !meter[month].valid() || meter[month].Value < 0 || sum <= 0 || broadMonths[month] == nil || !epathSQLFanPoolNear(sum, *broadMonths[month]) || !epathSQLFanPoolNear(sum, meter[month].Value) {
 				return fmt.Errorf("fan pools do not positively close broad meter %s M%d", id, month+1)
 			}
@@ -209,6 +216,20 @@ func epathSQLModelFanPoolChecks(observed epathRealOracleEvidence, frames epathSQ
 			return err
 		}
 		for month, value := range item.Months {
+			if value == 0 && zeroMonths[month] {
+				for zone := range served {
+					for _, service := range []string{"cooling", "heating"} {
+						load, ok := frames.Loads[epathSQLKey(zone, service, month+1)]
+						if !ok || !load.valid() || load.Value < 0 {
+							return fmt.Errorf("HeatOnly inactive fan month has unknown served load")
+						}
+					}
+					values := zoneValues[zone]
+					values[month] = values[month].add(epathSQLQuantity{})
+					zoneValues[zone] = values
+				}
+				continue // No weight, denominator, share, or allocated flow is invented.
+			}
 			weights, denominator := map[string]epathSQLQuantity{}, epathSQLQuantity{}
 			for zone := range served {
 				weight := epathSQLQuantity{}

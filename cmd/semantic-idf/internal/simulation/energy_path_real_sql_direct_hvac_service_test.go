@@ -35,12 +35,15 @@ type epathSQLDirectHVACBranchProof struct {
 	Required                 map[string]bool
 }
 
-func epathSQLCompileDirectHVACService(frames epathSQLFrames, model epathRealSQLModel, service epathRealSQLService) (*epathSQLDirectHVACServiceFrames, error) {
+func epathSQLCompileDirectHVACService(frames epathSQLFrames, model epathRealSQLModel, service epathRealSQLService, sharedOnly ...bool) (*epathSQLDirectHVACServiceFrames, error) {
+	allowSharedOnly := len(sharedOnly) == 1 && sharedOnly[0] // Independently bound finite Central/HeatOnly callers only; never a measured direct observation.
 	if len(model.DirectHVACComponents) == 0 {
 		if len(frames.DirectHVAC) > 0 {
 			return nil, fmt.Errorf("undeclared direct HVAC frames")
 		}
-		return nil, nil
+		if !allowSharedOnly {
+			return nil, nil
+		}
 	}
 	declared := map[string]bool{}
 	declaredMembers := map[string]map[string]bool{}
@@ -63,7 +66,7 @@ func epathSQLCompileDirectHVACService(frames epathSQLFrames, model epathRealSQLM
 			}
 		}
 	}
-	if len(declared) == 0 {
+	if len(declared) == 0 && !allowSharedOnly {
 		return nil, nil
 	}
 	served, err := epathSQLDeclaredZones(frames, service.ServedZones)

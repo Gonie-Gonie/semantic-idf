@@ -443,7 +443,10 @@ func epathSQLHVACOriginalAirLoopZones(doc idf.Document, airLoopName string) ([]s
 	return zones, nil
 }
 
-func epathSQLValidateHVACConsumptionOriginalModel(text string, pools []epathRealSQLHVACConsumptionPool) error {
+func epathSQLValidateHVACConsumptionOriginalModel(text string, pools []epathRealSQLHVACConsumptionPool, executed ...string) error {
+	if _, _, err := epathSQLCentralSharedOriginal(text, pools, executed...); err != nil {
+		return err
+	}
 	if len(pools) == 0 {
 		return nil
 	}
@@ -461,6 +464,9 @@ func epathSQLValidateHVACConsumptionOriginalModel(text string, pools []epathReal
 			if err := epathSQLValidateHVACSharedDeclaration(member); err != nil {
 				return err
 			}
+			if member.ObjectType == epathSQLCentralSharedType {
+				continue
+			} // Separately proved physical C/H circuit roles above.
 			key := epathSQLSharedKey(member.ObjectType) + "|" + epathSQLSharedKey(member.ObjectName)
 			if seen[key] {
 				return fmt.Errorf("shared original member is reused")

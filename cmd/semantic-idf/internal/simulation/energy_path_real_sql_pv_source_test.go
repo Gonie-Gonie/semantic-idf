@@ -314,7 +314,19 @@ func epathSQLPVRequestCovers(typ string, fields []string, spec epathSQLPVNativeS
 	return key == "" || key == "*" || strings.EqualFold(key, spec.Key)
 }
 
-func epathSQLPVRequestBinding(original, executed idf.Document, plan *PurposeRunPlan, spec epathSQLPVNativeSpec, frequency string) (*int, error) {
+func epathSQLPVRequestBinding(original, executed idf.Document, plan *PurposeRunPlan, spec epathSQLPVNativeSpec, frequency string, scopedZone ...string) (*int, error) {
+	// PV and equipment requests remain unscoped by default. Only a caller with
+	// an independently proved native Zone key may authorize matching metadata.
+	zone := ""
+	if len(scopedZone) > 1 {
+		return nil, fmt.Errorf("native output request has ambiguous Zone scope")
+	}
+	if len(scopedZone) == 1 {
+		zone = scopedZone[0]
+	}
+	if zone != "" && (spec.IsMeter || !strings.EqualFold(zone, spec.Key)) {
+		return nil, fmt.Errorf("native output Zone scope differs from exact native key")
+	}
 	if plan == nil || plan.BasicEnergyDetail != "energy_path" {
 		return nil, fmt.Errorf("PV source requires actual Energy Path output plan")
 	}
@@ -362,7 +374,14 @@ func epathSQLPVRequestBinding(original, executed idf.Document, plan *PurposeRunP
 		for _, purpose := range output.PurposeIDs {
 			basic = basic || purpose == SimulationPurposeBasicEnergy
 		}
-		if !basic || output.ScopeZoneName != "" || output.ReportingFrequency != frequency || output.State != "existing" && output.State != "temporary" || output.State == "temporary" && output.ObjectIndex != nil || output.State == "existing" && (output.ObjectIndex == nil || !old[*output.ObjectIndex]) {
+		scopeOK := output.ScopeZoneName == ""
+		if output.ScopeZoneName != "" && zone != "" && strings.EqualFold(output.ScopeZoneName, zone) && strings.EqualFold(fields[0], zone) {
+			// A scoped plan cannot borrow an executed wildcard request: its
+			// exact actual key/variable/frequency/schedule tuple must be present.
+			signature := strings.ToLower(output.ObjectType + "\x00" + strings.Join(fields, "\x00"))
+			scopeOK = runFields[signature] > 0
+		}
+		if !basic || !scopeOK || output.ReportingFrequency != frequency || output.State != "existing" && output.State != "temporary" || output.State == "temporary" && output.ObjectIndex != nil || output.State == "existing" && (output.ObjectIndex == nil || !old[*output.ObjectIndex]) {
 			return nil, fmt.Errorf("PV output plan metadata borrowed purpose, scope or opener")
 		}
 		if spec.IsMeter {

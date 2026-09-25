@@ -30,9 +30,13 @@ type energyDriverBuildContext struct {
 	Multipliers                  energyEffectiveMultiplierIndex
 	GeometryWarning              *EnergyWarning
 	DirectHVACComponents         []energyPathDirectHVACComponentTarget
+	SimpleVentilationTargets     []energyPathSimpleVentilationTarget
 	VRFSystems                   []energyPathVRFSystem
 	RadiantLoads                 []energyPathRadiantLoadTarget
 	HasNativeBaseboard           bool
+	HasCentralHeatPump           bool
+	CentralHeatPumpTargets       []energyPathCentralHeatPumpOutputTarget
+	CentralHeatPumpPaths         map[string][]string
 	BaseboardTargets             []energyPathBaseboardTarget
 	SharedHeatingElectricTargets []energyPathSharedHeatingElectricTarget
 	PoolInventory                energyPathPoolInventory
@@ -45,6 +49,7 @@ func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Doc
 	index := buildEnergySurfaceCategoryIndex(report)
 	multipliers := energyEffectiveMultiplierIndex{}
 	var directHVACComponents []energyPathDirectHVACComponentTarget
+	var simpleVentilationTargets []energyPathSimpleVentilationTarget
 	var vrfSystems []energyPathVRFSystem
 	var radiantLoads []energyPathRadiantLoadTarget
 	var baseboardTargets []energyPathBaseboardTarget
@@ -54,14 +59,22 @@ func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Doc
 	var pvElectricalInventory energyPathPVElectricalInventory
 	var cogenerationInventory energyPathCogenerationInventory
 	hasNativeBaseboard := false
+	hasCentralHeatPump := false
+	var centralHeatPumpTargets []energyPathCentralHeatPumpOutputTarget
+	var centralHeatPumpPaths map[string][]string
 	if len(documents) > 0 {
 		addEnergyInternalMassCategories(&index, documents[0], report)
 		multipliers = buildEnergyEffectiveMultiplierIndex(documents[0])
 		directHVACComponents = energyPathDirectHVACComponentTargets(documents[0])
 		directHVACComponents = append(directHVACComponents, energyPathWindowACDirectTargets(energyPathWindowACTargets(documents[0]))...)
+		simpleVentilationTargets = energyPathSimpleVentilationTargets(documents[0])
+		directHVACComponents = append(directHVACComponents, energyPathSimpleVentilationDirectTargets(simpleVentilationTargets)...)
 		vrfSystems = energyPathVRFSystems(documents[0])
 		radiantLoads = energyPathRadiantLoadTargets(documents[0])
 		hasNativeBaseboard = energyPathHasNativeBaseboard(documents[0])
+		hasCentralHeatPump = energyPathHasCentralHeatPump(documents[0])
+		centralHeatPumpTargets = energyPathCentralHeatPumpOutputTargets(documents[0])
+		centralHeatPumpPaths = energyPathCentralHeatPumpRecipientPaths(documents[0], centralHeatPumpTargets)
 		baseboardTargets = energyPathBaseboardTargets(documents[0])
 		directHVACComponents = append(directHVACComponents, energyPathBaseboardDirectTargets(baseboardTargets)...)
 		sharedHeatingElectricTargets = energyPathSharedHeatingElectricTargets(documents[0])
@@ -81,9 +94,13 @@ func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Doc
 		AirCouplings:                 buildEnergyAirCouplingIndex(report.Topology),
 		Multipliers:                  multipliers,
 		DirectHVACComponents:         directHVACComponents,
+		SimpleVentilationTargets:     simpleVentilationTargets,
 		VRFSystems:                   vrfSystems,
 		RadiantLoads:                 radiantLoads,
 		HasNativeBaseboard:           hasNativeBaseboard,
+		HasCentralHeatPump:           hasCentralHeatPump,
+		CentralHeatPumpTargets:       centralHeatPumpTargets,
+		CentralHeatPumpPaths:         centralHeatPumpPaths,
 		BaseboardTargets:             baseboardTargets,
 		SharedHeatingElectricTargets: sharedHeatingElectricTargets,
 		PoolInventory:                poolInventory,
@@ -192,6 +209,7 @@ func prepareEnergyDriverSeries(series []energyExplanationSeries, sources []Energ
 		out = append(out, canonicalEnergyExplanationSeries(item))
 	}
 	applyEnergyPathBaseboardRecipientQualification(out, sources, context)
+	applyEnergyPathSimpleVentilationSourceContext(sources, context.SimpleVentilationTargets)
 	return out, sources, warnings
 }
 

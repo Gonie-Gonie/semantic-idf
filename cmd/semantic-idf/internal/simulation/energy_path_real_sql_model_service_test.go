@@ -113,7 +113,10 @@ func epathSQLAllocationID(annualID, period string) (string, error) {
 	return strings.TrimSuffix(annualID, ".annual") + "." + strings.ToLower(period), nil
 }
 
-func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, checks *epathSQLModelChecks) error {
+func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, checks *epathSQLModelChecks, observed ...epathRealOracleEvidence) error {
+	if len(observed) > 1 {
+		return fmt.Errorf("service compiler received ambiguous native evidence")
+	}
 	periods := []string{"annual"}
 	for month := 1; month <= 12; month++ {
 		periods = append(periods, fmt.Sprintf("M%d", month))
@@ -153,6 +156,12 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 		directFrames, err := epathSQLCompileDirectHVACService(frames, model, service)
 		if err != nil {
 			return err
+		}
+		if directFrames == nil && checks.HeatOnly != nil {
+			directFrames, err = epathSQLCompileHeatOnlyService(frames, model, service, checks.HeatOnly)
+			if err != nil {
+				return err
+			}
 		}
 		poolFrames, err := epathSQLCompileHVACConsumptionService(frames, model, service)
 		if err != nil {
@@ -311,7 +320,13 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 		}
 	}
 	if len(serviceSeen) != 2 {
-		return fmt.Errorf("both declared conversion services are required")
+		if len(serviceSeen) == 0 && len(observed) == 1 {
+			if err := epathSQLSimpleVentilationZeroServices(frames, model, observed[0]); err != nil {
+				return fmt.Errorf("zero services require finite original/native ventilation proof: %w", err)
+			}
+		} else if err := epathSQLHeatOnlySingleService(frames, model, checks.HeatOnly); err != nil {
+			return fmt.Errorf("both declared conversion services are required unless finite HeatOnly absence is proved: %w", err)
+		}
 	}
 	for _, aux := range model.Auxiliaries {
 		poolConsumer, err := epathSQLPoolPumpConsumerFor(frames, model, aux)

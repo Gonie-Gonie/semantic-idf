@@ -40,6 +40,16 @@ func (out *epathSQLModelCoverageReport) fail(group, key, message string) {
 // invokes a production classifier or builder. Structural failures use the group
 // "coverage" and invalidate acceptance as a whole, not just one numeric group.
 func epathSQLModelCoverage(bundle PurposeResultBundle, checks epathSQLModelChecks, models ...*epathRealSQLModel) epathSQLModelCoverageReport {
+	if err := epathSQLPrepareHeatOnlyChecks(checks, models...); err != nil {
+		out := epathSQLModelCoverageReport{}
+		out.fail("coverage", "heat_only/original_native", err.Error())
+		return out
+	}
+	if err := epathSQLCheckHeatOnlyInactiveFanGraph(bundle, checks); err != nil {
+		out := epathSQLModelCoverageReport{}
+		out.fail("coverage", "heat_only/inactive_fan", err.Error())
+		return out
+	}
 	if err := epathSQLPreparePVHVACChecks(checks, models...); err != nil {
 		out := epathSQLModelCoverageReport{}
 		out.fail("coverage", "pv_hvac/original", err.Error())
@@ -289,6 +299,9 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		}
 		if check.BaseboardContextSource != nil {
 			validators = append(validators, func() error { return epathCheckSQLBaseboardContextSource(bundle, check) })
+		}
+		if check.HeatOnlyContext != nil {
+			validators = append(validators, func() error { return epathCheckSQLHeatOnlyContextSource(bundle, check) })
 		}
 		if check.HVACSharedSource != nil {
 			validators = append(validators, func() error { return epathCheckSQLHVACSharedSource(bundle, check) })

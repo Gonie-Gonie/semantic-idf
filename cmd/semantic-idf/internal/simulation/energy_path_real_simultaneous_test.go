@@ -264,6 +264,21 @@ func epathValidateRealSimultaneousProvenance(t *testing.T, catalogDirectory, dir
 	if errSummary.Severe != 0 || errSummary.Fatal != 0 {
 		t.Fatal("simultaneous capture has engine Severe/Fatal errors")
 	}
+	originalData, err := os.ReadFile(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	executedData, err := os.ReadFile(provenance.ExecutedInputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	physical, err := epathSQLValidateCentralOriginal(string(originalData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := epathSQLBindCentralExecuted(string(originalData), string(executedData), physical); err != nil {
+		t.Fatal(err)
+	}
 	return sqlPath
 }
 

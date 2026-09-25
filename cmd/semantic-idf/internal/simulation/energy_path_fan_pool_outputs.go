@@ -12,7 +12,8 @@ const energyPathAirLoopFanOutputName = "Air System Fan Electricity Energy"
 
 // This is a request gate, not an allocation proof. Start with independently
 // named AirLoops containing directly resolved supply-branch fans and an actual
-// supply-terminal/Zone connection. Nested-unitary fan ownership is not guessed.
+// supply-terminal/Zone connection. The finite native HeatOnly extension uses
+// an exported resolved child plus an actual heating service path, not a guess.
 // SQL completeness, meter closure and eligible recipients remain reader gates.
 func energyPathAirLoopFanOutputKeys(doc idf.Document) []string {
 	counts, fanNames := map[string]int{}, map[string]int{}
@@ -27,6 +28,10 @@ func energyPathAirLoopFanOutputKeys(doc idf.Document) []string {
 		}
 	}
 	report := idf.AnalyzeHVAC(doc)
+	completeFurnaces := map[int]bool{}
+	for _, cohort := range idf.ResolveNativeHeatOnlyFurnaceCohorts(doc, report.ServiceModel.ZoneServices) {
+		completeFurnaces[cohort.System.ObjectIndex] = cohort.Complete
+	}
 	// The same fan cannot authorize two loops or two branch occurrences.
 	occurrences := map[string]int{}
 	for _, loop := range report.Loops {
@@ -57,6 +62,15 @@ func energyPathAirLoopFanOutputKeys(doc idf.Document) []string {
 			for _, component := range branch.Components {
 				if !component.Exists || counts[identity(component.ObjectType, component.ObjectName)] != 1 {
 					valid = false
+				}
+				if strings.EqualFold(component.ObjectType, "AirLoopHVAC:Unitary:Furnace:HeatOnly") {
+					fanName, owned := energyPathHeatOnlyFanOutputOwner(report, loop, component)
+					if !owned || !completeFurnaces[component.ObjectIndex] || fanNames[normalizePurposeToken(fanName)] != 1 {
+						valid = false
+					} else {
+						fans++
+					}
+					continue
 				}
 				if !strings.HasPrefix(normalizePurposeToken(component.ObjectType), "fan:") {
 					continue
@@ -96,6 +110,8 @@ func energyPathAirLoopFanOutputKeys(doc idf.Document) []string {
 				for _, component := range branch.Components {
 					if strings.HasPrefix(normalizePurposeToken(component.ObjectType), "fan:") {
 						coveredFans[normalizePurposeToken(component.ObjectName)] = true
+					} else if fanName, owned := energyPathHeatOnlyFanOutputOwner(report, loop, component); owned {
+						coveredFans[normalizePurposeToken(fanName)] = true
 					}
 				}
 			}

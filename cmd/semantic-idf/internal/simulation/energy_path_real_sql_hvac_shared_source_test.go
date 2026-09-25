@@ -14,14 +14,19 @@ const epathSQLSharedBoilerEnergy = "Boiler Ancillary Electricity Energy"
 const epathSQLSharedBoilerRate = "Boiler Ancillary Electricity Rate"
 
 type epathSQLHVACSharedSourceProof struct {
-	Member    epathRealSQLHVACSharedMember
-	Source    epathRealSQLSource
-	Precision epathRealSQLPrecision
-	Hourly    []float64 // Original weather-only values; not a production chart.
-	Canonical bool
+	ObjectIndex *int // Independently bound original Central request; Boiler stays nil.
+	Member      epathRealSQLHVACSharedMember
+	Source      epathRealSQLSource
+	Precision   epathRealSQLPrecision
+	Hourly      []float64 // Original weather-only values; not a production chart.
+	Canonical   bool
 }
 
 func epathSQLValidateHVACSharedDeclaration(m epathRealSQLHVACSharedMember) error {
+	if m.ObjectType == epathSQLCentralSharedType {
+		_, err := epathSQLCentralSharedRole(m)
+		return err
+	}
 	if strings.TrimSpace(m.ID) == "" || m.ObjectType != "Boiler:HotWater" || strings.TrimSpace(m.ObjectName) == "" || strings.TrimSpace(m.PlantLoopName) == "" || len(m.ServedZones) == 0 || m.Source.IsMeter || m.Source.AllowAbsent || len(m.Source.Keys) != 1 || !strings.EqualFold(m.Source.Keys[0], m.ObjectName) || len(m.Source.Alternatives) != 1 || m.Source.Alternatives[0] != (epathRealSQLAlternative{Name: epathSQLSharedBoilerEnergy, Unit: "J"}) {
 		return fmt.Errorf("shared constituent requires exact original hot-water boiler and native ancillary Monthly/J selector")
 	}
@@ -41,7 +46,11 @@ func epathSQLValidateHVACSharedObservation(source epathRealSQLSource, member epa
 		return err
 	}
 	unit := "J"
-	if source.Name == epathSQLSharedBoilerRate {
+	if member.ObjectType == epathSQLCentralSharedType {
+		if source.Name != member.Source.Alternatives[0].Name || source.ReportingFrequency != "Monthly" || source.IndexGroup != "System" {
+			return fmt.Errorf("Central authority is its distinct paid Monthly/System energy, not Rate/Hourly/thermal context")
+		}
+	} else if source.Name == epathSQLSharedBoilerRate {
 		unit = "W"
 	} else if source.Name != epathSQLSharedBoilerEnergy {
 		return fmt.Errorf("shared source is not a reviewed native boiler quantity")
@@ -89,6 +98,12 @@ func epathSQLValidateHVACSharedObservation(source epathRealSQLSource, member epa
 }
 
 func epathSQLValidateHVACSharedSourceIdentity(identity epathSQLHVACSharedSourceIdentity) error {
+	if identity.Member.ObjectType == epathSQLCentralSharedType {
+		if len(identity.Companions) != 0 {
+			return fmt.Errorf("Central paid Monthly source must not invent native companions")
+		}
+		return epathSQLValidateHVACSharedObservation(identity.Source, identity.Member, identity.Precision)
+	}
 	if identity.Source.Name != epathSQLSharedBoilerEnergy || identity.Source.ReportingFrequency != "Monthly" {
 		return fmt.Errorf("shared additive authority must be the native Monthly energy, not an E/R alias")
 	}
@@ -235,7 +250,7 @@ func epathSQLAuditHVACSharedObservation(db *sql.DB, source epathRealSQLSource, w
 	return hours, nil
 }
 
-func epathCompileSQLHVACConsumptionPoolFrames(sqlPath string, observed []epathRealSQLSource, model epathRealSQLModel, frames *epathSQLFrames, plan *PurposeRunPlan) error {
+func epathCompileSQLHVACConsumptionPoolFrames(sqlPath string, observed []epathRealSQLSource, model epathRealSQLModel, frames *epathSQLFrames, plan *PurposeRunPlan, originalExecuted ...string) error {
 	if len(model.HVACConsumptionPools) == 0 {
 		return nil
 	}
@@ -252,6 +267,10 @@ func epathCompileSQLHVACConsumptionPoolFrames(sqlPath string, observed []epathRe
 		return err
 	}
 	pools := []epathSQLHVACConsumptionPoolFrame{}
+	centralOriginal, centralExecuted, err := epathSQLCentralSharedCompilerDocuments(model.HVACConsumptionPools, originalExecuted)
+	if err != nil {
+		return err
+	}
 	proofs := map[int]epathSQLHVACSharedSourceProof{}
 	sites := map[string]bool{}
 	for _, declaration := range model.HVACConsumptionPools {
@@ -260,12 +279,25 @@ func epathCompileSQLHVACConsumptionPoolFrames(sqlPath string, observed []epathRe
 		}
 		sites[declaration.SiteID] = true
 		pool := epathSQLHVACConsumptionPoolFrame{Declaration: declaration}
+		central := len(declaration.Shared) > 0 && declaration.Shared[0].ObjectType == epathSQLCentralSharedType
+		service := "heating"
+		if central {
+			service, err = epathSQLCentralSharedRole(declaration.Shared[0])
+			if err != nil {
+				return err
+			}
+		}
 		siteCount := 0
 		for _, site := range model.Site {
 			if site.ID == declaration.SiteID {
 				siteCount++
-				if site.Facility || site.EndUse != "heating" || site.Carrier != "electricity" || site.Tabular != nil || len(frames.Site[site.ID]) != 12 {
+				if site.Facility || site.EndUse != service || site.Carrier != "electricity" || site.Tabular != nil || len(frames.Site[site.ID]) != 12 {
 					return fmt.Errorf("shared boiler source requires the actual Monthly Heating electricity site")
+				}
+				if central {
+					if err := epathSQLCentralSharedSite(declaration.Shared[0], site, *frames); err != nil {
+						return err
+					}
 				}
 			}
 		}
@@ -282,6 +314,19 @@ func epathCompileSQLHVACConsumptionPoolFrames(sqlPath string, observed []epathRe
 				}
 			}
 			identity := epathSQLHVACSharedSourceIdentity{Member: member, Precision: model.Precision}
+			if member.ObjectType == epathSQLCentralSharedType {
+				identity, proof, err := epathSQLCompileCentralSharedMember(db, weather, member, model.Precision, observed, centralOriginal, centralExecuted, plan)
+				if err != nil {
+					return err
+				}
+				id := identity.Source.DictionaryIndex
+				if proofs[id].Source.DictionaryIndex != 0 || frames.SourceIdentities[id].DictionaryIndex != 0 {
+					return fmt.Errorf("Central paid source already has another independent role")
+				}
+				pool.Shared = append(pool.Shared, identity)
+				proofs[id] = proof
+				continue
+			}
 			for _, spec := range []struct{ name, frequency string }{{epathSQLSharedBoilerEnergy, "Monthly"}, {epathSQLSharedBoilerRate, "Monthly"}, {epathSQLSharedBoilerEnergy, "Hourly"}, {epathSQLSharedBoilerRate, "Hourly"}} {
 				if err := epathSQLHVACSharedTemporaryRequest(plan, member.ObjectName, spec.name, spec.frequency); err != nil {
 					return err
@@ -362,7 +407,10 @@ func epathSQLHVACSharedSourceQuantity(p epathSQLHVACSharedSourceProof) (epathSQL
 	if err := epathSQLValidateHVACSharedObservation(p.Source, p.Member, p.Precision); err != nil {
 		return epathSQLQuantity{}, err
 	}
-	if p.Canonical != (p.Source.Name == epathSQLSharedBoilerEnergy && p.Source.ReportingFrequency == "Monthly") {
+	if p.Member.ObjectType != epathSQLCentralSharedType && p.ObjectIndex != nil {
+		return epathSQLQuantity{}, fmt.Errorf("Boiler opener contract remains temporary-only")
+	}
+	if p.Canonical != ((p.Source.Name == epathSQLSharedBoilerEnergy || p.Member.ObjectType == epathSQLCentralSharedType) && p.Source.ReportingFrequency == "Monthly") {
 		return epathSQLQuantity{}, fmt.Errorf("shared proof changed its Monthly authority/companion role")
 	}
 	if p.Source.ReportingFrequency == "Hourly" {
@@ -391,6 +439,15 @@ func epathSQLHVACSharedSourceQuantity(p epathSQLHVACSharedSourceProof) (epathSQL
 	q := epathSQLQuantity{Value: *p.Source.EnergyKWh}
 	if q.Value != 0 {
 		q.Error = 1e-10 * math.Max(1, math.Abs(q.Value))
+	}
+	if p.Member.ObjectType == epathSQLCentralSharedType {
+		// The native annual sum remains unrounded in Source. The ordinary
+		// saved-result reader transports that annual scalar through one 3dp
+		// boundary, independently of Monthly paid-budget quantization. Map
+		// the native endpoints through that boundary; do not widen them.
+		lo, hi := q.bounds()
+		round := func(value float64) float64 { return math.Round(math.Max(0, value)*1000) / 1000 }
+		return epathSQLBounded(round(q.Value), round(lo), round(hi)), nil
 	}
 	return q, nil
 }
@@ -446,7 +503,7 @@ func epathCheckSQLHVACSharedSource(bundle PurposeResultBundle, check epathSQLMod
 		if s.SourceUnit == "W" {
 			method = "integrate_rate_by_time_interval"
 		}
-		if actual.ID != fmt.Sprintf("sql-rdd-%d", s.DictionaryIndex) || actual.SourceType != "sql_report_data" || actual.IsMeter || actual.Name != s.Name || !strings.EqualFold(actual.KeyValue, s.KeyValue) || actual.SourceUnit != s.SourceUnit || actual.Units != s.SourceUnit || actual.NormalizedUnit != "kWh" || actual.ReportingFrequency != s.ReportingFrequency || actual.ZoneName != "" || actual.AggregationMethod != method || actual.AggregationBasis != "model_total" || actual.EffectiveMultiplier != 1 || actual.MultiplierApplication != "already_model_total" || actual.ObjectIndex != nil || actual.DriverRole != "context" || actual.InspectorSection != "Context" || len(actual.InputSourceIDs) != 0 {
+		if actual.ID != fmt.Sprintf("sql-rdd-%d", s.DictionaryIndex) || actual.SourceType != "sql_report_data" || actual.IsMeter || actual.Name != s.Name || !strings.EqualFold(actual.KeyValue, s.KeyValue) || actual.SourceUnit != s.SourceUnit || actual.Units != s.SourceUnit || actual.NormalizedUnit != "kWh" || actual.ReportingFrequency != s.ReportingFrequency || actual.ZoneName != "" || actual.AggregationMethod != method || actual.AggregationBasis != "model_total" || actual.EffectiveMultiplier != 1 || actual.MultiplierApplication != "already_model_total" || !reflect.DeepEqual(actual.ObjectIndex, p.ObjectIndex) || actual.DriverRole != "context" || actual.InspectorSection != "Context" || len(actual.InputSourceIDs) != 0 {
 			return fmt.Errorf("shared source lost its native Building identity/temporary opener; a served Zone is not its measured owner")
 		}
 		value, bit := actual.RawValue, uint8(1)

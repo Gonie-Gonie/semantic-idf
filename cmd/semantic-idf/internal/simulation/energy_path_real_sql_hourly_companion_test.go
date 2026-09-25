@@ -35,6 +35,8 @@ func epathSQLHourlyCompanionUnit(name string) string {
 		"Zone Hot Water Equipment Convective Heating Energy", "Zone Hot Water Equipment Latent Gain Energy",
 		"Zone Infiltration Latent Heat Gain Energy", "Zone Infiltration Latent Heat Loss Energy",
 		"Zone Infiltration Sensible Heat Gain Energy", "Zone Infiltration Sensible Heat Loss Energy",
+		"Zone Ventilation Sensible Heat Gain Energy", "Zone Ventilation Sensible Heat Loss Energy",
+		"Zone Ventilation Latent Heat Gain Energy", "Zone Ventilation Latent Heat Loss Energy",
 		"Zone Lights Convective Heating Energy", "Zone People Convective Heating Energy", "Zone People Latent Gain Energy":
 		return "J"
 	case "Zone Air Heat Balance Air Energy Storage Rate", "Zone Air Heat Balance Surface Convection Rate", "Zone Air Heat Balance Outdoor Air Transfer Rate":

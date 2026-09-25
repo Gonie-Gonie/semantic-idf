@@ -20,6 +20,11 @@ func epathFanPoolUnitSQL(t *testing.T) string {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
 	for _, statement := range []string{
 		`CREATE TABLE EnvironmentPeriods(EnvironmentPeriodIndex INTEGER PRIMARY KEY,EnvironmentName TEXT,EnvironmentType INTEGER)`,
 		`INSERT INTO EnvironmentPeriods VALUES(1,'FULL WEATHER 2017',3),(2,'DESIGN DAY',1)`,
@@ -28,13 +33,9 @@ func epathFanPoolUnitSQL(t *testing.T) string {
 		`INSERT INTO ReportDataDictionary VALUES(101,'Air System Fan Electricity Energy','LOOP A',0,'Hourly','J','System'),(202,'Air System Fan Electricity Energy','LOOP B',0,'Hourly','J','System'),(303,'Fans:Electricity','',1,'Monthly','J','Facility')`,
 		`CREATE TABLE ReportData(ReportDataIndex INTEGER PRIMARY KEY,ReportDataDictionaryIndex INTEGER,TimeIndex INTEGER,Value REAL)`,
 	} {
-		if _, err := db.Exec(statement); err != nil {
+		if _, err := tx.Exec(statement); err != nil {
 			t.Fatal(err)
 		}
-	}
-	tx, err := db.Begin()
-	if err != nil {
-		t.Fatal(err)
 	}
 	insertTime, err := tx.Prepare(`INSERT INTO "Time" VALUES(?,1,2017,?,?,?,0,60,NULL,1,?)`)
 	if err != nil {

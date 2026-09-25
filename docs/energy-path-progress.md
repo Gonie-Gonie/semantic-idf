@@ -20,7 +20,9 @@ or visual acceptance work are excluded from the revised completion scope.
 Numerical/source/export contracts and engineering regression verification remain
 required. Earlier UI checkpoint descriptions below are historical evidence, not
 claims about controls still present after the remote changes. The engineering
-fixture catalog is still in progress; remote synchronization is not completion.
+fixture catalog now has nineteen reviewed approvals and nineteen passing
+current-production saved acceptances; final repository/build status is recorded
+at the end of this ledger. Remote synchronization alone is not completion.
 
 ## Checkpoints
 
@@ -1575,3 +1577,226 @@ frontend/browser 180.000 seconds, App 19.703 seconds and production Wails
 build 8.58 seconds. Other packages pass or use unchanged cached results.
 The default test timeout is unchanged. The normal commit hook remains the
 next gate before push; the remaining six native fixtures are not yet approved.
+
+The normal commit hook also passes: simulation 557.774 seconds,
+frontend/browser 181.437 seconds, App 17.543 seconds and Wails 6.273 seconds.
+Checkpoint `f03e3b4` was committed and pushed to `origin/main`; fetch confirmed
+zero ahead/behind, and the pre-existing user stash remains untouched.
+
+## Native older-version allocation audit (2026-09-25, in progress)
+
+The first current-code 22.1 Large Office diagnostic is retained as rejected.
+Of 46,224 metrics, two real monthly Zone cooling allocations fall outside
+their independently calculated native bounds (the remaining failures repeat
+those prerequisites). The last of sixteen served Zones received 3.263 kWh
+instead of a quota near 3.26119 in March, and 293.829 kWh instead of a quota
+near 293.83055 in May. Neither native observations nor tolerances are changed.
+
+Literal integer-quota regressions reproduce the same last-recipient error;
+a seven-recipient 0.004 kWh pool even produces a negative final share.
+The common proportional allocator now uses the existing bounded-remainder
+apportioner, retaining stable caller ordering, direct-first carrier ownership,
+served-only recipients and source provenance. Invalid weights receive no share.
+The old finite extreme-range fallback remains outside the exactly representable
+milli-unit budget. HVAC/auxiliary/VRF/fan regressions pass in 38.970 seconds.
+Complete native diagnostics, remaining object-family captures and final full
+verification remain required; this focused pass is not fixture approval.
+
+## Remaining native families: engineering audit (2026-09-25, in progress)
+
+The remote UI is unchanged. The user explicitly limited remaining work to
+engineering completeness: missing objects, physical ownership and allocation
+assumptions. Fetch still reports zero ahead/behind at `f03e3b4`; the existing
+user stash is preserved. This section records uncommitted work, not approval.
+
+The native SimpleVentilation audit exposed six omitted floor/roof objects whose
+Number of Vertices is `autocalculate`. The geometry parser now reads the complete
+catalog-qualified XYZ tail, rejects incomplete/nonfinite tails, and requests all
+78 original heat-transfer surfaces. Its original 72-surface capture is retained
+as incomplete. A distinct corrected capture
+`real-no-heating-ventilation-25-1-20260925T061812.110917300` completes with seven
+warnings, zero Severe errors. Root's native-only audit passes 2,464,788 calendar
+rows and 268 Hourly/Monthly identity closures; all 78 surface owners are present.
+Three Monthly paid-conditioning probes remain absent in native SQL after actual
+requests: absence is not relabeled as measured zero. All three Zones' canonical
+sensible heating/cooling observations are independently observed exact zeros.
+Native fans close to Fans:Electricity at factor one, separate from signed
+ventilation thermal transfer. SQL SHA256:
+`d6153639b05be75459ffe9c687e827a06772a8746f22274bc9a2ddda1f87fd5b`.
+Root audit SHA256:
+`7c101cffe107b07189e0ea5cb1dfcab43e449fa9e2981b6f3c45c269a2532d1f`.
+
+Fresh Furnace capture `real-no-cooling-25-1-20260925T060125.809929900`
+preserves all 105 physical objects and all 163 prior native identities/685,014
+rows. New scoped predicted-load contexts retain their exact request/Zone keys;
+coil output, delivered Zone load and paid gas remain different boundaries.
+The native fan's inactive months 4--9 are complete observed zeros, not missing
+data. Its first current-code eight-group diagnostic has 8,965 metrics and is
+retained as rejected: the draft's ratio-kind assumption and inactive-period
+carrier reconciliation IDs need correction and revalidation. No expected
+manifest has been installed. SQL SHA256:
+`eb2e41978001f879d5734158f47dd50cdf4f75dfab0202c2d1079b99c20df261`.
+
+Fresh Central capture `real-simultaneous-25-1-20260925T060222.172863400`
+preserves all 312 physical objects. Root independently reran the native audit:
+all 325 old Monthly identities are unchanged, both paid streams retain 52,560
+exact prior samples each, and the nine water-circuit streams retain 473,040
+exact prior samples. There are 7,624 simultaneous native intervals; the Hourly
+fan and 110 driver companions close to their Monthly authority. The literal
+three-module count never scales the already model-total paid budget. Three
+pumps remain unassigned; observed-zero purchased District meters are retained
+separately and create no Central service membership. The first complete
+17,074-metric diagnostic remains rejected, including missing constituent source
+lineage on allocated branches and an incorrect cooling ratio-kind declaration.
+SQL SHA256:
+`4724b4aa590373e1962bb84840a51fddc9239bf644a801ccedc3bb6ad6a67786`.
+Root native audit SHA256:
+`747d91a9c8f815fc363973111824088dc57be5c78ed8e29748974c8494746f5f`.
+
+Additional physical review and negative regressions address incomplete eligibility. Furnace
+allocation now requires the complete original splitter/return-mixer recipient
+cohort, while true surviving paths remain visible. Missing siblings cannot
+receive a renormalized broad heating/fan budget; direct observations and
+independently measured unrelated pools retain their own authority. Central
+water branches now check the actual native component ports, not only Branch
+declarations; unknown water-component kinds deny allocation eligibility while
+retaining reporting identity. The focused geometry/HeatOnly/Central/ventilation/
+allocation tests pass: IDF 3.500 seconds, simulation 38.996 seconds. Literal
+unit expectations use the native Joule conversion's exact binary arithmetic;
+no approved expectation, SQL value or acceptance tolerance was changed.
+
+Section 22 remains 13/19 approved. Complete remaining diagnostics, separately
+reviewed expectations, saved acceptance, current-production replay, API/Python
+parity and the normal full repository/Wails/commit/push gates remain required.
+
+## Nineteen engineering approvals and final regression gate (2026-09-25)
+
+The later results below supersede the historical 13/19 status. All nineteen
+required native fixtures have separately reviewed expected manifests and now
+pass final current-code replay; repository/build gates are recorded below.
+The remote UI is unchanged. Production SHA256 is
+`b91180f8d574eea2f36c50e18648e6d7a804e62474f495ecc5ba1b02d2c0f1fd`.
+
+Large Office 22.1, 23.2 and 24.2 each pass 46,224 original-wire metrics across
+eight groups, plus 79 independent native arithmetic obligations. Their approved
+saved acceptances pass in 66.911/67.001/67.047 seconds. The complete-recipient,
+monthly-first allocator distributes bounded rounding remainders instead of
+dumping accumulated rounding error into the last recipient. Six newly approved
+header/companion files are preserved by the final replay's hash checks.
+
+Central diagnostic03 passes 17,074 metrics with no numerical/contract failures
+or coverage gaps in 224.812 seconds, plus 164/164 frozen native obligations.
+Root manually approves pending
+`a9ed36e969193a75fbc43db8db0038fe3b0be8fc211519caec679cbdd8750ac1`.
+The earlier 85-link defect is corrected: each positive allocated carrier ribbon
+retains its own paid Cooling/Heating component as well as its broad parent
+meter. Source restoration uses actual period-local reservations and the
+selected carrier-qualified Zone endpoint, not merged node/source-cache unions.
+Real-parser-to-JSON and positive disjoint-Zone sibling tests pass; NaN/infinite
+reservations cannot authorize source lineage. Native plant component ports and
+the complete five-recipient cohort qualify allocation; PLENUM and unassigned
+pumps are not given fabricated ownership. The three-module count does not
+multiply already model-total consumption. Cooling COP retains its qualified
+electricity-only boundary; Heating remains a load/site ratio.
+
+SimpleVentilation diagnostic03 passes 9,101 metrics with no failures or gaps in
+83.681 seconds, plus 100/100 native obligations. Root manually approves pending
+`312932704b10e1314c909d3defa8799770498b16346fefd182ae9d9a8e1e00ac`.
+All 78 original surfaces, including Autocalculate vertex lists, are captured.
+Native direct fan electricity, sensible ventilation and latent ventilation stay
+separate. Complete zero thermal loads do not turn absent paid-conditioning
+outputs into observed zeros. Native signed surface residuals remain intact;
+ratio quality is null/not_applicable rather than a fabricated COP. The complete
+native direct-only cohort independently justifies its exact plain carrier
+reconciliation IDs; whole-row values, ownership and annual copies stay strict.
+The earlier DataCenter capture remains a preserved engine failure. This distinct
+official no-heating ventilation fixture does not claim DataCenter was repaired.
+
+Furnace diagnostic03 passes 8,965 metrics with no failures or gaps in 59.825
+seconds, plus 86/86 native obligations. Root manually approves pending
+`31e9857f008c438583f5d3fd876faa5c5dcc7d2a864d2b89c5af1743fe5ee319`.
+Complete original recipients and matching scoped driver requests are required.
+Exact-zero Heating electricity and positive gas support the delivered-load/fuel
+efficiency; nominal burner efficiency is not substituted. Inactive-month direct
+carrier IDs require complete native-zero non-direct budgets. Diagnostic02/03
+retain identical metric identities/metadata; small floating-accumulation
+differences, at most 1.819e-12, retain existing bounds rather than clamped zeros.
+
+The three lossless metric companions retain complete metric arrays, typed
+nulls and native-source metric identities. Full coverage ledgers remain in the
+exact SHA256-bound pending artifacts and separately retained diagnostics;
+saved acceptance independently revalidates them. This storage-description
+clarification changes only approval review prose and documentation, not the
+payloads, descriptors, model/weather identities or approved pending hashes.
+Prior failures, physical inputs and SQL remain preserved. No precision/tolerance
+or ordinary test timeout was widened.
+The offline nineteen-approval catalog guard passes in 5.69 seconds.
+
+Final API parity passes: GUI/App, HTTP, CLI and the actual Python stdio/API path
+produce the same stored-SQL result (4.537 seconds). The 1,000-surface/20-Zone/
+12-month capacity test passes: context 239ms, canonical SQL parsing 125ms,
+precomputed graph 2.624s, JSON 229ms and 15,483,712 JSON bytes. Cumulative
+allocation is 2.522GB and retained heap after GC is 76.6MB, not peak/RSS or an
+interactive performance SLA. Full current-production saved acceptance, normal
+repository verification/Wails build and commit/push remain required below.
+
+### Final current-production replay: 19/19 pass
+
+The full read-only rebuild and saved acceptance passes for all nineteen exact
+native captures, totaling 413,095 semantic metric checks across their eight
+groups. No stale candidate snapshot was reused, no engine was rerun, and no
+expected quantity was generated during acceptance. All nineteen native SQL
+hashes and all thirty-eight approval header/companion hashes are identical
+before and after the completed run. Production remains `b91180f8...2c0f1fd`.
+
+| Fixture | Saved acceptance seconds |
+| --- | ---: |
+| Large Office 25.1 | 79.387 |
+| Small Office | 19.272 |
+| Ideal Loads | 30.351 |
+| PTAC | 23.794 |
+| PTHP | 25.034 |
+| Fan coil | 10.020 |
+| VRF | 74.565 |
+| Radiant | 78.676 |
+| District Energy | 21.139 |
+| Mixed heating fuels | 219.757 |
+| ZoneGroup | 531.374 |
+| Zone multiplier / Pool | 311.120 |
+| PV / storage | 465.251 |
+| Large Office 22.1 | 75.059 |
+| Large Office 23.2 | 74.648 |
+| Large Office 24.2 | 74.434 |
+| Furnace / no cooling | 113.388 |
+| SimpleVentilation / no heating | 170.290 |
+| Central simultaneous heating/cooling | 458.294 |
+
+These durations include deliberately expensive independent SQL/source/accounting
+validation and are not application result-build timings. The complete replay
+log and its fixed-input runner are retained under the ignored acceptance cache.
+After that completed immutable replay, only the three new approval headers'
+review prose was clarified to state where coverage ledgers are stored and to
+distinguish absent paid Cooling from measured-zero delivered Cooling. Root
+verified unchanged numerical payloads/descriptors/model/weather/pending hashes;
+the revised full nineteen-input preflight passes. This is not a reapproval of
+different quantities. The ordinary catalog and full repository gates validate
+the final documented headers.
+
+### Final repository gate
+
+Normal `scripts/verify.ps1` passes on the final engineering tree: App 21.729s,
+CLI 6.461s, input 1.736s, frontend/browser checks 182.462s, IDF 11.461s,
+simulation 471.791s and tabular cached. The default test timeout is unchanged.
+Production Wails builds `build/bin/semantic-idf-v0.4.4.exe` in 11.026 seconds.
+The post-clarification nineteen-approval catalog is included in this successful
+full test run. No frontend source change or dependency upgrade is introduced.
+
+The revised engineering-only checklist now has its native fixture, numeric/
+source/coverage, API/export parity, capacity and full repository/build evidence.
+The deliberately failed DataCenter reference remains a failed reference, not a
+hidden approval or an outstanding required no-heating category. Unsupported or
+unproved ownership remains explicit rather than fabricated allocation. These
+checks do not certify physical design quality or every EnergyPlus object type.
+The normal commit hook repeats repository verification/Wails before commit;
+the final change must be pushed without bypassing that gate. No waived UI-only
+restoration or cleanup is part of this completion.

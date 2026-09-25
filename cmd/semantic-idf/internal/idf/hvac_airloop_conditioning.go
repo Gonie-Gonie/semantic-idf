@@ -56,6 +56,10 @@ func buildHVACAirLoopConditioning(ctx *hvacContext, loops []HVACLoop, graph HVAC
 				break
 			}
 			seenComponents[hvacComponentKey(component)] = true
+			if !hvacHeatOnlyFurnaceOuterPortsMatch(ctx.doc, ctx.objectsByTypeName[hvacComponentKey(component)], component) {
+				connected = false
+				break
+			}
 			lastNode = component.OutletNode
 		}
 		if !connected || !strings.EqualFold(lastNode, side.OutletNode) {
@@ -89,6 +93,9 @@ func buildHVACAirLoopConditioning(ctx *hvacContext, loops []HVACLoop, graph HVAC
 func hvacNativeAirConditioning(ctx *hvacContext, graph HVACRuleGraph, counts map[string]int, component HVACComponent) (string, []ComponentRef, []string) {
 	lower := normalizeFieldCatalogKey(component.ObjectType)
 	obj := ctx.objectsByTypeName[hvacComponentKey(component)]
+	if lower == "airloophvac:unitary:furnace:heatonly" {
+		return hvacNativeHeatOnlyFurnaceConditioning(ctx, graph, component)
+	}
 	if lower == "coilsystem:cooling:dx" {
 		if !hvacAirConditioningNodesMatch(obj, component, "DX Cooling Coil System Inlet Node Name", "DX Cooling Coil System Outlet Node Name") {
 			return "", nil, nil

@@ -303,6 +303,11 @@ func buildEnergyPathZoneHVACAllocationPlan(nodes []EnergyExplanationNode, edges 
 			explanation = "Allocated by zone service load share"
 		}
 		weights := make([]float64, len(targets))
+		if group.service == "heating" && topology.incompleteHeatOnly {
+			// Direct observations remain intact. Independently measured local
+			// or shared cohorts may still be reserved by their later own gates.
+			targets, weights = nil, nil
+		}
 		for index := range targets {
 			weights[index] = targets[index].Value
 		}
@@ -457,21 +462,36 @@ func energyPathZoneHVACIntersectPaths(left []string, right []string) []string {
 }
 
 func energyPathZoneHVACProportionalValues(total float64, weights []float64) []float64 {
-	if total <= 0 || len(weights) == 0 {
+	if total <= 0 || !energyPathFinite(total) || len(weights) == 0 {
 		return nil
 	}
 	weightTotal := 0.0
 	lastPositive := -1
+	targets := make([]energyPathZoneAuxiliaryTarget, 0, len(weights))
+	indices := make([]int, 0, len(weights))
 	for index, weight := range weights {
 		if weight > 0 && energyPathFinite(weight) {
 			weightTotal += weight
 			lastPositive = index
+			// Callers supply recipients in stable semantic order. Preserve that
+			// order for equal remainders without allocating to invalid weights.
+			targets = append(targets, energyPathZoneAuxiliaryTarget{NodeID: fmt.Sprintf("%020d", index), Value: weight})
+			indices = append(indices, index)
 		}
 	}
-	if weightTotal <= 0 || lastPositive < 0 {
+	if weightTotal <= 0 || !energyPathFinite(weightTotal) || lastPositive < 0 {
 		return nil
 	}
 	out := make([]float64, len(weights))
+	if shares := energyPathFanPoolShares(total, targets); shares != nil {
+		for index, value := range shares {
+			out[indices[index]] = value
+		}
+		return out
+	}
+	// Retain the existing finite extreme-range fallback when a milli-unit
+	// budget cannot be represented exactly. Ordinary pools use bounded
+	// remainders above: no last recipient absorbs every other rounding error.
 	allocated := 0.0
 	for index, weight := range weights {
 		if weight <= 0 || !energyPathFinite(weight) {

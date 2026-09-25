@@ -1,0 +1,15 @@
+{
+  "schema": "semantic-idf.energy-path-real-model-expected/v1",
+  "fixtureId": "large-office-24-2",
+  "version": "24.2",
+  "modelSHA256": "4776e647b901d7ae57c3c8bd590887caba8de72e813c7657830074b5ecf9463b",
+  "weatherSHA256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c",
+  "review": "Root explicitly reviewed and approved independent pending SHA256 d0364edf914a7fdfc212d00970dbaaea160c3120bbd2791265af0192013aa4a3 on 2026-09-25 KST. Current-production diagnostic02 passes all 46224 original-wire metrics across eight groups with zero numeric/contract failures and zero coverage gaps. The 13924 coverage records retain 30207 required fields; all 15276 observed-zero metrics and 1946 typed nulls remain in the lossless companion. Root separately reviewed and reran the pinned native-only audit for all three older versions, then compared this fixture's 79 fixed native arithmetic obligations across all eight groups against this exact pending artifact: all passed. The 79-key comparison is representative corroboration, not a replacement for complete original-wire source/accounting/coverage validation. Native report SHA256 b69563be40d21315ab27c22249902273455a51038a4a85c7f513e6970490427b; recipe SHA256 169d1f246130c0e8a0bbda2e79b26c6d16750329a9c81ec8132e4c073201d0c3; native SQL SHA256 d14b8fa74724cfaa0c2c8cfaa0f9f03bcd3afcf8835a27efff0bec04d422365a. Original model, executed annual input, engine, weather, native SQL and prior failed artifacts remain unchanged. Cooling/heating and fan allocations retain the original served-recipient cohorts and model-total paid budgets once; direct consumption remains separate, and unassigned auxiliaries are not given invented ownership. Monthly-first HVAC allocation now distributes bounded rounding remainders deterministically instead of making the last recipient absorb accumulated rounding error. No SQL values, declared numerical precision or acceptance tolerances were changed to fit the result. Observed zeros, absent sources, signed driver contributions, paired conversion boundaries and native source identities remain distinct. This approval covers the declared native model and accounting contracts, not general HVAC design certification or completion of the overall goal. Saved acceptance and final repository/Wails gates are recorded separately in docs/energy-path-progress.md.",
+  "metricPayload": {
+    "file": "large-office-24-2.metrics.json.gz",
+    "sha256": "5fb4b316e16425026cfcc7105ceb25964ccf26be6f53967b9f39226af89027ac",
+    "uncompressedSHA256": "ef7a354792b0421ecedbc6f18cb8d6bcfffff1cce95895e0cfd85eec38b75978",
+    "count": 46224,
+    "requiredKeysSHA256": "6eca683f3dbaa4234006417c21b93ca9035249921a08539f14838c09d66a18c3"
+  }
+}

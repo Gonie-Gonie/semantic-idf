@@ -163,7 +163,7 @@ func detectOutputFeatures(doc Document) standardOutputFeatures {
 		case strings.EqualFold(obj.Type, "Exterior:Lights"):
 			features.hasExteriorLights = true
 			features.hasElectricity = true
-		case strings.HasPrefix(objectType, "fan:"):
+		case strings.HasPrefix(objectType, "fan:") || objectType == "zoneventilation:designflowrate" || objectType == "zoneventilation:windandstackopenarea":
 			features.hasFans = true
 			features.hasElectricity = true
 		case strings.HasPrefix(objectType, "pump:"):

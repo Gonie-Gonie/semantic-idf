@@ -25,24 +25,29 @@ func epathSQLHourlyCompanionUnitFixture(t *testing.T, unit string, values func(i
 		t.Fatal(err)
 	}
 	defer db.Close()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
 	for _, query := range []string{
 		`CREATE TABLE Zones(ZoneIndex INTEGER,ZoneName TEXT,Multiplier REAL,ListMultiplier REAL)`,
 		`INSERT INTO Zones VALUES(1,'Office',7,1)`,
 		`CREATE TABLE Surfaces(SurfaceIndex INTEGER,SurfaceName TEXT,ZoneIndex INTEGER,HeatTransferSurf INTEGER)`,
 		`INSERT INTO Surfaces VALUES(1,'Floor',1,1)`,
 	} {
-		if _, err := db.Exec(query); err != nil {
+		if _, err := tx.Exec(query); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := db.Exec(`UPDATE ReportDataDictionary SET Name=?,KeyValue=? WHERE ReportDataDictionaryIndex=40`, name, key); err != nil {
+	if _, err := tx.Exec(`UPDATE ReportDataDictionary SET Name=?,KeyValue=? WHERE ReportDataDictionaryIndex=40`, name, key); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES(41,?,?,?,0,'Monthly','Zone')`, key, name, unit); err != nil {
+	if _, err := tx.Exec(`INSERT INTO ReportDataDictionary VALUES(41,?,?,?,0,'Monthly','Zone')`, key, name, unit); err != nil {
 		t.Fatal(err)
 	}
 	var sums [12]float64
-	rows, err := db.Query(`SELECT t.Month,SUM(r.Value) FROM ReportData r JOIN Time t USING(TimeIndex) WHERE r.ReportDataDictionaryIndex=40 GROUP BY t.Month ORDER BY t.Month`)
+	rows, err := tx.Query(`SELECT t.Month,SUM(r.Value) FROM ReportData r JOIN Time t USING(TimeIndex) WHERE r.ReportDataDictionaryIndex=40 GROUP BY t.Month ORDER BY t.Month`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,12 +69,15 @@ func epathSQLHourlyCompanionUnitFixture(t *testing.T, unit string, values func(i
 		if unit == "W" {
 			value /= float64(stamp.Day() * 24)
 		}
-		if _, err := db.Exec(`INSERT INTO Time VALUES(?,?,?,24,0,2017,?,3,3,0,?)`, 8760+month, month, stamp.Day(), stamp.Day()*1440, stamp.YearDay()); err != nil {
+		if _, err := tx.Exec(`INSERT INTO Time VALUES(?,?,?,24,0,2017,?,3,3,0,?)`, 8760+month, month, stamp.Day(), stamp.Day()*1440, stamp.YearDay()); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(`INSERT INTO ReportData(TimeIndex,ReportDataDictionaryIndex,Value) VALUES(?,41,?)`, 8760+month, value); err != nil {
+		if _, err := tx.Exec(`INSERT INTO ReportData(TimeIndex,ReportDataDictionaryIndex,Value) VALUES(?,41,?)`, 8760+month, value); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)

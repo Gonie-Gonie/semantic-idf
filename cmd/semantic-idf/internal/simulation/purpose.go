@@ -503,6 +503,8 @@ func BuildPurposeRunPlan(doc idf.Document, request SimulationPurposeRequest) Pur
 		builder.addEnergyPathFanPoolOutputs()
 		builder.addEnergyPathPVElectricalOutputs()
 		builder.addEnergyPathCogenerationOutputs()
+		builder.addEnergyPathCentralHeatPumpMonthlyOutputs()
+		builder.addEnergyPathSimpleVentilationConditioningProbes()
 	}
 	if request.DiscoveryAllowed {
 		builder.addDiscoveryDictionaryOutputs()
@@ -518,6 +520,9 @@ func (builder *purposePlanBuilder) addEnergyPathHourlyOutputs() {
 			continue
 		}
 		if builder.reuseEnergyPathPVElectricalHourlyCoverage(monthly) {
+			continue
+		}
+		if builder.addEnergyPathSimpleVentilationHourlyOutput(monthly) {
 			continue
 		}
 		covered := false
@@ -815,14 +820,16 @@ func purposeRunPlanWithRequestScope(plan *PurposeRunPlan, request SimulationPurp
 }
 
 type energyServicePathIndex struct {
-	byService            map[string][]string
-	byZone               map[string][]string
-	byZoneService        map[string][]string
-	byLoopService        map[string][]string
-	auxiliaryPaths       []energyPathAuxiliaryServicePath
-	auxiliaryResolvable  map[string]bool
-	nativeBaseboardPaths map[string][]string
-	nativeWindowACPaths  map[string][]string
+	byService               map[string][]string
+	byZone                  map[string][]string
+	byZoneService           map[string][]string
+	byLoopService           map[string][]string
+	auxiliaryPaths          []energyPathAuxiliaryServicePath
+	auxiliaryResolvable     map[string]bool
+	nativeBaseboardPaths    map[string][]string
+	nativeWindowACPaths     map[string][]string
+	incompleteHeatOnly      bool
+	heatOnlyBlockedFanLoops map[string]bool
 }
 
 func enrichEnergyExplanationWithServicePaths(explanation EnergyExplanationV1, inputPath string) EnergyExplanationV1 {
@@ -915,6 +922,7 @@ func buildEnergyServicePathIndex(inputPath string) energyServicePathIndex {
 		return index.auxiliaryPaths[i].ID < index.auxiliaryPaths[j].ID
 	})
 	index.auxiliaryResolvable = energyPathAuxiliaryResolvableInventory(report.ServiceModel.Components, index.auxiliaryPaths)
+	applyEnergyPathHeatOnlyCohortGuards(&index, doc, report)
 	return index
 }
 
@@ -2774,6 +2782,7 @@ func (builder *purposePlanBuilder) addBasicEnergyPath() {
 		}
 	}
 	builder.addEnergyPathDirectHVACComponentOutputs()
+	builder.addEnergyPathSimpleVentilationOutputs()
 	builder.addEnergyPathVRFOutputs()
 	builder.addEnergyPathBaseboardOutputs()
 	builder.addEnergyPathBaseboardSharedOutputs()

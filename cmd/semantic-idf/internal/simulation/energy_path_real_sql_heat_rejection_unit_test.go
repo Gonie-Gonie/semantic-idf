@@ -137,8 +137,12 @@ Branch,%[1]s Cooling,,ZoneHVAC:LowTemperatureRadiant:ConstantFlow,%[1]s Radiant,
 func epathSQLHeatRejectionChecks(t *testing.T, frames epathSQLFrames, model epathRealSQLModel) epathSQLModelChecks {
 	t.Helper()
 	checks := epathSQLModelChecks{}
-	for _, compile := range []func(epathSQLFrames, epathRealSQLModel, *epathSQLModelChecks) error{epathSQLModelAuxiliaryZoneChecks, epathSQLModelAuxiliaryFlowChecks, epathSQLModelZoneCarrierChecks} {
-		if err := compile(frames, model, &checks); err != nil {
+	for _, compile := range []func() error{
+		func() error { return epathSQLModelAuxiliaryZoneChecks(frames, model, &checks) },
+		func() error { return epathSQLModelAuxiliaryFlowChecks(frames, model, &checks) },
+		func() error { return epathSQLModelZoneCarrierChecks(frames, model, &checks) },
+	} {
+		if err := compile(); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -179,10 +179,11 @@ func energyExplanationMultiplierRequirement(item energyExplanationSeries) string
 		return energyMultiplierAlreadyModelTotal
 	}
 	if item.directComponentID != "" {
-		// These are exact owned HVAC component meter contributions. The system
-		// demand/sizing already includes the Zone/List multipliers; unlike
-		// Zone Lights/Equipment reporting variables, multiplying the measured
-		// coil consumption again would double the modeled equipment energy.
+		// Preserve exact owned native meter contributions without extra Zone
+		// expansion. HVAC demand/sizing already includes Zone/List factors;
+		// simple-ventilation fan reporting instead explicitly registers native
+		// Zone/ZoneList meter factors of 1. Neither is a Zone Lights/Equipment
+		// report requiring this application's additional Zone expansion.
 		return energyMultiplierAlreadyModelTotal
 	}
 	if strings.TrimSpace(item.ZoneName) != "" &&

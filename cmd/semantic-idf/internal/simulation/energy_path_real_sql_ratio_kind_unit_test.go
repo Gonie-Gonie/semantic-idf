@@ -129,7 +129,14 @@ func TestEnergyPathRealSQLRatioKindBuildingAndZoneCompilation(t *testing.T) {
 	if seen != 3*13 {
 		t.Fatalf("Building + two served Zones did not classify all13 periods: %d", seen)
 	}
-	for _, compile := range []func(epathSQLFrames, epathRealSQLModel, *epathSQLModelChecks) error{epathSQLModelServiceChecks, epathSQLModelZoneServiceChecks} {
+	for _, compile := range []func(epathSQLFrames, epathRealSQLModel, *epathSQLModelChecks) error{
+		func(f epathSQLFrames, m epathRealSQLModel, c *epathSQLModelChecks) error {
+			return epathSQLModelServiceChecks(f, m, c)
+		},
+		func(f epathSQLFrames, m epathRealSQLModel, c *epathSQLModelChecks) error {
+			return epathSQLModelZoneServiceChecks(f, m, c)
+		},
+	} {
 		f, m := epathSQLRatioKindSeasonalFrames()
 		f.Site["heat.g"][0] = &epathSQLQuantity{Value: 20, Error: .001}
 		f.SourceRaw[3][0] = *f.Site["heat.g"][0]

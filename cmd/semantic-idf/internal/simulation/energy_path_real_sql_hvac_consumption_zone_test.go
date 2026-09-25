@@ -25,6 +25,9 @@ func epathSQLHVACConsumptionRatioDeclaration(pool *epathSQLHVACConsumptionServic
 	if len(positive) == 1 && positive["natural_gas"] {
 		return "efficiency"
 	}
+	if pool.centralCoolingCOP && fallback == "coefficient_of_performance" && len(positive) == 1 && positive["electricity"] {
+		return "coefficient_of_performance"
+	}
 	if len(positive) > 1 || positive["electricity"] {
 		return "load_to_site_energy"
 	}

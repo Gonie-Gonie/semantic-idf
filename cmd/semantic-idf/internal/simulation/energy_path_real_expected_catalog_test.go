@@ -9,6 +9,14 @@ func TestEnergyPathRealApprovedExpectedCatalog(t *testing.T) {
 	_, directory := epathRealDirectories(t)
 	catalog := epathLoadRealCatalog(t, directory)
 	approved := map[string]int{"large-office-25-1": 46224, "small-office-25-1": 17675, "ideal-loads-25-1": 17121, "ptac-25-1": 17021, "pthp-25-1": 17113, "fan-coil-25-1": 8966, "vrf-25-1": 16360, "radiant-25-1": 9615, "district-energy-25-1": 17001, "mixed-heating-fuels-25-1": 17275, "zone-group-25-1": 21413, "zone-multiplier-25-1": 16976, "pv-storage-25-1": 16523}
+	// Keep the required identities independent of the actual catalog so a
+	// missing approved fixture cannot silently disappear from this guard.
+	for _, id := range []string{"large-office-22-1", "large-office-23-2", "large-office-24-2"} {
+		approved[id] = 46224
+	}
+	approved["no-cooling-25-1"] = 8965
+	approved["no-heating-ventilation-25-1"] = 9101
+	approved["simultaneous-25-1"] = 17074
 	for _, fixture := range catalog.Fixtures {
 		count, required := approved[fixture.ID]
 		if !required {

@@ -104,7 +104,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	annotatedSources = annotateLegacyEnergyLoadDetailSources(annotatedSources, allLegacyNodes)
 	legacyNodes := foldLegacyEnergyLoadDetailNodes(inferLegacyEnergyDriverProjectionGuards(annualLegacyNodes, annotatedSources))
 	annualBoundaryCensus := collectEnergyPathServiceBoundaryCensusForScope(legacyNodes, annualLegacyEdges, scope, allocationPolicy)
-	nodes, links := upgradeEnergyExplanationGraph(legacyNodes, annualLegacyEdges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis, fanConsumptionSources)
+	nodes, links := upgradeEnergyExplanationGraph(legacyNodes, annualLegacyEdges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis, fanConsumptionSources, energyPathHVACConsumptionSourceIndex(annualZoneHVACAllocation))
 	nodes, links = projectEnergyPathVRFZoneGraph(nodes, links, vrfDisplay, scope, "annual", zoneHVACAllocationEnabled)
 	reconciliation, warnings := upgradeEnergyExplanationAccounting(input.Reconciliation, input.Warnings, legacyNodes, annualLegacyEdges, scope, allocationPolicy)
 	reconciliation = filterEnergyPathNonSiteEnergyReconciliation(reconciliation)
@@ -142,7 +142,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		periodLegacyNodes, periodLegacyEdges = energyPathVRFZoneLegacyInputs(periodLegacyNodes, periodLegacyEdges, vrfAllocation, scope)
 		legacyPeriodNodes := foldLegacyEnergyLoadDetailNodes(inferLegacyEnergyDriverProjectionGuards(periodLegacyNodes, annotatedSources))
 		mergeEnergyPathServiceBoundaryCensus(annualBoundaryCensus, collectEnergyPathServiceBoundaryCensusForScope(legacyPeriodNodes, periodLegacyEdges, scope, allocationPolicy))
-		periodNodes, periodLinks := upgradeEnergyExplanationGraph(legacyPeriodNodes, periodLegacyEdges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis, fanConsumptionSources)
+		periodNodes, periodLinks := upgradeEnergyExplanationGraph(legacyPeriodNodes, periodLegacyEdges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis, fanConsumptionSources, energyPathHVACConsumptionSourceIndex(periodZoneHVACAllocations[strings.ToLower(strings.TrimSpace(period.ID))]))
 		periodNodes, periodLinks = projectEnergyPathVRFZoneGraph(periodNodes, periodLinks, vrfDisplay, scope, period.ID, zoneHVACAllocationEnabled)
 		periodReconciliation, periodWarnings := upgradeEnergyExplanationAccounting(period.Reconciliation, period.Warnings, legacyPeriodNodes, periodLegacyEdges, scope, allocationPolicy)
 		periodReconciliation = filterEnergyPathNonSiteEnergyReconciliation(periodReconciliation)
@@ -1494,8 +1494,12 @@ func energyExplanationScopeToken(scope EnergyExplanationScope) string {
 	return "building"
 }
 
-func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEdges []EnergyExplanationEdge, sources []EnergyDataSource, scope EnergyExplanationScope, allocationPolicy string, canonicalMonthlyBasis bool, fanConsumptionSources map[string]bool) ([]EnergyExplanationNode, []EnergyPathLink) {
+func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEdges []EnergyExplanationEdge, sources []EnergyDataSource, scope EnergyExplanationScope, allocationPolicy string, canonicalMonthlyBasis bool, fanConsumptionSources map[string]bool, hvacConsumptionIndexes ...map[string]bool) ([]EnergyExplanationNode, []EnergyPathLink) {
 	scope = normalizeEnergyExplanationScope(scope)
+	var hvacConsumptionSources map[string]bool
+	if scope.Kind == "zone" && len(hvacConsumptionIndexes) == 1 {
+		hvacConsumptionSources = hvacConsumptionIndexes[0]
+	}
 	legacyEdges = filterEnergyPathStorageChargeLegacyEdges(legacyEdges, energyPathStorageChargeNodeBoundaries(legacyNodes))
 	suppressedInterzone := energyExplanationSuppressedInterzoneTraces(legacyNodes, scope)
 	zoneAllocationProjections := energyExplanationZoneAllocationProjections(legacyNodes, legacyEdges, scope, allocationPolicy)
@@ -1526,6 +1530,11 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 			// People or Occupants nodes. Drop only those exact semantics here;
 			// unrelated unknown end uses still canonicalize to Other (EPATH-091).
 			continue
+		}
+		if energyPathNodeHasOnlySimpleVentilationSources(legacy, sources, scope) {
+			// The native Zone fan aggregate has no thermal/AirLoop service
+			// path. Never clear paths from a mixed or foreign source node.
+			legacy.RelatedPathIDs = nil
 		}
 		scopedLegacyNodes = append(scopedLegacyNodes, legacy)
 	}
@@ -1648,13 +1657,17 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 	nativeConsumptionSources := energyPathNativeConsumptionSources(sources, scope)
 	separateNativeConsumptionBranches := len(nativeConsumptionSources) > 0
 	windowACEndUses := map[string]bool{}
+	simpleVentilationEndUses := map[string]bool{}
 	for _, node := range scopedLegacyNodes {
 		if node.nativeWindowACPathQualified {
 			windowACEndUses[canonicalIDByLegacyID[node.ID]] = true
 		}
+		if energyPathNodeHasOnlySimpleVentilationSources(node, sources, scope) {
+			simpleVentilationEndUses[canonicalIDByLegacyID[node.ID]] = true
+		}
 	}
 	for _, edge := range legacyEdges {
-		link, ok := upgradeEnergyExplanationLink(edge, nodeByLegacyID, canonicalIDByLegacyID, canonicalNodes, loadTotalsByEndUse, endUsesWithLoads, canonicalMonthlyBasis, fanConsumptionSources)
+		link, ok := upgradeEnergyExplanationLink(edge, nodeByLegacyID, canonicalIDByLegacyID, canonicalNodes, loadTotalsByEndUse, endUsesWithLoads, canonicalMonthlyBasis, fanConsumptionSources, hvacConsumptionSources)
 		if !ok {
 			continue
 		}
@@ -1670,8 +1683,8 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 				buildingThermalContributions[key] = true
 			}
 		}
-		if canonicalNodes[link.FromID] != nil && (windowACEndUses[link.FromID] || separateNativeConsumptionBranches && canonicalNodes[link.FromID].EndUse == "heating") && (link.Relation == "end_use_to_carrier" || link.Relation == "direct_end_use_to_carrier") {
-			if canonicalEnergyPathBasis(link.Basis, "") == "direct_zone_energy" && (nodeByLegacyID[edge.ToID].nativeWindowACPathQualified || energyPathOnlyNativeBaseboardSources(link.SourceIDs, nativeConsumptionSources)) {
+		if canonicalNodes[link.FromID] != nil && (windowACEndUses[link.FromID] || simpleVentilationEndUses[link.FromID] || separateNativeConsumptionBranches && canonicalNodes[link.FromID].EndUse == "heating") && (link.Relation == "end_use_to_carrier" || link.Relation == "direct_end_use_to_carrier") {
+			if canonicalEnergyPathBasis(link.Basis, "") == "direct_zone_energy" && (nodeByLegacyID[edge.ToID].nativeWindowACPathQualified || energyPathOnlyNativeBaseboardSources(link.SourceIDs, nativeConsumptionSources) || energyPathNodeHasOnlySimpleVentilationSources(nodeByLegacyID[edge.ToID], sources, scope)) {
 				// Carrier/canonical nodes include unrelated central service paths.
 				// The direct endpoint has the exact consuming equipment paths, or
 				// none when topology is unresolved. Neither case borrows context.
@@ -1729,7 +1742,7 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 		link.ID = energyPathLinkID(link)
 		// Different exact legacy contributors can share one bounded taxonomy
 		// node. Sum only contributors not already carried by explicit edges.
-		if windowACEndUses[endUseID] || separateNativeConsumptionBranches && endUseNode.EndUse == "heating" {
+		if windowACEndUses[endUseID] || simpleVentilationEndUses[endUseID] || separateNativeConsumptionBranches && endUseNode.EndUse == "heating" {
 			link.ID += ".basis." + canonicalEnergyPathBasis(link.Basis, "")
 		}
 		mergeEnergyPathLink(links, link)
@@ -3486,6 +3499,9 @@ func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]E
 		}
 		if len(fanConsumptionIndexes) > 0 {
 			sourceIDs = appendEnergyPathFanConsumptionSources(sourceIDs, legacyTo, fanConsumptionIndexes[0])
+		}
+		if len(fanConsumptionIndexes) == 2 {
+			sourceIDs = appendEnergyPathHVACConsumptionSources(sourceIDs, legacyTo, fanConsumptionIndexes[1])
 		}
 	}
 	if supportSupply {

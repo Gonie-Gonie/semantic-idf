@@ -336,12 +336,18 @@ func buildZoneServicePaths(ctx *hvacContext, loops []HVACLoop, relations []HVACZ
 	hydronicDelivery := buildHVACHydronicDeliveryServices(ctx, loops, relations)
 	radiantDelivery := buildHVACRadiantDeliveryServices(ctx, loops, relations)
 	windowACPath := buildHVACWindowACPathGate(ctx.doc)
+	centralHeatPumpPath := buildHVACCentralHeatPumpPathGate(ctx, loops, relations, graph)
 	var paths []ZoneServicePath
 	seen := map[string]bool{}
 	addPath := func(path ZoneServicePath) {
 		var windowACValid bool
 		path, windowACValid = windowACPath(path)
 		if !windowACValid {
+			return
+		}
+		var centralHeatPumpValid bool
+		path, centralHeatPumpValid = centralHeatPumpPath(path)
+		if !centralHeatPumpValid {
 			return
 		}
 		if path.PathType == "" || path.ServiceKind == "" || path.Delivery.ID == "" {
@@ -428,7 +434,7 @@ func buildZoneServicePaths(ctx *hvacContext, loops []HVACLoop, relations []HVACZ
 				airRef := loopRefByName(loops, "AirLoopHVAC", airLoopName)
 				for _, conditioning := range airConditioning[normalizeName(airLoopName)] {
 					trace, connected := hvacAirConditioningDeliveryTrace(ctx, loops, graph, relation, terminal, airLoopName)
-					if !connected {
+					if !connected || !hvacHeatOnlyFurnaceDeliveryMatches(ctx, conditioning.Components, relation, terminal) {
 						continue
 					}
 					addPath(ZoneServicePath{
@@ -1790,6 +1796,11 @@ func pathTypeForDelivery(deliveryType string, hasPlantLoop bool, hasAirLoop bool
 }
 
 func serviceKindForServiceChain(chain HVACServicePath, delivery HVACComponent) string {
+	if chain.nativeCentralServiceKind == "cooling" || chain.nativeCentralServiceKind == "heating" {
+		// Native circuit role outranks labels such as ChillerBank, which
+		// would otherwise misclassify this system's heating occurrence.
+		return chain.nativeCentralServiceKind
+	}
 	// A NoReheat terminal transports conditioned air; its type/name cannot
 	// establish a heating source. Actual upstream coils have separate, typed
 	// conditioning paths, while existing plant/source-backed chains stay intact.

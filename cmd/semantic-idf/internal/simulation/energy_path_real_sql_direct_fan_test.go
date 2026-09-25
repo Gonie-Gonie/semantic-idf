@@ -29,7 +29,7 @@ func epathSQLCompileDirectFans(frames epathSQLFrames, model epathRealSQLModel) (
 	var declaration *epathRealSQLDirectHVACComponent
 	for index := range model.DirectHVACComponents {
 		item := &model.DirectHVACComponents[index]
-		if item.ID != epathSQLDirectFanFamily {
+		if !epathSQLSupportedDirectFanFamily(item.ID) {
 			continue
 		}
 		if declaration != nil {
@@ -39,7 +39,7 @@ func epathSQLCompileDirectFans(frames epathSQLFrames, model epathRealSQLModel) (
 	}
 	if declaration == nil {
 		for _, identity := range frames.DirectHVACSourceIdentities {
-			if identity.FamilyID == epathSQLDirectFanFamily || identity.Service == "fans" {
+			if epathSQLSupportedDirectFanFamily(identity.FamilyID) || identity.Service == "fans" {
 				return nil, fmt.Errorf("undeclared native fan source")
 			}
 		}
@@ -100,7 +100,10 @@ func epathSQLCompileDirectFans(frames epathSQLFrames, model epathRealSQLModel) (
 	}
 	seen := map[string]bool{}
 	for id, identity := range frames.DirectHVACSourceIdentities {
-		if identity.FamilyID != epathSQLDirectFanFamily {
+		if (epathSQLSupportedDirectFanFamily(identity.FamilyID) || identity.Service == "fans") && identity.FamilyID != declaration.ID {
+			return nil, fmt.Errorf("native fan source belongs to an undeclared or mixed family cohort")
+		}
+		if identity.FamilyID != declaration.ID {
 			continue
 		}
 		key := strings.ToLower(identity.Owner.KeyValue)
@@ -244,10 +247,12 @@ func epathSQLDirectFanProofQuantity(proof *epathSQLDirectFanProof) error {
 		return fmt.Errorf("invalid native fan consumer proof")
 	}
 	q := epathSQLQuantity{}
+	family := ""
 	for id, identity := range proof.Sources {
-		if identity.FamilyID != epathSQLDirectFanFamily || identity.SiteID != proof.SiteID || !strings.EqualFold(identity.Owner.ZoneName, proof.Zone) || id != fmt.Sprintf("sql-rdd-%d", identity.Source.DictionaryIndex) {
+		if !epathSQLSupportedDirectFanFamily(identity.FamilyID) || family != "" && family != identity.FamilyID || identity.SiteID != proof.SiteID || !strings.EqualFold(identity.Owner.ZoneName, proof.Zone) || id != fmt.Sprintf("sql-rdd-%d", identity.Source.DictionaryIndex) {
 			return fmt.Errorf("native fan consumer source belongs to another owner/role")
 		}
+		family = identity.FamilyID
 		if err := epathSQLValidateDirectHVACSourceIdentity(identity); err != nil {
 			return err
 		}

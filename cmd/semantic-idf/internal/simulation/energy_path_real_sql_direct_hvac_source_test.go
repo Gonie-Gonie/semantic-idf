@@ -53,6 +53,8 @@ func epathSQLDirectHVACTaxonomy(id string) (name, component, service, carrier st
 		return "Baseboard Electricity Energy", epathSQLConvectiveBaseboardType, "heating", "electricity", true
 	case epathSQLDirectFanFamily:
 		return "Fan Electricity Energy", "Fan:OnOff", "fans", "electricity", true
+	case epathSQLSimpleVentilationFanFamily:
+		return "Zone Ventilation Fan Electricity Energy", "Zone", "fans", "electricity", true
 	}
 	return "", "", "", "", false
 }
@@ -69,6 +71,8 @@ func epathSQLDirectHVACParentFamilies(objectType string) []string {
 		return []string{epathSQLConvectiveBaseboardFamily}
 	case epathSQLWindowACType:
 		return []string{"cooling.coil.electricity", "cooling.coil.crankcase_electricity", epathSQLDirectFanFamily}
+	case "Zone":
+		return []string{epathSQLSimpleVentilationFanFamily}
 	}
 	return nil
 }
@@ -105,6 +109,16 @@ func epathSQLDirectHVACOwners(declaration epathRealSQLDirectHVACComponent) (map[
 		}
 		owners[key] = owner
 	}
+	if declaration.ID == epathSQLSimpleVentilationFanFamily {
+		if len(owners) != 3 {
+			return nil, fmt.Errorf("simple ventilation requires the complete three-Zone reporting cohort")
+		}
+		for _, owner := range owners {
+			if !epathSQLSimpleVentilationOwner(owner) {
+				return nil, fmt.Errorf("simple ventilation reporting key must be its exact self-owned original Zone")
+			}
+		}
+	}
 	return owners, nil
 }
 
@@ -116,6 +130,9 @@ func epathSQLValidateDirectHVACSourceIdentity(identity epathSQLDirectHVACSourceI
 	}
 	if (identity.FamilyID == "heating.baseboard.electricity" || identity.FamilyID == epathSQLConvectiveBaseboardFamily) && !strings.EqualFold(strings.TrimSpace(owner.KeyValue), strings.TrimSpace(owner.EquipmentName)) {
 		return fmt.Errorf("native baseboard source cannot borrow a packaged parent identity")
+	}
+	if identity.FamilyID == epathSQLSimpleVentilationFanFamily && !epathSQLSimpleVentilationOwner(owner) {
+		return fmt.Errorf("simple ventilation source cannot borrow a ventilation member, Fan or foreign Zone identity")
 	}
 	if _, err := epathSQLMonthly(source, identity.Precision); err != nil {
 		return err
@@ -209,6 +226,12 @@ func epathSQLValidateDirectHVACOriginalModel(text string, model epathRealSQLMode
 		owners, err := epathSQLDirectHVACOwners(declaration)
 		if err != nil {
 			return err
+		}
+		if declaration.ID == epathSQLSimpleVentilationFanFamily {
+			if err := epathSQLValidateSimpleVentilationOriginal(doc, declaration); err != nil {
+				return err
+			}
+			continue
 		}
 		for _, owner := range owners {
 			if declaration.ID == epathSQLConvectiveBaseboardFamily {
@@ -353,6 +376,9 @@ func epathCompileSQLDirectHVACSources(sqlPath string, observed []epathRealSQLSou
 			return err
 		}
 		name := strings.ToLower(declaration.Source.Alternatives[0].Name)
+		if err := epathSQLValidateSimpleVentilationDictionary(db, declaration); err != nil {
+			return err
+		}
 		if nameKeys[name] == nil {
 			nameKeys[name] = map[string]string{}
 		}

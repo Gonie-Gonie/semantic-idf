@@ -234,13 +234,14 @@ type HVACLoopRelation struct {
 }
 
 type HVACServicePath struct {
-	ZoneName        string   `json:"zoneName"`
-	TerminalName    string   `json:"terminalName,omitempty"`
-	AirLoopName     string   `json:"airLoopName,omitempty"`
-	Component       string   `json:"component,omitempty"`
-	PlantLoop       string   `json:"plantLoop,omitempty"`
-	SourceComponent string   `json:"sourceComponent,omitempty"`
-	SourceRelations []string `json:"sourceRelations,omitempty"`
+	nativeCentralServiceKind string
+	ZoneName                 string   `json:"zoneName"`
+	TerminalName             string   `json:"terminalName,omitempty"`
+	AirLoopName              string   `json:"airLoopName,omitempty"`
+	Component                string   `json:"component,omitempty"`
+	PlantLoop                string   `json:"plantLoop,omitempty"`
+	SourceComponent          string   `json:"sourceComponent,omitempty"`
+	SourceRelations          []string `json:"sourceRelations,omitempty"`
 }
 
 type HVACCrossLoopRelation struct {
@@ -333,19 +334,20 @@ type HVACNodeOutputMonitor struct {
 }
 
 type hvacContext struct {
-	doc                          Document
-	objectsByTypeName            map[string]Object
-	objectsByName                map[string][]Object
-	objectsByType                map[string][]Object
-	nodeLists                    map[string][]string
-	nodeUsages                   []HVACNodeUsage
-	nodeUsagesByName             map[string][]HVACNodeUsage
-	branches                     map[string]HVACBranch
-	componentLoopNames           map[string]map[string]string
-	componentLoopTypes           map[string]map[string]string
-	componentReferences          []HVACComponentReference
-	componentReferencesByFromKey map[string][]HVACComponentReference
-	warnings                     []HVACWarning
+	nativeCentralHeatPumpBindings []NativeCentralHeatPumpBinding
+	doc                           Document
+	objectsByTypeName             map[string]Object
+	objectsByName                 map[string][]Object
+	objectsByType                 map[string][]Object
+	nodeLists                     map[string][]string
+	nodeUsages                    []HVACNodeUsage
+	nodeUsagesByName              map[string][]HVACNodeUsage
+	branches                      map[string]HVACBranch
+	componentLoopNames            map[string]map[string]string
+	componentLoopTypes            map[string]map[string]string
+	componentReferences           []HVACComponentReference
+	componentReferencesByFromKey  map[string][]HVACComponentReference
+	warnings                      []HVACWarning
 }
 
 func AnalyzeHVAC(doc Document) HVACReport {
@@ -378,7 +380,7 @@ func AnalyzeHVAC(doc Document) HVACReport {
 	relations := buildHVACZoneRelations(ctx, loops)
 	applyLoopZoneRelations(loops, relations)
 	ruleGraph := buildHVACRuleGraph(ctx, loops, relations)
-	attachHVACServiceChains(relations, ruleGraph)
+	attachHVACServiceChains(ctx, relations, ruleGraph)
 	serviceModel := buildHVACServiceModel(ctx, loops, relations, ruleGraph)
 	report := HVACReport{
 		Loops:               loops,
@@ -412,16 +414,17 @@ func AnalyzeHVAC(doc Document) HVACReport {
 
 func newHVACContext(doc Document) *hvacContext {
 	ctx := &hvacContext{
-		doc:                          doc,
-		objectsByTypeName:            map[string]Object{},
-		objectsByName:                map[string][]Object{},
-		objectsByType:                map[string][]Object{},
-		nodeLists:                    map[string][]string{},
-		nodeUsagesByName:             map[string][]HVACNodeUsage{},
-		branches:                     map[string]HVACBranch{},
-		componentLoopNames:           map[string]map[string]string{},
-		componentLoopTypes:           map[string]map[string]string{},
-		componentReferencesByFromKey: map[string][]HVACComponentReference{},
+		nativeCentralHeatPumpBindings: ResolveNativeCentralHeatPumpBindings(doc),
+		doc:                           doc,
+		objectsByTypeName:             map[string]Object{},
+		objectsByName:                 map[string][]Object{},
+		objectsByType:                 map[string][]Object{},
+		nodeLists:                     map[string][]string{},
+		nodeUsagesByName:              map[string][]HVACNodeUsage{},
+		branches:                      map[string]HVACBranch{},
+		componentLoopNames:            map[string]map[string]string{},
+		componentLoopTypes:            map[string]map[string]string{},
+		componentReferencesByFromKey:  map[string][]HVACComponentReference{},
 	}
 	for _, obj := range doc.Objects {
 		typeKey := normalizeFieldCatalogKey(obj.Type)
@@ -1144,6 +1147,7 @@ func newHVACComponent(ctx *hvacContext, objectType string, objectNameValue strin
 		component.OutletNode = outlet
 		component.OutletFieldIndex = index
 	}
+	hvacCentralHeatPumpCoilPorts(ctx, obj, &component)
 	return component
 }
 
@@ -1322,7 +1326,7 @@ func buildHVACZoneRelation(ctx *hvacContext, loops []HVACLoop, connectionObj Obj
 	relation.PlantLoopNames = sortedStringSet(plantLoopNames)
 	relation.PlantLoopRelations = plantLoopRelationsForZone(loops, relation.PlantLoopNames, relation.AirLoopNames)
 	relation.CondenserLoopNames = condenserLoopNamesForPlantLoops(loops, relation.PlantLoopNames)
-	relation.PlantEquipment = plantSourceEquipmentForLoopNames(loops, relation.PlantLoopNames)
+	relation.PlantEquipment = plantSourceEquipmentForLoopNames(ctx, loops, relation.PlantLoopNames)
 	if len(zoneReturnNodes) > 0 && len(relation.AirLoopNames) == 0 {
 		relation.Warnings = append(relation.Warnings, hvacWarningForObject(connectionObj, "zone_return_without_airloop",
 			fmt.Sprintf("Zone %q has return node(s) but no AirLoop relation could be resolved.", zoneName)))
@@ -1411,7 +1415,7 @@ func buildHVACSpaceRelation(ctx *hvacContext, loops []HVACLoop, connectionObj Ob
 	relation.PlantLoopNames = sortedStringSet(plantLoopNames)
 	relation.PlantLoopRelations = plantLoopRelationsForZone(loops, relation.PlantLoopNames, relation.AirLoopNames)
 	relation.CondenserLoopNames = condenserLoopNamesForPlantLoops(loops, relation.PlantLoopNames)
-	relation.PlantEquipment = plantSourceEquipmentForLoopNames(loops, relation.PlantLoopNames)
+	relation.PlantEquipment = plantSourceEquipmentForLoopNames(ctx, loops, relation.PlantLoopNames)
 	if len(spaceReturnNodes) > 0 && len(relation.AirLoopNames) == 0 {
 		relation.Warnings = append(relation.Warnings, hvacWarningForObject(connectionObj, "space_return_without_airloop",
 			fmt.Sprintf("Space %q has return node(s) but no AirLoop relation could be resolved.", spaceName)))
@@ -2493,7 +2497,7 @@ func componentReferencedByZoneHVAC(ctx *hvacContext, wantedKey string) bool {
 	return false
 }
 
-func plantSourceEquipmentForLoopNames(loops []HVACLoop, loopNames []string) []HVACComponent {
+func plantSourceEquipmentForLoopNames(ctx *hvacContext, loops []HVACLoop, loopNames []string) []HVACComponent {
 	wanted := map[string]bool{}
 	for _, loopName := range loopNames {
 		wanted[normalizeName(loopName)] = true
@@ -2509,6 +2513,15 @@ func plantSourceEquipmentForLoopNames(loops []HVACLoop, loopNames []string) []HV
 				continue
 			}
 			key := hvacComponentKey(component)
+			if strings.EqualFold(component.ObjectType, nativeCentralHeatPumpType) {
+				port, bound := hvacCentralHeatPumpSupplyPort(ctx, component, loop.Name)
+				if !bound {
+					continue
+				}
+				// One native system has two distinct space-service supplies.
+				// Preserve other families' existing object-level deduplication.
+				key += "|" + normalizeName(port.Loop.Name) + "|" + port.Role
+			}
 			if key == "" || seen[key] {
 				continue
 			}
@@ -2522,7 +2535,10 @@ func plantSourceEquipmentForLoopNames(loops []HVACLoop, loopNames []string) []HV
 		if !strings.EqualFold(equipment[i].ObjectType, equipment[j].ObjectType) {
 			return strings.ToLower(equipment[i].ObjectType) < strings.ToLower(equipment[j].ObjectType)
 		}
-		return strings.ToLower(equipment[i].ObjectName) < strings.ToLower(equipment[j].ObjectName)
+		if !strings.EqualFold(equipment[i].ObjectName, equipment[j].ObjectName) {
+			return strings.ToLower(equipment[i].ObjectName) < strings.ToLower(equipment[j].ObjectName)
+		}
+		return strings.ToLower(equipment[i].LoopName) < strings.ToLower(equipment[j].LoopName)
 	})
 	return equipment
 }
@@ -2535,13 +2551,13 @@ func (loop HVACLoop) SupplySideComponents() []HVACComponent {
 	return components
 }
 
-func attachHVACServiceChains(relations []HVACZoneChain, graph HVACRuleGraph) {
+func attachHVACServiceChains(ctx *hvacContext, relations []HVACZoneChain, graph HVACRuleGraph) {
 	for index := range relations {
-		relations[index].ServiceChains = buildServiceChainsFromRuleGraph(relations[index], graph)
+		relations[index].ServiceChains = buildServiceChainsFromRuleGraph(ctx, relations[index], graph)
 	}
 }
 
-func buildServiceChainsFromRuleGraph(relation HVACZoneChain, graph HVACRuleGraph) []HVACServicePath {
+func buildServiceChainsFromRuleGraph(ctx *hvacContext, relation HVACZoneChain, graph HVACRuleGraph) []HVACServicePath {
 	nodesByID := hvacRuleGraphNodeByID(graph)
 	subjectID := hvacRuleSubjectNodeIDForRelation(graph, relation)
 	if subjectID == "" {
@@ -2600,12 +2616,21 @@ func buildServiceChainsFromRuleGraph(relation HVACZoneChain, graph HVACRuleGraph
 			if componentID == "" || !hvacRuleGraphHasNode(graph, componentID) {
 				continue
 			}
-			if edges, ok := hvacRuleGraphPath(graph, componentID, subjectID); ok {
+			var edges []HVACRuleEdge
+			var nativeService string
+			var connected bool
+			if strings.EqualFold(sourceComponent.ObjectType, nativeCentralHeatPumpType) {
+				edges, nativeService, connected = hvacCentralHeatPumpRulePath(ctx, sourceComponent, plantLoopName, subjectID, graph)
+			} else {
+				edges, connected = hvacRuleGraphPath(graph, componentID, subjectID)
+			}
+			if connected {
 				path := HVACServicePath{
-					ZoneName:        relation.ZoneName,
-					PlantLoop:       plantLoopName,
-					SourceComponent: componentLabel(sourceComponent),
-					SourceRelations: hvacRulePathRuleIDs(edges),
+					nativeCentralServiceKind: nativeService,
+					ZoneName:                 relation.ZoneName,
+					PlantLoop:                plantLoopName,
+					SourceComponent:          componentLabel(sourceComponent),
+					SourceRelations:          hvacRulePathRuleIDs(edges),
 				}
 				enrichHVACServicePathFromRulePath(&path, edges, nodesByID)
 				addPath(path)
@@ -3722,6 +3747,8 @@ func hvacComponentFamily(objectType string) (string, string) {
 		return "pump", "Pumps"
 	case strings.HasPrefix(lower, "chiller:"):
 		return "chiller", "Chillers"
+	case lower == "centralheatpumpsystem":
+		return "central_heat_pump", "Central heat pump systems"
 	case strings.HasPrefix(lower, "boiler:"):
 		return "boiler", "Boilers"
 	case strings.HasPrefix(lower, "coolingtower:"):
@@ -3927,7 +3954,7 @@ func isLowTemperatureRadiantEquipmentType(objectType string) bool {
 
 func isHVACComponentType(objectType string) bool {
 	lower := strings.ToLower(strings.TrimSpace(objectType))
-	return strings.HasPrefix(lower, "coil:") ||
+	return lower == "centralheatpumpsystem" || strings.HasPrefix(lower, "coil:") ||
 		strings.HasPrefix(lower, "coilsystem:") ||
 		strings.HasPrefix(lower, "fan:") ||
 		strings.HasPrefix(lower, "pump:") ||
@@ -3963,7 +3990,7 @@ func isHVACControlType(objectType string) bool {
 
 func isPlantSourceEquipmentType(objectType string) bool {
 	lower := strings.ToLower(strings.TrimSpace(objectType))
-	return strings.HasPrefix(lower, "chiller:") ||
+	return lower == "centralheatpumpsystem" || strings.HasPrefix(lower, "chiller:") ||
 		strings.HasPrefix(lower, "boiler:") ||
 		strings.HasPrefix(lower, "districtcooling") ||
 		strings.HasPrefix(lower, "districtheating") ||
