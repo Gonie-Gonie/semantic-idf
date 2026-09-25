@@ -40,7 +40,30 @@ func (out *epathSQLModelCoverageReport) fail(group, key, message string) {
 // invokes a production classifier or builder. Structural failures use the group
 // "coverage" and invalidate acceptance as a whole, not just one numeric group.
 func epathSQLModelCoverage(bundle PurposeResultBundle, checks epathSQLModelChecks) epathSQLModelCoverageReport {
+	pvPrepared, cgPrepared, prepareErr := epathSQLPreparePVAndCogenerationSourceChecks(checks)
+	return epathSQLModelCoveragePrepared(bundle, checks, pvPrepared, cgPrepared, prepareErr)
+}
+
+// The evaluator passes its boundary-validated registries here; do not reread
+// native rows a second time during the same evaluation.
+func epathSQLModelCoveragePrepared(bundle PurposeResultBundle, checks epathSQLModelChecks, pvPrepared epathSQLPVValidatedSources, cgPrepared epathSQLPVCogenerationValidatedSources, prepareErr error) epathSQLModelCoverageReport {
 	out := epathSQLModelCoverageReport{}
+	if prepareErr != nil {
+		out.fail("coverage", "pv_native_source/registry", prepareErr.Error())
+	} else {
+		for _, check := range checks.Rows {
+			if epathSQLPVHasSourceCheck(check) {
+				if err := epathSQLCheckPVSourceConsumerComplete(bundle, check, pvPrepared); err != nil {
+					out.fail(check.Want.Group, check.Want.Key, err.Error())
+				}
+			}
+			if epathSQLPVCogenerationHasSourceCheck(check) {
+				if err := epathSQLCheckPVCogenerationSourceConsumer(bundle, check, cgPrepared); err != nil {
+					out.fail(check.Want.Group, check.Want.Key, err.Error())
+				}
+			}
+		}
+	}
 	byContext := map[string][]epathSQLModelCheck{}
 	seenKeys := map[string]bool{}
 	for _, check := range checks.Rows {

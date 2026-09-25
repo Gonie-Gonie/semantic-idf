@@ -4,6 +4,8 @@ package simulation
 // never candidate values. The compiler performs ordinary SQL arithmetic without
 // calling the production classifier, multiplier, allocation or quality helpers.
 type epathRealSQLModel struct {
+	PVCogeneration              *epathRealSQLPVCogeneration         `json:"pvCogeneration,omitempty"`
+	PVSystems                   []epathRealSQLPVSystem              `json:"pvSystems,omitempty"`
 	OriginalZoneMultiplierProof string                              `json:"originalZoneMultiplierProof,omitempty"`
 	PoolSystems                 []epathRealSQLPoolSystem            `json:"poolSystems,omitempty"`
 	Schema                      string                              `json:"schema"`

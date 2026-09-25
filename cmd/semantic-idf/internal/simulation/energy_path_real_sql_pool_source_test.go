@@ -246,17 +246,30 @@ func epathSQLValidatePoolNativeRows(source epathRealSQLSource, weather epathReal
 	if len(rows) != wantRows || source.Rows != wantRows {
 		return fail("missing or repeated full-calendar observation")
 	}
-	seen, seenTimes, perMonth := map[int]bool{}, map[int]bool{}, [12]int{}
+	// This finite weather contract already requires 2017. Compute the same
+	// month boundaries once per validation, without caching trusted evidence.
+	var daysInMonth, daysBeforeMonth [12]int
+	for month := 0; month < 12; month++ {
+		daysInMonth[month] = time.Date(weather.Year, time.Month(month+2), 0, 0, 0, 0, 0, time.UTC).Day()
+		if month > 0 {
+			daysBeforeMonth[month] = daysBeforeMonth[month-1] + daysInMonth[month-1]
+		}
+	}
+	// Calendar slots have an independently checked finite range. Actual
+	// native TimeIndex values remain separate, positive and globally unique.
+	var seen [8760]bool
+	seenTimes, perMonth := make(map[int]bool, wantRows), [12]int{}
 	for _, row := range rows {
-		date := time.Date(row.Year, time.Month(row.Month), row.Day, 0, 0, 0, 0, time.UTC)
-		if row.TimeIndex <= 0 || seenTimes[row.TimeIndex] || row.EnvironmentIndex != weather.EnvironmentIndex || row.Year != weather.Year || row.Month < 1 || row.Month > 12 || row.Day < 1 || date.Month() != time.Month(row.Month) || date.Day() != row.Day || row.Minute != 0 || row.SimulationDays != date.YearDay() || !epathOracleFinite(row.NativeValue) || row.NativeValue < 0 || !epathOracleFinite(row.IntervalMinutes) || row.IntervalMinutes <= 0 || !epathOracleFinite(row.EnergyKWh) || row.EnergyKWh < 0 {
+		// Month/day guards precede every lookup. The explicit day limit is
+		// equivalent to the former time.Date month/day normalization check.
+		if row.TimeIndex <= 0 || seenTimes[row.TimeIndex] || row.EnvironmentIndex != weather.EnvironmentIndex || row.Year != weather.Year || row.Month < 1 || row.Month > 12 || row.Day < 1 || row.Day > daysInMonth[row.Month-1] || row.Minute != 0 || row.SimulationDays != daysBeforeMonth[row.Month-1]+row.Day || !epathOracleFinite(row.NativeValue) || row.NativeValue < 0 || !epathOracleFinite(row.IntervalMinutes) || row.IntervalMinutes <= 0 || !epathOracleFinite(row.EnergyKWh) || row.EnergyKWh < 0 {
 			return fail("unknown, negative, duplicated or invalid native interval")
 		}
 		seenTimes[row.TimeIndex] = true
 		slot := row.Month - 1
-		last := time.Date(weather.Year, time.Month(row.Month+1), 0, 0, 0, 0, 0, time.UTC).Day()
+		last := daysInMonth[row.Month-1]
 		if hourly {
-			slot = (date.YearDay()-1)*24 + row.Hour - 1
+			slot = (daysBeforeMonth[row.Month-1]+row.Day-1)*24 + row.Hour - 1
 			if row.IntervalType != 1 || row.Hour < 1 || row.Hour > 24 || row.IntervalMinutes != 60 || slot < 0 || slot >= 8760 {
 				return fail("Hourly row escaped its actual hourly interval")
 			}

@@ -189,6 +189,12 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 	if err := epathSQLBindPoolSources(observed, model, &frames); err != nil {
 		return checks, err
 	}
+	if err := epathSQLBindPVSources(observed, model, &frames); err != nil {
+		return checks, err
+	}
+	if err := epathSQLBindPVCogenerationSources(observed, model, &frames); err != nil {
+		return checks, err
+	}
 	if err := epathCompileSQLBaseboardContexts(observed.sqlPath, observed.originalText, observed.outputPlan, observed.Sources, model, &frames, observed.executedText); err != nil {
 		return checks, err
 	}
@@ -211,6 +217,8 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 		func() error { return epathSQLModelThermalReconciliationChecks(frames, model, &checks) },
 		func() error { return epathSQLModelSourceChecks(frames, observed.Sources, model, &checks) },
 		func() error { return epathSQLModelPoolSourceChecks(frames, &checks) },
+		func() error { return epathSQLModelPVSourceChecks(frames, model, &checks) },
+		func() error { return epathSQLModelPVCogenerationSourceChecks(observed, frames, model, &checks) },
 		func() error { return epathSQLModelPoolSurfaceChecks(poolSurface, &checks) },
 		func() error { return epathSQLModelDirectHVACSourceChecks(frames, &checks) },
 		func() error { return epathSQLModelBaseboardContextSourceChecks(frames, &checks) },
@@ -244,6 +252,9 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 		metrics = append(metrics, check.Want)
 	}
 	if err := epathValidateOracleMetricGroups(metrics); err != nil {
+		return checks, err
+	}
+	if err := epathSQLValidatePVAndCogenerationCompiledSourceChecks(checks, model); err != nil {
 		return checks, err
 	}
 	return checks, nil
@@ -434,9 +445,26 @@ func epathCheckSQLModelAllocation(bundle PurposeResultBundle, check epathSQLMode
 	return nil
 }
 
-func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeResultBundle, checks epathSQLModelChecks) []epathSQLModelFailure {
+func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeResultBundle, checks epathSQLModelChecks, models ...*epathRealSQLModel) []epathSQLModelFailure {
 	out.CheckedGroups = nil
 	out.modelCoverage = nil
+	var pvPrepared epathSQLPVValidatedSources
+	var cgPrepared epathSQLPVCogenerationValidatedSources
+	var pvErr error
+	switch {
+	case len(models) > 1:
+		pvErr = fmt.Errorf("source validation requires at most one external SQL model")
+	case len(models) == 1:
+		pvPrepared, cgPrepared, pvErr = epathSQLPreparePVAndCogenerationSourceChecksForModel(checks, models[0], out)
+	case checks.RequiredPVCogeneration != nil || checks.PVCogenerationRegistry != nil:
+		pvErr = fmt.Errorf("CG evaluation requires the external recipe and original run")
+	default:
+		pvPrepared, cgPrepared, pvErr = epathSQLPreparePVAndCogenerationSourceChecks(checks)
+	}
+	if pvErr != nil {
+		out.Metrics = nil
+		return []epathSQLModelFailure{{Group: "coverage", Key: "pv_native_source/registry", Message: pvErr.Error()}}
+	}
 	failures := []epathSQLModelFailure{}
 	failedGroups := map[string]bool{}
 	for _, check := range checks.Rows {
@@ -516,6 +544,12 @@ func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeRes
 		if err == nil && (check.PoolSource != nil || strings.Contains(check.Item.Key, "|pool_native_source/") || strings.Contains(check.Want.Key, "|pool_native_source/")) {
 			err = epathSQLCheckPoolSourceConsumer(bundle, check)
 		}
+		if err == nil && epathSQLPVHasSourceCheck(check) {
+			err = epathSQLCheckPVSourceConsumerComplete(bundle, check, pvPrepared)
+		}
+		if err == nil && epathSQLPVCogenerationHasSourceCheck(check) {
+			err = epathSQLCheckPVCogenerationSourceConsumer(bundle, check, cgPrepared)
+		}
 		if err == nil && (check.PoolSurface != nil || strings.Contains(check.Item.Key, "|pool_surface_source/") || strings.Contains(check.Want.Key, "|pool_surface_source/")) {
 			err = epathSQLCheckPoolSurfaceConsumer(bundle, check)
 		}
@@ -529,7 +563,7 @@ func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeRes
 		}
 	}
 	if checks.RequireCoverage {
-		coverage := epathSQLModelCoverage(bundle, checks)
+		coverage := epathSQLModelCoveragePrepared(bundle, checks, pvPrepared, cgPrepared, nil)
 		out.modelCoverage = &coverage
 		for _, failure := range coverage.Failures {
 			failures = append(failures, failure)
@@ -602,7 +636,7 @@ func TestEnergyPathRealSQLModelSavedCandidate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	failures := epathEvaluateSQLModelChecks(&observed, bundle, checks)
+	failures := epathEvaluateSQLModelChecks(&observed, bundle, checks, recipe.SQLModel)
 	coverageFailures := []epathSQLModelFailure{}
 	if observed.modelCoverage != nil {
 		coverageFailures = observed.modelCoverage.Failures

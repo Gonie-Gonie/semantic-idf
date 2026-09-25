@@ -1386,3 +1386,98 @@ DDL/rows in twelve durable transactions instead of seventy, still closing the
 writer before the read-only reader and retaining every assertion. The expanded
 focus, including these compatibility cases, passes in 15.173 seconds. A new
 normal hook reruns the complete verification/build gate before commit and push.
+
+That final normal hook passes without exclusions: simulation 598.022 seconds,
+frontend/browser 182.394 seconds and Windows build 7.671 seconds. Commit
+`5d21da0` is pushed to origin/main; fetch confirms no divergence. The preserved
+user stash remains untouched.
+
+## Independent PV electrical proof and preserved recapture (2026-09-15)
+
+The normal fresh Shop25.1 capture completes in 120.388 seconds under
+`real-pv-storage-25-1-20260914T235058.483280700`. This is capture, not acceptance.
+The original 466 physical objects, annualization/control fields, original
+Output declarations, exact engine and weather remain unchanged. All 379 old
+native dictionary identities and 2,894,688 common observations are preserved
+exactly, including 1,180,084 measured zeros; no old dictionary is removed.
+354 native dictionaries are added. New Hourly requests add 8,760 Time rows,
+so local TimeIndex values shift. The read-only comparison binds every actual
+Time column except that surrogate index and preserves all 52,572 original
+time identities without duplicates. All thirty separately hashed original/old
+capture files are unchanged. The capture has zero Severe errors and 59 warnings;
+the six additional warning lines are unavailable Gas/NaturalGas output aliases,
+not physical-model changes or measured zeros. Existing physical warnings remain.
+
+Fresh SQL SHA256 is
+`e1b73fad5017ce28699dd23dc54103cbb13ff167cc48dbbbbd5abbdbded7f842`;
+executed IDF SHA256 is
+`bc601e2e19be5ac67c48e2e36cc834ade76d457ce20652ae53c13f0016ac5c7d`.
+The ignored preservation report records complete native metadata and file
+hashes at `oracle-cache/pv-recapture-preservation-audit-20260915.json`.
+
+The independent native-only diagnostic passes in 69.016 seconds: twenty
+electrical identities at Monthly/Hourly plus two Cogeneration parent sources
+all have complete native weather observations. Nine independently stated
+electrical equations hold at every one of twelve months and 8,760 hours, and
+at the annual sum of native months. Inverter ancillary input is 446.8 kWh and
+equals the consumed Cogeneration parent once; it is not produced electricity.
+Native PV DC is 54,522.196715 kWh, inverter AC is 49,224.732528 kWh and inverter
+loss is 4,037.580186 kWh. Storage charge/discharge are 10,576.973327 and
+9,317.089326 kWh; native storage thermal output remains its separate observed
+3,479.368355 kWh, not a manufactured charge-minus-discharge equation.
+The actual sibling MTD SHA256 is
+`87bf8f501d8bb3eacf32d80c29401004c9ff42a2af9d51fb39ae793e11686438`.
+
+Test-only native source registries require all eighty exact raw/effective
+source keys independently of graph presence. The original-wire oracle now
+bypasses production Source/Node compatibility repair, so rounding or removal
+of a wrong Zone/allocation field cannot launder a bad candidate. Separate
+native global-source shape checks reject allocation-only corruption while
+preserving scalar knownness and original Output navigation. Focused compiler,
+registry, mutation, signed-balance and plain-wire tests pass in 14.436 seconds.
+Cogeneration registry/consumer integration, the independent five-loop Shop
+HVAC/SHW proof, actual full candidate comparison and the full repository gate
+remain in progress. No PV expected artifact is approved; the fixture count
+remains 12/19 and the remote UI is unchanged.
+
+## Independent PV consumer checkpoint (2026-09-25)
+
+Remote fetch confirms the local and remote production checkpoint are both
+`5d21da0`; the preserved user stash is untouched. The current work changes only
+independent oracle/test infrastructure and this progress record, not the UI.
+
+The original-wire native source gate now checks all 8,760 signed Hourly chart
+cells and the exact end-hour axis; Monthly observations cannot borrow Hourly
+charts. The separately required Cogeneration parent adds four raw/effective
+checks beside the existing eighty, retaining native measured zero separately
+from a tiny positive native quantity whose displayed value rounds to zero.
+Compile, evaluation, coverage and pending export preserve the external recipe
+and SQL/sibling-MTD anchors. Actual evaluator tests reject deleted parent
+proofs, missing zero-valued scalars, and deletion of all local CG requirements
+when the caller still requires them. Evaluation reuses its native preparation
+for coverage rather than scanning the same forty-two series twice.
+
+The five-loop original HVAC/SHW topology helper is installed and its focused
+tests pass in 1.670 seconds, including the exact 466-physical-object census.
+CG registry/dispatcher tests pass in 17.529 seconds. The combined PV native,
+plain-wire, pending-export and bounded Pool calendar focus passes in 43.720
+seconds. Pool native calendar validation retains every native TimeIndex and
+calendar/interval/knownness check while using a bounded 2017 calendar table;
+the same mandatory ledger test drops from 9.420 to 2.725 seconds, with calendar
+equivalence regressions passing in 0.779 seconds. No timeout or assertion is
+relaxed and no native row is omitted.
+
+Full repository/Wails verification is the next checkpoint. The mandatory
+full-model HVAC stamp, graph-role/period-scalar consumer checks, durable MTD
+approval provenance and full eight-group PV recipe comparison still remain.
+These focused passes are not fixture acceptance: approval stays at 12/19,
+and no expected manifest or approved metrics are changed.
+
+The full repository gate passes on this checkpoint: simulation 540.441 seconds,
+frontend/browser 198.563 seconds, app 25.593 seconds, CLI 7.494 seconds and the
+remaining input/IDF/tabular packages pass. Windows production build succeeds in
+26.131 seconds. This is a verified oracle checkpoint, not PV fixture approval.
+Native recipe preparation also identified a separate production quality bug:
+consumed Cogeneration inputs currently fall through a generator/supply token
+and disappear from the end-use availability stage. Its resource-aware fix and
+regressions are the next implementation pass; no UI change is required.

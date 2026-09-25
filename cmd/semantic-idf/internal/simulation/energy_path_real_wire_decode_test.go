@@ -7,8 +7,9 @@ import (
 )
 
 // Acceptance examines original runtime output, not a repaired stored result.
-// These aliases suppress the application's result/period/summary compatibility
-// readers. Leaf node/source readers only retain scalar presence and are kept.
+// These plain types suppress application compatibility readers. Raw Node and
+// Source leaves are intercepted too: their production readers now repair some
+// public fields, which would hide incorrect original evidence from this oracle.
 type epathOraclePlainBundle PurposeResultBundle
 type epathOraclePlainResult EnergyExplanationResult
 type epathOraclePlainPeriod EnergyPeriod
@@ -64,6 +65,8 @@ func epathDecodeOriginalOracleResult(data json.RawMessage) (EnergyExplanationRes
 	var plain epathOraclePlainResult
 	wire := struct {
 		*epathOraclePlainResult
+		Sources []json.RawMessage `json:"sources"`
+		Nodes   []json.RawMessage `json:"nodes"`
 		Periods []json.RawMessage `json:"periods"`
 		Zones   []json.RawMessage `json:"zoneResults"`
 	}{epathOraclePlainResult: &plain}
@@ -74,6 +77,14 @@ func epathDecodeOriginalOracleResult(data json.RawMessage) (EnergyExplanationRes
 		return EnergyExplanationResult{}, fmt.Errorf("snapshot must contain original Building canonical v2 result")
 	}
 	var err error
+	plain.Sources, err = epathDecodeOriginalOracleSources(wire.Sources)
+	if err != nil {
+		return EnergyExplanationResult{}, err
+	}
+	plain.Nodes, err = epathDecodeOriginalOracleNodes(wire.Nodes)
+	if err != nil {
+		return EnergyExplanationResult{}, err
+	}
 	plain.Periods, err = epathDecodeOriginalOraclePeriods(wire.Periods)
 	if err != nil {
 		return EnergyExplanationResult{}, err
@@ -82,10 +93,15 @@ func epathDecodeOriginalOracleResult(data json.RawMessage) (EnergyExplanationRes
 		var zone epathOraclePlainZone
 		zoneWire := struct {
 			*epathOraclePlainZone
+			Nodes   []json.RawMessage               `json:"nodes"`
 			Periods []json.RawMessage               `json:"periods"`
 			Summary *epathOracleOriginalSummaryWire `json:"summary"`
 		}{epathOraclePlainZone: &zone}
 		if err := json.Unmarshal(data, &zoneWire); err != nil {
+			return EnergyExplanationResult{}, err
+		}
+		zone.Nodes, err = epathDecodeOriginalOracleNodes(zoneWire.Nodes)
+		if err != nil {
 			return EnergyExplanationResult{}, err
 		}
 		zone.Periods, err = epathDecodeOriginalOraclePeriods(zoneWire.Periods)
@@ -106,9 +122,15 @@ func epathDecodeOriginalOraclePeriods(rows []json.RawMessage) ([]EnergyPeriod, e
 		var period epathOraclePlainPeriod
 		wire := struct {
 			*epathOraclePlainPeriod
+			Nodes   []json.RawMessage               `json:"nodes"`
 			Summary *epathOracleOriginalSummaryWire `json:"summary"`
 		}{epathOraclePlainPeriod: &period}
 		if err := json.Unmarshal(data, &wire); err != nil {
+			return nil, err
+		}
+		var err error
+		period.Nodes, err = epathDecodeOriginalOracleNodes(wire.Nodes)
+		if err != nil {
 			return nil, err
 		}
 		if wire.Summary != nil {

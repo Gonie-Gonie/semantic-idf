@@ -8,6 +8,8 @@ import (
 )
 
 type epathSQLModelCheck struct {
+	PVCogenerationSource   *epathSQLPVSourceProof
+	PVSource               *epathSQLPVSourceProof
 	PoolSurface            *epathSQLPoolSurfaceQualification
 	PoolSource             *epathSQLPoolSourceProof
 	PoolBoundary           *epathSQLPoolBoundaryProof
@@ -40,10 +42,14 @@ type epathSQLModelCheck struct {
 	AnnualServiceAbsent    bool
 }
 type epathSQLModelChecks struct {
-	Rows            []epathSQLModelCheck
-	Keys            map[string]bool
-	RequireCoverage bool
-	FanPoolTotals   map[string]epathSQLFanPoolTotal
+	RequiredPVCogeneration *epathRealSQLPVCogeneration
+	PVCogenerationRegistry *epathSQLPVCogenerationRegistry
+	RequiredPVSystems      []epathRealSQLPVSystem
+	PVSourceRegistry       *epathSQLPVSourceRegistry
+	Rows                   []epathSQLModelCheck
+	Keys                   map[string]bool
+	RequireCoverage        bool
+	FanPoolTotals          map[string]epathSQLFanPoolTotal
 }
 
 func (checks *epathSQLModelChecks) add(group, scope, zone, period, key, unit string, q *epathSQLQuantity, target epathRealOracleTarget, status string, found, total *int) error {

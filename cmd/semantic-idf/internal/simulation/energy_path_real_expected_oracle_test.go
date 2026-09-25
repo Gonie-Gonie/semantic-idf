@@ -335,7 +335,7 @@ func epathEvaluateRealOracle(out *epathRealOracleEvidence, recipe epathRealOracl
 		if err != nil {
 			return err
 		}
-		failures := epathEvaluateSQLModelChecks(out, bundle, checks)
+		failures := epathEvaluateSQLModelChecks(out, bundle, checks, recipe.SQLModel)
 		if len(failures) > 0 {
 			return fmt.Errorf("%d independent SQL candidate mismatches; first: %s", len(failures), failures[0].Message)
 		}
