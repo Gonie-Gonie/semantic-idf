@@ -321,8 +321,26 @@ func TestEnergyPathRadiantNonNativeLegacyZoneRequestsUnchanged(t *testing.T) {
 func assertEnergyPathMonthlyHourlyRequestPairs(t *testing.T, plan PurposeRunPlan) {
 	t.Helper()
 	pairs := map[string]map[string]PurposeOutputObject{}
+	nativeFanPools := map[string]bool{}
 	for _, output := range plan.OutputObjects {
 		if !purposeObjectIsSeries(output.ObjectType) {
+			continue
+		}
+		// Native AirLoop fan pools are a separate, Hourly-only allocation
+		// observation, not a chart/ledger alias. The pool reader integrates
+		// complete hours independently and reconciles against the unchanged
+		// Monthly Fans meter. Never waive pairing for other variables/meters.
+		if strings.EqualFold(output.ObjectType, "Output:Variable") &&
+			output.VariableName == "Air System Fan Electricity Energy" &&
+			output.ReportingFrequency == "Hourly" && output.Reason == "Basic Energy Path" {
+			if output.ScopeZoneName != "" || strings.TrimSpace(purposeFieldValue(output.Fields, "Schedule Name")) != "" || !purposeIDsContain(output.PurposeIDs, SimulationPurposeBasicEnergy) {
+				t.Fatalf("native fan pool lost its unfiltered Building observation contract: %#v", output)
+			}
+			key := strings.ToLower(strings.TrimSpace(output.KeyValue))
+			if nativeFanPools[key] {
+				t.Fatalf("duplicate native Hourly fan pool request: %#v", output)
+			}
+			nativeFanPools[key] = true
 			continue
 		}
 		if output.ReportingFrequency != "Monthly" && output.ReportingFrequency != "Hourly" {

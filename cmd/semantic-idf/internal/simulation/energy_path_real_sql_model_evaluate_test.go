@@ -176,6 +176,9 @@ func epathSQLModelSourceChecks(frames epathSQLFrames, observed []epathRealSQLSou
 
 func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRealSQLModel) (epathSQLModelChecks, error) {
 	checks := epathSQLModelChecks{RequireCoverage: true}
+	if err := epathSQLBindPVHVACChecks(observed, model, &checks); err != nil {
+		return checks, err
+	}
 	if err := epathSQLValidateDirectHVACRequests(observed.outputPlan, model); err != nil {
 		return checks, err
 	}
@@ -255,6 +258,9 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 		return checks, err
 	}
 	if err := epathSQLValidatePVAndCogenerationCompiledSourceChecks(checks, model); err != nil {
+		return checks, err
+	}
+	if err := epathSQLSealPVHVACChecks(&checks, model); err != nil {
 		return checks, err
 	}
 	return checks, nil
@@ -448,6 +454,10 @@ func epathCheckSQLModelAllocation(bundle PurposeResultBundle, check epathSQLMode
 func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeResultBundle, checks epathSQLModelChecks, models ...*epathRealSQLModel) []epathSQLModelFailure {
 	out.CheckedGroups = nil
 	out.modelCoverage = nil
+	if err := epathSQLPreparePVHVACChecks(checks, models...); err != nil {
+		out.Metrics = nil
+		return []epathSQLModelFailure{{Group: "coverage", Key: "pv_hvac/original", Message: err.Error()}}
+	}
 	var pvPrepared epathSQLPVValidatedSources
 	var cgPrepared epathSQLPVCogenerationValidatedSources
 	var pvErr error
@@ -464,6 +474,10 @@ func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeRes
 	if pvErr != nil {
 		out.Metrics = nil
 		return []epathSQLModelFailure{{Group: "coverage", Key: "pv_native_source/registry", Message: pvErr.Error()}}
+	}
+	if err := epathSQLCheckRequiredPVGraph(bundle, checks, cgPrepared); err != nil {
+		out.Metrics = nil
+		return []epathSQLModelFailure{{Group: "coverage", Key: "pv_graph/native_roles", Message: err.Error()}}
 	}
 	failures := []epathSQLModelFailure{}
 	failedGroups := map[string]bool{}

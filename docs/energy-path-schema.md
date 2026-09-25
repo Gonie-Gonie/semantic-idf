@@ -187,8 +187,13 @@ This is `basis=heat_balance_share`: a deterministic, non-causal explanation of
 the measured load. It is not a direct causal decomposition. Synthetic
 pre-allocation closure terms are excluded from the denominator. Positive load
 with no positive pressure is assigned to Other / storage, with zero raw/effective
-pressure and a nonzero allocated contribution. Rounding remainder goes to the
-last stable contributor so incoming allocated contributions close to the load.
+pressure and a nonzero allocated contribution. At the three-decimal transport
+precision, use largest fractional remainders to apportion the fixed load budget.
+Each driver receives its own floor/ceil quota; ties use stable semantic identity.
+Incoming contributions close to the load without concentrating other drivers'
+rounding errors in the last category. Budgets outside the existing apportioner's
+representable milli-unit range retain the legacy allocation behavior, without
+extending that precision guarantee.
 Zero actual load produces zero allocation even when raw pressure is nonzero.
 
 Opposite-sign pressure remains `offsetEffects`: diagnostic, non-additive and

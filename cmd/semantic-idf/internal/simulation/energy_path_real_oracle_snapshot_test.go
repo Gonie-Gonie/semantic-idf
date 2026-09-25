@@ -24,6 +24,8 @@ type epathOracleSnapshotProvenance struct {
 	ProductionSHA256 string `json:"productionSHA256"`
 	CandidateSHA256  string `json:"candidateSHA256"`
 	Acceptance       bool   `json:"acceptance"`
+	MTDFile          string `json:"mtdFile,omitempty"`
+	MTDSHA256        string `json:"mtdSHA256,omitempty"`
 }
 
 func epathOracleHashFile(path string) (string, error) {
@@ -87,6 +89,10 @@ func epathOracleSnapshotProvenanceFor(root string, evidence epathRealRunEvidence
 		return out, err
 	}
 	out = epathOracleSnapshotProvenance{Schema: "semantic-idf.energy-path-oracle-candidate/v1", CaptureDirectory: evidence.RunDirectory, CaptureSHA256: captureHash, SQLSHA256: evidence.SQLSHA256, ExecutedSHA256: evidence.ExecutedSHA256, EngineSHA256: evidence.EngineSHA256, WeatherSHA256: evidence.WeatherSHA256, ProductionSHA256: codeHash, Acceptance: false}
+	out.MTDFile, out.MTDSHA256, err = epathOraclePVCogenerationMTDForEvidence(evidence)
+	if err != nil {
+		return out, err
+	}
 	return out, nil
 }
 

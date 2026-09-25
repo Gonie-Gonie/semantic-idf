@@ -32,6 +32,9 @@ func epathBuildReviewedMetricPayload(pending epathOraclePendingMetrics, reviewed
 	if pending.Schema != "semantic-idf.energy-path-oracle-pending/v1" || pending.Approved || pending.Acceptance || pending.Provenance.Acceptance || pending.ReviewStatus != "pending_independent_review" || pending.FixtureID == "" || strings.ContainsAny(pending.FixtureID, `/\:`) || pending.FixtureID == "." || pending.FixtureID == ".." || pending.Version == "" {
 		return nil, descriptor, fmt.Errorf("only explicitly reviewed, unapproved independent pending evidence can be packaged")
 	}
+	if err := epathOracleValidateMTDFields(pending.Provenance.MTDFile, pending.Provenance.MTDSHA256); err != nil {
+		return nil, descriptor, err
+	}
 	for _, value := range []string{pending.ModelSHA256, pending.RecipeSHA256, pending.Provenance.CaptureSHA256, pending.Provenance.SQLSHA256, pending.Provenance.ExecutedSHA256, pending.Provenance.EngineSHA256, pending.Provenance.WeatherSHA256, pending.Provenance.ProductionSHA256, pending.Provenance.CandidateSHA256} {
 		decoded, err := hex.DecodeString(value)
 		if err != nil || len(decoded) != sha256.Size {
@@ -168,6 +171,12 @@ func epathInstallReviewedMetricPayload(manifestPath string, pending epathOracleP
 	}
 	if err := epathExpectedDecodeOne(header, &manifest); err != nil {
 		return err
+	}
+	if err := epathOracleValidateMTDFields(manifest.MTDFile, manifest.MTDSHA256); err != nil {
+		return err
+	}
+	if manifest.MTDFile != pending.Provenance.MTDFile || manifest.MTDSHA256 != pending.Provenance.MTDSHA256 {
+		return fmt.Errorf("manual approval differs from the reviewed pending MTD provenance")
 	}
 	if manifest.Schema != "semantic-idf.energy-path-real-model-expected/v1" || !strings.Contains(strings.ToLower(manifest.Review), strings.ToLower(pendingSHA)) || manifest.FixtureID != pending.FixtureID || manifest.Version != pending.Version || manifest.ModelSHA256 != pending.ModelSHA256 || manifest.WeatherSHA256 != pending.Provenance.WeatherSHA256 || len(manifest.Metrics) != 0 || manifest.MetricPayload == nil || *manifest.MetricPayload != descriptor {
 		return fmt.Errorf("manual approval does not match this exact pending artifact and complete payload")

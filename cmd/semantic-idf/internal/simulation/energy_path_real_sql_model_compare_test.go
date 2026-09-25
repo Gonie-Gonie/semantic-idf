@@ -8,6 +8,7 @@ import (
 )
 
 type epathSQLModelCheck struct {
+	PVHVACProofSHA256      string
 	PVCogenerationSource   *epathSQLPVSourceProof
 	PVSource               *epathSQLPVSourceProof
 	PoolSurface            *epathSQLPoolSurfaceQualification
@@ -42,6 +43,8 @@ type epathSQLModelCheck struct {
 	AnnualServiceAbsent    bool
 }
 type epathSQLModelChecks struct {
+	PVHVACRequired         bool
+	PVHVAC                 *epathSQLPVHVACStamp
 	RequiredPVCogeneration *epathRealSQLPVCogeneration
 	PVCogenerationRegistry *epathSQLPVCogenerationRegistry
 	RequiredPVSystems      []epathRealSQLPVSystem

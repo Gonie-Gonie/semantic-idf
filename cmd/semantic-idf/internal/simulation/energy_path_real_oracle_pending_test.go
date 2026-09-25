@@ -46,6 +46,9 @@ func epathWriteOraclePending(root, destination, candidatePath string, evidence e
 	if evidence.Run == nil || evidence.Run.Status != "succeeded" || evidence.Run.ExitCode != 0 || evidence.Run.ERR.Severe != 0 || evidence.Run.ERR.Fatal != 0 || observed.outputPlan == nil || !reflect.DeepEqual(observed.outputPlan, evidence.Run.PurposeRunPlan) {
 		return fmt.Errorf("pending review requires this successful run's exact executed output plan")
 	}
+	if err := epathSQLPreparePVHVACChecks(checks, recipe.SQLModel); err != nil {
+		return err
+	}
 	if _, _, err := epathSQLPreparePVAndCogenerationSourceChecksForModel(checks, recipe.SQLModel, &observed); err != nil {
 		return err
 	}

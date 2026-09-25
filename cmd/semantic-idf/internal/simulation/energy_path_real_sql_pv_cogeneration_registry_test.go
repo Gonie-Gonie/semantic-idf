@@ -16,6 +16,7 @@ type epathSQLPVCogenerationRegistry struct {
 }
 
 type epathSQLPVCogenerationValidatedSources struct {
+	graph     *epathSQLPVGraphRoleProof // boundary-local, after native9; never persisted
 	canonical map[string]epathSQLModelCheck
 	adapter   epathSQLPVValidatedSources // detached C scalar/shape/chart consumer inputs
 }
@@ -224,6 +225,16 @@ func epathSQLPreparePVAndCogenerationSourceChecks(checks epathSQLModelChecks) (e
 	}
 	if err := epathSQLPVCogenerationCheckRegistryCensus(checks, cg); err != nil {
 		return core, cg, err
+	}
+	if checks.PVHVACRequired {
+		if checks.RequiredPVCogeneration == nil || checks.PVCogenerationRegistry == nil || checks.PVSourceRegistry == nil || len(checks.PVSourceRegistry.Native) != 1 {
+			return core, cg, fmt.Errorf("full Shop graph requires the independent native40/CG2 boundary")
+		}
+		proof, err := epathSQLPVGraphRolesFromValidated(checks.PVSourceRegistry.Native[0], checks.PVCogenerationRegistry.Native)
+		if err != nil {
+			return core, cg, err
+		}
+		cg.graph = &proof
 	}
 	return core, cg, nil
 }

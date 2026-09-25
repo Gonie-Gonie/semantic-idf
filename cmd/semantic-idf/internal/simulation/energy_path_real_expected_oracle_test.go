@@ -102,6 +102,8 @@ type epathRealExpectedManifest struct {
 	Review        string                          `json:"review"`
 	Metrics       []epathRealOracleMetric         `json:"metrics,omitempty"`
 	MetricPayload *epathRealExpectedMetricPayload `json:"metricPayload,omitempty"`
+	MTDFile       string                          `json:"mtdFile,omitempty"`
+	MTDSHA256     string                          `json:"mtdSHA256,omitempty"`
 }
 
 func epathLoadRealOracleRecipe(path string) (epathRealOracleRecipe, error) {
@@ -639,6 +641,9 @@ func epathAssertRealSQLOracle(t *testing.T, evidence epathRealRunEvidence, manif
 	}
 	recipe, err := epathLoadRealOracleRecipe(filepath.Join(evidence.CatalogDirectory, filepath.FromSlash(evidence.Fixture.OraclePath)))
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := epathValidateExpectedPVCogenerationMTD(manifest, evidence, recipe.SQLModel); err != nil {
 		t.Fatal(err)
 	}
 	observed, err := epathReadRealSQLOracle(evidence.SQLPath)

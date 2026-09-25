@@ -47,8 +47,19 @@ This directory contains original EnergyPlus example models for checklist section
   shares, unassigned fans and the real zero-pressure August heating boundary are
   independently reviewed in `docs/energy-path-fan-coil-acceptance.md`. Earlier
   failed candidates and diagnostics remain preserved.
-- The offline integrity guard requires all six approved fixtures. The other
-  thirteen entries, including the three older Large Office versions, remain
+- VRF, Radiant, District Energy, Mixed Heating Fuels, ZoneGroup and
+  Zone multiplier/Pool 25.1 have separately approved expected manifests.
+  Their native ownership, allocation and original-SQL reviews are recorded in
+  the corresponding `docs/energy-path-*-acceptance.md` documents.
+- PV/storage 25.1 is explicitly approved for 16,523 independent metrics,
+  5,275 coverage records and 11,335 required fields. Saved-original-wire
+  acceptance passes in 431.379 seconds. Native PV/inverter/storage boundaries,
+  consumed Cogeneration, five fan pools, HVAC owners, known-zero versus absent
+  outputs and allocation precision are reviewed in
+  `docs/energy-path-pv-acceptance.md`; this does not claim complete data quality
+  where outputs remain unavailable.
+- The offline integrity guard requires all thirteen approved fixtures. The other
+  six entries, including the three older Large Office versions, remain
   unapproved. Later checklist sections are not complete. Full repository
   verification and Wails build are required by the normal commit gate.
 - All 19 engine executions have finished (18 normal results; the no-heating

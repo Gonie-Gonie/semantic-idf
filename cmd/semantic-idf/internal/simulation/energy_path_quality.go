@@ -173,6 +173,15 @@ func energyPathQualitySiteLevel(result EnergyExplanationResult, level, label str
 }
 
 func energyPathQualityEnergyGroup(name string) (string, string) {
+	// Cogeneration is a consumed input only for the reviewed native resource
+	// roster. Generic generator tokens describe a different supply boundary.
+	if resource, relevant := energyPathCogenerationMeterResource(name); relevant {
+		role, carrier := energyPathCogenerationResource(resource)
+		if role != energyPathCogenerationConsumed {
+			return "", ""
+		}
+		return "end_use", "energy.cogeneration_input|" + carrier + "|cogeneration_input"
+	}
 	definition, ok := energyMeterAliasDefinitionForName(name)
 	if !ok {
 		definition, ok = energyVariableAliasDefinitionForName(name)

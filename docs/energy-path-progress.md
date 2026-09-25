@@ -1481,3 +1481,97 @@ Native recipe preparation also identified a separate production quality bug:
 consumed Cogeneration inputs currently fall through a generator/supply token
 and disappear from the end-use availability stage. Its resource-aware fix and
 regressions are the next implementation pass; no UI change is required.
+
+## PV native fan capture and complete diagnostic (2026-09-25, in progress)
+
+The normal hook and Wails build passed for `7407200`, which was pushed to
+`origin/main`. The next implementation adds consumed-resource Cogeneration
+availability and exact AirLoop fan output requests for Basic Energy Path.
+Existing unfiltered Hourly wildcard/key requests are reused. Other purposes,
+physical input objects and the remote UI are unchanged.
+
+The closed `real-pv-storage-25-1-20260925T031519.297356600` capture succeeds with
+59 warnings and zero Severe errors. Independent native-only comparison retains
+all 733 prior dictionary identities and all 5,864,508 original observations
+exactly, including 2,317,248 reported zeros. The 61,332 Time rows and 4,068
+extended-statistic rows are unchanged. Exactly five native fan dictionaries add
+43,800 observations; their separately summed monthly energy closes the native
+Fans meter without rescaling. Original 466 physical objects, engine, weather,
+annual controls and output declarations are preserved and rehashed unchanged.
+The read-only audit is `oracle-cache/pv-fan-recapture-native-audit-20260925-v2.json`
+under the ignored acceptance directory; SQL SHA256 is
+`5f4dde5c868f419b2c169defd38ce7d3ec597fef9e1e970f28fbf8aa3548f2d8`.
+
+Full-model original HVAC proof, native PV/CG source/graph consumers and durable
+SQL-sibling MTD provenance are now integrated into compilation, evaluation,
+coverage and pending export. A test-contract correction allows legitimate
+Monthly Facility parent lineage on Zone subtotals only when independent Zone
+amount, branch and reconciliation checks pass. It does not allow Facility
+consumption on Zone flow links or substitute a Building total for a Zone share.
+Focused graph/lineage regressions pass in 0.979 seconds.
+
+The first complete eight-group diagnostic is **rejected**, not approved:
+16,523 checks, 526 numeric/contract failures and 830 coverage gaps, with shared
+prerequisites contributing repeated failures. Concrete review targets are the
+canonical Other presentation of consumed Cogeneration, exact storage/driver
+source authority, and four driver-allocation rounding discrepancies. Native
+capture success is not fixture acceptance. Expected manifests remain unchanged,
+and section 22 remains 12/19 until these discrepancies and review gates close.
+
+## PV/storage approved original-wire acceptance (2026-09-25)
+
+The rejected diagnostic is retained. Exact native Hourly companions are now
+declared as nonadditive traces, and consumed Cogeneration follows the existing
+canonical Other representation without counting its ancillary member twice.
+These are oracle corrections, not changes to the UI or physical accounting.
+The four real driver discrepancies exposed the last-contributor rounding
+residual accumulating beyond that contributor's own precision bound. The
+production allocator now reuses bounded largest-remainder apportionment with
+stable source ordering, exact monthly load closure and unchanged raw signs.
+Ten hand-test subcases failed before the fix; the allocation/fan/interzone
+focus passes in 7.285 seconds afterwards.
+
+Full diagnostic 03 passes in 220.861 seconds: 16,523 metrics, zero numeric or
+contract failures and zero coverage gaps across 5,275 records/11,335 fields.
+The pending metrics retain 4,916 numeric zeros and 525 typed nulls. Root reran
+the native preservation and Hourly audits plus 159 separately calculated
+native arithmetic obligations, all matching the pending result. This includes
+positive gas equipment consumption, distinct from known-zero gas latent gain.
+Native electrical identities, nine balance equations and exact original HVAC
+ownership remain mandatory in evaluation and coverage.
+
+The reviewed expected header and lossless companion are separately installed;
+saved-original-wire acceptance passes all 16,523 metrics in 431.379 seconds.
+The offline catalog now requires PV/storage, taking section 22 to 13/19.
+Detailed provenance, engineering boundaries and remaining gates are in
+`energy-path-pv-acceptance.md`. The twelve prior approvals are being replayed
+against current production, followed by the normal full repository/Wails and
+commit-hook gates. Those gates are not claimed by this individual fixture pass.
+
+The complete twelve-fixture current-code replay now passes. All original SQL
+capture pins and all 24 existing approval header/companion hashes remain
+unchanged. ZoneGroup passes in 537.466 seconds and Pool in 311.746 seconds;
+the complete timing/metric roster is recorded in the PV acceptance document.
+No expected values or tolerances were adjusted to accommodate the allocation
+fix. The standalone full repository/Wails gate now runs on this frozen tree.
+
+That first standalone attempt fails in simulation after 539.998 seconds:
+automatic fan observations were too broad for the existing PTAC mixed-fan
+request policy, and the chart-pair helper did not distinguish native Hourly-only
+fan-pool evidence. The request hook now requires the complete original Fan:*
+inventory to be covered by qualified direct AirLoops. Mixed local/exhaust and
+unowned fans retain Building-unassigned accounting instead of adding unusable
+heavy partial observations. Original blank-key native wildcards are also reused.
+The exact fan allocation-only exception retains the chart pair and duplicate
+invariants for the remaining outputs. PTAC, baseboard, District, VRF and fan
+request focus passes in 11.245 seconds. No expected tolerance changed.
+
+PV is then rebuilt from the unchanged native capture using current production:
+all 16,523 approved metrics pass in 470.510 seconds, without reusing the earlier
+production-bound candidate. The approved header and companion are unchanged.
+The final focused regressions pass in 11.378 seconds. Standalone
+`scripts/verify.ps1` passes on this tree: simulation 572.184 seconds,
+frontend/browser 180.000 seconds, App 19.703 seconds and production Wails
+build 8.58 seconds. Other packages pass or use unchanged cached results.
+The default test timeout is unchanged. The normal commit hook remains the
+next gate before push; the remaining six native fixtures are not yet approved.

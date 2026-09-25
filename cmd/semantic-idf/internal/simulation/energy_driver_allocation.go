@@ -78,7 +78,6 @@ func allocateCanonicalEnergyDriverNodes(nodes map[string]*energyExplanationNodeA
 		}
 
 		candidates := make([]energyDriverAllocationCandidate, 0)
-		denominator := 0.0
 		for id, entry := range nodes {
 			if entry == nil || !strings.EqualFold(entry.node.Level, "heat") || entry.node.driverBuildingOnly ||
 				!strings.EqualFold(entry.node.ZoneName, loadZoneName) {
@@ -95,29 +94,48 @@ func allocateCanonicalEnergyDriverNodes(nodes map[string]*energyExplanationNodeA
 				continue
 			}
 			candidates = append(candidates, energyDriverAllocationCandidate{id: id, pressure: pressure})
-			denominator += pressure
 		}
 		sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].id < candidates[j].id })
+		targets := make([]energyPathZoneAuxiliaryTarget, len(candidates))
+		denominator := 0.0
+		for index, candidate := range candidates {
+			targets[index] = energyPathZoneAuxiliaryTarget{NodeID: candidate.id, ZoneName: loadZoneName, Value: candidate.pressure}
+			denominator += candidate.pressure
+		}
 		if denominator <= 1e-12 || len(candidates) == 0 {
 			appendEnergyDriverZeroPressureFallback(nodes, loadZoneName, service, loadUnit, loads[key].period, loadValue, loadSourceIDs)
 			continue
 		}
 
-		remaining := loadValue
-		for index, candidate := range candidates {
-			contribution := remaining
-			if index < len(candidates)-1 {
-				contribution = roundedEnergyNumber(loadValue * candidate.pressure / denominator)
-				if contribution < 0 {
-					contribution = 0
+		// Use the existing fixed-budget apportioner: each driver receives its
+		// own floor/ceil quota, never the sum of other drivers' rounding errors.
+		// Stable IDs also make the denominator and equal-remainder ties independent
+		// of map iteration. Signed raw pressures and load scalars are unchanged.
+		contributions := energyPathFanPoolShares(loadValue, targets)
+		if len(contributions) != len(candidates) {
+			// Compatibility only for inputs the bounded apportioner cannot
+			// represent (for example >2^53 milli-units). Preserve the old
+			// behavior instead of silently dropping all drivers; this is not
+			// new measurement authority or an expanded precision guarantee.
+			contributions = make([]float64, len(candidates))
+			remaining := loadValue
+			for index, candidate := range candidates {
+				contribution := remaining
+				if index < len(candidates)-1 {
+					contribution = roundedEnergyNumber(loadValue * candidate.pressure / denominator)
+					if contribution < 0 {
+						contribution = 0
+					}
+					if contribution > remaining {
+						contribution = remaining
+					}
 				}
-				if contribution > remaining {
-					contribution = remaining
-				}
+				contributions[index] = roundedEnergyNumber(contribution)
+				remaining = roundedEnergyNumber(remaining - contributions[index])
 			}
-			contribution = roundedEnergyNumber(contribution)
-			setEnergyDriverAllocatedContribution(&nodes[candidate.id].node, contribution)
-			remaining = roundedEnergyNumber(remaining - contribution)
+		}
+		for index, contribution := range contributions {
+			setEnergyDriverAllocatedContribution(&nodes[candidates[index].id].node, contribution)
 		}
 	}
 	allocateCanonicalBuildingInterzoneNodes(nodes)

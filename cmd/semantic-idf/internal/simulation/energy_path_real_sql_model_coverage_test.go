@@ -39,7 +39,17 @@ func (out *epathSQLModelCoverageReport) fail(group, key, message string) {
 // Call on the original-wire candidate. This function neither repairs graphs nor
 // invokes a production classifier or builder. Structural failures use the group
 // "coverage" and invalidate acceptance as a whole, not just one numeric group.
-func epathSQLModelCoverage(bundle PurposeResultBundle, checks epathSQLModelChecks) epathSQLModelCoverageReport {
+func epathSQLModelCoverage(bundle PurposeResultBundle, checks epathSQLModelChecks, models ...*epathRealSQLModel) epathSQLModelCoverageReport {
+	if err := epathSQLPreparePVHVACChecks(checks, models...); err != nil {
+		out := epathSQLModelCoverageReport{}
+		out.fail("coverage", "pv_hvac/original", err.Error())
+		return out
+	}
+	if len(models) == 1 && models[0] != nil && (!epathSQLPVDeclarationsEqual(models[0].PVSystems, checks.RequiredPVSystems) || !reflect.DeepEqual(models[0].PVCogeneration, checks.RequiredPVCogeneration)) {
+		out := epathSQLModelCoverageReport{}
+		out.fail("coverage", "pv_native_source/registry", "PV/CG check declarations differ from the external required recipe")
+		return out
+	}
 	pvPrepared, cgPrepared, prepareErr := epathSQLPreparePVAndCogenerationSourceChecks(checks)
 	return epathSQLModelCoveragePrepared(bundle, checks, pvPrepared, cgPrepared, prepareErr)
 }
@@ -51,6 +61,9 @@ func epathSQLModelCoveragePrepared(bundle PurposeResultBundle, checks epathSQLMo
 	if prepareErr != nil {
 		out.fail("coverage", "pv_native_source/registry", prepareErr.Error())
 	} else {
+		if err := epathSQLCheckRequiredPVGraph(bundle, checks, cgPrepared); err != nil {
+			out.fail("coverage", "pv_graph/native_roles", err.Error())
+		}
 		for _, check := range checks.Rows {
 			if epathSQLPVHasSourceCheck(check) {
 				if err := epathSQLCheckPVSourceConsumerComplete(bundle, check, pvPrepared); err != nil {

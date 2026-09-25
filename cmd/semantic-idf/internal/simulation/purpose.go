@@ -500,6 +500,7 @@ func BuildPurposeRunPlan(doc idf.Document, request SimulationPurposeRequest) Pur
 	}
 	if purposeIDsContain(request.Purposes, SimulationPurposeBasicEnergy) && request.BasicEnergyDetail == PurposeBasicEnergyDetailEnergyPath {
 		builder.addEnergyPathHourlyOutputs()
+		builder.addEnergyPathFanPoolOutputs()
 		builder.addEnergyPathPVElectricalOutputs()
 		builder.addEnergyPathCogenerationOutputs()
 	}

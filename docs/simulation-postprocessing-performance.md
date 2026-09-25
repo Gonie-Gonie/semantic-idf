@@ -281,3 +281,19 @@ suffixes select diagnostic artifacts. `TestEnergyDriversSavedComparison`
 compares existing `_COMPARE` and `_OUTPUT` files without repeating the SQL scan.
 Local evidence: `.runtime/energy-drivers-before.log`,
 `.runtime/energy-drivers-after.log`, their `.json` artifacts and `.pprof` profiles.
+
+## Monthly Energy Path capacity check (2026-09-25)
+
+`TestEPATH210ThousandSurfaceMonthlyCapacity` passes on Windows/amd64,
+Go 1.24.5, GOMAXPROCS 24. Its existing synthetic fixture contains 1,000 surfaces,
+20 Zones, 12 months, 1,043 dictionaries and 12,516 SQL observations. The test
+checks exact aggregates, dictionary deduplication, known-zero preservation,
+absence of raw observation arrays in graph JSON and read-only source requery.
+
+Measured context construction is 235 ms, canonical SQL parsing 126 ms, graph
+construction including all precomputed Zones 2.528 s and JSON encoding 232 ms.
+The JSON is 15,483,712 bytes with 1,063 sources, 13 periods and 20 Zone results.
+Cumulative allocation is 2,522,648,672 bytes; retained Go heap after GC is
+60,341,736 bytes (7,661,984 bytes before the test). These are local single-run
+diagnostic measurements, not peak memory/RSS or a guarantee for every model.
+No row sampling, new benchmark framework or relaxed test threshold is used.

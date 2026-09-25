@@ -261,7 +261,7 @@ func epathSQLPVHVACUnitInputs() ([]epathRealSQLFanPool, []epathRealSQLService, [
 		{Service: "cooling", SiteIDs: []string{"cooling.electricity"}, ServedZones: append([]string(nil), zones...), Basis: "service_path_allocation", FallbackBasis: "zone_load_allocation", RatioKind: "coefficient_of_performance", FallbackRatioKind: "coefficient_of_performance"},
 		{Service: "heating", SiteIDs: []string{"heating.electricity"}, ServedZones: append([]string(nil), zones...), Basis: "service_path_allocation", FallbackBasis: "zone_load_allocation", RatioKind: "load_to_site_energy", FallbackRatioKind: "load_to_site_energy"},
 	}
-	return pools, services, []epathRealSQLAuxiliary{{SiteID: "pumps.electricity"}}
+	return pools, services, []epathRealSQLAuxiliary{{SiteID: "pumps.electricity", Weight: "unassigned", ReconciliationID: "allocation.pumps.annual"}}
 }
 
 func TestEnergyPathSQLPVHVACFanPoolServiceAndSHWDeclarationGate(t *testing.T) {

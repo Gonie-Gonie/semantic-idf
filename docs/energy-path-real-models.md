@@ -6,17 +6,20 @@ Official model inputs, licenses and a versioned catalog live under
 `cmd/semantic-idf/internal/simulation/testdata/energy_path_real_models`.
 Coverage tags in that catalog are obligations to verify, not completed claims.
 
-Current checkpoint: twelve of nineteen fixtures are approved: Large Office, Small
+Current checkpoint: thirteen of nineteen fixtures are approved: Large Office, Small
 Office, Ideal Loads, PTAC, PTHP, Fan Coil, VRF, Radiant, District Energy and Mixed
-Heating Fuels, plus ZoneGroup and Zone multiplier/Pool 25.1. The
+Heating Fuels, plus ZoneGroup, Zone multiplier/Pool and PV/storage 25.1. The
 [ZoneGroup acceptance](energy-path-zone-group-acceptance.md) checks 21,413
 independent metrics, including native WindowAC/baseboard ownership, separate
 Zone/Group factors and district-water interior equipment. The latest
 [Pool acceptance](energy-path-pool-acceptance.md) checks 16,976 independent
 metrics and passes fresh saved-run rebuilding, including native pool/plant
 sources, shared-service exclusions and exact joint chilled-water pump budgets.
-The remaining seven catalog
-entries, including Large Office 22.1/23.2/24.2, are not yet approved.
+The [PV/storage acceptance](energy-path-pv-acceptance.md) checks 16,523 metrics,
+including native electrical balances, consumed Cogeneration, actual five-loop
+fan pools, original HVAC ownership and independent driver-allocation precision.
+The remaining six catalog entries, including Large Office 22.1/23.2/24.2,
+are not yet approved.
 Earlier findings below are retained as a chronological record, not presented
 as the current acceptance status. Section 22 and later checklist sections remain
 in progress.

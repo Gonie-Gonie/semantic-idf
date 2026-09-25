@@ -45,6 +45,9 @@ func epathReadRealExpectedManifest(path string) (epathRealExpectedManifest, erro
 	if manifest.Schema != "semantic-idf.energy-path-real-model-expected/v1" || strings.TrimSpace(manifest.Review) == "" {
 		return manifest, fmt.Errorf("expected manifest lacks approved schema/review")
 	}
+	if err := epathOracleValidateMTDFields(manifest.MTDFile, manifest.MTDSHA256); err != nil {
+		return manifest, err
+	}
 	_, inline := fields["metrics"]
 	_, compressed := fields["metricPayload"]
 	if inline == compressed {
