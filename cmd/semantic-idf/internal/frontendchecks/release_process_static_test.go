@@ -21,10 +21,10 @@ func TestVerificationUsesBoundedGoAndReleaseTimeouts(t *testing.T) {
 	verify := readTestFile(t, "../../scripts/verify.ps1")
 	for _, required := range []string{
 		`[string]$GoTestTimeout = "20m"`,
-		`& $paths.GoExe test "-timeout=$GoTestTimeout" ./...`,
+		`& $paths.GoExe test "-timeout=$GoTestTimeout" "-p=1" ./...`,
 	} {
 		if !strings.Contains(verify, required) {
-			t.Fatalf("verification must retain a bounded Go test timeout with CI headroom, missing %q", required)
+			t.Fatalf("verification must retain a bounded Go test timeout and serialize resource-heavy packages, missing %q", required)
 		}
 	}
 

@@ -92,8 +92,13 @@ const freeze=value=>{if(value&&typeof value==="object"){Object.values(value).for
 const intersects=(a,b,pad=0)=>a.left<b.right-pad&&a.right>b.left+pad&&a.top<b.bottom-pad&&a.bottom>b.top+pad;
 document.body.dataset.epath143Viewport=innerWidth+"x"+innerHeight;
 try{
- for(let attempt=0;document.body.dataset.epath142Status!=="manual"&&attempt<100;attempt++)await new Promise(resolve=>setTimeout(resolve,10));
- if(document.body.dataset.epath142Status!=="manual")throw new Error("actual EPATH-142 app bootstrap failed: "+document.getElementById("epath142-result")?.textContent);
+ // This fixture is appended after EPATH-142, but top-level module awaits let the
+ // two bootstraps overlap. Give the real app/module bootstrap its own generous
+ // deadline on loaded CI; EPATH-161 measures interaction latency only after this
+ // readiness gate has completed.
+ const epath142BootstrapStarted=performance.now(),epath142BootstrapTimeout=30000;
+ while(!document.body.dataset.epath142Status&&performance.now()-epath142BootstrapStarted<epath142BootstrapTimeout)await new Promise(resolve=>setTimeout(resolve,25));
+ if(document.body.dataset.epath142Status!=="manual")throw new Error("actual EPATH-142 app bootstrap failed after "+Math.round(performance.now()-epath142BootstrapStarted)+"ms (status="+(document.body.dataset.epath142Status||"pending")+"): "+document.getElementById("epath142-result")?.textContent);
  const [{state},simulation,view]=await Promise.all([import("/src/js/state.js"),import("/src/js/views/simulation-views.js"),import("/src/js/views/energy-path-view.js")]);
  const originalResult=state.simulationResult,originalJSON=JSON.stringify(originalResult);
  const candidate=JSON.parse(originalJSON),explanation=candidate.purposeResults.energyExplanation;

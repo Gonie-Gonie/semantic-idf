@@ -25,8 +25,10 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 & "$PSScriptRoot\frontend-build.ps1"
 Push-Location $paths.RepoRoot
 try {
-    & $paths.GoExe test "-timeout=$GoTestTimeout" ./...
-    Assert-LastExitCode -Operation "go test -timeout=$GoTestTimeout ./..."
+    # Browser acceptance and SQLite-oracle packages compete heavily on Windows runners.
+    # Keep packages isolated while preserving each package's finite test timeout.
+    & $paths.GoExe test "-timeout=$GoTestTimeout" "-p=1" ./...
+    Assert-LastExitCode -Operation "go test -timeout=$GoTestTimeout -p=1 ./..."
 }
 finally {
     Pop-Location

@@ -287,8 +287,15 @@ const report=async()=>{document.body.dataset.epath161Status=failures.length?"fai
 try{
  if(innerWidth!==1600||innerHeight!==900){await report();}
  else{
-  for(let attempt=0;document.body.dataset.epath143Status!=="manual"&&attempt<160;attempt++)await sleep(25);
-  if(document.body.dataset.epath143Status!=="manual")throw new Error("actual142/143 bootstrap did not finish");
+  // Bootstrap time is not part of the native-clock selection acceptance below.
+  // On loaded CI the three top-level module fixtures can overlap for several
+  // seconds, so wait for terminal readiness without weakening the per-action
+  // 50 ms limit measured by measure().
+  // This outer deadline covers EPATH-142 readiness plus EPATH-143's subsequent
+  // imports/render, while the Go test's 90 s deadline still bounds the run.
+  const bootstrapStarted=performance.now(),bootstrapTimeout=60000;
+  while(!document.body.dataset.epath143Status&&performance.now()-bootstrapStarted<bootstrapTimeout)await sleep(25);
+  if(document.body.dataset.epath143Status!=="manual")throw new Error("actual142/143 bootstrap did not finish after "+Math.round(performance.now()-bootstrapStarted)+"ms (EPATH-142="+(document.body.dataset.epath142Status||"pending")+", EPATH-143="+(document.body.dataset.epath143Status||"pending")+"); EPATH-142: "+document.getElementById("epath142-result")?.textContent+"; EPATH-143: "+document.getElementById("epath143-result")?.textContent);
   const [store,simulation,view,history,navigation,adapters,hvacViews,controller]=await Promise.all([import("/src/js/state.js"),import("/src/js/views/simulation-views.js"),import("/src/js/views/energy-path-view.js"),import("/src/js/view-history.js"),import("/src/js/navigation.js"),import("/src/js/panel-navigation-adapters.js"),import("/src/js/views/hvac-views.js"),import("/src/js/selection-controller.js")]);
   for(const name of["renderEnergyPathHeader","renderEnergyPathKPI","renderEnergyPathGraph","renderEnergyPathInspector","renderEnergyPathQuality","renderEnergyPathDetails"])check(typeof view[name]==="function","missing separated rendering stage "+name);
   const {state}=store,fixture=await(await fetch("/epath161-model.json")).json(),modelJSON=JSON.stringify(fixture);
