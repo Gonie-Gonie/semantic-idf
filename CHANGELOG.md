@@ -88,7 +88,9 @@ All notable changes to SemanticIDF are recorded here from release notes.
 - Hardened release automation so Git status, staging, commit, and tag failures
   stop the release, the branch and version tag are pushed atomically, prepared
   automatic versions do not increment twice, and an empty release cannot reuse
-  notes from an already published version.
+  notes from an already published version. Verification now retains finite CI
+  timeouts with enough integration-test headroom and reliably reaps only the
+  headless browser process owned by each acceptance test.
 
 ## Performance
 

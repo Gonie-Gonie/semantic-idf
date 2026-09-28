@@ -17,6 +17,23 @@ func TestReleaseScriptReadsTrackedTextAsUTF8(t *testing.T) {
 	}
 }
 
+func TestVerificationUsesBoundedGoAndReleaseTimeouts(t *testing.T) {
+	verify := readTestFile(t, "../../scripts/verify.ps1")
+	for _, required := range []string{
+		`[string]$GoTestTimeout = "20m"`,
+		`& $paths.GoExe test "-timeout=$GoTestTimeout" ./...`,
+	} {
+		if !strings.Contains(verify, required) {
+			t.Fatalf("verification must retain a bounded Go test timeout with CI headroom, missing %q", required)
+		}
+	}
+
+	workflow := readTestFile(t, "../../.github/workflows/release.yml")
+	if !strings.Contains(workflow, "timeout-minutes: 45") {
+		t.Fatal("release workflow must retain an outer timeout for stalled setup, verification, build, or publish steps")
+	}
+}
+
 func TestReleaseScriptChecksGitMutationsAndPushesAtomically(t *testing.T) {
 	script := readTestFile(t, "../../scripts/release.ps1")
 

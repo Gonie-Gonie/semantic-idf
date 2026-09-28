@@ -1,3 +1,8 @@
+param(
+    [ValidatePattern('^\d+(?:ns|us|\xB5s|ms|s|m|h)$')]
+    [string]$GoTestTimeout = "20m"
+)
+
 $ErrorActionPreference = "Stop"
 
 . "$PSScriptRoot\toolchain.ps1"
@@ -20,8 +25,8 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 & "$PSScriptRoot\frontend-build.ps1"
 Push-Location $paths.RepoRoot
 try {
-    & $paths.GoExe test ./...
-    Assert-LastExitCode -Operation "go test ./..."
+    & $paths.GoExe test "-timeout=$GoTestTimeout" ./...
+    Assert-LastExitCode -Operation "go test -timeout=$GoTestTimeout ./..."
 }
 finally {
     Pop-Location

@@ -3,6 +3,7 @@ package frontendchecks
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -196,14 +197,23 @@ func epath161OwnedChromeCleanup(t *testing.T, command *exec.Cmd, profile string)
 				select {
 				case <-wait:
 					closed = true
-				case <-time.After(5 * time.Second):
+				case <-time.After(15 * time.Second):
 					// Last resort is exactly the exec.Cmd process this test started.
 					// No taskkill tree, broad Chrome search, or user-browser endpoint.
-					_ = command.Process.Kill()
-					select {
-					case <-wait:
+					killErr := command.Process.Kill()
+					if errors.Is(killErr, os.ErrProcessDone) {
 						closed = true
-					case <-time.After(2 * time.Second):
+					} else {
+						if killErr != nil {
+							t.Logf("killing test-owned Chrome: %v", killErr)
+						}
+						// Process.Kill is asynchronous. In particular, a loaded Windows
+						// runner can take longer than two seconds to signal and reap Chrome.
+						select {
+						case <-wait:
+							closed = true
+						case <-time.After(10 * time.Second):
+						}
 					}
 				}
 			}
