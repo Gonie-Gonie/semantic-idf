@@ -132,8 +132,9 @@ snapshot.
 
 ## Shared selection and navigation
 
-3D, Plan, Network, and Semantic Text share one semantic selection. Selecting a
-Topology object automatically locates its input source, emphasizes its one-hop
+3D, Plan, Network, and the internal Semantic projection share one semantic
+selection. In v0.5.0, selecting a Topology object locates its visible Text,
+JSON, or Table input source, emphasizes its one-hop
 related objects, and strongly fades the rest without removing them from the
 active Level. Navigation history restores view mode, Level, metric, layout,
 shared spatial visibility,

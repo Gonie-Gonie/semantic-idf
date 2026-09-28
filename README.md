@@ -67,30 +67,30 @@ The packaged executable opens the desktop app when run without arguments. It als
 
 ```powershell
 # Metrics / diagnostics / full analysis
-.\build\bin\semantic-idf-v0.4.4.exe cli metrics -format text .\model.idf
-.\build\bin\semantic-idf-v0.4.4.exe cli metrics -format json -o .\metrics.json .\model.idf
-.\build\bin\semantic-idf-v0.4.4.exe cli metrics -format xlsx -o .\metrics.xlsx .\model.idf
-.\build\bin\semantic-idf-v0.4.4.exe cli diagnostics -format csv -o .\diagnostics.csv .\model.idf
-.\build\bin\semantic-idf-v0.4.4.exe cli analyze -format json -o .\report.json .\model.idf
+.\build\bin\semantic-idf-v0.5.0.exe cli metrics -format text .\model.idf
+.\build\bin\semantic-idf-v0.5.0.exe cli metrics -format json -o .\metrics.json .\model.idf
+.\build\bin\semantic-idf-v0.5.0.exe cli metrics -format xlsx -o .\metrics.xlsx .\model.idf
+.\build\bin\semantic-idf-v0.5.0.exe cli diagnostics -format csv -o .\diagnostics.csv .\model.idf
+.\build\bin\semantic-idf-v0.5.0.exe cli analyze -format json -o .\report.json .\model.idf
 
 # Batch metrics
-.\build\bin\semantic-idf-v0.4.4.exe cli batch-metrics -format csv -o .\compare.csv .\a.idf .\b.epjson
-.\build\bin\semantic-idf-v0.4.4.exe cli batch-metrics -format xlsx -orientation files -o .\compare.xlsx .\a.idf .\b.idf
+.\build\bin\semantic-idf-v0.5.0.exe cli batch-metrics -format csv -o .\compare.csv .\a.idf .\b.epjson
+.\build\bin\semantic-idf-v0.5.0.exe cli batch-metrics -format xlsx -orientation files -o .\compare.xlsx .\a.idf .\b.idf
 
 # Existing simulation Energy Path (read-only; no new simulation)
-.\build\bin\semantic-idf-v0.4.4.exe energy-path .\run --input .\run\model.idf --format json
-.\build\bin\semantic-idf-v0.4.4.exe energy-path .\run --scope zone --zone Core_bottom --format csv --include-trace
+.\build\bin\semantic-idf-v0.5.0.exe energy-path .\run --input .\run\model.idf --format json
+.\build\bin\semantic-idf-v0.5.0.exe energy-path .\run --scope zone --zone Core_bottom --format csv --include-trace
 
 # Cleanup
-.\build\bin\semantic-idf-v0.4.4.exe cli clean --dry-run .\model.idf
-.\build\bin\semantic-idf-v0.4.4.exe cli clean -rules all --compact -o .\cleaned.idf .\model.idf
-.\build\bin\semantic-idf-v0.4.4.exe cli clean -rules none --semantic-duplicates -o .\semantic-fixed.idf .\model.idf
+.\build\bin\semantic-idf-v0.5.0.exe cli clean --dry-run .\model.idf
+.\build\bin\semantic-idf-v0.5.0.exe cli clean -rules all --compact -o .\cleaned.idf .\model.idf
+.\build\bin\semantic-idf-v0.5.0.exe cli clean -rules none --semantic-duplicates -o .\semantic-fixed.idf .\model.idf
 
 # Conversion
-.\build\bin\semantic-idf-v0.4.4.exe cli convert -to idf -o .\model.idf .\model.epjson
-.\build\bin\semantic-idf-v0.4.4.exe cli convert -to json -o .\model.epjson .\model.idf
-.\build\bin\semantic-idf-v0.4.4.exe cli convert -to semantic-yaml -o .\model.semantic.yaml .\model.idf
-.\build\bin\semantic-idf-v0.4.4.exe cli convert -to table -o .\model.tables.xlsx .\model.idf
+.\build\bin\semantic-idf-v0.5.0.exe cli convert -to idf -o .\model.idf .\model.epjson
+.\build\bin\semantic-idf-v0.5.0.exe cli convert -to json -o .\model.epjson .\model.idf
+.\build\bin\semantic-idf-v0.5.0.exe cli convert -to semantic-yaml -o .\model.semantic.yaml .\model.idf
+.\build\bin\semantic-idf-v0.5.0.exe cli convert -to table -o .\model.tables.xlsx .\model.idf
 ```
 
 `convert -to semantic-yaml` writes a one-way semantic YAML projection for inspection and token editing. `-to yaml`
@@ -118,7 +118,7 @@ The script chooses the semver bump from release-note sections when no explicit v
 - `Added` or `Features`: minor.
 - `Fixed`, `Changed`, `Performance`, `Security`, documentation-only, or internal-only notes: patch.
 
-For the first release, if no `v*` tag exists and `cmd/semantic-idf/wails.json` already has a product version, `auto` releases that current version. The current test baseline is `0.1.0`, so the first workflow run can leave `version` empty or explicitly set `0.1.0`.
+For the first release, if no `v*` tag exists and `cmd/semantic-idf/wails.json` already has a product version, `auto` releases that current version. Later automatic bumps use the latest release tag as their base, so rerunning a prepared release does not increment the version twice.
 
 Useful local release commands:
 
@@ -142,8 +142,8 @@ The app toolbar includes top-level Tools, Guide, and Settings navigation buttons
 
 ## Input Views
 
-- Semantic, Text, JSON, and Table are peer tabs styled consistently with the analysis tabs; the former Input View heading and line counter are not shown.
-- Semantic presents the parsed object hierarchy and evidence without requiring a separate reveal command; cross-view selection stays synchronized automatically.
+- Text, JSON, and Table are peer tabs styled consistently with the analysis tabs; Text is the default and the former Input View heading and line counter are not shown.
+- The Semantic structure projection and renderer remain available internally for cross-view identity and a lightweight rollback, but the Semantic tab, shortcuts, settings entry, and saved-view restoration are not exposed in v0.5.0.
 - A shared input filter applies across Text, JSON, and Table views by matching object type, name/index, field label, and value text.
 - Text: fully expanded editable object and field summaries that update the saved source document directly.
 - JSON: a structured epJSON-like editor with read-only syntax tokens and inline-editable value tokens that patch the shared document model.
@@ -166,7 +166,7 @@ The app toolbar includes top-level Tools, Guide, and Settings navigation buttons
 - Tools includes Batch Metrics, which opens several EnergyPlus inputs, analyzes them concurrently, displays progress, compares model metrics in a transposable table, and exports CSV or XLSX results.
 - Batch Simulation uses fixed purpose defaults for output application, frequency, detail, allocation, period, and scope. It automatically resolves a compatible registered or detected EnergyPlus installation for each input file, while retaining purpose, weather, recursion, and worker controls.
 - Tools contains Batch Metrics, Batch Simulation, and Diagnose. Diagnose lets users choose cleanup rules, filter and include/exclude individual candidates, apply fixes back to the app snapshot, or save a cleaned copy.
-- Settings are stored under the local app data/config directory and currently expose only the page frame for future options.
+- Settings are stored under the local app data/config directory and cover appearance and topology colors, EnergyPlus/weather defaults, keyboard shortcuts, Profile analysis preferences, and storage actions.
 
 ## Project Layout
 

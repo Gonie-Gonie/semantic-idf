@@ -205,6 +205,9 @@ function Get-LatestReleaseTag {
     }
 
     $tags = @(git -C $RepoRoot tag --list "v[0-9]*" --sort=-version:refname)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to inspect existing release tags."
+    }
     if ($tags.Count -eq 0) {
         return ""
     }
@@ -219,6 +222,10 @@ function Assert-CleanGitTree {
     }
 
     $status = @(git -C $RepoRoot status --porcelain)
+    $statusExitCode = $LASTEXITCODE
+    if ($statusExitCode -ne 0) {
+        throw "Failed to inspect the Git working tree before release."
+    }
     if ($status.Count -gt 0) {
         throw "Working tree must be clean for commit/tag/push/publish. Commit or stash changes, or pass -AllowDirty for local prepare-only testing."
     }
@@ -291,7 +298,8 @@ function Read-ReleaseNoteBody {
 function Get-ReleaseNoteSource {
     param(
         [string]$UnreleasedPath,
-        [string]$VersionedPath
+        [string]$VersionedPath,
+        [switch]$AllowVersionedFallback
     )
 
     $unreleased = Read-ReleaseNoteBody -Path $UnreleasedPath
@@ -302,11 +310,13 @@ function Get-ReleaseNoteSource {
         }
     }
 
-    $versioned = Read-ReleaseNoteBody -Path $VersionedPath
-    if ($versioned.HasEntries) {
-        return [pscustomobject]@{
-            Body = $versioned.Body
-            Source = "versioned"
+    if ($AllowVersionedFallback) {
+        $versioned = Read-ReleaseNoteBody -Path $VersionedPath
+        if ($versioned.HasEntries) {
+            return [pscustomobject]@{
+                Body = $versioned.Body
+                Source = "versioned"
+            }
         }
     }
 
@@ -356,8 +366,13 @@ function Get-TargetVersion {
         $bumpKind = Get-InferredBump -ReleaseNoteBody $ReleaseNoteBody
     }
 
+    $baseVersion = $CurrentVersion
+    if (-not [string]::IsNullOrWhiteSpace($LatestTag)) {
+        $baseVersion = (Parse-SemVer -Text $LatestTag).Text
+    }
+
     return [pscustomobject]@{
-        Version = Add-SemVerBump -CurrentVersion $CurrentVersion -BumpKind $bumpKind
+        Version = Add-SemVerBump -CurrentVersion $baseVersion -BumpKind $bumpKind
         Bump = $bumpKind
     }
 }
@@ -438,6 +453,10 @@ The release script infers bump size from these sections:
 ## Fixed
 
 - _None._
+
+## Performance
+
+- _None._
 "@
     Write-TextFile -Path $Path -Text $content
 }
@@ -502,16 +521,26 @@ function Invoke-GitReleaseCommit {
     foreach ($path in $Paths) {
         if (Test-Path -LiteralPath $path) {
             git -C $RepoRoot add -- (Convert-ToGitPath -RepoRoot $RepoRoot -Path $path)
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to stage release metadata: $path"
+            }
         }
     }
 
     git -C $RepoRoot diff --cached --quiet
-    if ($LASTEXITCODE -eq 0) {
+    $diffExitCode = $LASTEXITCODE
+    if ($diffExitCode -eq 0) {
         Write-Host "[release] No tracked release metadata changes to commit."
         return
     }
+    if ($diffExitCode -gt 1) {
+        throw "Failed to inspect staged release metadata."
+    }
 
     git -C $RepoRoot commit -m "Release v$TargetVersion"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to create release commit for v$TargetVersion."
+    }
 }
 
 function Invoke-GitTag {
@@ -527,6 +556,9 @@ function Invoke-GitTag {
     }
 
     git -C $RepoRoot tag -a $tagName -m "Release $tagName"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to create release tag: $tagName"
+    }
 }
 
 function Assert-ExistingGitTag {
@@ -556,8 +588,11 @@ function Invoke-GitPush {
         throw "Could not determine branch name for push."
     }
 
-    git -C $RepoRoot push origin "HEAD:$branch"
-    git -C $RepoRoot push origin "v$TargetVersion"
+    $tagName = "v$TargetVersion"
+    git -C $RepoRoot push --atomic origin "HEAD:$branch" "refs/tags/${tagName}:refs/tags/${tagName}"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to atomically push branch $branch and tag $tagName."
+    }
 }
 
 function Test-GitHubReleaseExists {
@@ -680,7 +715,8 @@ if (-not [string]::IsNullOrWhiteSpace($Version)) {
     $temporaryVersion = $currentVersion
 }
 $temporaryVersionedPath = Join-Path $releaseNotesDir "v$temporaryVersion.md"
-$noteSource = Get-ReleaseNoteSource -UnreleasedPath $unreleasedPath -VersionedPath $temporaryVersionedPath
+$allowVersionedNoteSource = -not [string]::IsNullOrWhiteSpace($Version) -or $ExistingTag
+$noteSource = Get-ReleaseNoteSource -UnreleasedPath $unreleasedPath -VersionedPath $temporaryVersionedPath -AllowVersionedFallback:$allowVersionedNoteSource
 $latestTag = Get-LatestReleaseTag -RepoRoot $repoRoot
 $target = Get-TargetVersion -CurrentVersion $currentVersion -RequestedVersion $Version -RequestedBump $Bump -ReleaseNoteBody $noteSource.Body -LatestTag $latestTag
 $targetVersion = $target.Version

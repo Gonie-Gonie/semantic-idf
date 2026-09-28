@@ -14,7 +14,8 @@ semantic-idf energy-path .\run --format csv --include-trace -o .\energy-path-tra
 ```
 
 Use the packaged executable's actual path if it is not on `PATH`, for example
-`.\build\bin\semantic-idf-v0.4.4.exe`. The optional `cli` prefix also works.
+`.\build\bin\semantic-idf-vX.Y.Z.exe` with the installed version substituted.
+The optional `cli` prefix also works.
 Options may appear before or after the result path. Quote paths and Zone names
 containing spaces; use `--` before a positional path beginning with `-`.
 

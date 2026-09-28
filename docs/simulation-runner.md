@@ -532,7 +532,9 @@ An unavailable area produces an unavailable intensity. Conversion ratios,
 percentages, non-energy quantities, and stored/exported energy totals retain
 their original meaning and units.
 
-Purpose result viewers now include:
+The following retained backend/export and legacy viewer contracts document
+compatibility and trace semantics; they do not describe the streamlined v0.5.0
+Energy UI summarized under **Current Request** above:
 
 - Basic Energy facility/end-use monthly charts, zone matrix, zone reported
   energy table, and `Overview` / `Sankey` / `Monthly` / `Zones` / `Sources` /

@@ -2,6 +2,109 @@
 
 All notable changes to SemanticIDF are recorded here from release notes.
 
+## [0.5.0] - 2026-09-28
+
+## Highlights Compared With v0.4.4
+
+- Rebuilt the simulation Sankey as the canonical Energy Path: `Load Drivers →
+  Thermal Loads → End-use Energy → Energy Sources`, with explicit thermal/site
+  conversion, traceable allocation, quality, and reconciliation.
+- Completed engineering acceptance against reference EnergyPlus models spanning
+  versions 22.1, 23.2, 24.2, and 25.1, including office, ideal-loads, PTAC,
+  PTHP, fan-coil, VRF, radiant, district and mixed-fuel, ZoneGroup, pool,
+  photovoltaic, storage, and cogeneration cases.
+- Simplified the desktop result experience around chart-first Energy,
+  executed-loop HVAC inspection, Comfort graphs, and focused Topology and
+  Profile workflows.
+
+## Added
+
+- Added the v2 Energy Path result contract with canonical Drivers, Loads, End
+  Uses, Carriers, Ratios, Residuals, and Top Zones collections, plus source
+  evidence, raw/effective/allocated values, and independent quantities on both
+  sides of equipment conversions.
+- Added read-only Energy Path access for existing EnergyPlus runs through the
+  CLI, desktop/local HTTP API, and standard-library Python client. JSON, CSV,
+  HTML, XLSX, and batch-comparison exports can retain full trace data when
+  requested.
+- Added model-aware Monthly and Hourly Energy charts, executed-loop HVAC
+  topology with per-node trends and line/scatter inspection, and zone/building
+  Comfort indicators for temperature, setpoints, PMV/PPD, humidity, and
+  reported unmet time.
+
+## Changed
+
+- Renamed the simulation Sankey to Energy Path and fixed its left-to-right flow
+  direction. The graph separates thermal kWh from site kWh at equipment
+  conversion, defaults to Building / Annual, supports Building or Zone scope
+  and annual/month periods, and retains the compatibility renderer for v1
+  results.
+- Energy results now show heating and cooling together, report kWh/m² to two
+  decimals using executed-model floor area, and open Monthly or Hourly charts
+  when a component is selected. The previous KPI cards, Service selector,
+  source-object lists, and cross-result navigation actions were removed.
+- Simplified main and Batch Simulation around fixed purpose defaults and
+  automatic selection of a compatible EnergyPlus installation. Integrity,
+  Custom Outputs, advanced/manual run controls, Batch Output QA, and the main
+  Output tab were removed; documented backend output APIs remain available.
+- Streamlined Topology around shared Level selection, focused 3D/Plan visibility,
+  a draggable Network, and one selected-object detail panel. HVAC now uses
+  compact executed-loop and zone-service selectors, while Profile uses a
+  table-aligned multi-selection overview and fixed engineering time-profile
+  views.
+- Renamed Summary to Metrics, moved diagnostics and reviewed cleanup to Tools /
+  Diagnose, and consolidated the desktop/CLI command, frontend, and internal Go
+  packages under `cmd/semantic-idf` while preserving packaged command and
+  `build/bin` paths.
+- Withheld the Semantic structure input view from tabs, shortcuts, view lists,
+  settings, and restored saved state, and made Text the default input view. Its
+  projection, renderer, navigation data, and feature switch remain available
+  for a lightweight rollback; Text, JSON, and Table continue to edit the shared
+  source document.
+- Replaced visible `N/A` sentinels with an em dash and retained distinct
+  configured, missing, partial, inferred, and unavailable states in tooltips,
+  warnings, and accessibility metadata.
+
+## Fixed
+
+- Closed Energy Path accounting gaps in signed driver/load direction,
+  monthly-before-annual aggregation, multiplier application, duplicate
+  prevention, end-use/carrier splits, and direct, service-path, and fallback
+  Zone allocation.
+- Corrected source identity and reporting-frequency matching so Monthly
+  evidence cannot borrow Hourly or Annual observations, absent values remain
+  unknown instead of becoming synthetic zeroes, and conversion links require
+  independent quantities from their thermal and site sides.
+- Preserved native consumption, production, and service boundaries for PV,
+  storage charge/discharge, cogeneration, shared plants, pools, district
+  energy, mixed fuels, VRF, radiant, fan-coil, PTAC/PTHP, simple ventilation,
+  and ZoneGroup equipment without cross-service borrowing or double counting.
+- Fixed missing HVAC and Comfort results on large runs by reading
+  purpose-specific series independently of preview limits and parser time
+  cutoffs, and reduced stalled finalization through staged SQL/result parsing.
+- Corrected Metrics floor-area and coordinate calculations, Profile precision
+  and partial-state reporting, HVAC circuit and setpoint routing, and Main
+  workspace restoration across Tools, Guide, and Settings.
+- Hardened release automation so Git status, staging, commit, and tag failures
+  stop the release, the branch and version tag are pushed atomically, prepared
+  automatic versions do not increment twice, and an empty release cannot reuse
+  notes from an already published version.
+
+## Performance
+
+- Reduced simulation post-processing and result-transfer overhead with
+  SQL-first saved-result reads, compact transport, staged parsing, and indexed
+  lookup paths for Energy, HVAC, Profile, Topology, and semantic navigation.
+- Replaced repeated per-render frontend listeners with delegated handlers,
+  coalesced concurrent Batch Metrics parses through an O(1) LRU, bounded
+  Diagnose workers, and serialized Batch Simulation completion updates.
+
+## Compatibility
+
+- No breaking change is declared. Energy Path v1 payloads retain their
+  compatibility renderer, and removed UI surfaces keep their documented
+  backend or automation APIs where applicable.
+
 ## [0.4.4] - 2026-08-11
 
 ## Changed

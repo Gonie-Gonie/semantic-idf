@@ -185,9 +185,9 @@ func TestFrontendEnergyPathNamingDocumentationAndStyles(t *testing.T) {
 		}
 	}
 
-	releaseNotes := readTestFile(t, "../../docs/release-notes/unreleased.md")
-	if !strings.Contains(releaseNotes, "Renamed the Simulation Sankey result to Energy Path") {
-		t.Fatal("unreleased notes do not record the Energy Path naming and direction change")
+	releaseNotes := readTestFile(t, "../../docs/release-notes/v0.5.0.md")
+	if !strings.Contains(releaseNotes, "Renamed the simulation Sankey to Energy Path") {
+		t.Fatal("v0.5.0 release notes do not record the Energy Path naming and direction change")
 	}
 }
 

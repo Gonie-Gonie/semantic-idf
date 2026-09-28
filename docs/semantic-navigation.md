@@ -5,23 +5,28 @@ navigation between Semantic Text and participating analysis panels. New panels a
 semantic projections must follow this contract instead of introducing a
 panel-specific click or jump model.
 
+> **v0.5.0 visibility:** the Semantic structure view is feature-gated and is
+> not exposed as an input tab, shortcut, setting, or restored saved view. This
+> document remains the internal identity/navigation contract used by analysis
+> panels. User-visible source reveals resolve through Text, JSON, or Table; the
+> projection, occurrence index, and renderer remain available for rollback.
+
 ## Product model
 
-### Left Semantic Text
+### Internal Semantic projection and visible input views
 
-- Preserves IDF objects and fields as source anchors.
-- Lets users read relationships between IDF objects as zone, profile, service,
-  and output flows.
-- Acts as a navigation index from a semantic entity to its other views.
-- Displays a projection, while every available source anchor continues to map
-  to the original IDF.
+- The internal projection preserves IDF objects and fields as source anchors
+  and indexes relationships between model entities and analysis views.
+- Visible Text, JSON, and Table views reveal and edit the original shared
+  source document without exposing the Semantic structure surface.
+- Every available source anchor continues to map to the original IDF.
 
 ### Right Analysis Panels
 
 - Metrics, Profile, and Topology are
   specialized lenses over the same semantic entities.
-- A target selected in a panel must be able to return to the most appropriate
-  occurrence in Semantic Text.
+- A target selected in a panel must retain its most appropriate internal
+  semantic occurrence and reveal the corresponding visible input source.
 - HVAC and Simulation retain local selections. Their items do not open the
   semantic reveal chooser, follow selections into another view, or appear as
   semantic navigation destinations. Their top-level tabs remain available.
