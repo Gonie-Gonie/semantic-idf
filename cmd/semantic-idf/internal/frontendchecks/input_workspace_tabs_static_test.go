@@ -15,15 +15,17 @@ func TestInputWorkspaceUsesTheResultTabVisualAndAccessibilityContract(t *testing
 		t.Fatal("input views must use the same labeled <nav class=\"tabs\"> pattern as result tabs")
 	}
 	views := []struct {
-		name  string
-		tabID string
+		name   string
+		tabID  string
+		active bool
+		hidden bool
 	}{
-		{name: "semantic", tabID: "inputSemanticTab"},
-		{name: "text", tabID: "inputTextTab"},
+		{name: "semantic", tabID: "inputSemanticTab", hidden: true},
+		{name: "text", tabID: "inputTextTab", active: true},
 		{name: "json", tabID: "inputJSONTab"},
 		{name: "table", tabID: "inputTableTab"},
 	}
-	for index, contract := range views {
+	for _, contract := range views {
 		view := contract.name
 		button := regexp.MustCompile(`(?s)<button[^>]*class="([^"]*)"[^>]*data-input-view="` + view + `"[^>]*type="button"[^>]*>`).FindStringSubmatch(inputTabs[1])
 		if len(button) != 2 || !hasHTMLClass(button[1], "tab") {
@@ -31,7 +33,7 @@ func TestInputWorkspaceUsesTheResultTabVisualAndAccessibilityContract(t *testing
 		}
 		buttonTag := button[0]
 		expectedSelected := "false"
-		if index == 0 {
+		if contract.active {
 			expectedSelected = "true"
 		}
 		for _, required := range []string{`role="tab"`, `aria-selected="` + expectedSelected + `"`, `aria-controls="` + view + `InputView"`} {
@@ -39,14 +41,26 @@ func TestInputWorkspaceUsesTheResultTabVisualAndAccessibilityContract(t *testing
 				t.Fatalf("%s input tab is missing accessibility state %q", view, required)
 			}
 		}
-		if index == 0 && !hasHTMLClass(button[1], "active") {
-			t.Fatal("Semantic must remain the initially active input tab")
+		if hasHTMLClass(button[1], "active") != contract.active {
+			t.Fatalf("%s input tab initial active state is incorrect", view)
 		}
-		panel := regexp.MustCompile(`(?s)<div[^>]*id="` + view + `InputView"[^>]*>`).FindString(editor)
+		if hasHTMLAttribute(buttonTag, "hidden") != contract.hidden {
+			t.Fatalf("%s input tab initial hidden state is incorrect", view)
+		}
+		panel := regexp.MustCompile(`(?s)<div[^>]*class="([^"]*)"[^>]*id="` + view + `InputView"[^>]*>`).FindStringSubmatch(editor)
+		if len(panel) != 2 {
+			t.Fatalf("%s input panel is missing", view)
+		}
 		for _, required := range []string{`role="tabpanel"`, `aria-labelledby="` + contract.tabID + `"`} {
-			if !strings.Contains(panel, required) {
+			if !strings.Contains(panel[0], required) {
 				t.Fatalf("%s input panel is missing accessibility relationship %q", view, required)
 			}
+		}
+		if hasHTMLClass(panel[1], "active") != contract.active {
+			t.Fatalf("%s input panel initial active state is incorrect", view)
+		}
+		if hasHTMLAttribute(panel[0], "hidden") != !contract.active {
+			t.Fatalf("%s input panel initial hidden state is incorrect", view)
 		}
 	}
 
@@ -56,6 +70,9 @@ func TestInputWorkspaceUsesTheResultTabVisualAndAccessibilityContract(t *testing
 	}
 
 	stateSource := readTestFile(t, "frontend/src/js/state.js")
+	if !strings.Contains(stateSource, `activeInputView: "text"`) {
+		t.Fatal("Text must remain the initial runtime input view while Semantic is withheld")
+	}
 	if !strings.Contains(stateSource, `document.querySelectorAll(".tab[data-input-view]")`) {
 		t.Fatal("input tab discovery must be scoped to shared .tab input-view buttons")
 	}
@@ -64,13 +81,14 @@ func TestInputWorkspaceUsesTheResultTabVisualAndAccessibilityContract(t *testing
 	}
 	inputViews := readTestFile(t, "frontend/src/js/views/input-views.js")
 	switchView := sliceBetween(inputViews, "export async function switchInputView", "export function setTableOrientation")
-	for _, required := range []string{`setAttribute("aria-selected"`, "button.tabIndex", "view.hidden"} {
+	for _, required := range []string{`viewName = exposedInputView(viewName)`, `setAttribute("aria-selected"`, "button.tabIndex", "view.hidden"} {
 		if !strings.Contains(switchView, required) {
 			t.Fatalf("input tab switching must update accessibility state, missing %q", required)
 		}
 	}
 	mainSource := readTestFile(t, "frontend/src/js/main.js")
 	for _, required := range []string{
+		`!SHOW_SEMANTIC_STRUCTURE && viewID === "input-semantic"`,
 		`button.addEventListener("keydown"`,
 		`"ArrowLeft"`,
 		`"ArrowRight"`,
@@ -81,6 +99,23 @@ func TestInputWorkspaceUsesTheResultTabVisualAndAccessibilityContract(t *testing
 		if !strings.Contains(mainSource, required) {
 			t.Fatalf("roving input tabs must remain keyboard reachable, missing %q", required)
 		}
+	}
+	features := readTestFile(t, "frontend/src/js/ui-features.js")
+	for _, required := range []string{
+		`export const SHOW_SEMANTIC_STRUCTURE = false`,
+		`viewName === "semantic" ? "text" : viewName`,
+	} {
+		if !strings.Contains(features, required) {
+			t.Fatalf("Semantic structure hide/rollback gate is missing %q", required)
+		}
+	}
+	shortcuts := readTestFile(t, "frontend/src/js/shortcuts.js")
+	if !strings.Contains(shortcuts, `inputSemantic: SHOW_SEMANTIC_STRUCTURE ?`) {
+		t.Fatal("the dormant Semantic shortcut is not gated by the rollback switch")
+	}
+	settings := readTestFile(t, "frontend/src/settings.html")
+	if !strings.Contains(settings, `...(SHOW_SEMANTIC_STRUCTURE ? [["inputSemantic", "shortcut.inputSemantic"]] : [])`) {
+		t.Fatal("Settings still exposes the dormant Semantic shortcut without the rollback switch")
 	}
 }
 
@@ -203,4 +238,8 @@ func hasHTMLClass(classList, target string) bool {
 		}
 	}
 	return false
+}
+
+func hasHTMLAttribute(tag, attribute string) bool {
+	return regexp.MustCompile(`(?:^|\s)` + regexp.QuoteMeta(attribute) + `(?:\s|=|>)`).MatchString(tag)
 }

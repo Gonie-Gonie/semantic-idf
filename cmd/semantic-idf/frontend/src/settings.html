@@ -46,6 +46,7 @@
         saveAppSettings,
       } from "./js/settings-client.js";
       import { formatAppVersion, loadAppInfo, renderAppInfo } from "./js/app-info.js";
+      import { SHOW_SEMANTIC_STRUCTURE } from "./js/ui-features.js";
       import {
         analysisTabLabel,
         normalizeAnalyzeTabOrder,
@@ -80,7 +81,7 @@
         ["primaryOpen", "shortcut.primaryOpen"],
         ["availableViews", "shortcut.availableViews"],
         ["clearSelection", "shortcut.clearSelection"],
-        ["inputSemantic", "shortcut.inputSemantic"],
+        ...(SHOW_SEMANTIC_STRUCTURE ? [["inputSemantic", "shortcut.inputSemantic"]] : []),
         ["inputText", "shortcut.inputText"],
         ["inputJson", "shortcut.inputJson"],
         ["inputTable", "shortcut.inputTable"],

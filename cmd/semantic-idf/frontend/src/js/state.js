@@ -106,7 +106,7 @@ export const state = {
   geometryReady: false,
   activeResultTab: "metrics",
   resultTabManuallySelected: false,
-  activeInputView: "semantic",
+  activeInputView: "text",
   activeProfileView: "profile",
   activeProfileGroupId: "",
   activeProfileZoneName: "",

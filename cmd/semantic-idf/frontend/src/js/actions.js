@@ -611,7 +611,7 @@ export async function saveWorkspaceSnapshot() {
     savedText: state.savedText || "",
     analysisKey,
     activeResultTab: state.activeResultTab || "metrics",
-    activeInputView: state.activeInputView || "semantic",
+    activeInputView: state.activeInputView || "text",
     analysisStage: state.analysisStage || "idle",
     geometryReady: Boolean(state.geometryReady),
     globalSelection: viewSnapshot.globalSelection,

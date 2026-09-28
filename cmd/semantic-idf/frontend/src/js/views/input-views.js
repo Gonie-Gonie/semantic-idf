@@ -13,6 +13,7 @@ import {
   semanticOccurrenceChoices,
 } from "../selection-controller.js";
 import { getPanelNavigationAdapter } from "../panel-navigation-registry.js";
+import { exposedInputView } from "../ui-features.js";
 
 const FIELD_TABLE_RENDER_LIMIT = 500;
 
@@ -2267,6 +2268,7 @@ async function applyTableValue(input) {
 }
 
 export async function switchInputView(viewName, options = {}) {
+  viewName = exposedInputView(viewName);
   if (options.recordHistory !== false && state.activeInputView !== viewName) {
     recordViewHistory();
   }

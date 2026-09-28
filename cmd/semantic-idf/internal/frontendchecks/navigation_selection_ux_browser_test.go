@@ -74,6 +74,8 @@ func TestNavigationSelectionUXBrowserHarness(t *testing.T) {
 		`"metricsPrimary":1`,
 		`"sourcePrimary":1`,
 		`"maxCurrentLocations":1`,
+		`"semanticRequestFallsBack":true`,
+		`"semanticShortcutWithheld":true`,
 		`"altEnterPalette":true`,
 		`"isolatedResultClicks":2`,
 	} {
@@ -127,10 +129,32 @@ function assertExclusivePrimary(root, exact, related, label) {
 }
 
 async function runNavigationSelectionUXHarness() {
-  const [{ state }, adapters] = await Promise.all([
+  const [{ state }, adapters, inputViews] = await Promise.all([
     import("/src/js/state.js"),
     import("/src/js/panel-navigation-adapters.js"),
+    import("/src/js/views/input-views.js"),
   ]);
+
+  await inputViews.switchInputView("semantic", { recordHistory: false, revealSelection: false });
+  const semanticRequestFallsBack = state.activeInputView === "text"
+    && document.getElementById("inputSemanticTab").hidden
+    && document.getElementById("semanticInputView").hidden
+    && !document.getElementById("textInputView").hidden;
+  assert(semanticRequestFallsBack, "a direct or restored Semantic view request did not fall back to Text");
+
+  await inputViews.switchInputView("json", { recordHistory: false, revealSelection: false });
+  state.keyboardShortcuts = { ...state.keyboardShortcuts, inputSemantic: "Ctrl+1" };
+  const semanticShortcut = new KeyboardEvent("keydown", {
+    key: "1",
+    ctrlKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  document.body.dispatchEvent(semanticShortcut);
+  await Promise.resolve();
+  const semanticShortcutWithheld = state.activeInputView === "json" && !semanticShortcut.defaultPrevented;
+  assert(semanticShortcutWithheld, "the dormant Semantic shortcut still opens or consumes Ctrl+1");
+  await inputViews.switchInputView("text", { recordHistory: false, revealSelection: false });
 
   const scheduleDefinitionTarget = { view: "profile", targetKind: "profile-item", targetId: "profile-definition", priority: 100 };
   const scheduleUseTarget = { view: "profile", targetKind: "profile-item", targetId: "profile-use", priority: 90 };
@@ -295,8 +319,8 @@ async function runNavigationSelectionUXHarness() {
   sourceDefinition.dispatchEvent(altEnter);
   await new Promise((resolve) => window.requestAnimationFrame(resolve));
   const palette = document.querySelector(".navigation-command-palette");
-  const altEnterPalette = Boolean(altEnter.defaultPrevented && palette?.open && palette.querySelector('[data-command-id="input-semantic"]'));
-  assert(altEnterPalette, "Alt+Enter on an analysis row did not reach the available-views shortcut");
+  const altEnterPalette = Boolean(altEnter.defaultPrevented && palette?.open && !palette.querySelector('[data-command-id="input-semantic"]'));
+  assert(altEnterPalette, "Alt+Enter exposed the withheld Semantic structure view");
 
   palette.close();
   const [{ openPanelNavigationMenu }, selectionController] = await Promise.all([
@@ -355,6 +379,8 @@ async function runNavigationSelectionUXHarness() {
     metricsPrimary,
     sourcePrimary,
     maxCurrentLocations,
+    semanticRequestFallsBack,
+    semanticShortcutWithheld,
     altEnterPalette,
     isolatedResultClicks,
   };

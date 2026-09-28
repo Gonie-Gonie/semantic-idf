@@ -87,6 +87,12 @@ import {
 import { normalizeAnalyzeTabOrder, t, translatePage } from "./i18n.js";
 import { initializeKeyboardShortcuts } from "./shortcuts.js";
 import { getSemanticNavigationCache } from "./semantic-navigation-cache.js";
+import { SHOW_SEMANTIC_STRUCTURE } from "./ui-features.js";
+
+const semanticInputTab = document.querySelector('[data-input-view="semantic"]');
+if (semanticInputTab) {
+  semanticInputTab.hidden = !SHOW_SEMANTIC_STRUCTURE;
+}
 
 loadAndApplyAppSettings().then((result) => applyRuntimeSettings(result.settings));
 
@@ -120,7 +126,7 @@ configureSelectionController({
   isAnalysisCurrent: () => (
     state.reportAnalyzedText !== "" && state.reportAnalyzedText === getDocumentText()
   ),
-  getActiveInputView: () => `input-${state.activeInputView || "semantic"}`,
+  getActiveInputView: () => `input-${state.activeInputView || "text"}`,
   getActivePanelView: () => state.activeResultTab || "metrics",
   getCurrentSemanticContext: () => ({
     occurrenceId: state.semanticCurrentOccurrenceId || "",
@@ -299,7 +305,7 @@ function activateThermalTopologySettingShortcut(key, value) {
   return true;
 }
 
-elements.inputViewButtons.forEach((button, index, buttons) => {
+elements.inputViewButtons.forEach((button) => {
   button.addEventListener("click", async () => {
     await switchInputView(button.dataset.inputView);
   });
@@ -309,6 +315,8 @@ elements.inputViewButtons.forEach((button, index, buttons) => {
       return;
     }
     event.preventDefault();
+    const buttons = [...elements.inputViewButtons].filter((candidate) => !candidate.hidden);
+    const index = buttons.indexOf(button);
     const targetIndex = key === "Home"
       ? 0
       : key === "End"
@@ -631,6 +639,9 @@ async function openAvailableViewsForSelection() {
   const items = [];
   const originView = state.activeResultTab || selection.originView;
   for (const viewID of PANEL_NAVIGATION_VIEW_IDS) {
+    if (!SHOW_SEMANTIC_STRUCTURE && viewID === "input-semantic") {
+      continue;
+    }
     if (viewID !== "input-semantic" && viewID.startsWith("input-")) {
       continue;
     }
