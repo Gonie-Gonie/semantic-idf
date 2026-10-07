@@ -21,11 +21,22 @@ func TestVerificationUsesBoundedGoAndReleaseTimeouts(t *testing.T) {
 	verify := readTestFile(t, "../../scripts/verify.ps1")
 	for _, required := range []string{
 		`[string]$GoTestTimeout = "20m"`,
-		`& $paths.GoExe test "-timeout=$GoTestTimeout" "-p=1" ./...`,
+		`"$PSScriptRoot\test.ps1"`,
+		`-GoTestTimeout $GoTestTimeout`,
 	} {
 		if !strings.Contains(verify, required) {
 			t.Fatalf("verification must retain a bounded Go test timeout and serialize resource-heavy packages, missing %q", required)
 		}
+	}
+	runner := readTestFile(t, "../../scripts/test.ps1")
+	for _, required := range []string{`"-timeout=$GoTestTimeout"`, `'-p=1'`, `./...`} {
+		if !strings.Contains(runner, required) {
+			t.Fatalf("test runner must retain bounded, serialized full regression, missing %q", required)
+		}
+	}
+	release := readTestFile(t, "../../scripts/release.ps1")
+	if !strings.Contains(release, `"verify.ps1") -Full`) {
+		t.Fatal("release packaging must explicitly run full regression verification")
 	}
 
 	workflow := readTestFile(t, "../../.github/workflows/release.yml")

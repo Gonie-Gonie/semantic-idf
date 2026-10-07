@@ -1,0 +1,305 @@
+{
+  "version": 1,
+  "packages": [
+    {
+      "package": "./cmd/semantic-idf",
+      "defaultAreas": ["app"],
+      "defaultTier": "fast",
+      "rules": [
+        {
+          "files": ["analysis_input_cache_test.go"],
+          "areas": ["analysis", "input"],
+          "tier": "fast"
+        },
+        {
+          "files": ["batch_cache_test.go"],
+          "areas": ["batch", "input"],
+          "tier": "fast"
+        },
+        {
+          "files": ["batch_refactor_test.go"],
+          "areas": ["batch", "simulation", "export"],
+          "tier": "fast"
+        },
+        {
+          "files": ["batch_energy_path_export_*_test.go", "energy_path_v1_export_contract_test.go"],
+          "areas": ["batch", "energy-path", "export"],
+          "tier": "fast"
+        },
+        {
+          "files": ["energy_path_report_export_*_test.go"],
+          "areas": ["energy-path", "export"],
+          "tier": "fast"
+        },
+        {
+          "files": ["energy_path_projection_*_test.go"],
+          "areas": ["energy-path", "simulation", "export", "tooling"],
+          "tier": "regression"
+        },
+        {
+          "files": ["energy_path_batch_export_*_browser_test.go"],
+          "areas": ["batch", "energy-path", "export"],
+          "tier": "browser"
+        },
+        {
+          "files": ["energy_path_report_*_browser_test.go"],
+          "areas": ["energy-path", "export"],
+          "tier": "browser"
+        },
+        {
+          "files": ["simulation_result_transport_test.go"],
+          "areas": ["simulation", "energy-path"],
+          "tier": "fast"
+        },
+        {
+          "files": ["simulation_workspace_cache_test.go"],
+          "areas": ["simulation", "settings"],
+          "tier": "fast"
+        },
+        {
+          "files": ["app_test.go"],
+          "tests": ["TestAnalyzeInputText*", "TestGetCachedAnalysis*", "TestMaxAnalysisWorkersIsCapped", "TestAnalysisCache*", "TestSlimReportForMode*"],
+          "areas": ["analysis", "input"],
+          "tier": "fast"
+        },
+        {
+          "files": ["app_test.go"],
+          "tests": ["TestSlimReportForMode*"],
+          "areas": ["hvac"],
+          "tier": "fast"
+        },
+        {
+          "files": ["app_test.go"],
+          "tests": ["TestParseCachedBatchInput*", "TestThrottleBatchMetricsProgress*", "TestAnalyzeBatchMetricsPaths"],
+          "areas": ["batch", "analysis", "input"],
+          "tier": "fast"
+        },
+        {
+          "files": ["app_test.go"],
+          "tests": ["TestBatchMetricsWorkbook*"],
+          "areas": ["batch", "analysis", "export"],
+          "tier": "fast"
+        },
+        {
+          "files": ["app_test.go"],
+          "tests": ["TestBatchSimulationWorkbook*", "TestBatchSimulationEnergyDeltas*"],
+          "areas": ["batch", "simulation", "energy-path", "export"],
+          "tier": "fast"
+        },
+        {
+          "files": ["app_test.go"],
+          "tests": ["TestDefaultEnergyPlusSampleAnalyzes"],
+          "areas": ["analysis", "input", "topology"],
+          "tier": "fast"
+        },
+        {
+          "files": ["app_test.go"],
+          "tests": ["TestReplaceOutputManagementObjects*", "TestPreparePurposeSimulationRequest*", "TestApplyPurposeOutputsText*"],
+          "areas": ["simulation", "input"],
+          "tier": "fast"
+        },
+        {
+          "files": ["app_test.go"],
+          "tests": ["TestAppAssetHandlerServesMetricGuides"],
+          "areas": ["analysis", "tooling"],
+          "tier": "fast"
+        },
+        {
+          "files": ["app_test.go"],
+          "tests": ["TestAnalyzeInputTopology*", "TestAppAssetHandlerExportsTopology", "TestBatchTopology*"],
+          "areas": ["topology", "export"],
+          "tier": "fast"
+        },
+        {
+          "files": ["app_test.go"],
+          "tests": ["TestBatchTopology*"],
+          "areas": ["batch"],
+          "tier": "fast"
+        },
+        {
+          "files": ["app_test.go"],
+          "tests": ["TestNormalizeProfileSettings*", "TestDefaultSettings*", "TestLegacyRemovedInteractionSettings*", "TestLegacyGeometrySyncSetting*", "TestGraphFontSizeSettings*"],
+          "areas": ["settings"],
+          "tier": "fast"
+        },
+        {
+          "files": ["app_test.go"],
+          "tests": ["TestNormalizeProfileSettings*", "TestGraphFontSizeSettings*"],
+          "areas": ["profile"],
+          "tier": "fast"
+        },
+        {
+          "files": ["app_test.go"],
+          "tests": ["TestDefaultSettingsRetainThermalTopologyShortcuts", "TestLegacyGeometrySyncSetting*"],
+          "areas": ["topology", "navigation"],
+          "tier": "fast"
+        }
+      ]
+    },
+    {
+      "package": "./cmd/semantic-idf/internal/frontendchecks",
+      "defaultAreas": ["frontend"],
+      "defaultTier": "fast",
+      "rules": [
+        {
+          "files": ["analysis_*_test.go"],
+          "areas": ["analysis"],
+          "tier": "fast"
+        },
+        {
+          "files": ["batch_*_test.go"],
+          "areas": ["batch"],
+          "tier": "fast"
+        },
+        {
+          "files": ["batch_metrics_*_test.go"],
+          "areas": ["analysis"],
+          "tier": "fast"
+        },
+        {
+          "files": ["batch_topology_*_test.go"],
+          "areas": ["topology", "export"],
+          "tier": "fast"
+        },
+        {
+          "files": ["comfort_*_test.go"],
+          "areas": ["simulation"],
+          "tier": "fast"
+        },
+        {
+          "files": ["energy_path_*_test.go"],
+          "areas": ["energy-path"],
+          "tier": "fast"
+        },
+        {
+          "files": ["energy_path_batch_*_test.go"],
+          "areas": ["batch"],
+          "tier": "fast"
+        },
+        {
+          "files": ["energy_path_*export*_test.go", "energy_path_report_*_test.go", "energy_path_v1_contract_test.go"],
+          "areas": ["export"],
+          "tier": "fast"
+        },
+        {
+          "files": ["energy_path_history_*_test.go", "energy_path_navigation_*_test.go", "energy_path_keyboard_*_test.go"],
+          "areas": ["navigation"],
+          "tier": "fast"
+        },
+        {
+          "files": ["energy_path_state_*_test.go", "energy_path_workspace_*_test.go"],
+          "areas": ["simulation", "settings"],
+          "tier": "fast"
+        },
+        {
+          "files": ["hvac_*_test.go"],
+          "areas": ["hvac"],
+          "tier": "fast"
+        },
+        {
+          "files": ["hvac_inspection_*_test.go"],
+          "areas": ["simulation"],
+          "tier": "fast"
+        },
+        {
+          "files": ["input_*_test.go", "raw_text_removal_static_test.go"],
+          "areas": ["input"],
+          "tier": "fast"
+        },
+        {
+          "files": ["metrics_diagnose_navigation_static_test.go"],
+          "areas": ["analysis", "navigation", "tooling"],
+          "tier": "fast"
+        },
+        {
+          "files": ["missing_value_display_static_test.go"],
+          "areas": ["input", "analysis", "topology", "profile", "hvac", "simulation", "energy-path", "batch", "export", "settings", "navigation", "tooling"],
+          "tier": "fast"
+        },
+        {
+          "files": ["navigation_*_test.go", "output_navigation_static_test.go", "panel_navigation_actions_static_test.go", "result_panel_navigation_static_test.go", "selection_controller_static_test.go", "semantic_*_test.go"],
+          "areas": ["navigation"],
+          "tier": "fast"
+        },
+        {
+          "files": ["semantic_*_test.go"],
+          "areas": ["input"],
+          "tier": "fast"
+        },
+        {
+          "files": ["hvac_navigation_*_test.go", "hvac_loop_navigation_*_test.go", "profile_navigation_*_test.go", "simulation_navigation_*_test.go", "topology_navigation*_test.go", "topology_shortcuts_*_test.go"],
+          "areas": ["navigation"],
+          "tier": "fast"
+        },
+        {
+          "files": ["performance_static_test.go"],
+          "areas": ["analysis", "topology", "navigation", "hvac"],
+          "tier": "fast"
+        },
+        {
+          "files": ["phase_h_acceptance_static_test.go", "phase_h_browser_harness_test.go"],
+          "areas": ["input", "profile", "hvac", "topology", "simulation", "settings", "navigation", "tooling"],
+          "tier": "fast"
+        },
+        {
+          "files": ["profile_*_test.go"],
+          "areas": ["profile"],
+          "tier": "fast"
+        },
+        {
+          "files": ["profile_static_test.go"],
+          "tests": ["TestProfileGraphLabelFontSizeIsConfigurable"],
+          "areas": ["settings"],
+          "tier": "fast"
+        },
+        {
+          "files": ["release_process_static_test.go", "root_layout_static_test.go", "development_test_selector_test.go"],
+          "areas": ["tooling"],
+          "tier": "fast"
+        },
+        {
+          "files": ["simulation_*_test.go"],
+          "areas": ["simulation"],
+          "tier": "fast"
+        },
+        {
+          "files": ["tools_*_test.go"],
+          "areas": ["tooling"],
+          "tier": "fast"
+        },
+        {
+          "files": ["topology_*_test.go"],
+          "areas": ["topology"],
+          "tier": "fast"
+        },
+        {
+          "files": ["topology_export_*_test.go"],
+          "areas": ["export"],
+          "tier": "fast"
+        },
+        {
+          "files": ["topology_simulation_*_test.go"],
+          "areas": ["simulation"],
+          "tier": "fast"
+        },
+        {
+          "files": ["analysis_*_browser_test.go", "batch_*_browser_test.go", "comfort_*_browser_test.go", "energy_path_*_browser_test.go", "hvac_*_browser_test.go", "input_*_browser_test.go", "navigation_*_browser_test.go", "profile_*_browser_test.go", "semantic_*_browser_test.go", "simulation_*_browser_test.go", "tools_*_browser_test.go", "topology_*_browser_test.go", "phase_h_browser_harness_test.go"],
+          "areas": ["frontend"],
+          "tier": "browser"
+        },
+        {
+          "files": ["navigation_cache_static_test.go"],
+          "tests": ["TestSemanticNavigationCacheRuntimeAndLookupBudget"],
+          "areas": ["navigation"],
+          "tier": "browser"
+        },
+        {
+          "files": ["simulation_progress_actual_payload_browser_test.go"],
+          "tests": ["TestSimulationActualLargePayloadResponseAndViewsBrowser"],
+          "areas": ["simulation"],
+          "tier": "regression"
+        }
+      ]
+    }
+  ]
+}

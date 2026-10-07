@@ -8,6 +8,7 @@ CLI examples. The application's bundled Guide covers end-user workflows.
 | Document | Purpose |
 | --- | --- |
 | [Agent working notes](agent.md) | Repository conventions and implementation boundaries |
+| [Testing workflow](testing.md) | Feature/layer test selection, commit checks and full release verification |
 | [Refactoring and performance](refactoring-performance.md) | Current cleanup, code structure and performance measurements |
 | [Semantic navigation](semantic-navigation.md) | Shared identity, selection and cross-view navigation |
 | [Topology view](topology-view.md) | Geometry views, interaction and exports |

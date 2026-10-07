@@ -1,4 +1,10 @@
 param(
+    [switch]$Quick,
+    [switch]$Full,
+    [string[]]$Area = @(),
+    [ValidateSet('frontend', 'backend')][string]$Layer,
+    [switch]$Staged,
+    [string]$BaseRef,
     [ValidatePattern('^\d+(?:ns|us|\xB5s|ms|s|m|h)$')]
     [string]$GoTestTimeout = "20m"
 )
@@ -20,19 +26,14 @@ $paths = Use-RepoToolchain -RequireGo -RequireWails
 if (Get-Command git -ErrorAction SilentlyContinue) {
     git -C $paths.RepoRoot diff --check
     Assert-LastExitCode -Operation "git diff --check"
+    git -C $paths.RepoRoot diff --cached --check
+    Assert-LastExitCode -Operation "git diff --cached --check"
 }
 
 & "$PSScriptRoot\frontend-build.ps1"
-Push-Location $paths.RepoRoot
-try {
-    # Browser acceptance and SQLite-oracle packages compete heavily on Windows runners.
-    # Keep packages isolated while preserving each package's finite test timeout.
-    & $paths.GoExe test "-timeout=$GoTestTimeout" "-p=1" ./...
-    Assert-LastExitCode -Operation "go test -timeout=$GoTestTimeout -p=1 ./..."
-}
-finally {
-    Pop-Location
-}
+$testOptions = @{ Quick = $Quick; Full = $Full; Area = $Area; Staged = $Staged; BaseRef = $BaseRef }
+if ($Layer) { $testOptions.Layer = $Layer }
+& "$PSScriptRoot\test.ps1" @testOptions -GoTestTimeout $GoTestTimeout
 
 $projectDir = Join-Path $paths.RepoRoot "cmd\semantic-idf"
 Push-Location $projectDir

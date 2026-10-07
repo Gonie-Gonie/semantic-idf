@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "packages": [
+    {
+      "package": "./cmd/semantic-idf/internal/idf",
+      "defaultAreas": ["analysis"],
+      "defaultTier": "fast",
+      "rules": [
+        {"files": ["idf_test.go"], "areas": ["input"], "tests": ["TestParse*", "TestUpdateField*"]},
+        {"files": ["idf_test.go"], "areas": ["analysis"], "tests": ["TestAnalyze*"]},
+        {"files": ["idf_test.go"], "areas": ["topology"], "tests": ["TestAnalyzeBuildsZoneDetails"]},
+        {"files": ["idf_test.go"], "areas": ["tooling"], "tests": ["TestCleanup*", "TestUpdateField*", "TestAnalyzeDiagnostics*"]},
+        {"files": ["document_test.go", "document_index_test.go"], "areas": ["input", "analysis"]},
+        {"files": ["document_index_test.go"], "areas": ["hvac"], "tests": ["TestDocumentIndexHVAC*"]},
+        {"files": ["field_catalog_test.go"], "areas": ["input", "analysis"]},
+        {"files": ["field_catalog_test.go"], "areas": ["profile"], "tests": ["TestFieldCatalogCoversProfile*", "TestProfileAirflow*"]},
+        {"files": ["field_catalog_test.go"], "areas": ["topology"], "tests": ["TestFieldCatalogSuggestsAutocalculate*"]},
+        {"files": ["field_catalog_test.go"], "areas": ["hvac"], "tests": ["TestFieldCatalogCoversAirTerminal*"]},
+        {"files": ["field_catalog_test.go"], "areas": ["tooling"], "tests": ["TestFieldCatalogDiagnostics*"]},
+        {"files": ["diagnostics_test.go"], "areas": ["tooling", "analysis"]},
+        {"files": ["diagnostics_test.go"], "areas": ["hvac"], "tests": ["TestHVACNodeDiagnostics*"]},
+        {"files": ["metrics_test.go"], "areas": ["analysis", "batch", "export"]},
+        {"files": ["geometry*_test.go", "thermal*_test.go"], "areas": ["topology"]},
+        {"files": ["thermal_batch_test.go"], "areas": ["batch"]},
+        {"files": ["thermal_export_test.go"], "areas": ["export"]},
+        {"files": ["thermal_topology_integrated_acceptance_test.go"], "areas": ["navigation"]},
+        {"files": ["thermal_topology_acceptance_test.go"], "areas": ["topology"], "tier": "regression"},
+        {"files": ["hvac*_test.go"], "areas": ["hvac"]},
+        {"files": ["hvac_apply_test.go"], "areas": ["input", "simulation"]},
+        {"files": ["hvac_service_model_test.go"], "areas": ["navigation"], "tests": ["TestHVACServiceModelBuildsNavigationIndex", "TestHVACNavigation*"]},
+        {"files": ["hvac_external_fixture_test.go"], "areas": ["hvac"], "tier": "regression"},
+        {"files": ["hvac_service_model_test.go"], "areas": ["hvac"], "tests": ["TestHVACServiceModelExternalFixtureMatrix"], "tier": "regression"},
+        {"files": ["profile*_test.go"], "areas": ["profile"]},
+        {"files": ["semantic*_test.go"], "areas": ["input", "navigation"]},
+        {"files": ["semantic_navigation_large_test.go"], "areas": ["navigation"], "tier": "regression"},
+        {"files": ["output*_test.go"], "areas": ["analysis", "simulation"]},
+        {"files": ["output_hot_water_equipment_test.go", "output_heat_rejection_test.go", "output_baseboard_electric_test.go"], "areas": ["hvac", "energy-path"]},
+        {"files": ["simulation_requirements_test.go"], "areas": ["simulation"]}
+      ]
+    },
+    {
+      "package": "./cmd/semantic-idf/internal/epinput",
+      "defaultAreas": ["input"],
+      "defaultTier": "fast",
+      "rules": [
+        {"files": ["epinput_test.go"], "areas": ["hvac"], "tests": ["TestHVACDefaultSample*", "TestAnalyzeHVACDefaultSample*"]},
+        {"files": ["epinput_test.go"], "areas": ["topology"], "tests": ["TestDetailedSurfaceVertices*", "TestEPJSONVertices*"]},
+        {"files": ["epinput_test.go", "epjson_write_test.go"], "areas": ["input", "export"]}
+      ]
+    },
+    {
+      "package": "./cmd/semantic-idf/internal/cli",
+      "defaultAreas": ["tooling"],
+      "defaultTier": "fast",
+      "rules": [
+        {"files": ["*_test.go"], "areas": ["tooling"]},
+        {"files": ["cli_test.go"], "areas": ["analysis", "export"], "tests": ["TestCLIMetrics*"]},
+        {"files": ["cli_test.go"], "areas": ["input", "navigation", "export"], "tests": ["TestCLIConvertYAML"]},
+        {"files": ["cli_test.go"], "areas": ["input", "tooling"], "tests": ["TestCLIClean*"]},
+        {"files": ["cli_test.go"], "areas": ["profile", "export"], "tests": ["TestCLIProfile*"]},
+        {"files": ["cli_test.go"], "areas": ["hvac", "export"], "tests": ["TestCLIHVAC*"]},
+        {"files": ["cli_test.go"], "areas": ["topology", "export"], "tests": ["TestCLITopology*"]},
+        {"files": ["cli_test.go"], "areas": ["input", "export"], "tests": ["TestCLIConvertTable*"]},
+        {"files": ["energy_path*_test.go"], "areas": ["energy-path", "export", "tooling"]},
+        {"files": ["energy_path_epath181_test.go"], "areas": ["energy-path", "export"], "tests": ["TestEPATH181CLIActualSQLMatchesSharedJSONAndCSV"], "tier": "regression"}
+      ]
+    },
+    {
+      "package": "./cmd/semantic-idf/internal/tabular",
+      "defaultAreas": ["export", "batch"],
+      "defaultTier": "fast",
+      "rules": [{"files": ["xlsx_test.go"], "areas": ["export", "batch"], "tier": "fast"}]
+    }
+  ]
+}

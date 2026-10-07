@@ -84,10 +84,16 @@ echo SemanticIDF developer commands
 echo.
 echo   dev setup             Install repo-local Go/Wails runtime and git hook
 echo   dev check             Check repo-local runtime
-echo   dev test              Run go tests
+echo   dev test              Run fast tests and all tiers for changed features
+echo   dev test -Area NAME   Run every test tier for a feature
+echo   dev test -Quick       Run the fast baseline
+echo   dev test -Full        Run the entire regression suite
+echo   dev test -Plan        Show selected tests without executing them
+echo   dev test -List        List feature and tier counts
 echo   dev run               Run the Wails app with repo-local Go
 echo   dev build             Build the Wails executable
-echo   dev verify            Run diff check, tests, and Wails build
+echo   dev verify            Run selected tests, diff check, and Wails build
+echo   dev verify -Full      Run full regressions, diff check, and Wails build
 echo   dev release           Prepare release metadata from release notes
 echo   dev hook              Install the pre-commit hook
 echo   dev frontend-build    Validate static frontend files

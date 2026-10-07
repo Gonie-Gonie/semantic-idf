@@ -56,7 +56,28 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\release.ps1
 ```
 
-`scripts/setup.ps1` installs the repo-local runtime and a pre-commit hook. The hook runs `scripts/verify.ps1`, which performs whitespace checks, `go test ./...`, and `wails build` using `.runtime/`.
+`scripts/setup.ps1` installs the repo-local runtime and a pre-commit hook. The hook runs
+`scripts/verify.ps1 -Staged`, which checks whitespace, runs the fast tests plus browser
+and regression tests for the affected features, validates frontend assets, and builds
+the Wails executable using `.runtime/`.
+
+Choose the test scope through the same runner throughout development:
+
+```powershell
+.\dev.bat test -Plan           # Inspect the plan for changed files without running tests.
+.\dev.bat test                 # Fast tests plus all tiers for affected features.
+.\dev.bat test -Area profile   # All Profile tests, including browser/regression checks.
+.\dev.bat test -Quick          # Only the fast baseline across all features.
+.\dev.bat test -Full           # Every Go regression test.
+.\dev.bat test -List           # Current feature and tier counts.
+.\dev.bat verify               # Selected tests, whitespace/frontend checks and Wails build.
+.\dev.bat verify -Full         # Full regression suite and Wails build.
+```
+
+Tests stay beside their existing packages. The runner groups them by feature and layer;
+shared core, toolchain, and unclassified source changes select the full suite. Release
+packaging always uses `verify -Full`. See [Testing workflow](docs/testing.md) for scope
+selection, catalog maintenance and commit checks.
 
 Build artifacts and downloaded runtimes stay ignored by git.
 
@@ -133,6 +154,9 @@ Useful local release commands:
 # Fallback: publish directly through GitHub CLI.
 .\dev.bat release -Package -Commit -Tag -Push -Publish
 ```
+
+Release packaging requires the full Go test suite and a successful Wails build through
+`scripts/verify.ps1 -Full`, both locally and in the tag/manual release workflow.
 
 The app version is shown in the window title, page headers, Settings storage details, release asset names, and the built executable filename.
 

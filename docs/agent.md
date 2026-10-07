@@ -7,13 +7,15 @@
 - Use `scripts/setup.ps1` to prepare `.runtime/go`, `.runtime/bin/wails.exe`, and local Go caches per clone.
 - Prefer the top-level `dev.bat` wrapper for Windows developer commands; it applies the PowerShell bypass flags.
 - Prefer static frontend assets until a build chain becomes clearly valuable.
-- Every implementation pass should end with `scripts/verify.ps1`, then commit and push when the work is complete.
-- Every commit should use the repo-local runtime and include a successful Wails build; setup installs a local pre-commit hook for this.
+- Use `scripts/test.ps1 -Plan` to inspect changed-file selection, then run the affected tests during implementation. `-Area <feature>` runs every tier for that feature; `-Quick` runs the fast baseline and `-Full` runs all regressions. See `docs/testing.md`.
+- Before committing, use the repo-local runtime and include a successful Wails build. Setup installs a pre-commit hook that runs `scripts/verify.ps1 -Staged`; its successful selected tests and build satisfy the commit check. Do not require an additional full verification for every implementation pass or repeat an unchanged successful verification just for reporting.
+- Release packaging must call `scripts/verify.ps1 -Full`. Shared core, toolchain and unclassified source changes also select full verification automatically.
 - Keep `cmd/semantic-idf/frontend/src/guide.html` focused on end-user workflows. Developer commands and repo maintenance notes belong in README/docs, not in the in-app guide.
 - Protect user work in the git tree. Do not revert unrelated changes.
 - Favor small IDF-domain functions that can be tested without launching the desktop shell.
 - Keep desktop lifecycle/input-file operations in `app.go` and group Wails feature methods in their corresponding `analysis_app.go`, `batch_metrics_app.go`, `settings_app.go`, simulation and Energy Path modules.
-- Keep Go tests next to the package they exercise; do not centralize `_test.go` files just to reduce directory spread.
+- Preserve the existing test locations. Group execution through `scripts/test-groups-*.json`; keep white-box Go tests and their shared fixtures beside the package they exercise.
+- Register new behavior tests in the feature/tier catalog and update changed-source impact rules when adding a feature module. The runner must include newly discovered tests and fall back to full tests for unclassified source changes.
 - Keep EnergyPlus input parsing/conversion in `cmd/semantic-idf/internal/epinput`; reserve `cmd/semantic-idf/internal/idf` for low-level IDF parsing and analysis helpers.
 - Support EnergyPlus 22+ as the default compatibility range and keep version-specific IDD/schema integration pluggable.
 - Input viewing should keep Text, JSON, and Table modes in sync from one parsed/cached EnergyPlus model; Table mode should be organized by IDF object type and support row/column orientation changes.

@@ -21,6 +21,9 @@ The release script infers bump size from these sections:
 - Group desktop analysis, batch metrics and settings methods in feature modules,
   and isolate frontend analysis scheduling in a dedicated queue module.
 - Add a documentation index and remove completed temporary investigation artifacts.
+- Classify existing tests by feature, frontend/backend layer and test tier without
+  moving test files. Use one runner for development, staged commit checks and
+  mandatory full release verification.
 
 ## Fixed
 
@@ -39,3 +42,6 @@ The release script infers bump size from these sections:
 - Prepare Energy Path quality availability once per scope and reuse it for
   annual/monthly periods. Local fixture measurements and their limits are in
   `docs/refactoring-performance.md`.
+- Run the fast test baseline plus affected feature regressions during development
+  and commits, with full-suite fallback for shared or unclassified code changes.
+  Avoid requiring duplicate full-suite runs for every implementation pass.
