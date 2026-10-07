@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "defaultLanguage": "en",
+  "chapters": [
+    {
+      "id": "getting-started",
+      "title": {
+        "en": "Getting started",
+        "ko": "시작과 기본 작업"
+      },
+      "file": {
+        "en": "getting-started.en.md",
+        "ko": "getting-started.ko.md"
+      }
+    },
+    {
+      "id": "input",
+      "title": {
+        "en": "Input and source navigation",
+        "ko": "입력과 원본 탐색"
+      },
+      "file": {
+        "en": "input.en.md",
+        "ko": "input.ko.md"
+      }
+    },
+    {
+      "id": "metrics",
+      "title": {
+        "en": "Metrics and Profile",
+        "ko": "지표와 Profile"
+      },
+      "file": {
+        "en": "metrics.en.md",
+        "ko": "metrics.ko.md"
+      }
+    },
+    {
+      "id": "topology",
+      "title": {
+        "en": "Spatial and thermal topology",
+        "ko": "공간·열 연결"
+      },
+      "file": {
+        "en": "topology.en.md",
+        "ko": "topology.ko.md"
+      }
+    },
+    {
+      "id": "hvac",
+      "title": {
+        "en": "HVAC model interpretation",
+        "ko": "HVAC 모델 해석"
+      },
+      "file": {
+        "en": "hvac.en.md",
+        "ko": "hvac.ko.md"
+      }
+    },
+    {
+      "id": "simulation",
+      "title": {
+        "en": "Simulation and result inspection",
+        "ko": "시뮬레이션과 결과 해석"
+      },
+      "file": {
+        "en": "simulation.en.md",
+        "ko": "simulation.ko.md"
+      }
+    },
+    {
+      "id": "energy-path",
+      "title": {
+        "en": "Energy Path",
+        "ko": "에너지 경로"
+      },
+      "file": {
+        "en": "energy-path.en.md",
+        "ko": "energy-path.ko.md"
+      }
+    },
+    {
+      "id": "tools",
+      "title": {
+        "en": "Tools and settings",
+        "ko": "Tools와 설정"
+      },
+      "file": {
+        "en": "tools.en.md",
+        "ko": "tools.ko.md"
+      }
+    },
+    {
+      "id": "automation",
+      "title": {
+        "en": "CLI, API and exports",
+        "ko": "CLI·API·내보내기"
+      },
+      "file": {
+        "en": "automation.en.md",
+        "ko": "automation.ko.md"
+      }
+    },
+    {
+      "id": "reference",
+      "title": {
+        "en": "Units, glossary and troubleshooting",
+        "ko": "단위·용어·문제 해결"
+      },
+      "file": {
+        "en": "reference.en.md",
+        "ko": "reference.ko.md"
+      }
+    }
+  ]
+}

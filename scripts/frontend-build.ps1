@@ -41,6 +41,7 @@ $modules = @(
     "auxiliary-navigation.js",
     "command-palette.js",
     "comfort-inspection-data.js",
+    "guide-manual.js",
     "topology-loader.js",
     "topology-focus.js",
     "layout.js",
@@ -101,6 +102,7 @@ $styles = @(
     "styles/responsive.css",
     "styles/simulation.css",
     "styles/comfort-inspection.css",
+    "styles/guide-manual.css",
     "styles/workspace.css"
 )
 
@@ -109,6 +111,40 @@ foreach ($style in $styles) {
     if (-not (Test-Path $path)) {
         throw "Missing frontend/src/$style"
     }
+}
+
+$manualRoot = Join-Path $assetRoot "manual"
+$manualManifestPath = Join-Path $manualRoot "manifest.json"
+if (-not (Test-Path -LiteralPath $manualManifestPath -PathType Leaf)) {
+    throw "Missing frontend/src/manual/manifest.json"
+}
+$manualManifest = Get-Content -LiteralPath $manualManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+if ($manualManifest.version -ne 1 -or @($manualManifest.chapters).Count -eq 0) {
+    throw "Invalid technical reference manifest"
+}
+$manualChapterIds = @{}
+foreach ($chapter in $manualManifest.chapters) {
+    $chapterId = [string]$chapter.id
+    if ($chapterId -cnotmatch '^[a-z][a-z0-9-]*$' -or $manualChapterIds.ContainsKey($chapterId)) {
+        throw "Invalid or duplicate technical reference chapter ID: $chapterId"
+    }
+    $manualChapterIds[$chapterId] = $true
+    foreach ($language in @("en", "ko")) {
+        $expectedFile = "$chapterId.$language.md"
+        if ($chapter.file.$language -cne $expectedFile -or [string]::IsNullOrWhiteSpace($chapter.title.$language)) {
+            throw "Invalid $language source for technical reference chapter $chapterId"
+        }
+        $chapterPath = Join-Path $manualRoot $expectedFile
+        if (-not (Test-Path -LiteralPath $chapterPath -PathType Leaf)) {
+            throw "Missing frontend/src/manual/$expectedFile"
+        }
+        if ([string]::IsNullOrWhiteSpace((Get-Content -LiteralPath $chapterPath -Raw -Encoding UTF8))) {
+            throw "Empty technical reference chapter $expectedFile"
+        }
+    }
+}
+if (-not (Test-Path -LiteralPath (Join-Path $manualRoot "metric-guides.json") -PathType Leaf)) {
+    throw "Missing frontend/src/manual/metric-guides.json"
 }
 
 $wailsPath = Join-Path $PSScriptRoot "..\cmd\semantic-idf\wails.json"

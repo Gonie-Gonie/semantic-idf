@@ -553,6 +553,7 @@ export async function openSettings() {
 function openAuxiliaryPage(path) {
   try {
     window.sessionStorage.setItem(auxiliaryNavigationStorageKey, "main");
+    window.sessionStorage.removeItem("idfAnalyzer.auxiliaryReturnDepth");
   } catch {
     // Navigation still works when browser storage is unavailable.
   }

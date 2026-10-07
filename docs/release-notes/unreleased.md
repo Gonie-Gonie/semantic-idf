@@ -14,7 +14,10 @@ The release script infers bump size from these sections:
 
 ## Added
 
-- _None._
+- Add a bundled English/Korean technical reference manual with ten Markdown
+  chapters, chapter/section navigation, whole-manual search and stable deep links.
+- Include a registry-generated offline metric catalog alongside the live desktop
+  definitions, with units, methods, assumptions and missing-data interpretation.
 
 ## Changed
 

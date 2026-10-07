@@ -153,10 +153,14 @@ func TestFrontendEnergyPathNamingDocumentationAndStyles(t *testing.T) {
 		}
 	}
 
-	guide := readTestFile(t, "frontend/src/guide.html")
+	manifest := readTestFile(t, "frontend/src/manual/manifest.json")
+	for _, required := range []string{`"id": "energy-path"`, `"en": "energy-path.en.md"`, `"ko": "energy-path.ko.md"`} {
+		if !strings.Contains(manifest, required) {
+			t.Fatalf("Energy Path manual navigation contract missing %q", required)
+		}
+	}
+	guide := readTestFile(t, "frontend/src/manual/energy-path.en.md")
 	for _, required := range []string{
-		`href="#energy-path"`,
-		`id="energy-path"`,
 		`Load drivers → Thermal loads → End-use energy → Energy sources`,
 		`Scope and Period default to Building and Annual`,
 		`Monthly or Hourly graph`,

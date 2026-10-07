@@ -1,0 +1,569 @@
+[
+  {
+    "id": "energyplus_version",
+    "category": "Model \u0026 Inventory",
+    "name": "EnergyPlus version",
+    "source": "Version / Version Identifier.",
+    "method": "Reads the version identifier directly from the Version object.",
+    "assumptions": "Accepted versions are checked elsewhere; this metric only reports the value found in the model.",
+    "missingData": "Shown as — when no Version object or version identifier is present."
+  },
+  {
+    "id": "building_name",
+    "category": "Model \u0026 Inventory",
+    "name": "Building name",
+    "source": "Building / Name.",
+    "method": "Reads the Building object name field.",
+    "assumptions": "The first Building object is used when more than one is present.",
+    "missingData": "Shown as — when no Building name is present."
+  },
+  {
+    "id": "building_north_axis_deg",
+    "category": "Model \u0026 Inventory",
+    "name": "Building north axis",
+    "unit": "deg",
+    "source": "Building / North Axis.",
+    "method": "Reads the numeric north-axis rotation.",
+    "assumptions": "This rotation is added to calculated surface azimuths for orientation bins.",
+    "missingData": "Shown as — when the field is blank or nonnumeric."
+  },
+  {
+    "id": "object_count",
+    "category": "Model \u0026 Inventory",
+    "name": "Object count",
+    "source": "Parsed IDF or epJSON object list.",
+    "method": "Counts all parsed objects.",
+    "assumptions": "No filtering is applied.",
+    "missingData": "Always available; zero means the input contains no parsed objects."
+  },
+  {
+    "id": "object_type_count",
+    "category": "Model \u0026 Inventory",
+    "name": "Object type count",
+    "source": "Parsed IDF or epJSON object list.",
+    "method": "Counts distinct object type names.",
+    "assumptions": "Type names are compared exactly after parsing.",
+    "missingData": "Always available; zero means the input contains no parsed object types."
+  },
+  {
+    "id": "zone_count",
+    "category": "Model \u0026 Inventory",
+    "name": "Zone count",
+    "source": "Zone objects.",
+    "method": "Counts Zone objects with or without names.",
+    "assumptions": "Spaces are not counted as zones.",
+    "missingData": "Always available; zero means no Zone objects were found."
+  },
+  {
+    "id": "space_count",
+    "category": "Model \u0026 Inventory",
+    "name": "Space count",
+    "source": "Space objects.",
+    "method": "Counts Space objects.",
+    "assumptions": "The metric is independent from Zone count.",
+    "missingData": "Always available; zero means no Space objects were found."
+  },
+  {
+    "id": "schedule_count",
+    "category": "Model \u0026 Inventory",
+    "name": "Schedule count",
+    "source": "Objects whose type starts with Schedule:.",
+    "method": "Counts all schedule objects.",
+    "assumptions": "ScheduleTypeLimits is not counted as a schedule.",
+    "missingData": "Always available; zero means no schedule objects were found."
+  },
+  {
+    "id": "construction_count",
+    "category": "Model \u0026 Inventory",
+    "name": "Construction count",
+    "source": "Objects whose type starts with Construction.",
+    "method": "Counts construction objects.",
+    "assumptions": "All Construction:* variants are included.",
+    "missingData": "Always available; zero means no construction objects were found."
+  },
+  {
+    "id": "material_count",
+    "category": "Model \u0026 Inventory",
+    "name": "Material count",
+    "source": "Material* and WindowMaterial* objects.",
+    "method": "Counts opaque and window material objects.",
+    "assumptions": "Construction objects are excluded.",
+    "missingData": "Always available; zero means no material objects were found."
+  },
+  {
+    "id": "gross_floor_area_m2",
+    "category": "Geometry \u0026 Areas",
+    "name": "Gross floor area",
+    "unit": "m2",
+    "source": "Zone floor fields and floor surfaces.",
+    "method": "Sums zone floor area fields when present; otherwise sums Floor surface polygon or rectangle areas.",
+    "assumptions": "Zone multipliers are applied. Surface-derived floor area includes all floor surfaces assigned to zones.",
+    "missingData": "Shown as — when no numeric zone floor area or floor surface area can be computed."
+  },
+  {
+    "id": "conditioned_floor_area_m2",
+    "category": "Geometry \u0026 Areas",
+    "name": "Conditioned floor area",
+    "unit": "m2",
+    "source": "Gross floor area and conditioned-zone detection.",
+    "method": "Sums floor area for zones referenced by ZoneHVAC, ZoneHVAC:EquipmentConnections, or ZoneControl:Thermostat objects.",
+    "assumptions": "Zone multipliers are applied. Only zones with known floor area can contribute.",
+    "missingData": "Shown as — when conditioned zones or floor areas cannot be identified."
+  },
+  {
+    "id": "unconditioned_floor_area_m2",
+    "category": "Geometry \u0026 Areas",
+    "name": "Unconditioned floor area",
+    "unit": "m2",
+    "source": "Gross and conditioned floor area.",
+    "method": "Subtracts conditioned floor area from gross floor area.",
+    "assumptions": "The value is clamped at zero to avoid negative results from partial data.",
+    "missingData": "Shown as — when gross or conditioned floor area is unavailable."
+  },
+  {
+    "id": "footprint_area_m2",
+    "category": "Geometry \u0026 Areas",
+    "name": "Footprint area",
+    "unit": "m2",
+    "source": "Lowest floor surfaces.",
+    "method": "Sums ground-contact floor surfaces, or the lowest horizontal floor surfaces when ground boundary data is absent.",
+    "assumptions": "Zone multipliers are applied to surface areas. Bounding-box dimensions are reported separately and are not used as footprint area.",
+    "missingData": "Shown as — when no floor surface area can be computed."
+  },
+  {
+    "id": "bounding_box_area_m2",
+    "category": "Geometry \u0026 Areas",
+    "name": "Bounding box area",
+    "unit": "m2",
+    "source": "Detailed surface vertices.",
+    "method": "Calculates the XY bounding-box area from all detailed vertices.",
+    "assumptions": "This is a coarse geometric extent, not a true footprint polygon.",
+    "missingData": "Shown as — when detailed vertex extents are unavailable."
+  },
+  {
+    "id": "total_zone_volume_m3",
+    "category": "Geometry \u0026 Areas",
+    "name": "Total zone volume",
+    "unit": "m3",
+    "source": "Zone and Space volume fields, floor areas, and resolved heights.",
+    "method": "Uses numeric Zone Volume first, otherwise resolves the independent Zone volume from zone floor area and height; resolved Space volumes are a fallback only when Zone dimensions are unavailable.",
+    "assumptions": "Zone multipliers are applied exactly once. A declared Space Volume does not override its parent Zone volume. Estimated or incompletely resolved values are marked partial.",
+    "missingData": "Shown as — when neither declared nor estimated zone volume is available."
+  },
+  {
+    "id": "average_floor_height_m",
+    "category": "Geometry \u0026 Areas",
+    "name": "Average floor height",
+    "unit": "m",
+    "source": "Zone / Ceiling Height and detailed surface extents.",
+    "method": "Averages numeric zone ceiling heights; falls back to max-min vertex Z height by zone.",
+    "assumptions": "Each zone contributes once; autocalculate fields require geometry fallback.",
+    "missingData": "Shown as — when no zone height can be read or inferred."
+  },
+  {
+    "id": "building_long_side_m",
+    "category": "Geometry \u0026 Areas",
+    "name": "Building long side",
+    "unit": "m",
+    "source": "Detailed surface vertices.",
+    "method": "Uses the larger of the model XY bounding-box width and depth.",
+    "assumptions": "Only detailed vertices are considered.",
+    "missingData": "Shown as — when detailed vertex coordinates are unavailable."
+  },
+  {
+    "id": "building_short_side_m",
+    "category": "Geometry \u0026 Areas",
+    "name": "Building short side",
+    "unit": "m",
+    "source": "Detailed surface vertices.",
+    "method": "Uses the smaller nonzero side of the model XY bounding box.",
+    "assumptions": "Only detailed vertices are considered.",
+    "missingData": "Shown as — when detailed vertex coordinates are unavailable or one side is zero."
+  },
+  {
+    "id": "footprint_aspect_ratio",
+    "category": "Geometry \u0026 Areas",
+    "name": "Footprint aspect ratio",
+    "source": "Detailed surface vertices.",
+    "method": "Divides building long side by building short side.",
+    "assumptions": "A value of 1.0 indicates a square bounding footprint.",
+    "missingData": "Shown as — when either side length is unavailable."
+  },
+  {
+    "id": "envelope_area_m2",
+    "category": "Geometry \u0026 Areas",
+    "name": "Gross envelope area",
+    "unit": "m2",
+    "source": "Exterior walls, roofs, and ground floors.",
+    "method": "Sums exterior opaque wall area, roof area, and ground-contact floor area.",
+    "assumptions": "Fenestration is not subtracted from opaque base surfaces; see net opaque envelope area for the subtracted value.",
+    "missingData": "Shown as — when no envelope surface area can be computed."
+  },
+  {
+    "id": "net_opaque_envelope_area_m2",
+    "category": "Geometry \u0026 Areas",
+    "name": "Net opaque envelope area",
+    "unit": "m2",
+    "source": "Gross envelope area and fenestration area.",
+    "method": "Subtracts recognized window and opaque door area from gross envelope area.",
+    "assumptions": "This is an analyzer area balance and depends on resolved fenestration geometry.",
+    "missingData": "Shown as — when gross envelope area cannot be computed."
+  },
+  {
+    "id": "envelope_area_to_volume_ratio",
+    "category": "Geometry \u0026 Areas",
+    "name": "Envelope area to volume ratio",
+    "unit": "1/m",
+    "source": "Envelope area and total zone volume.",
+    "method": "Divides envelope area by total zone volume.",
+    "assumptions": "Uses partial volume estimates when declared volumes are incomplete.",
+    "missingData": "Shown as — when envelope area or volume is unavailable."
+  },
+  {
+    "id": "floor_area_to_volume_ratio",
+    "category": "Geometry \u0026 Areas",
+    "name": "Floor area to volume ratio",
+    "unit": "1/m",
+    "source": "Gross floor area and total zone volume.",
+    "method": "Divides gross floor area by total zone volume.",
+    "assumptions": "Uses partial volume estimates when declared volumes are incomplete.",
+    "missingData": "Shown as — when floor area or volume is unavailable."
+  },
+  {
+    "id": "exterior_wall_area_m2",
+    "category": "Envelope \u0026 Fenestration",
+    "name": "Exterior wall area",
+    "unit": "m2",
+    "source": "Building wall surfaces with exterior boundary conditions.",
+    "method": "Sums Wall surfaces exposed to Outdoors or exterior wall object types.",
+    "assumptions": "Zone multipliers are applied. Wall area is gross wall area.",
+    "missingData": "Shown as — when no exterior wall area can be computed."
+  },
+  {
+    "id": "roof_area_m2",
+    "category": "Envelope \u0026 Fenestration",
+    "name": "Roof area",
+    "unit": "m2",
+    "source": "Roof and RoofCeiling surfaces.",
+    "method": "Sums exterior roof or roof/ceiling surface area.",
+    "assumptions": "Zone multipliers are applied.",
+    "missingData": "Shown as — when no roof surface area can be computed."
+  },
+  {
+    "id": "ground_floor_area_m2",
+    "category": "Envelope \u0026 Fenestration",
+    "name": "Ground floor area",
+    "unit": "m2",
+    "source": "Floor surfaces with Ground boundary or lowest floor fallback.",
+    "method": "Sums floor surfaces adjacent to ground; uses lowest floor surfaces when boundary data is absent.",
+    "assumptions": "Zone multipliers are applied.",
+    "missingData": "Shown as — when no ground or lowest floor area can be computed."
+  },
+  {
+    "id": "window_area_m2",
+    "category": "Envelope \u0026 Fenestration",
+    "name": "Window area",
+    "unit": "m2",
+    "source": "FenestrationSurface:Detailed and simple Window objects.",
+    "method": "Sums fenestration objects whose surface type indicates window or glass door.",
+    "assumptions": "Fenestration multipliers and base-zone multipliers are applied.",
+    "missingData": "Shown as — when no window area can be computed."
+  },
+  {
+    "id": "door_area_m2",
+    "category": "Envelope \u0026 Fenestration",
+    "name": "Door area",
+    "unit": "m2",
+    "source": "Fenestration and Door objects.",
+    "method": "Sums non-glazed door area from detailed or rectangular geometry.",
+    "assumptions": "Fenestration multipliers and base-zone multipliers are applied.",
+    "missingData": "Shown as — when no door area can be computed."
+  },
+  {
+    "id": "total_wwr_percent",
+    "category": "Envelope \u0026 Fenestration",
+    "name": "Total WWR",
+    "unit": "%",
+    "source": "Exterior wall area and window area.",
+    "method": "Divides total window area by gross exterior wall area.",
+    "assumptions": "Glass doors count as window area. Wall area is gross and not net of windows.",
+    "missingData": "Shown as — when wall area is zero or unavailable."
+  },
+  {
+    "id": "north_wwr_percent",
+    "category": "Envelope \u0026 Fenestration",
+    "name": "North WWR",
+    "unit": "%",
+    "source": "Surface azimuth and WWR inputs.",
+    "method": "Divides north-facing window area by north-facing exterior wall area.",
+    "assumptions": "North is [315,360) plus [0,45) degrees after building and zone rotations.",
+    "missingData": "Shown as — when no north-facing exterior wall area is available."
+  },
+  {
+    "id": "east_wwr_percent",
+    "category": "Envelope \u0026 Fenestration",
+    "name": "East WWR",
+    "unit": "%",
+    "source": "Surface azimuth and WWR inputs.",
+    "method": "Divides east-facing window area by east-facing exterior wall area.",
+    "assumptions": "East is [45,135) degrees after building and zone rotations.",
+    "missingData": "Shown as — when no east-facing exterior wall area is available."
+  },
+  {
+    "id": "south_wwr_percent",
+    "category": "Envelope \u0026 Fenestration",
+    "name": "South WWR",
+    "unit": "%",
+    "source": "Surface azimuth and WWR inputs.",
+    "method": "Divides south-facing window area by south-facing exterior wall area.",
+    "assumptions": "South is [135,225) degrees after building and zone rotations.",
+    "missingData": "Shown as — when no south-facing exterior wall area is available."
+  },
+  {
+    "id": "west_wwr_percent",
+    "category": "Envelope \u0026 Fenestration",
+    "name": "West WWR",
+    "unit": "%",
+    "source": "Surface azimuth and WWR inputs.",
+    "method": "Divides west-facing window area by west-facing exterior wall area.",
+    "assumptions": "West is [225,315) degrees after building and zone rotations.",
+    "missingData": "Shown as — when no west-facing exterior wall area is available."
+  },
+  {
+    "id": "skylight_roof_ratio_percent",
+    "category": "Envelope \u0026 Fenestration",
+    "name": "Skylight roof ratio",
+    "unit": "%",
+    "source": "Window area on roof base surfaces and roof area.",
+    "method": "Divides skylight window area by roof area.",
+    "assumptions": "A fenestration object is treated as skylight when its base surface is a roof.",
+    "missingData": "Shown as — when roof area is zero or no skylight area can be identified."
+  },
+  {
+    "id": "total_lighting_power_w",
+    "category": "Internal Loads",
+    "name": "Total lighting power",
+    "unit": "W",
+    "source": "Lights objects.",
+    "method": "Sums LightingLevel directly and resolves Watts/Area or Watts/Person methods where supporting area or people data is available.",
+    "assumptions": "Zone and ZoneList references are expanded where possible; zone multipliers are applied.",
+    "missingData": "Shown as — when no lighting design level can be computed."
+  },
+  {
+    "id": "average_lighting_power_density_w_per_m2",
+    "category": "Internal Loads",
+    "name": "Average lighting power density",
+    "unit": "W/m2",
+    "source": "Lighting power and floor area.",
+    "method": "Divides total lighting power by conditioned floor area, falling back to gross floor area.",
+    "assumptions": "Partial lighting or floor-area inputs produce a partial status.",
+    "missingData": "Shown as — when lighting power or floor area is unavailable."
+  },
+  {
+    "id": "total_equipment_power_w",
+    "category": "Internal Loads",
+    "name": "Total equipment power",
+    "unit": "W",
+    "source": "ElectricEquipment, GasEquipment, HotWaterEquipment, SteamEquipment, and OtherEquipment objects.",
+    "method": "Sums direct design levels and resolves Watts/Area, Power/Area, Watts/Person, or Power/Person methods where supporting area or people data is available.",
+    "assumptions": "Zone and ZoneList references are expanded where possible; zone multipliers are applied.",
+    "missingData": "Shown as — when no equipment design level can be computed."
+  },
+  {
+    "id": "average_equipment_power_density_w_per_m2",
+    "category": "Internal Loads",
+    "name": "Average equipment power density",
+    "unit": "W/m2",
+    "source": "Equipment power and floor area.",
+    "method": "Divides total equipment power by conditioned floor area, falling back to gross floor area.",
+    "assumptions": "Partial equipment or floor-area inputs produce a partial status.",
+    "missingData": "Shown as — when equipment power or floor area is unavailable."
+  },
+  {
+    "id": "total_people",
+    "category": "Internal Loads",
+    "name": "Total people",
+    "unit": "people",
+    "source": "People objects.",
+    "method": "Sums People, People/Area, or Area/Person methods where supporting floor area is available.",
+    "assumptions": "Zone and ZoneList references are expanded where possible; zone multipliers are applied.",
+    "missingData": "Shown as — when no people count can be computed."
+  },
+  {
+    "id": "people_density_per_100m2",
+    "category": "Internal Loads",
+    "name": "People density",
+    "unit": "people/100m2",
+    "source": "People count and floor area.",
+    "method": "Divides total people by floor area and scales to 100 m2.",
+    "assumptions": "Conditioned floor area is preferred; gross floor area is used as fallback.",
+    "missingData": "Shown as — when people count or floor area is unavailable."
+  },
+  {
+    "id": "internal_load_object_count",
+    "category": "Internal Loads",
+    "name": "Internal load object count",
+    "source": "People, Lights, ElectricEquipment, GasEquipment, HotWaterEquipment, SteamEquipment, and OtherEquipment objects.",
+    "method": "Counts the supported internal load objects represented in these metrics.",
+    "assumptions": "Specialized internal gains with different sizing models are excluded.",
+    "missingData": "Always available; zero means no supported internal load objects were found."
+  },
+  {
+    "id": "internal_load_method_coverage",
+    "category": "Internal Loads",
+    "name": "Internal load method coverage",
+    "source": "People, Lights, ElectricEquipment, GasEquipment, HotWaterEquipment, SteamEquipment, and OtherEquipment calculation methods.",
+    "method": "Reports resolved_objects / total_objects and unresolved_method_count for supported internal load metric objects.",
+    "assumptions": "A method is unresolved when the required people, floor-area, or design-level fields cannot be resolved.",
+    "missingData": "Always available; zero totals mean no supported internal load objects were found."
+  },
+  {
+    "id": "referenced_schedule_count",
+    "category": "Schedules \u0026 Operation",
+    "name": "Referenced schedule count",
+    "source": "Fields whose comments include Schedule Name.",
+    "method": "Counts distinct schedule names referenced by non-schedule objects.",
+    "assumptions": "Schedule names are matched case-insensitively after trimming.",
+    "missingData": "Always available; zero means no schedule references were found."
+  },
+  {
+    "id": "supported_schedule_count",
+    "category": "Schedules \u0026 Operation",
+    "name": "Supported annual schedule count",
+    "source": "Schedule:Constant and Schedule:Compact objects.",
+    "method": "Counts schedules whose annual active hours can be evaluated by the v1 parser.",
+    "assumptions": "Schedule value greater than zero is treated as active.",
+    "missingData": "Always available; zero means no supported annual schedules were found."
+  },
+  {
+    "id": "unsupported_schedule_count",
+    "category": "Schedules \u0026 Operation",
+    "name": "Unsupported schedule count",
+    "source": "Schedule objects.",
+    "method": "Subtracts supported schedules from total schedule objects.",
+    "assumptions": "Unsupported schedules remain visible so operating-hour results can be interpreted.",
+    "missingData": "Always available; zero means every schedule was supported or no schedules exist."
+  },
+  {
+    "id": "model_operating_hours_h",
+    "category": "Schedules \u0026 Operation",
+    "name": "Representative operating hours",
+    "unit": "h",
+    "source": "Referenced supported schedules.",
+    "method": "Uses the maximum active annual hours among referenced supported schedules; falls back to all supported schedules.",
+    "assumptions": "A non-leap 8760-hour year is used. Compact weekday/weekend rules use a fixed Monday-start annual calendar.",
+    "missingData": "Shown as — when no supported schedule hours are available."
+  },
+  {
+    "id": "average_schedule_operating_hours_h",
+    "category": "Schedules \u0026 Operation",
+    "name": "Average schedule operating hours",
+    "unit": "h",
+    "source": "Supported schedules.",
+    "method": "Averages annual active hours across supported schedules.",
+    "assumptions": "A non-leap 8760-hour year is used. Schedule value greater than zero is active.",
+    "missingData": "Shown as — when no supported schedule hours are available."
+  },
+  {
+    "id": "hvac_object_count",
+    "category": "HVAC \u0026 Conditioning",
+    "name": "HVAC object count",
+    "source": "HVAC-related object types.",
+    "method": "Counts objects whose types indicate HVAC, air loops, plant loops, coils, fans, pumps, boilers, chillers, or setpoint managers.",
+    "assumptions": "This is a broad inventory count, not a system simulation result.",
+    "missingData": "Always available; zero means no recognized HVAC objects were found."
+  },
+  {
+    "id": "zone_hvac_object_count",
+    "category": "HVAC \u0026 Conditioning",
+    "name": "Zone HVAC object count",
+    "source": "ZoneHVAC:* objects.",
+    "method": "Counts objects whose type starts with ZoneHVAC:.",
+    "assumptions": "ZoneHVAC:EquipmentConnections is included.",
+    "missingData": "Always available; zero means no ZoneHVAC objects were found."
+  },
+  {
+    "id": "thermostat_count",
+    "category": "HVAC \u0026 Conditioning",
+    "name": "Thermostat count",
+    "source": "ZoneControl:Thermostat and ThermostatSetpoint:* objects.",
+    "method": "Counts thermostat control and setpoint objects.",
+    "assumptions": "Both controllers and setpoint definitions are included.",
+    "missingData": "Always available; zero means no thermostat objects were found."
+  },
+  {
+    "id": "conditioned_zone_count",
+    "category": "HVAC \u0026 Conditioning",
+    "name": "Conditioned zone count",
+    "source": "ZoneHVAC, SpaceHVAC, and thermostat zone references.",
+    "method": "Counts distinct zones referenced by ZoneHVAC, SpaceHVAC, ZoneHVAC:EquipmentConnections, or ZoneControl:Thermostat objects.",
+    "assumptions": "ZoneList references are expanded when a matching ZoneList object exists. SpaceHVAC references are mapped through Space parent zones.",
+    "missingData": "Always available; zero means no conditioned-zone references were found."
+  },
+  {
+    "id": "conditioned_zone_evidence_breakdown",
+    "category": "HVAC \u0026 Conditioning",
+    "name": "Conditioned zone evidence",
+    "source": "Conditioned-zone source buckets.",
+    "method": "Counts conditioned zones separately by equipment connections, ZoneHVAC objects, thermostat controls, and SpaceHVAC objects.",
+    "assumptions": "A zone may appear in more than one evidence bucket; the total conditioned zone count is deduplicated.",
+    "missingData": "Always available; zero buckets mean no conditioned-zone references were found."
+  },
+  {
+    "id": "hvac_node_connection_count",
+    "category": "HVAC \u0026 Conditioning",
+    "name": "HVAC node connection count",
+    "source": "Typed HVAC loop branch components.",
+    "method": "Counts typed inlet-to-outlet edges produced by AnalyzeHVAC for parsed loop branch components.",
+    "assumptions": "The result is an analyzer topology count, not a full EnergyPlus simulation solve.",
+    "missingData": "Always available; zero means no typed loop component edges were parsed."
+  },
+  {
+    "id": "geometry_coverage_percent",
+    "category": "Model \u0026 Inventory",
+    "name": "Geometry coverage",
+    "unit": "%",
+    "source": "Detailed geometry inputs.",
+    "method": "Compares surfaces/fenestration with usable detailed vertices against geometry-bearing objects.",
+    "assumptions": "Simple geometry objects are counted as uncovered because detailed polygon checks cannot verify them.",
+    "missingData": "Always available; zero means no detailed geometry was available."
+  },
+  {
+    "id": "profile_coverage_percent",
+    "category": "Model \u0026 Inventory",
+    "name": "Profile coverage",
+    "unit": "%",
+    "source": "Schedule references and supported annual-hour parser.",
+    "method": "Divides referenced schedules that can be evaluated for annual hours by all referenced schedules.",
+    "assumptions": "Unreferenced schedules are excluded from this readiness metric.",
+    "missingData": "Shown as — when no schedule references are present."
+  },
+  {
+    "id": "hvac_rule_edge_count",
+    "category": "HVAC \u0026 Conditioning",
+    "name": "HVAC rule edge count",
+    "source": "HVAC RuleGraph edges.",
+    "method": "Counts HVAC graph edges that were created from EnergyPlus object and field rules.",
+    "assumptions": "Only rule-resolved edges are counted; invalid relations remain diagnostics.",
+    "missingData": "Always available; zero means no HVAC rule edges were resolved."
+  },
+  {
+    "id": "diagnostics_by_source",
+    "category": "Model \u0026 Inventory",
+    "name": "Diagnostics by source",
+    "source": "Analyzer diagnostics.",
+    "method": "Counts diagnostics grouped by source such as energyplus_rule, analyzer_limitation, user_quality_check, or heuristic_inference.",
+    "assumptions": "Counts depend on the analyzer diagnostic rules enabled in this build.",
+    "missingData": "Always available; empty means no diagnostics were emitted."
+  },
+  {
+    "id": "output_readiness_percent",
+    "category": "Model \u0026 Inventory",
+    "name": "Output readiness",
+    "unit": "%",
+    "source": "Output:* requests.",
+    "method": "Compares requested simulation outputs against the standard output groups recognized by the analyzer.",
+    "assumptions": "This is a reporting-readiness metric and does not guarantee a successful simulation.",
+    "missingData": "Always available; zero means no recognized output requests were present."
+  }
+]

@@ -160,9 +160,9 @@ Release packaging requires the full Go test suite and a successful Wails build t
 
 The app version is shown in the window title, page headers, Settings storage details, release asset names, and the built executable filename.
 
-## User Guide
+## Technical Reference Manual
 
-The app toolbar includes top-level Tools, Guide, and Settings navigation buttons that open bundled full-page views inside the Wails WebView. Keep `cmd/semantic-idf/frontend/src/guide.html` focused on end-user workflows; developer commands and repository maintenance notes belong in this README or `docs/agent.md`.
+The app toolbar includes top-level Tools, Guide, and Settings pages in the Wails WebView. Guide reads its English/Korean technical manual from the single [manual source directory](cmd/semantic-idf/frontend/src/manual/README.md), with chapter/section navigation, search and shareable section links. The Markdown chapters cover workflows, algorithms, units, assumptions, examples and troubleshooting; `guide.html` contains the page shell. Metric definitions use the backend registry with a generated offline fallback. Keep repository maintenance instructions in this README or `docs/agent.md`.
 
 ## Input Views
 

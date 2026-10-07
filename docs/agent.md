@@ -39,6 +39,9 @@ read the relevant contract before changing a shared model or consumer.
 
 - Maintain current behavior, invariants, source ownership, reproducible checks
   and known limits. Update the owning contract when implementation changes.
+- Update user-facing workflows, algorithms and quantity meanings in the single
+  `frontend/src/manual/` source directory. Keep English/Korean section IDs aligned;
+  regenerate the offline metric catalog from its Go registry after metadata edits.
 - Keep release notes as published history. Avoid new phase-by-phase progress
   ledgers, repeated test timings, session transcripts or stale pending counts.
 - Preserve original simulation inputs/results, approved expected manifests,

@@ -22,6 +22,7 @@ Paths below are relative to `cmd/semantic-idf/` unless specified otherwise.
 | Settings persistence and migration | `settings_app.go` | Normalize through the backend settings API |
 | Frontend state, actions and views | `frontend/src/js/`, `frontend/src/styles/` | Feature contracts linked above |
 | Frontend acceptance harnesses | `internal/frontendchecks/` | [testing workflow](testing.md) |
+| Shipped technical manual | `frontend/src/manual/`, `frontend/src/js/guide-manual.js` | [manual authoring](../cmd/semantic-idf/frontend/src/manual/README.md); metadata comes from `idf.MetricGuides()` |
 
 The frontend is static HTML/CSS/JS embedded by `frontend/assets.go`. `app.js`
 initializes startup settings/status; `js/main.js` wires the application and its

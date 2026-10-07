@@ -1,7 +1,7 @@
 # Documentation
 
 Start with the [project README](../README.md) for setup and commands. The bundled
-Guide covers application workflows. These references describe current behavior,
+Guide contains the detailed [technical reference manual](../cmd/semantic-idf/frontend/src/manual/README.md), including workflows and calculation/interpretation rules. These developer references describe current behavior,
 implementation boundaries and verification needed for further development.
 
 ## Development

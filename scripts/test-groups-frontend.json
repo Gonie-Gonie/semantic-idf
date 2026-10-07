@@ -7,6 +7,11 @@
       "defaultTier": "fast",
       "rules": [
         {
+          "files": ["manual_assets_test.go"],
+          "areas": ["tooling", "guide"],
+          "tier": "fast"
+        },
+        {
           "files": ["analysis_input_cache_test.go"],
           "areas": ["analysis", "input"],
           "tier": "fast"
@@ -172,6 +177,12 @@
           "tier": "fast"
         },
         {
+          "files": ["energy_path_contract_static_test.go"],
+          "tests": ["TestFrontendEnergyPathNamingDocumentationAndStyles"],
+          "areas": ["guide"],
+          "tier": "fast"
+        },
+        {
           "files": ["energy_path_batch_*_test.go"],
           "areas": ["batch"],
           "tier": "fast"
@@ -194,6 +205,11 @@
         {
           "files": ["hvac_*_test.go"],
           "areas": ["hvac"],
+          "tier": "fast"
+        },
+        {
+          "files": ["guide_manual_*_test.go"],
+          "areas": ["tooling", "guide", "navigation", "analysis"],
           "tier": "fast"
         },
         {
@@ -283,7 +299,7 @@
           "tier": "fast"
         },
         {
-          "files": ["analysis_*_browser_test.go", "batch_*_browser_test.go", "comfort_*_browser_test.go", "energy_path_*_browser_test.go", "hvac_*_browser_test.go", "input_*_browser_test.go", "navigation_*_browser_test.go", "profile_*_browser_test.go", "semantic_*_browser_test.go", "simulation_*_browser_test.go", "tools_*_browser_test.go", "topology_*_browser_test.go", "phase_h_browser_harness_test.go"],
+          "files": ["analysis_*_browser_test.go", "batch_*_browser_test.go", "comfort_*_browser_test.go", "energy_path_*_browser_test.go", "guide_manual_browser_test.go", "hvac_*_browser_test.go", "input_*_browser_test.go", "navigation_*_browser_test.go", "profile_*_browser_test.go", "semantic_*_browser_test.go", "simulation_*_browser_test.go", "tools_*_browser_test.go", "topology_*_browser_test.go", "phase_h_browser_harness_test.go"],
           "areas": ["frontend"],
           "tier": "browser"
         },
