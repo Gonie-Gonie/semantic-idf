@@ -269,7 +269,7 @@ export class GuideManual {
     this.initializeDisclosures();
     this.root.addEventListener("keydown", (event) => {
       if (event.key === "/" && !event.ctrlKey && !event.altKey && !event.metaKey && !event.target.closest?.("input,textarea,select,[contenteditable]")) { event.preventDefault(); this.searchInput.focus(); }
-      if (event.key === "Escape" && this.searchInput.value) { this.clearSearch(); this.searchInput.focus(); }
+      if (event.key === "Escape" && this.searchInput.value) { event.preventDefault(); this.clearSearch(); this.searchInput.focus(); }
     });
     window.addEventListener("hashchange", this.onHashChange);
     window.addEventListener("scroll", this.onScroll, { passive: true });

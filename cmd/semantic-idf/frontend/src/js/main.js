@@ -24,7 +24,9 @@ import {
   prioritizeAnalysisStageForTab,
   currentDocumentStorageKey,
   computeAnalysisKey,
+  markDocumentChanged,
   registerLoadedDocument,
+  resetSimulationDocumentState,
   revertToLoadedDocument,
   saveInputFile,
   scheduleAnalyzeAfterPaint,
@@ -89,6 +91,28 @@ import { localizedMessage, normalizeAnalyzeTabOrder, t, translatePage } from "./
 import { initializeKeyboardShortcuts } from "./shortcuts.js";
 import { getSemanticNavigationCache } from "./semantic-navigation-cache.js";
 import { SHOW_SEMANTIC_STRUCTURE } from "./ui-features.js";
+import { initializeAuxiliaryPanel } from "./auxiliary-panel.js";
+
+initializeAuxiliaryPanel({
+  getDocument: () => ({ text: getDocumentText(), path: state.currentFilePath || "", filename: state.currentFilename || "" }),
+  applyDocument: (documentState, { replaceWorkspace = false } = {}) => {
+    if (typeof documentState?.text !== "string") return false;
+    const textChanged = documentState.text !== getDocumentText();
+    const identityChanged = (documentState.path || "") !== (state.currentFilePath || "") ||
+      (documentState.filename || "") !== (state.currentFilename || "");
+    if (!textChanged && !identityChanged && !replaceWorkspace) return true;
+    setDocumentText(documentState.text);
+    if (replaceWorkspace || identityChanged) {
+      registerLoadedDocument(getDocumentText(), { path: documentState.path || "", filename: documentState.filename || "" });
+    } else {
+      resetSimulationDocumentState();
+      markDocumentChanged();
+    }
+    suppressSimulationAutoRunForCurrentDocument();
+    scheduleAnalyzeAfterPaint({ textSnapshot: getDocumentText() });
+    return true;
+  },
+});
 
 const semanticInputTab = document.querySelector('[data-input-view="semantic"]');
 if (semanticInputTab) {
@@ -347,6 +371,7 @@ window.addEventListener("resize", () => {
   }
 });
 window.addEventListener("keydown", (event) => {
+  if (document.querySelector("#auxiliaryPanel[open]")) return;
   if (handleAnalysisTabCycleKey(event) || handleHardwareHistoryKey(event)) {
     return;
   }
@@ -568,6 +593,7 @@ function handleHardwareHistoryKey(event) {
 }
 
 function handleHardwareHistoryMouseButton(event) {
+  if (document.querySelector("#auxiliaryPanel[open]")) return false;
   if ((event.button !== 3 && event.button !== 4) || isEditableTarget(event.target)) {
     return false;
   }

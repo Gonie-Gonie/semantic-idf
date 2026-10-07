@@ -14,9 +14,9 @@ import { captureViewSnapshot } from "./view-history.js";
 import { captureWorkspaceLayout } from "./layout.js";
 import { restoreSimulationEnergyWorkspaceContext } from "./views/simulation-views.js";
 import { createAnalysisStageQueue } from "./analysis-stage-queue.js";
+import { openAuxiliaryPage } from "./auxiliary-panel.js";
 
 export const currentDocumentStorageKey = "idfAnalyzer.currentDocument";
-const auxiliaryNavigationStorageKey = "idfAnalyzer.auxiliaryNavigation";
 
 const workspaceSnapshotVersion = 4;
 
@@ -366,12 +366,7 @@ export function registerLoadedDocument(text, { path = "", filename = "", initial
   // A newly opened document is not the previous run, even if its text matches.
   // Ignore any old in-flight response and require an exact workspace restore
   // or a new explicit run before showing simulation data for this document.
-  state.simulationResult = null;
-  state.simulationActiveRunID = "";
-  state.simulationRunning = false;
-  state.simulationProgress = null;
-  state.simulationAutoStartedKey = "";
-  restoreSimulationEnergyWorkspaceContext();
+  resetSimulationDocumentState();
   clearSemanticHover();
   clearSemanticSelection({ resetMemory: true });
   state.currentFilePath = path;
@@ -407,6 +402,15 @@ export function registerLoadedDocument(text, { path = "", filename = "", initial
   state.geometryReady = false;
   renderEmpty();
   updateDocumentActions();
+}
+
+export function resetSimulationDocumentState() {
+  state.simulationResult = null;
+  state.simulationActiveRunID = "";
+  state.simulationRunning = false;
+  state.simulationProgress = null;
+  state.simulationAutoStartedKey = "";
+  restoreSimulationEnergyWorkspaceContext();
 }
 
 function registerStorageInputPath(path) {
@@ -566,28 +570,15 @@ export async function exportMetrics(format) {
 }
 
 export async function openGuide() {
-  if (await saveWorkspaceSnapshot() === false) return;
   openAuxiliaryPage("./guide.html");
 }
 
 export async function openTools() {
-  if (await saveWorkspaceSnapshot() === false) return;
   openAuxiliaryPage("./tools.html");
 }
 
 export async function openSettings() {
-  if (await saveWorkspaceSnapshot() === false) return;
   openAuxiliaryPage("./settings.html");
-}
-
-function openAuxiliaryPage(path) {
-  try {
-    window.sessionStorage.setItem(auxiliaryNavigationStorageKey, "main");
-    window.sessionStorage.removeItem("idfAnalyzer.auxiliaryReturnDepth");
-  } catch {
-    // Navigation still works when browser storage is unavailable.
-  }
-  window.location.assign(path);
 }
 
 export async function saveWorkspaceSnapshot() {

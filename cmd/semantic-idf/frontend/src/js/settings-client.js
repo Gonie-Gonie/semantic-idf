@@ -1,3 +1,4 @@
+import "./auxiliary-context.js";
 import {
   applyAnalyzeTabOrder,
   defaultAnalyzeTabOrder,

@@ -222,15 +222,22 @@ func TestFrontendNavigationCacheRestoreContract(t *testing.T) {
 	}{
 		{name: "Guide", start: "export async function openGuide()", end: "export async function openTools()", destination: `openAuxiliaryPage("./guide.html")`},
 		{name: "Tools", start: "export async function openTools()", end: "export async function openSettings()", destination: `openAuxiliaryPage("./tools.html")`},
-		{name: "Settings", start: "export async function openSettings()", end: "function openAuxiliaryPage", destination: `openAuxiliaryPage("./settings.html")`},
+		{name: "Settings", start: "export async function openSettings()", end: "export async function saveWorkspaceSnapshot()", destination: `openAuxiliaryPage("./settings.html")`},
 	}
 	for _, navigation := range auxiliaryNavigations {
 		body := sliceBetween(actions, navigation.start, navigation.end)
-		saveIndex := strings.Index(body, "await saveWorkspaceSnapshot()")
-		assignIndex := strings.Index(body, navigation.destination)
-		if saveIndex < 0 || assignIndex < 0 || saveIndex > assignIndex {
-			t.Errorf("%s navigation must await the workspace snapshot before leaving main", navigation.name)
+		if !strings.Contains(body, navigation.destination) {
+			t.Errorf("%s should open its auxiliary panel inside live Main", navigation.name)
 		}
+		if strings.Contains(body, "saveWorkspaceSnapshot()") {
+			t.Errorf("%s opening must not serialize or hash the workspace before showing its panel", navigation.name)
+		}
+	}
+	if strings.Contains(actions, "window.location.assign(") {
+		t.Fatal("auxiliary actions must retain Main's live workspace instead of unloading it")
+	}
+	if !strings.Contains(actions, `import { openAuxiliaryPage } from "./auxiliary-panel.js"`) {
+		t.Fatal("auxiliary actions must use the shared live panel host")
 	}
 	snapshotBody := sliceBetween(actions, "export async function saveWorkspaceSnapshot()", "export function applyCachedAnalysisResult")
 	if strings.Contains(snapshotBody, "report") {
@@ -239,14 +246,12 @@ func TestFrontendNavigationCacheRestoreContract(t *testing.T) {
 	if strings.Contains(snapshotBody, "if (!text.trim())") {
 		t.Fatal("workspace snapshot must preserve an intentionally empty main document")
 	}
-	auxiliaryBody := sliceBetween(actions, "function openAuxiliaryPage", "export async function saveWorkspaceSnapshot")
-	for _, required := range []string{`window.sessionStorage.setItem(auxiliaryNavigationStorageKey, "main")`, "window.location.assign(path)"} {
-		if !strings.Contains(auxiliaryBody, required) {
-			t.Errorf("auxiliary navigation history fallback is missing %q", required)
+	main := readTestFile(t, "frontend/src/js/main.js")
+	for _, term := range []string{"initializeAuxiliaryPanel({", "getDocument:", "applyDocument:"} {
+		if !strings.Contains(main, term) {
+			t.Errorf("Main's live auxiliary workspace hand-off is missing %q", term)
 		}
 	}
-
-	main := readTestFile(t, "frontend/src/js/main.js")
 	restoreBody := sliceBetween(main, "async function restoreCachedDocumentAnalysis", "function restoreCurrentDocument")
 	for _, term := range []string{
 		"async function restoreCachedDocumentAnalysis",
@@ -266,10 +271,76 @@ func TestFrontendNavigationCacheRestoreContract(t *testing.T) {
 		t.Fatal("current-schema snapshots must restore even when the main editor is intentionally empty")
 	}
 
+	panel := readTestFile(t, "frontend/src/js/auxiliary-panel.js")
+	for _, term := range []string{
+		`const pageNames = ["settings", "guide", "tools"]`,
+		"const frames = new Map()",
+		"export function initializeAuxiliaryPanel",
+		`document.createElement("dialog")`,
+		`dialog.id = "auxiliaryPanel"`,
+		`"aria-labelledby", "auxiliaryPanelTitle"`,
+		`id="auxiliaryPanelClose"`,
+		"data-auxiliary-open",
+		"dialog.showModal()",
+		"frames.get(page)",
+		"if (!frame)",
+		`document.createElement("iframe")`,
+		"frame.dataset.auxiliaryPage = page",
+		"frames.set(page, frame)",
+		"item.hidden = name !== page",
+		"returnFocus.focus({ preventScroll: true })",
+		`"idfAnalyzer:auxiliaryShown", { detail: { document: getDocument() } }`,
+		"const expected = options.expected",
+		`["text", "path", "filename"].some`,
+	} {
+		if !strings.Contains(panel, term) {
+			t.Errorf("live auxiliary panel contract missing %q", term)
+		}
+	}
+	closeBody := sliceBetween(panel, "export function closeAuxiliaryPanel()", "function notifyShown")
+	if !strings.Contains(closeBody, "dialog.close()") {
+		t.Error("closing an auxiliary panel must dismiss the native dialog")
+	}
+	for _, discarded := range []string{"frames.clear(", "frames.delete(", ".remove(", "window.location"} {
+		if strings.Contains(closeBody, discarded) {
+			t.Errorf("closing an auxiliary panel must retain its cached pages, found %q", discarded)
+		}
+	}
+
+	context := readTestFile(t, "frontend/src/js/auxiliary-context.js")
+	for _, term := range []string{
+		"window.parent === window",
+		"host?.contains(window)",
+		`document.documentElement.dataset.embeddedApp = "true"`,
+		`["go", "runtime"]`,
+		"Object.defineProperty(window, name",
+		"get: () => window.parent[name]",
+	} {
+		if !strings.Contains(context, term) {
+			t.Errorf("embedded auxiliary bridge sharing contract missing %q", term)
+		}
+	}
+
 	auxiliary := readTestFile(t, "frontend/src/js/auxiliary-navigation.js")
+	for _, required := range []string{
+		`import { getAuxiliaryHost } from "./auxiliary-context.js"`,
+		"const host = getAuxiliaryHost()",
+		"host.close()",
+		"host.open(link.href)",
+	} {
+		if !strings.Contains(auxiliary, required) {
+			t.Errorf("embedded auxiliary navigation is missing %q", required)
+		}
+	}
+	escapeBody := sliceBetween(auxiliary, `document.addEventListener("keydown"`, "function hasMainHistoryEntry")
+	for _, required := range []string{`event.key !== "Escape"`, "event.defaultPrevented", "queueMicrotask", "getAuxiliaryHost()?.close()"} {
+		if !strings.Contains(escapeBody, required) {
+			t.Errorf("embedded Escape must let feature handlers consume the key before closing, missing %q", required)
+		}
+	}
 	for _, required := range []string{"a[data-app-return]", "a[data-app-auxiliary]", "window.history.back()", "window.location.replace(link.href)"} {
 		if !strings.Contains(auxiliary, required) {
-			t.Errorf("live Main history preservation is missing %q", required)
+			t.Errorf("standalone auxiliary history fallback is missing %q", required)
 		}
 	}
 	for _, page := range []string{"frontend/src/tools.html", "frontend/src/guide.html", "frontend/src/settings.html"} {

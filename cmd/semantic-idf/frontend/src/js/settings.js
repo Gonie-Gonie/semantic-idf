@@ -1087,6 +1087,11 @@ window.addEventListener("idfAnalyzer:settingsChanged", (event) => {
   }
 });
 
+window.addEventListener("idfAnalyzer:auxiliaryShown", () => {
+  // A cached Settings panel keeps its draft; only disk usage needs a fresh read.
+  if (document.querySelector('#settingsNavigation a[href="#storage"][aria-current]')) storage.refresh();
+});
+
 Promise.all([loadAndApplyAppSettings(), loadAppInfo(), loadSimulationEnvironment()]).then(([settingsResult, appInfo]) => {
   activeAppInfo = appInfo;
   savedSettings = settingsResult.warning ? null : mergeSettings(settingsResult.settings);

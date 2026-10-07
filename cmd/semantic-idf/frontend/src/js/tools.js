@@ -1,3 +1,4 @@
+import { getAuxiliaryHost } from "./auxiliary-context.js";
 import { loadAndApplyAppSettings } from "./settings-client.js";
 import { renderAppInfo } from "./app-info.js";
 import { getLanguage, t } from "./i18n.js";
@@ -730,8 +731,46 @@ function csvCell(value) {
 
 const CURRENT_DOCUMENT_STORAGE_KEY = "idfAnalyzer.currentDocument";
 const COMPACT_FORMATTING_RULE_ID = "compact_formatting";
+let diagnoseDocumentGeneration = 0;
+let diagnoseWorkspaceBaseline = null;
+
+function diagnoseDocumentIdentity(documentState = {}) {
+  return {
+    text: String(documentState.text || ""),
+    path: String(documentState.path || ""),
+    filename: String(documentState.filename || ""),
+  };
+}
+
+function sameDiagnoseDocument(left, right) {
+  return left && right && left.text === right.text && left.path === right.path && left.filename === right.filename;
+}
+
+function captureDiagnoseWorkspaceBaseline() {
+  return diagnoseWorkspaceBaseline ? { ...diagnoseWorkspaceBaseline } : diagnoseDocumentIdentity(state.diagnose);
+}
+
+function syncDiagnoseFromHost(documentState = getAuxiliaryHost()?.getDocument()) {
+  if (!documentState) return false;
+  const documentIdentity = diagnoseDocumentIdentity(documentState);
+  if (sameDiagnoseDocument(documentIdentity, diagnoseWorkspaceBaseline)) return false;
+  setDiagnoseDocument(documentIdentity, { persist: false, analyze: false });
+  return true;
+}
+
+function rejectDiagnoseWorkspaceChange() {
+  const documentState = getAuxiliaryHost()?.getDocument();
+  if (documentState) setDiagnoseDocument(documentState, { persist: false, analyze: false });
+  setLocalizedText(elements.diagnoseStatus, "diagnoseFix.workspaceConflict", {},
+    "The input changed in Main. Diagnose has been refreshed; review the current input and try again.");
+}
 
 function restoreDiagnoseDocument() {
+  const hostedDocument = getAuxiliaryHost()?.getDocument();
+  if (hostedDocument) {
+    setDiagnoseDocument(hostedDocument, { persist: false, analyze: false });
+    return true;
+  }
   try {
     const saved = JSON.parse(window.sessionStorage.getItem(CURRENT_DOCUMENT_STORAGE_KEY) || "null");
     if (typeof saved?.text === "string" && saved.text.trim()) {
@@ -745,7 +784,9 @@ function restoreDiagnoseDocument() {
   return false;
 }
 
-function setDiagnoseDocument(documentState = {}, { persist = true, replaceWorkspace = false, analyze = true } = {}) {
+function setDiagnoseDocument(documentState = {}, { persist = true, replaceWorkspace = false, analyze = true, expected = captureDiagnoseWorkspaceBaseline() } = {}) {
+  diagnoseDocumentGeneration += 1;
+  state.diagnose.busy = false;
   state.diagnose.text = String(documentState.text || "");
   state.diagnose.path = String(documentState.path || "");
   state.diagnose.filename = String(documentState.filename || "model.idf");
@@ -761,10 +802,14 @@ function setDiagnoseDocument(documentState = {}, { persist = true, replaceWorksp
   setLiteralText(elements.diagnoseFilename, state.diagnose.filename || t("common.inputFile", {}, "Input file"));
   elements.diagnoseFilename.title = state.diagnose.path;
   if (persist) {
-    persistDiagnoseDocument({ replaceWorkspace });
+    if (!persistDiagnoseDocument({ replaceWorkspace, expected })) return false;
   }
+  diagnoseWorkspaceBaseline = diagnoseDocumentIdentity(getAuxiliaryHost()?.getDocument() || documentState);
   if (analyze) {
     refreshDiagnose();
+  } else if (!state.diagnose.text.trim()) {
+    renderDiagnosePreview(null);
+    renderDiagnoseEmpty();
   } else {
     // Restoring the shared input is not a request to analyze it. Batch pages
     // keep Diagnose dormant until its panel is actually opened.
@@ -776,14 +821,25 @@ function setDiagnoseDocument(documentState = {}, { persist = true, replaceWorksp
     renderDiagnosePreview(null);
     updateDiagnoseButtons();
   }
+  return true;
 }
 
 async function selectDiagnoseInput() {
+  const expected = captureDiagnoseWorkspaceBaseline();
+  const generation = diagnoseDocumentGeneration;
   const api = await waitForAppAPI("OpenInputFile");
   if (api) {
+    if (generation !== diagnoseDocumentGeneration) {
+      rejectDiagnoseWorkspaceChange();
+      return;
+    }
     const result = await api.OpenInputFile();
     if (!result?.canceled && typeof result?.text === "string") {
-      setDiagnoseDocument(result, { replaceWorkspace: true });
+      if (generation !== diagnoseDocumentGeneration) {
+        rejectDiagnoseWorkspaceChange();
+        return;
+      }
+      setDiagnoseDocument(result, { replaceWorkspace: true, expected });
     }
     return;
   }
@@ -795,11 +851,20 @@ async function loadDiagnoseBrowserFile(event) {
   if (!file) {
     return;
   }
-  setDiagnoseDocument({ text: await file.text(), filename: file.name, path: "" }, { replaceWorkspace: true });
+  const expected = captureDiagnoseWorkspaceBaseline();
+  const generation = diagnoseDocumentGeneration;
+  const text = await file.text();
+  if (generation !== diagnoseDocumentGeneration) {
+    rejectDiagnoseWorkspaceChange();
+  } else {
+    setDiagnoseDocument({ text, filename: file.name, path: "" }, { replaceWorkspace: true, expected });
+  }
   event.target.value = "";
 }
 
 async function refreshDiagnose() {
+  const generation = diagnoseDocumentGeneration;
+  const documentState = diagnoseDocumentIdentity(state.diagnose);
   state.diagnose.pendingScan = false;
   if (!state.diagnose.text.trim()) {
     renderDiagnoseEmpty();
@@ -809,18 +874,19 @@ async function refreshDiagnose() {
   setLocalizedText(elements.diagnoseStatus, "diagnose.running", {}, "Diagnostics are running");
   try {
     const [diagnostics, cleanup] = await Promise.all([
-      analyzeDiagnoseText(state.diagnose.text),
-      scanDiagnoseText(state.diagnose.text),
+      analyzeDiagnoseText(documentState.text),
+      scanDiagnoseText(documentState),
     ]);
+    if (generation !== diagnoseDocumentGeneration) return;
     state.diagnose.diagnostics = diagnostics || [];
     state.diagnose.scan = cleanup;
     state.diagnose.preview = null;
     initializeDiagnoseSelection(cleanup);
     renderDiagnose();
   } catch (error) {
-    renderDiagnoseError(error);
+    if (generation === diagnoseDocumentGeneration) renderDiagnoseError(error);
   } finally {
-    setDiagnoseBusy(false);
+    if (generation === diagnoseDocumentGeneration) setDiagnoseBusy(false);
   }
 }
 
@@ -833,15 +899,15 @@ async function analyzeDiagnoseText(text) {
   return result?.report?.diagnostics || [];
 }
 
-async function scanDiagnoseText(text) {
+async function scanDiagnoseText({ text, path, filename }) {
   const api = await waitForAppAPI("ScanCleanupText");
   if (api) {
-    return api.ScanCleanupText(text, state.diagnose.path, state.diagnose.filename);
+    return api.ScanCleanupText(text, path, filename);
   }
   return postJSON("/api/cleanup-scan", {
     text,
-    path: state.diagnose.path,
-    filename: state.diagnose.filename,
+    path,
+    filename,
   });
 }
 
@@ -849,19 +915,21 @@ async function previewDiagnoseFixes() {
   if (!canRunDiagnoseFixes()) {
     return;
   }
+  const generation = diagnoseDocumentGeneration;
   setDiagnoseBusy(true);
   try {
-    state.diagnose.preview = await buildDiagnosePreview();
+    const preview = await buildDiagnosePreview();
+    if (generation !== diagnoseDocumentGeneration) return;
+    state.diagnose.preview = preview;
     renderDiagnosePreview(state.diagnose.preview);
   } catch (error) {
-    renderDiagnoseError(error);
+    if (generation === diagnoseDocumentGeneration) renderDiagnoseError(error);
   } finally {
-    setDiagnoseBusy(false);
+    if (generation === diagnoseDocumentGeneration) setDiagnoseBusy(false);
   }
 }
 
-async function buildDiagnosePreview() {
-  const payload = diagnoseCleanupPayload();
+async function buildDiagnosePreview(payload = diagnoseCleanupPayload()) {
   const api = await waitForAppAPI("PreviewCleanupText");
   if (api) {
     return api.PreviewCleanupText(payload.text, payload.ruleIds, payload.excludedCandidateKeys);
@@ -873,11 +941,18 @@ async function applyDiagnoseFixes() {
   if (!canRunDiagnoseFixes()) {
     return;
   }
+  const expected = captureDiagnoseWorkspaceBaseline();
+  const generation = diagnoseDocumentGeneration;
+  const documentState = diagnoseDocumentIdentity(state.diagnose);
+  const payload = diagnoseCleanupPayload();
   setDiagnoseBusy(true);
   try {
-    const preview = state.diagnose.preview || await buildDiagnosePreview();
-    state.diagnose.text = preview.text || state.diagnose.text;
-    persistDiagnoseDocument();
+    const preview = state.diagnose.preview || await buildDiagnosePreview(payload);
+    if (generation !== diagnoseDocumentGeneration) {
+      rejectDiagnoseWorkspaceChange();
+      return;
+    }
+    if (!setDiagnoseDocument({ ...documentState, text: preview.text || documentState.text }, { analyze: false, expected })) return;
     setLocalizedText(elements.diagnoseStatus,
       "diagnoseFix.applied",
       { count: preview.removedCount || 0 },
@@ -885,9 +960,9 @@ async function applyDiagnoseFixes() {
     );
     await refreshDiagnose();
   } catch (error) {
-    renderDiagnoseError(error);
+    if (generation === diagnoseDocumentGeneration) renderDiagnoseError(error);
   } finally {
-    setDiagnoseBusy(false);
+    if (generation === diagnoseDocumentGeneration) setDiagnoseBusy(false);
   }
 }
 
@@ -895,27 +970,38 @@ async function saveDiagnoseCopy() {
   if (!canRunDiagnoseFixes()) {
     return;
   }
+  const generation = diagnoseDocumentGeneration;
+  const filename = diagnoseSaveAsFilename();
+  const cachedPreview = state.diagnose.preview;
   setDiagnoseBusy(true);
   try {
     const payload = diagnoseCleanupPayload();
     const api = await waitForAppAPI("SaveCleanupAs");
     if (!api) {
-      const preview = state.diagnose.preview || await buildDiagnosePreview();
-      downloadText(preview.text || state.diagnose.text, diagnoseSaveAsFilename(), "text/plain");
+      const preview = cachedPreview || await buildDiagnosePreview(payload);
+      downloadText(preview.text || payload.text, filename, "text/plain");
       return;
     }
-    const result = await api.SaveCleanupAs(payload.text, diagnoseSaveAsFilename(), payload.ruleIds, payload.excludedCandidateKeys);
-    if (!result?.canceled) {
-      setLocalizedText(elements.diagnoseStatus, "status.savedNamed", { name: result.filename || diagnoseSaveAsFilename() });
+    const result = await api.SaveCleanupAs(payload.text, filename, payload.ruleIds, payload.excludedCandidateKeys);
+    if (!result?.canceled && generation === diagnoseDocumentGeneration) {
+      setLocalizedText(elements.diagnoseStatus, "status.savedNamed", { name: result.filename || filename });
     }
   } catch (error) {
-    renderDiagnoseError(error);
+    if (generation === diagnoseDocumentGeneration) renderDiagnoseError(error);
   } finally {
-    setDiagnoseBusy(false);
+    if (generation === diagnoseDocumentGeneration) setDiagnoseBusy(false);
   }
 }
 
-function persistDiagnoseDocument({ replaceWorkspace = false } = {}) {
+function persistDiagnoseDocument({ replaceWorkspace = false, expected = captureDiagnoseWorkspaceBaseline() } = {}) {
+  const host = getAuxiliaryHost();
+  if (host) {
+    if (!host.applyDocument(diagnoseDocumentIdentity(state.diagnose), { replaceWorkspace, expected })) {
+      rejectDiagnoseWorkspaceChange();
+      return false;
+    }
+    return true;
+  }
   try {
     const previous = JSON.parse(window.sessionStorage.getItem(CURRENT_DOCUMENT_STORAGE_KEY) || "{}") || {};
     const next = {
@@ -945,6 +1031,7 @@ function persistDiagnoseDocument({ replaceWorkspace = false } = {}) {
   } catch {
     // Continue to support analysis even when browser storage is unavailable.
   }
+  return true;
 }
 
 function initializeDiagnoseSelection(cleanup) {
@@ -1164,6 +1251,13 @@ window.addEventListener("idfAnalyzer:languageChanged", () => {
     renderDiagnoseEmpty();
   }
   multiSimulationTool?.refreshLanguage();
+});
+
+window.addEventListener("idfAnalyzer:auxiliaryShown", (event) => {
+  const changed = syncDiagnoseFromHost(event.detail?.document);
+  if (changed && state.activeTool === "diagnose" && state.diagnose.pendingScan) {
+    void refreshDiagnose();
+  }
 });
 
 registerProgressListener();

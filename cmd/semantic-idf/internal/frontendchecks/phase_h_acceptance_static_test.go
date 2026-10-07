@@ -40,9 +40,10 @@ func TestPhaseHEndToEndScenarioContracts(t *testing.T) {
 			{path: "frontend/src/js/tools.js", terms: []string{"restoreDiagnoseDocument", "AnalyzeInputDiagnosticsText", "PreviewCleanupText", "persistDiagnoseDocument"}},
 			{path: "frontend/src/tools.html", terms: []string{`data-tools-panel="diagnose"`, `id="diagnoseApply"`, `id="diagnoseSaveAs"`}},
 		},
-		"F Settings cache round trip": {
-			{path: "frontend/src/js/actions.js", terms: []string{"await saveWorkspaceSnapshot()", "panelContexts: viewSnapshot.panelContexts", "applyCachedAnalysisResult"}},
-			{path: "frontend/src/js/main.js", terms: []string{"api.GetCachedAnalysis(restoredDocument.analysisKey)", "pendingWorkspaceRestore", "restoreSavedWorkspaceContext"}},
+		"F live Settings and explicit workspace restore": {
+			{path: "frontend/src/js/actions.js", terms: []string{`openAuxiliaryPage("./settings.html")`, "export async function saveWorkspaceSnapshot()", "panelContexts: viewSnapshot.panelContexts", "applyCachedAnalysisResult"}},
+			{path: "frontend/src/js/auxiliary-panel.js", terms: []string{"dialog.showModal()", "frames.get(page)", "dialog.close()"}},
+			{path: "frontend/src/js/main.js", terms: []string{"initializeAuxiliaryPanel({", "api.GetCachedAnalysis(restoredDocument.analysisKey)", "pendingWorkspaceRestore", "restoreSavedWorkspaceContext"}},
 			{path: "frontend/src/js/view-history.js", terms: []string{"panelContexts: capturePanelContexts()"}},
 			{path: "frontend/src/js/navigation.js", terms: []string{"restoreRegisteredPanelContext"}},
 		},

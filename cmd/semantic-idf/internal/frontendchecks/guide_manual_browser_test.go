@@ -26,7 +26,7 @@ func TestGuideManualNavigationSearchAndSafeMarkdownBrowser(t *testing.T) {
 	}
 	// Read the runtime inputs so Go's cache invalidates when the renderer or
 	// application shell changes, even though Chromium opens them over HTTP.
-	for _, path := range []string{"frontend/src/guide.html", "frontend/src/js/guide-manual.js", "frontend/src/js/auxiliary-navigation.js", "frontend/src/js/app-info.js", "frontend/src/js/settings-client.js", "frontend/src/js/i18n.js", "frontend/src/styles/guide-manual.css"} {
+	for _, path := range []string{"frontend/src/guide.html", "frontend/src/js/guide-manual.js", "frontend/src/js/auxiliary-navigation.js", "frontend/src/js/auxiliary-context.js", "frontend/src/js/app-info.js", "frontend/src/js/settings-client.js", "frontend/src/js/i18n.js", "frontend/src/styles/guide-manual.css"} {
 		readTestFile(t, path)
 	}
 	mux := http.NewServeMux()
@@ -89,7 +89,7 @@ func TestGuideManualBundledReferenceBrowser(t *testing.T) {
 	}
 	readTestFile(t, "frontend/src/manual/metric-guides.json")
 	readTestFile(t, "frontend/src/manual/metric-guides.ko.json")
-	for _, path := range []string{"frontend/src/guide.html", "frontend/src/js/guide-manual.js", "frontend/src/js/auxiliary-navigation.js", "frontend/src/js/app-info.js", "frontend/src/js/settings-client.js", "frontend/src/js/i18n.js", "frontend/src/styles/guide-manual.css"} {
+	for _, path := range []string{"frontend/src/guide.html", "frontend/src/js/guide-manual.js", "frontend/src/js/auxiliary-navigation.js", "frontend/src/js/auxiliary-context.js", "frontend/src/js/app-info.js", "frontend/src/js/settings-client.js", "frontend/src/js/i18n.js", "frontend/src/styles/guide-manual.css"} {
 		readTestFile(t, path)
 	}
 	mux := http.NewServeMux()

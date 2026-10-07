@@ -4,6 +4,8 @@ SemanticIDF reads an EnergyPlus model, presents its editable input, derives stat
 
 ## Read this manual {#manual}
 
+Settings, Guide and Tools open in a panel inside the app. Main remains behind it with the current input, analysis results, simulation results, selection and view position. Close the panel with its × button or Escape to return to Main. Each panel keeps its working state while the app is open, including unsaved Settings changes and the Guide chapter. Opening help or settings does not repeat analysis or rerun EnergyPlus. Applying a Diagnose fix or selecting another input in Tools changes Main's input and updates its analysis.
+
 The chapter list takes you from basic use to technical interpretation. The section list opens a specific topic in the current chapter. Search covers chapter text and the metric catalog; a result opens its chapter and section. You can bookmark a chapter/section URL and use browser Back/Forward.
 
 The manual follows the application language selected in Settings: Korean uses the Korean reference, and all other languages use the English reference. Shared section identifiers keep the same topic when the app language changes. Established feature and industry names such as Metrics, Profile, Energy Path and HVAC remain in English where they make the reference clearer.

@@ -171,6 +171,7 @@ export default Object.freeze({
   "simulation.energyPathSimultaneousLoadDenominator": "Larger service load",
   "action.apply": "Apply",
   "action.applyProfile": "Apply Profile",
+  "diagnoseFix.workspaceConflict": "The input changed in Main. Diagnose has been refreshed; review the current input and try again.",
   "action.backToApp": "Back to App",
   "action.close": "Close",
   "action.expand": "Expand",

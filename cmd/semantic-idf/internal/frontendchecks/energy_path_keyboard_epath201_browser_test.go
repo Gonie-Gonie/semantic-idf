@@ -183,10 +183,12 @@ type epath201Browser struct {
 }
 
 // Test-owned loopback browser/profile only, never a user or selected browser.
-func epath201FreshBrowser(t *testing.T, ctx context.Context, chrome string) *epath201Browser {
+func epath201FreshBrowser(t *testing.T, ctx context.Context, chrome string, extraFlags ...string) *epath201Browser {
 	t.Helper()
 	profile := t.TempDir()
-	process := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--remote-debugging-port=0", "--force-device-scale-factor=1", "--user-data-dir="+profile, "about:blank")
+	flags := []string{"--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--remote-debugging-port=0", "--force-device-scale-factor=1", "--user-data-dir=" + profile}
+	flags = append(flags, extraFlags...)
+	process := exec.CommandContext(ctx, chrome, append(flags, "about:blank")...)
 	if err := process.Start(); err != nil {
 		t.Fatal(err)
 	}

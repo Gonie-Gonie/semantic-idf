@@ -4,6 +4,13 @@
 
 - `src/app.js`: tiny browser entrypoint.
 - `src/js`: feature modules for state, actions, views, navigation, settings, and analysis.
+- `src/js/auxiliary-panel.js`: the in-app Settings/Guide/Tools panel. Main stays
+  mounted with its analysis and simulation state. Up to three frames are loaded
+  lazily and retained, including drafts, manual routes and running batch tools.
+  `auxiliary-context.js` shares Main's Wails callbacks and progress event bus;
+  `auxiliary-navigation.js` closes/switches the panel and retains standalone links.
+  Tools reads the live Main input and applies changes through a guarded host
+  handoff. Opening or closing a panel never restores or reanalyzes Main.
 - `src/js/settings.js` and `src/styles/settings.css`: Settings form, dirty state,
   section navigation and generated-run storage controls. `settings-client.js`
   owns defaults, normalization, persistence and cross-window synchronization.

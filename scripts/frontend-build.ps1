@@ -38,7 +38,9 @@ $modules = @(
     "actions.js",
 	"analysis-stage-queue.js",
     "app-info.js",
+    "auxiliary-context.js",
     "auxiliary-navigation.js",
+    "auxiliary-panel.js",
     "command-palette.js",
     "comfort-inspection-data.js",
     "guide-manual.js",
@@ -107,6 +109,7 @@ foreach ($module in $nestedModules) {
 $styles = @(
     "styles.css",
     "styles/base.css",
+    "styles/auxiliary-panel.css",
     "styles/topology.css",
     "styles/hvac.css",
     "styles/output.css",

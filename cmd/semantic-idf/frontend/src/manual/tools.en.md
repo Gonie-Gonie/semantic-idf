@@ -60,7 +60,7 @@ Use an output location with enough space for SQL and other requested observation
 
 ## Diagnose workflow {#diagnose}
 
-Diagnose can use the current app input snapshot or a separately selected input. The diagnostic issues and cleanup candidate list are related views, but a diagnostic warning is not automatically permission to remove an object.
+Diagnose reads the current Main input when Tools opens. Selecting another Diagnose input replaces Main's input; applying selected fixes updates it and queues analysis. Batch tool file selections remain separate. Reopening Tools refreshes Diagnose if Main's input changed, while retaining batch work. An old asynchronous fix cannot overwrite a newer Main input. The diagnostic issues and cleanup candidate list are related views, but a diagnostic warning is not automatically permission to remove an object.
 
 1. Select the input and inspect reported issues.
 2. Choose cleanup rules on the left.

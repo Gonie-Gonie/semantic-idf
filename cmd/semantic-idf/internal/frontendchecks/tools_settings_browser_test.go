@@ -18,7 +18,7 @@ func TestSettingsStorageAndPreferencesBrowser(t *testing.T) {
 	source := readTestFile(t, "frontend/src/settings.html")
 	_ = readSettingsSource(t)
 	_ = readTranslationSource(t)
-	for _, path := range []string{"frontend/src/js/settings-storage.js", "frontend/src/js/settings-client.js", "frontend/src/styles/settings.css"} {
+	for _, path := range []string{"frontend/src/js/settings-storage.js", "frontend/src/js/settings-client.js", "frontend/src/js/auxiliary-context.js", "frontend/src/styles/settings.css"} {
 		readTestFile(t, path)
 	}
 	if testing.Short() {
@@ -133,7 +133,26 @@ async function until(condition, message) { for (let n = 0; n < 250; n += 1) { if
 const selectValue = (id, value) => { const input = document.getElementById(id); input.value = value; input.dispatchEvent(new Event("input", { bubbles: true })); };
 const setAge = (value) => { const input = document.getElementById("storageCleanupAge"); input.value = String(value); input.dispatchEvent(new Event("change", { bubbles: true })); };
 try {
-  if (new URLSearchParams(location.search).has("loadFailure")) {
+  if (new URLSearchParams(location.search).has("embeddedStorage")) {
+    await until(() => document.getElementById("settingsForm") && !document.getElementById("storageRefresh")?.disabled, "embedded Settings usage should initialize");
+    assert(window.go === parent.go && document.documentElement.dataset.embeddedApp === "true", "embedded Settings uses the Main native bridge");
+    for (const [path, expected] of [
+      ["C:\\live-main\\runs\\model.idf", ["C:\\live-main\\runs"]],
+      ["/tmp/live-main/runs/model.idf", ["/tmp/live-main/runs"]],
+      ["C:\\model.idf", ["C:\\"]],
+      ["", []],
+    ]) {
+      parent.settingsStorageLiveDocument = { text: "Version, 23.1;", path, filename: "model.idf" };
+      sessionStorage.setItem("idfAnalyzer.currentDocument", JSON.stringify({ path: "C:\\stale-snapshot\\model.idf" }));
+      const previousCalls = parent.settingsStorageCalls.length;
+      setAge(0); document.getElementById("storagePrepareClean").click(); document.getElementById("storageConfirmClean").click();
+      await until(() => parent.settingsStorageCalls.length === previousCalls + 1, "embedded cleanup should reach the native Main API");
+      const operation = parent.settingsStorageCalls[previousCalls];
+      assert(JSON.stringify(operation.request.protectedOutputDirectories) === JSON.stringify(expected), "embedded cleanup must protect the live Main path, including an empty path, without falling back to the stale snapshot: " + path);
+      operation.resolve({ freedBytes: 0, removedRunCount: 0, skippedRunCount: 0, failures: [], usage: parent.storageFixture });
+      await until(() => !document.getElementById("storageRefresh").disabled, "embedded cleanup should settle before the next source change");
+    }
+  } else if (new URLSearchParams(location.search).has("loadFailure")) {
     await until(() => document.getElementById("settingsForm") && document.getElementById("storageTotalBytes")?.textContent === "12 KiB", "cached settings and storage should initialize after a settings read failure");
     assert(document.querySelector(".settings-message.warning")?.textContent.includes("fixture-settings-load-failure"), "settings load failure remains visible beside the cached values");
     assert(document.getElementById("settingsSaveStatus").dataset.i18n === "status.settingsSaveUnverified" && document.getElementById("settingsForm").dataset.dirty === "true" && !document.getElementById("settingsSave").disabled, "unverified cached or default settings must not claim to be saved and can be confirmed by saving");
@@ -241,6 +260,16 @@ try {
   await until(() => ["passed", "failed"].includes(failedLoadFrame.contentDocument?.body?.dataset.settingsStorageStatus), "actual Settings page should validate failed initial settings loading");
   assert(failedLoadFrame.contentDocument.body.dataset.settingsStorageStatus === "passed", "failed-load Settings assertions: " + failedLoadFrame.contentDocument.getElementById("settingsStorageResult")?.textContent);
   failedLoadFrame.remove();
+  const embeddedFrame = document.createElement("iframe"); embeddedFrame.style.display = "none";
+  window.settingsStorageLiveDocument = { text: "Version, 23.1;", path: "C:/live-main/model.idf", filename: "model.idf" };
+  window.idfAnalyzerAuxiliaryHost = {
+    contains: child => child === embeddedFrame.contentWindow,
+    getDocument: () => ({ ...window.settingsStorageLiveDocument }),
+  };
+  embeddedFrame.src = "/settings-storage?embeddedStorage=1"; document.body.append(embeddedFrame);
+  await until(() => ["passed", "failed"].includes(embeddedFrame.contentDocument?.body?.dataset.settingsStorageStatus), "actual embedded Settings should validate live input cleanup protection");
+  assert(embeddedFrame.contentDocument.body.dataset.settingsStorageStatus === "passed", "embedded Settings assertions: " + embeddedFrame.contentDocument.getElementById("settingsStorageResult")?.textContent);
+  embeddedFrame.remove(); delete window.idfAnalyzerAuxiliaryHost;
   }
   assert(window.settingsStorageErrors.length === 0, "Settings interactions have no runtime errors: " + window.settingsStorageErrors);
   document.body.dataset.settingsStorageStatus = "passed";

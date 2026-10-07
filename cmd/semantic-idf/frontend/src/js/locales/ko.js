@@ -294,6 +294,7 @@ export default Object.freeze({
   "simulation.runEstimate": "실행 예상치: {weight} · 시리즈 {series}개 · 프레임 {frames}개",
   "action.apply": "적용",
   "action.applyProfile": "프로필 적용",
+  "diagnoseFix.workspaceConflict": "Main의 입력이 변경되었습니다. Diagnose를 새로 맞췄습니다. 현재 입력을 확인하고 다시 시도하세요.",
   "action.backToApp": "앱으로 돌아가기",
   "action.close": "닫기",
   "action.expand": "확대",

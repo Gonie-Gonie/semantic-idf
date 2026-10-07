@@ -1,3 +1,5 @@
+import { getAuxiliaryHost } from "./auxiliary-context.js";
+
 const auxiliaryNavigationStorageKey = "idfAnalyzer.auxiliaryNavigation";
 const auxiliaryReturnDepthStorageKey = "idfAnalyzer.auxiliaryReturnDepth";
 
@@ -28,6 +30,13 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const host = getAuxiliaryHost();
+  if (host) {
+    event.preventDefault();
+    if (link.matches("[data-app-return]")) host.close();
+    else host.open(link.href);
+    return;
+  }
   if (!hasMainHistoryEntry()) {
     return;
   }
@@ -45,6 +54,15 @@ document.addEventListener("click", (event) => {
   }
 
   window.location.replace(link.href);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
+  // Feature handlers (search, an inner chooser) get the first chance to consume
+  // Escape. A frame's keyboard events do not bubble to the Main document.
+  queueMicrotask(() => {
+    if (!event.defaultPrevented && !document.querySelector("dialog[open]")) getAuxiliaryHost()?.close();
+  });
 });
 
 function hasMainHistoryEntry() {

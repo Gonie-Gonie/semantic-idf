@@ -1,4 +1,5 @@
 import { getLanguage, t } from "./i18n.js";
+import { getAuxiliaryHost } from "./auxiliary-context.js";
 
 const escapeHTML = (value) => String(value ?? "")
   .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
@@ -38,9 +39,9 @@ function measuredTime(scannedAt) {
 
 function protectedInputDirectories() {
   try {
-    // Main records this workspace snapshot before opening an auxiliary page.
-    // Avoid importing the Main analysis/view tree into the Settings entrypoint.
-    const snapshot = JSON.parse(window.sessionStorage.getItem("idfAnalyzer.currentDocument") || "null");
+    // The embedded panel reads Main directly; standalone previews use the saved
+    // workspace without importing Main's analysis/view tree.
+    const snapshot = getAuxiliaryHost()?.getDocument() || JSON.parse(window.sessionStorage.getItem("idfAnalyzer.currentDocument") || "null");
     const path = typeof snapshot?.path === "string" ? snapshot.path.trim() : "";
     const separator = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
     if (separator < 0) return [];

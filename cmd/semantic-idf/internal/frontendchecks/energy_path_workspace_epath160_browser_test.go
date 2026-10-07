@@ -8,16 +8,15 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os/exec"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
 
-// This acceptance intentionally keeps main.js and both auxiliary pages intact.
-// It uses fresh documents, not a synthetic restore call or BFCache state. Only
-// read-only backend responses are fixtures; all navigation and restore code is real.
+// Keep the actual Main and all auxiliary modules intact. Verify the live dialog
+// first, then real cold reloads for the independent compact-cache restore cases.
+// The bridge contains only fixture responses; no native analysis or simulation runs.
 func TestEPATH160ColdSettingsBatchWorkspaceReturnBrowser(t *testing.T) {
 	if testing.Short() {
 		t.Skip("headless-browser cold Settings / Batch workspace acceptance")
@@ -29,14 +28,24 @@ func TestEPATH160ColdSettingsBatchWorkspaceReturnBrowser(t *testing.T) {
 	const input = "Version,25.1;\nBuilding,EPATH160;\nZone,Office;\n"
 	digest := sha256.Sum256([]byte(input))
 	bridge := strings.ReplaceAll(epath160WorkspaceBridgeHTML, "EPATH160_TEXT_HASH", hex.EncodeToString(digest[:]))
+	_ = readTranslationSource(t)
+	for _, path := range []string{"frontend/src/js/main.js", "frontend/src/js/actions.js", "frontend/src/js/auxiliary-panel.js", "frontend/src/js/auxiliary-context.js", "frontend/src/js/auxiliary-navigation.js", "frontend/src/js/settings.js", "frontend/src/js/settings-client.js", "frontend/src/js/settings-storage.js", "frontend/src/js/tools.js", "frontend/src/js/batch/batch-simulation.js", "frontend/src/js/guide-manual.js", "frontend/src/manual/manifest.json", "frontend/src/manual/metrics.en.md", "frontend/src/styles/auxiliary-panel.css"} {
+		readTestFile(t, path)
+	}
 	pages := map[string]string{}
-	for _, name := range []string{"index.html", "settings.html", "tools.html"} {
+	for _, name := range []string{"index.html", "settings.html", "guide.html", "tools.html"} {
 		page := readTestFile(t, "frontend/src/"+name)
 		if name == "index.html" && !strings.Contains(page, `<script type="module" src="./js/main.js"></script>`) {
 			t.Fatal("actual main bootstrap is required for this cold-return acceptance")
 		}
-		page = strings.Replace(page, "<head>", "<head>"+bridge, 1)
-		pages[name] = strings.Replace(page, "</body>", epath160WorkspaceAutomationHTML+"</body>", 1)
+		if name == "index.html" {
+			page = strings.Replace(page, "<head>", "<head>"+bridge, 1)
+			page = strings.Replace(page, "</body>", epath160WorkspaceAutomationHTML+"</body>", 1)
+		} else {
+			// Child bridge/runtime must come from the real host. Only collect errors.
+			page = strings.Replace(page, "<head>", "<head>"+epath160AuxiliaryErrorsHTML, 1)
+		}
+		pages[name] = page
 	}
 	type browserResult struct {
 		Failures []string       `json:"failures"`
@@ -46,6 +55,12 @@ func TestEPATH160ColdSettingsBatchWorkspaceReturnBrowser(t *testing.T) {
 	var mu sync.Mutex
 	requests := map[string]int{}
 	done := make(chan browserResult, 1)
+	type viewportRequest struct {
+		Width   int           `json:"width"`
+		Page    string        `json:"page"`
+		Applied chan struct{} `json:"-"`
+	}
+	viewports := make(chan viewportRequest)
 	mux := http.NewServeMux()
 	mux.Handle("/src/", http.StripPrefix("/src/", http.FileServer(http.Dir(repoPath("frontend/src")))))
 	for name, page := range pages {
@@ -70,40 +85,67 @@ func TestEPATH160ColdSettingsBatchWorkspaceReturnBrowser(t *testing.T) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("/epath160/viewport", func(w http.ResponseWriter, r *http.Request) {
+		var request viewportRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || (request.Width != 320 && request.Width != 390 && request.Width != 1600) {
+			http.Error(w, "unsupported viewport", http.StatusBadRequest)
+			return
+		}
+		request.Applied = make(chan struct{})
+		select {
+		case viewports <- request:
+		case <-r.Context().Done():
+			return
+		}
+		select {
+		case <-request.Applied:
+			w.WriteHeader(http.StatusNoContent)
+		case <-r.Context().Done():
+		}
+	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	// No virtual-time budget: native page navigations and main's asynchronous
-	// cache restoration must actually complete. This isolated CI Chrome is killed
-	// only after the final in-page assertion report (or the bounded timeout).
-	command := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--disable-features=BackForwardCache", "--force-device-scale-factor=1", "--window-size=1600,900", "--user-data-dir="+t.TempDir(), server.URL+"/src/index.html")
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = command.Process.Kill(); _ = command.Wait() }()
-	select {
-	case result := <-done:
-		for _, line := range result.Evidence {
-			t.Log(line)
+	// CDP controls the real viewport; Chrome's CLI window size has a minimum
+	// that cannot exercise the application's 320/390 px responsive dialog.
+	browser := epath201FreshBrowser(t, ctx, chrome, "--enable-unsafe-swiftshader", "--disable-dev-shm-usage", "--disable-features=BackForwardCache")
+	browser.call("Page.navigate", map[string]any{"url": server.URL + "/src/index.html"}, nil)
+	for {
+		select {
+		case request := <-viewports:
+			browser.call("Emulation.setDeviceMetricsOverride", map[string]any{"width": request.Width, "height": 900, "deviceScaleFactor": 1, "mobile": false}, nil)
+			proof := browser.evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>{const dialog=document.getElementById("auxiliaryPanel"),frame=dialog?.querySelector("iframe:not([hidden])"),doc=frame?.contentDocument;resolve({width:innerWidth,dialogWidth:dialog?.getBoundingClientRect().width,dialogScroll:dialog?.scrollWidth,frameWidth:frame?.clientWidth,contentWidth:doc?.documentElement.scrollWidth,overflow:doc?.documentElement.scrollWidth>frame?.clientWidth?[...doc.body.querySelectorAll("*")].filter(element=>element.getBoundingClientRect().right>frame.clientWidth+1).slice(0,8).map(element=>({tag:element.tagName,id:element.id,class:element.className,right:element.getBoundingClientRect().right})):[]});})))`)
+			t.Logf("Actual %s dialog viewport %d: %s", request.Page, request.Width, proof)
+			close(request.Applied)
+		case result := <-done:
+			for _, line := range result.Evidence {
+				t.Log(line)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if len(result.Failures) != 0 {
+				t.Fatalf("cold workspace acceptance failed: %s; requests=%v counts=%v", strings.Join(result.Failures, "\n"), requests, result.Counts)
+			}
+			if requests["index.html"] != 6 || requests["settings.html"] != 1 || requests["guide.html"] != 1 || requests["tools.html"] != 1 {
+				t.Fatalf("did not retain cached Settings / Guide / Tools frames or traverse independent cold Main reloads: %v", requests)
+			}
+			if result.Counts["mainBoots"] != requests["index.html"] || result.Counts["overlayMainBoots"] != 1 || result.Counts["forbidden"] != 0 || result.Counts["simulationLookups"] != 6 || result.Counts["overlayExplicitBatchRuns"] != 1 || result.Counts["autoRunNegativeProbe"] != 1 {
+				t.Fatalf("cold restore skipped a document or ran analysis / simulation: requests=%v counts=%v", requests, result.Counts)
+			}
+			return
+		case <-ctx.Done():
+			mu.Lock()
+			defer mu.Unlock()
+			t.Fatalf("cold navigation timed out: requests=%v", requests)
 		}
-		mu.Lock()
-		defer mu.Unlock()
-		if len(result.Failures) != 0 {
-			t.Fatalf("cold workspace acceptance failed: %s; requests=%v counts=%v", strings.Join(result.Failures, "\n"), requests, result.Counts)
-		}
-		if requests["index.html"] < 8 || requests["settings.html"] != 1 || requests["tools.html"] != 1 {
-			t.Fatalf("did not traverse actual cold main / Settings / Tools pages: %v", requests)
-		}
-		if result.Counts["mainBoots"] != requests["index.html"] || result.Counts["forbidden"] != 0 || result.Counts["simulationLookups"] < 8 || result.Counts["autoRunNegativeProbe"] != 1 {
-			t.Fatalf("cold restore skipped a document or ran analysis / simulation: requests=%v counts=%v", requests, result.Counts)
-		}
-	case <-ctx.Done():
-		mu.Lock()
-		defer mu.Unlock()
-		t.Fatalf("cold navigation timed out: requests=%v", requests)
 	}
 }
+
+const epath160AuxiliaryErrorsHTML = `<script>
+window.addEventListener("error",event=>parent.epath160?.update(item=>item.failures.push("auxiliary page error: "+(event.error?.stack||event.message))));
+window.addEventListener("unhandledrejection",event=>parent.epath160?.update(item=>item.failures.push("auxiliary rejection: "+(event.reason?.stack||event.reason))));
+</script>`
 
 const epath160WorkspaceBridgeHTML = `<script>
 (()=>{
@@ -144,11 +186,17 @@ const epath160WorkspaceBridgeHTML = `<script>
   GetCachedSimulationResult:async(key,id)=>{update(item=>item.counts.simulationLookups++);if(["cache_text_race","cache_run_race"].includes(read().phase))await new Promise(resolve=>{window.epath160.releaseCache=resolve;});else await new Promise(resolve=>setTimeout(resolve,80));return key===textHash&&id===runId?freeze(JSON.parse(JSON.stringify(result))):null;},
   GetSettings:async()=>({settings:{appearance:{theme:"light",language:"en",analysisTabOrder:["simulation","metrics","topology","profile","hvac"]},simulation:{autoRunOnOpen:true}}}),
   GetAppInfo:async()=>({name:"SemanticIDF",version:"160",platform:"windows"}),
-  GetSimulationEnvironment:async()=>({energyPlusAvailable:true,installations:[{version:"25.1.0",executablePath:"C:/EPATH160/EnergyPlus/energyplus.exe",weatherDataPath:"C:/EPATH160/Weather"}],weatherFolders:[{source:"test",label:"Fixture weather",files:[{path:"C:/EPATH160/Weather/fixture.epw",name:"fixture.epw"}]}],settings:{autoRunOnOpen:true}})
+  GetSimulationEnvironment:async()=>({energyPlusAvailable:true,installations:[{version:"25.1.0",executablePath:"C:/EPATH160/EnergyPlus/energyplus.exe",weatherDataPath:"C:/EPATH160/Weather"}],weatherFolders:[{source:"test",label:"Fixture weather",files:[{path:"C:/EPATH160/Weather/fixture.epw",name:"fixture.epw"}]}],settings:{autoRunOnOpen:true}}),
+  GetStorageUsage:async()=>({scannedAt:"2026-10-08T00:00:00Z",totalBytes:4096,reclaimableBytes:0,protectedBytes:4096,runCount:1,reclaimableRunCount:0,protectedRunCount:1,roots:[],warnings:[]}),
+  SetStorageInputPath:async()=>{},
+  SelectSimulationInputFiles:async()=>({paths:["C:/EPATH160/a.idf","C:/EPATH160/b.idf","C:/EPATH160/c.idf"]}),
+  RunMultipleSimulations:request=>{update(item=>item.counts.overlayExplicitBatchRuns=(item.counts.overlayExplicitBatchRuns||0)+1);window.epath160.batchRequest=request;return new Promise(resolve=>{window.epath160.completeBatch=resolve;});}
  };
- window.go={main:{App:new Proxy(api,{get(target,property){if(Object.hasOwn(target,property))return target[property];if(/^(Analyze|Run|StartSimulation|RequestSimulation)/.test(String(property)))return async()=>{update(item=>{item.counts.forbidden++;item.evidence.push("Unexpected "+String(property)+" on "+location.pathname+" during "+item.phase);});throw new Error("forbidden work: "+String(property));};return target[property];}})}};
- window.runtime={EventsOn(){return()=>{};},EventsOnMultiple(){return()=>{};}};
- window.epath160={read,write,update,textHash,runId,sourceID,pathID,entityID,resultJSON:JSON.stringify(result)};
+ window.go={main:{App:new Proxy(api,{get(target,property){if(Object.hasOwn(target,property))return target[property];if(/^Analyze/.test(String(property))&&window.epath160?.handoffAnalysisAllowed)return()=>{update(item=>item.counts.handoffAnalysis=(item.counts.handoffAnalysis||0)+1);return new Promise(()=>{});};if(/^(Analyze|Run|StartSimulation|RequestSimulation)/.test(String(property)))return async()=>{update(item=>{item.counts.forbidden++;item.evidence.push("Unexpected "+String(property)+" on "+location.pathname+" during "+item.phase);});throw new Error("forbidden work: "+String(property));};return target[property];}})}};
+ const listeners=new Map();
+ const register=(name,callback)=>{if(!listeners.has(name))listeners.set(name,new Set());listeners.get(name).add(callback);return()=>listeners.get(name)?.delete(callback);};
+ window.runtime={EventsOn:register,EventsOnMultiple:register};
+ window.epath160={read,write,update,textHash,runId,sourceID,pathID,entityID,resultJSON:JSON.stringify(result),listeners,emit:(name,payload)=>{for(const listener of listeners.get(name)||[])listener(payload);}};
 })();
 </script>`
 
@@ -160,18 +208,6 @@ const done=async error=>{if(error)fixture.update(item=>item.failures.push(error?
 const visible=element=>Boolean(element&&element.getBoundingClientRect().width&&element.getBoundingClientRect().height);
 const click=element=>{if(!element)throw new Error("required actual navigation control is absent");for(let details=element.closest("details");details;details=details.parentElement?.closest("details"))details.open=true;element.focus();element.click();};
 try{
- if(location.pathname.endsWith("/settings.html")){
-  await wait(()=>document.querySelector("#analysisTabOrderList"),"real Settings controls");
-  check(visible(document.querySelector("#analysisTabOrderList")),"Settings page is a placeholder instead of actual settings UI");
-  fixture.update(item=>{item.phase="settings_return";item.evidence.push("Actual Settings controls rendered before real Back to App");});
-  click(document.querySelector("a[data-app-return]"));
- }else if(location.pathname.endsWith("/tools.html")){
-  await sleep(250);click(document.querySelector('[data-tools-tab="batch-simulation"]'));
-  await wait(()=>document.querySelector('[data-tools-panel="batch-simulation"]')?.classList.contains("active"),"actual Tools Batch Simulation tab");
-  check(visible(document.querySelector("#multiSimulationRun"))&&document.querySelector("#multiSimulationRun").disabled&&visible(document.querySelector("#multiSimulationWorkers")),"Batch destination does not expose the actual non-running controls");
-  fixture.update(item=>{item.phase="tools_return";item.evidence.push("Actual Tools Batch Simulation tab rendered without Run");});
-  click(document.querySelector("a[data-app-return]"));
- }else{
  const [store,simulation,view,history,actions]=await Promise.all([import("/src/js/state.js"),import("/src/js/views/simulation-views.js"),import("/src/js/views/energy-path-view.js"),import("/src/js/view-history.js"),import("/src/js/actions.js")]);
   const {state}=store;
   const phase=fixture.read().phase;
@@ -202,14 +238,25 @@ try{
     // This local stub records that deliberately requested probe separately.
     state.simulationRunning=false;state.simulationAutoStartedKey="";state.simulationAutoRunOnOpen=true;
     document.getElementById("simulationWeatherSelect").value="C:/EPATH160/Weather/fixture.epw";
-    window.go.main.App.RunPurposeSimulationText=async()=>{fixture.update(item=>item.counts.autoRunNegativeProbe=(item.counts.autoRunNegativeProbe||0)+1);return replacement;};
+    window.go.main.App.RunPurposeSimulationText=()=>{fixture.update(item=>item.counts.autoRunNegativeProbe=(item.counts.autoRunNegativeProbe||0)+1);return new Promise(resolve=>{fixture.finishNegativeRun=resolve;});};
     window.dispatchEvent(new CustomEvent("idfAnalyzer:analysisComplete",{detail:{text:store.getDocumentText(),analysisKey:fixture.textHash,stage:"complete"}}));
     await wait(()=>fixture.read().counts.autoRunNegativeProbe===1,"auto-run negative control");
-    fixture.update(item=>item.evidence.push("Negative control reached the fake Run API only after explicitly removing the auto-run suppression key"));await done();
+    fixture.update(item=>item.evidence.push("Negative control reached the fake Run API only after explicitly removing the auto-run suppression key"));
+    const auxiliaryHost=window.idfAnalyzerAuxiliaryHost,liveDocument=auxiliaryHost.getDocument(),activeNativeRun=state.simulationActiveRunID,liveReport=state.report,liveResult=state.simulationResult,liveMain=document;
+    check(state.simulationRunning&&activeNativeRun&&auxiliaryHost.applyDocument({...liveDocument},{expected:{...liveDocument}})===true&&state.simulationRunning&&state.simulationActiveRunID===activeNativeRun&&state.report===liveReport&&state.simulationResult===liveResult,"no-op Tools handoff changed Main analysis or the pending native run");
+    check(auxiliaryHost.applyDocument({...liveDocument,text:"stale replacement"},{expected:{...liveDocument,text:"outdated baseline"}})===false&&store.getDocumentText()===liveDocument.text&&state.simulationActiveRunID===activeNativeRun,"stale Tools expected identity was allowed to replace newer Main input");
+    fixture.handoffAnalysisAllowed=true;
+    const fixedText=liveDocument.text+"\n! Fixed through the actual Tools host";
+    check(auxiliaryHost.applyDocument({...liveDocument,text:fixedText},{expected:{...liveDocument}})===true&&store.getDocumentText()===fixedText&&state.currentFilePath===liveDocument.path&&state.currentFilename===liveDocument.filename&&state.simulationResult===null&&!state.simulationRunning&&state.simulationActiveRunID==="","actual same-file Tools fix did not update Main input and invalidate obsolete simulation state");
+    fixture.finishNegativeRun(replacement);await sleep(100);
+    check(state.simulationResult===null&&!state.simulationRunning&&state.simulationActiveRunID===""&&document===liveMain,"late native result repopulated the fixed input or rebooted Main");
+    await wait(()=>fixture.read().counts.handoffAnalysis>0,"analysis explicitly scheduled by the changed Tools input");
+    check(fixture.read().counts.forbidden===0&&fixture.read().counts.autoRunNegativeProbe===1,"Tools input handoff auto-ran simulation or performed work outside its controlled analysis stub");
+    fixture.update(item=>item.evidence.push("Actual Main host accepted a no-op without disturbing pending native work, rejected stale expected identity, and invalidated an in-flight run on same-file Tools fix; late native reply stayed rejected"));await done();
    }
   }else{
   await wait(()=>state.analysisStage==="complete"&&state.reportAnalysisKey===fixture.textHash,"main cached analysis");
-  await wait(()=>phase==="cache_miss"?fixture.read().counts.simulationLookups>=5:state.simulationResult?.runId===fixture.runId,"main cached simulation result");
+  await wait(()=>phase==="cache_miss"?fixture.read().counts.simulationLookups>=3:state.simulationResult?.runId===fixture.runId,"main cached simulation result");
   await sleep(250);
   await wait(()=>state.simulationAutoRunOnOpen&&state.simulationEnvironment?.installations?.length,"usable auto-run settings / environment");
   document.getElementById("simulationWeatherSelect").value="C:/EPATH160/Weather/fixture.epw";
@@ -239,25 +286,91 @@ try{
    click(host.querySelector('[data-energy-path-output-source="'+fixture.sourceID+'"]'));
    check(capture().energyDrawer?.tab==="output"&&capture().energyDrawer?.outputSource===fixture.sourceID&&host.querySelector('[data-energy-path-output-request-selected="true"]'),"actual Output action did not select its exact request");
    saveExpected();assertPrimary("handlers");await actions.saveWorkspaceSnapshot();assertSnapshot("initial save");
-   fixture.update(item=>{item.phase="settings";item.evidence.push("Real scope / period / node / Data Output actions set Office M2 cooling before Settings");});click(document.getElementById("settingsButton"));
-  }else if(phase==="settings_return"){
-   assertResult("Settings cold return");assertExpected("Settings cold return");assertSnapshot("Settings navigation");
-   check(state.activeResultTab==="simulation"&&selected()&&host.querySelector('[data-energy-path-output-request-selected="true"]'),"cold Settings return did not reconstruct the selected Energy view and Output request");
-   const restoredRequest=host.querySelector('[data-energy-path-output-request-selected="true"]');restoredRequest.focus();restoredRequest.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));
-   const restoredOutputAction=host.querySelector('[data-energy-path-details-toggle]');check(!state.simulationEnergyDetailsOpen&&document.activeElement===restoredOutputAction,"cold Output Escape did not restore the Data details opener");
-   click(host.querySelector('[data-energy-path-quality-stage="drivers"]'));saveExpected();
-   click(document.querySelector('[data-result-tab="hvac"]'));
-   await wait(()=>state.activeResultTab==="hvac","manual HVAC tab destination");
-   assertExpected("HVAC dormant Energy");check(visible(document.getElementById("hvacGraph")),"manual HVAC tab did not reveal actual HVAC pane");
-   fixture.update(item=>{item.phase="tools";item.evidence.push("Manual HVAC tab opened while dormant Energy state remained intact");});click(document.getElementById("toolsButton"));
-  }else if(phase==="tools_return"){
-   assertResult("Tools cold return");assertExpected("Tools dormant Energy return");assertSnapshot("Tools navigation");
-   check(state.activeResultTab==="hvac"&&visible(document.getElementById("hvacGraph")),"Tools cold return lost the manually selected HVAC tab");
-   click(document.querySelector('[data-result-tab="simulation"]'));await sleep(100);assertExpected("return from dormant Energy");check(selected()&&host.querySelector("[data-energy-path-inspector]"),"restored Energy selection is not visible after leaving HVAC");
+   // Observe the actual Three camera without replacing renderer or interaction code.
+   const THREE=await import("/src/vendor/three.module.js");
+   const project=THREE.PerspectiveCamera.prototype.updateProjectionMatrix;
+   THREE.PerspectiveCamera.prototype.updateProjectionMatrix=function(...args){fixture.camera=this;return project.apply(this,args);};
+   click(document.querySelector('[data-result-tab="topology"]'));
+   await wait(()=>fixture.camera&&document.querySelector(".topology-3d-canvas"),"actual topology renderer and camera");
+   const camera=fixture.camera,canvas=document.querySelector(".topology-3d-canvas"),initialCamera=camera.position.toArray();
+   canvas.dispatchEvent(new WheelEvent("wheel",{deltaY:100,bubbles:true,cancelable:true}));
+   const cameraPosition=JSON.stringify(camera.position.toArray());
+   check(cameraPosition!==JSON.stringify(initialCamera),"real wheel action did not establish a nondefault camera");
+   const mainDocument=document,editor=document.getElementById("textObjectView"),report=state.report,result=state.simulationResult,energyNode=host.querySelector('[data-energy-path-layout-node="'+CSS.escape(use.id)+'"]'),undoStack=state.navigationUndoStack,globalSelection=state.globalSelection;
+   check(editor&&canvas&&camera&&energyNode,"live Main preservation fixture must contain actual editor, renderer and selected Energy DOM");
+   const countsBefore={...fixture.read().counts},snapshotBefore=sessionStorage.getItem("idfAnalyzer.currentDocument"),mainURL=location.href;
+   const assertLive=label=>{
+    check(document===mainDocument&&document.getElementById("textObjectView")===editor&&state.report===report&&state.simulationResult===result&&state.navigationUndoStack===undoStack&&state.globalSelection===globalSelection,label+" replaced Main DOM, report/result, view-history objects or global selection");
+    check(document.querySelector(".topology-3d-canvas")===canvas&&fixture.camera===camera&&JSON.stringify(camera.position.toArray())===cameraPosition,label+" reset the actual renderer or zoomed camera");
+    check(host.querySelector('[data-energy-path-layout-node="'+CSS.escape(use.id)+'"]')===energyNode,label+" rebuilt the dormant Energy node DOM");
+    check(location.href===mainURL&&fixture.read().counts.mainBoots===1&&fixture.read().counts.simulationLookups===countsBefore.simulationLookups&&fixture.read().counts.analysisLookups===countsBefore.analysisLookups&&fixture.read().counts.forbidden===countsBefore.forbidden,label+" navigated Main or requested cache / analysis / simulation work");
+    check(sessionStorage.getItem("idfAnalyzer.currentDocument")===snapshotBefore,label+" unexpectedly hashed or rewrote the workspace snapshot");
+    assertExpected(label);assertResult(label);
+   };
+   const frameFor=page=>document.querySelector('iframe[data-auxiliary-page="'+page+'"]');
+   const waitFrame=async(page,selector)=>{await wait(()=>document.getElementById("auxiliaryPanel")?.open&&frameFor(page)?.dataset.ready&&frameFor(page).contentDocument.querySelector(selector),"actual "+page+" iframe");const frame=frameFor(page);check(!frame.hidden&&frame.contentDocument.documentElement.dataset.embeddedApp==="true"&&frame.contentWindow.go===window.go&&frame.contentWindow.runtime===window.runtime,page+" did not share the Main callback and progress bridge");return frame;};
+   const panelFits=async(frame,label)=>{const panel=document.getElementById("auxiliaryPanel");for(const width of[390,320,1600]){await fetch("/epath160/viewport",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({width,page:label})});await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));check(innerWidth===width,label+" did not use a real "+width+"px viewport");check(panel.getBoundingClientRect().width<=width&&panel.scrollWidth<=panel.clientWidth+1,label+" dialog overflowed at "+width+"px: "+panel.scrollWidth+" / "+panel.clientWidth);check(frame.contentDocument.documentElement.scrollWidth<=frame.clientWidth+1,label+" content overflowed at "+width+"px: "+frame.contentDocument.documentElement.scrollWidth+" / "+frame.clientWidth);}};
+   const expectClosed=async(label)=>{await wait(()=>!document.getElementById("auxiliaryPanel").open,label+" closes the dialog");assertLive(label);};
+   click(document.getElementById("settingsButton"));
+   const settingsFrame=await waitFrame("settings","#settingsForm"),settingsDocument=settingsFrame.contentDocument;
+   check(visible(settingsDocument.getElementById("analysisTabOrderList")),"Settings does not expose actual settings controls");
+   const font=settingsDocument.getElementById("graphFontSize");font.value="14";font.dispatchEvent(new settingsFrame.contentWindow.Event("input",{bubbles:true}));
+   check(settingsDocument.getElementById("settingsForm").dataset.dirty==="true","unsaved Settings edit was not retained as dirty");assertLive("Settings open");
+   await panelFits(settingsFrame,"Settings");
+   click(settingsDocument.querySelector('a[data-app-auxiliary][href*="guide.html"]'));
+   const guideFrame=await waitFrame("guide","#manualChapters a"),guideDocument=guideFrame.contentDocument;
+   click(guideDocument.querySelector('a[data-manual-route][href="#metrics"]'));
+   await wait(()=>guideDocument.getElementById("metric-catalog"),"actual metrics chapter catalog");
+   click(guideDocument.querySelector('a[data-manual-route][href="#metrics/metric-catalog"]'));
+   await wait(()=>guideFrame.contentWindow.location.hash==="#metrics/metric-catalog","Guide section route");assertLive("Guide crosslink");
+   await panelFits(guideFrame,"Guide");
+   const search=guideDocument.getElementById("manualSearch");search.value="cooling";search.dispatchEvent(new guideFrame.contentWindow.Event("input",{bubbles:true}));
+   search.dispatchEvent(new guideFrame.contentWindow.KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));
+   check(document.getElementById("auxiliaryPanel").open&&search.value==="","Guide search Escape should clear its query before closing the dialog");
+   guideDocument.body.dispatchEvent(new guideFrame.contentWindow.KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));
+   await expectClosed("child Escape");
+   click(document.getElementById("guideButton"));
+   check(await waitFrame("guide","#metric-catalog")===guideFrame&&guideFrame.contentDocument===guideDocument&&guideFrame.contentWindow.location.hash==="#metrics/metric-catalog","cached Guide lost its document identity or current chapter/section");
+   click(document.getElementById("auxiliaryPanelClose"));await expectClosed("parent close button");
+   click(document.getElementById("settingsButton"));
+   check(await waitFrame("settings","#settingsForm")===settingsFrame&&settingsFrame.contentDocument===settingsDocument&&settingsDocument.getElementById("graphFontSize").value==="14"&&settingsDocument.getElementById("settingsForm").dataset.dirty==="true","cached Settings lost its actual unsaved form");
+   click(document.querySelector('[data-auxiliary-open="tools"]'));
+   const toolsFrame=await waitFrame("tools","#multiSimulationRun"),toolsDocument=toolsFrame.contentDocument;
+   click(toolsDocument.querySelector('[data-tools-tab="batch-simulation"]'));
+   await wait(()=>toolsDocument.querySelector('[data-tools-panel="batch-simulation"]')?.classList.contains("active"),"actual Tools Batch Simulation tab");
+   check(visible(toolsDocument.getElementById("multiSimulationRun"))&&toolsDocument.getElementById("multiSimulationRun").disabled&&visible(toolsDocument.getElementById("multiSimulationWorkers")),"Batch destination does not expose actual non-running controls");
+   await wait(()=>fixture.listeners.get("idfAnalyzer:multiSimulationProgress")?.size,"Tools runtime progress registration on parent");assertLive("Tools open");
+   await panelFits(toolsFrame,"Tools");
+   click(toolsDocument.querySelector("a[data-app-return]"));await expectClosed("child Back to App");
+   const documentBefore=window.idfAnalyzerAuxiliaryHost.getDocument();
+   store.setDocumentText(documentBefore.text+"\n! Edited while Tools was closed");state.currentFilename="edited-live.idf";state.currentFilePath="C:/EPATH160/edited-live.idf";
+   let shown=null;toolsFrame.contentWindow.addEventListener("idfAnalyzer:auxiliaryShown",event=>{shown=event.detail.document;});
+   click(document.getElementById("toolsButton"));
+   await wait(()=>toolsDocument.getElementById("diagnoseFilename").textContent==="edited-live.idf","cached Tools current Main filename synchronization");
+   check(frameFor("tools")===toolsFrame&&toolsFrame.contentDocument===toolsDocument&&shown?.text===store.getDocumentText()&&shown.path===state.currentFilePath&&toolsDocument.getElementById("diagnoseFilename").title===state.currentFilePath,"cached Tools used an old session snapshot instead of current live Main input");
+   check(state.simulationResult===result&&fixture.read().counts.forbidden===0,"opening cached Batch Tools analyzed its dormant Diagnose input or replaced current results");
+   store.setDocumentText(documentBefore.text);state.currentFilename=documentBefore.filename;state.currentFilePath=documentBefore.path;
+   click(document.getElementById("auxiliaryPanelClose"));await expectClosed("cached Tools close");
+   click(document.getElementById("toolsButton"));await waitFrame("tools","#multiSimulationRun");
+   click(toolsDocument.getElementById("multiSimulationSelectFiles"));await wait(()=>!toolsDocument.getElementById("multiSimulationRun").disabled,"explicit fixture Batch file selection");
+   click(toolsDocument.getElementById("multiSimulationRun"));await wait(()=>fixture.batchRequest&&typeof fixture.completeBatch==="function","explicit fake Batch run");
+   fixture.emit("idfAnalyzer:multiSimulationProgress",{runId:fixture.batchRequest.runId,completed:1,total:3,message:"fixture-progress-retained",status:"running"});
+   check(toolsDocument.getElementById("multiSimulationPercent").textContent==="33%","parent native progress did not reach the actual iframe Batch UI");
+   click(document.getElementById("auxiliaryPanelClose"));await expectClosed("running Batch overlay close");
+   fixture.emit("idfAnalyzer:multiSimulationProgress",{runId:fixture.batchRequest.runId,completed:2,total:3,message:"fixture-background-progress",status:"running"});
+   click(document.getElementById("toolsButton"));await waitFrame("tools","#multiSimulationRun");
+   check(toolsDocument.getElementById("multiSimulationPercent").textContent==="67%"&&toolsDocument.getElementById("multiSimulationRun").disabled&&fixture.read().counts.overlayExplicitBatchRuns===1,"cached hidden Batch did not retain progress, or reopening restarted its run");
+   fixture.completeBatch({runId:fixture.batchRequest.runId,total:3,completed:3,succeeded:3,failed:0,results:[]});
+   await wait(()=>toolsDocument.getElementById("multiSimulationPercent").textContent==="100%"&&!toolsDocument.getElementById("multiSimulationRun").disabled,"explicit fake Batch completion");
+   click(document.getElementById("auxiliaryPanelClose"));await expectClosed("completed Batch overlay close");
+   check(document.querySelectorAll("#auxiliaryPanel iframe[data-auxiliary-page]").length===3,"host did not retain exactly the three allowed auxiliary frames");
+   fixture.update(item=>{item.counts.overlayMainBoots=item.counts.mainBoots;item.evidence.push("Actual Settings/Guide/Tools dialog kept Main DOM, report/result/Energy objects and zoomed THREE camera; cached form/route/progress and current Tools input survived close/reopen without Main boot or Analyze/Run work");});
+   THREE.PerspectiveCamera.prototype.updateProjectionMatrix=project;
+   click(document.querySelector('[data-result-tab="simulation"]'));await sleep(100);assertExpected("return from dormant Energy");check(selected()&&host.querySelector("[data-energy-path-inspector]"),"live Energy selection is not visible after leaving Topology");
    await actions.saveWorkspaceSnapshot();const cached=JSON.parse(sessionStorage.getItem("idfAnalyzer.currentDocument"));
    const legacy={activeResultView:"energy",energyFocusMode:"zone",energyZoneFocus:"Office",energyPeriod:"M2",energyService:"cooling",energySelection:state.simulationEnergySelection,energyView:"sources",energyDetailsTab:"data",energyDetailsStage:"drivers",energySankeyMode:"legacy",energySignMode:"absolute",energyNodeLimit:3};
    cached.schemaVersion=3;cached.activeResultTab="simulation";cached.viewSnapshot.resultTab="simulation";cached.viewSnapshot.globalSelection=null;cached.viewSnapshot.panelContexts.simulation=legacy;cached.panelContexts=cached.viewSnapshot.panelContexts;sessionStorage.setItem("idfAnalyzer.currentDocument",JSON.stringify(cached));
-   fixture.update(item=>{item.phase="legacy";item.evidence.push("Cold Tools return restored active HVAC and dormant Office M2 cooling selection");});location.reload();
+   fixture.update(item=>{item.phase="legacy";item.evidence.push("Live auxiliary dialogs retained active Topology camera and dormant Office M2 cooling selection before independent cold restore cases");});location.reload();
   }else if(phase==="legacy"){
    assertResult("legacy cache load");check(state.simulationEnergyScopeKind==="zone"&&state.simulationEnergyZoneName==="Office"&&state.simulationEnergyPeriod==="M2"&&state.simulationEnergyService==="all"&&selected()&&state.simulationEnergyDetailsOpen,"legacy aliases did not normalize into six primary keys: "+JSON.stringify(primary()));
    check(capture().energyDrawer?.tab==="data"&&capture().energyDrawer?.stage==="drivers","legacy source drawer context was discarded");assertPrimary("legacy migration");
@@ -279,6 +392,5 @@ try{
    fixture.update(item=>{item.phase="cache_text_race";item.evidence.push("Hash-await text and path races both canceled save without changing the saved workspace");});location.reload();
   }else throw new Error("Unexpected cold main phase: "+phase);
   }
- }
 }catch(error){await done(error);}
 </script>`

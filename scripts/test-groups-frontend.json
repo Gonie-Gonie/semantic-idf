@@ -292,6 +292,8 @@
         },
         {"files": ["tools_settings_*_test.go"], "areas": ["settings", "storage"], "tier": "fast"},
         {"files": ["tools_settings_*_browser_test.go"], "areas": ["settings", "storage"], "tier": "browser"},
+        {"files": ["tools_diagnose_browser_test.go"], "tests": ["TestToolsDiagnoseAuxiliaryHandoffBrowser"], "areas": ["input", "navigation", "settings"], "tier": "browser"},
+        {"files": ["energy_path_workspace_*_browser_test.go"], "areas": ["navigation"], "tier": "browser"},
         {
           "files": ["navigation_selection_ux_browser_test.go", "topology_integrated_browser_test.go", "energy_path_layout_epath142_browser_test.go"],
           "areas": ["i18n"],

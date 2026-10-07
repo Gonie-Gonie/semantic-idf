@@ -14,7 +14,7 @@ import (
 
 func TestLocalizationLanguageSettingsAndDynamicMessagesBrowser(t *testing.T) {
 	_ = readTranslationSource(t)
-	for _, path := range []string{"frontend/src/js/settings-client.js", "frontend/src/js/settings.js", "frontend/src/js/settings-storage.js", "frontend/src/styles/settings.css", "frontend/src/js/state.js", "frontend/src/js/localized-text.js"} {
+	for _, path := range []string{"frontend/src/js/settings-client.js", "frontend/src/js/auxiliary-context.js", "frontend/src/js/settings.js", "frontend/src/js/settings-storage.js", "frontend/src/styles/settings.css", "frontend/src/js/state.js", "frontend/src/js/localized-text.js"} {
 		readTestFile(t, path)
 	}
 	if testing.Short() {
