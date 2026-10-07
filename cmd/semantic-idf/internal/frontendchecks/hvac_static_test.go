@@ -133,7 +133,7 @@ func TestFrontendHVACUsesHeaderlessCardNavigationWithoutWarnings(t *testing.T) {
 	view := readTestFile(t, "frontend/src/js/views/hvac-views.js")
 	analysis := readTestFile(t, "frontend/src/js/views/analysis-views.js")
 	styles := readTestFile(t, "frontend/src/styles/hvac.css")
-	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	i18n := readTranslationSource(t)
 
 	for sourceName, source := range map[string]string{
 		"index.html": index,

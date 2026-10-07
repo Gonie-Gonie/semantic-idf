@@ -65,6 +65,15 @@ export function createBatchEnergyPathDetail({ host, resolveRun }) {
     if (focus) { focus.tabIndex = focus.hasAttribute("data-energy-path-details-tab") ? 0 : -1; focus.focus({ preventScroll: true }); }
   };
 
+  const renderCurrent = () => {
+    const { run, viewState } = current;
+    const explanation = run.purposeResults.energyExplanation;
+    const label = run.filename || String(run.inputPath || "").split(/[\\/]/).pop() || copy("SelectedModel", "Selected model");
+    host.innerHTML = `<header class="batch-energy-detail-header"><div><h4 id="batchEnergyDetailTitle">${escapeHTML(copy("ModelDetail", "Model Energy Path"))}</h4><strong>${escapeHTML(label)}</strong></div><button type="button" data-batch-energy-close>${escapeHTML(t("common.close", {}, "Close"))}</button></header>
+      <p class="tool-muted">${escapeHTML(copy("DetailContext", "This detail uses only the selected run. Model-navigation actions require that model to be opened in the main workspace."))}</p>
+      <div class="batch-energy-detail-dashboard">${renderEnergyPathView(explanation, viewState, options())}</div>`;
+  };
+
   const open = (runID, control) => {
     const run = resolveRun(runID);
     if (!run || !batchEnergyPathDetailAvailable(run)) return false;
@@ -78,10 +87,7 @@ export function createBatchEnergyPathDetail({ host, resolveRun }) {
     current = { run, scene, viewState, drawer: { tab: "data", stage: "", outputSource: "" } };
     opener = control || null;
     drawerOpener = null;
-    const label = run.filename || String(run.inputPath || "").split(/[\\/]/).pop() || copy("SelectedModel", "Selected model");
-    host.innerHTML = `<header class="batch-energy-detail-header"><div><h4 id="batchEnergyDetailTitle">${escapeHTML(copy("ModelDetail", "Model Energy Path"))}</h4><strong>${escapeHTML(label)}</strong></div><button type="button" data-batch-energy-close>${escapeHTML(t("common.close", {}, "Close"))}</button></header>
-      <p class="tool-muted">${escapeHTML(copy("DetailContext", "This detail uses only the selected run. Model-navigation actions require that model to be opened in the main workspace."))}</p>
-      <div class="batch-energy-detail-dashboard">${renderEnergyPathView(explanation, viewState, options())}</div>`;
+    renderCurrent();
     host.hidden = false;
     host.focus({ preventScroll: true });
     host.scrollIntoView({ block: "nearest" });
@@ -152,5 +158,31 @@ export function createBatchEnergyPathDetail({ host, resolveRun }) {
       event.preventDefault(); event.stopPropagation(); select(edge.dataset.energyExplanationEdge);
     }
   });
-  return { open, close, reset: () => close({ restoreFocus: false }) };
+  const refreshLanguage = () => {
+    if (!current) return;
+    if (opener && !opener.isConnected) {
+      const runID = opener.dataset.batchEnergyOpen;
+      const origin = opener.dataset.batchEnergyOpenOrigin;
+      opener = [...document.querySelectorAll("[data-batch-energy-open]")].find((control) =>
+        control.dataset.batchEnergyOpen === runID && control.dataset.batchEnergyOpenOrigin === origin) || null;
+    }
+    const active = host.contains(document.activeElement) ? document.activeElement : null;
+    const selection = active?.dataset.energyExplanationNode || active?.dataset.energyExplanationEdge;
+    const drawerTab = active?.dataset.energyPathDetailsTab;
+    const closing = active?.hasAttribute("data-batch-energy-close");
+    const drawerKey = drawerOpener?.hasAttribute("data-energy-path-details-toggle") ? "energyPathDetailsToggle"
+      : drawerOpener?.hasAttribute("data-energy-path-quality-stage") ? "energyPathQualityStage" : "";
+    const drawerValue = drawerKey ? drawerOpener.dataset[drawerKey] : "";
+    const scroll = { top: host.scrollTop, left: host.scrollLeft };
+    const explanation = current.run.purposeResults.energyExplanation;
+    const display = energyPathDisplayContext(explanation, current.viewState);
+    current.scene = prepareEnergyPathScene(explanation, current.viewState, { display });
+    renderCurrent();
+    if (drawerKey) drawerOpener = [...host.querySelectorAll("[data-energy-path-details-toggle], [data-energy-path-quality-stage]")]
+      .find((control) => Object.hasOwn(control.dataset, drawerKey) && control.dataset[drawerKey] === drawerValue) || null;
+    host.scrollTop = scroll.top; host.scrollLeft = scroll.left;
+    const focus = selection ? graphControl(selection) : drawerTab ? host.querySelector(`[data-energy-path-details-tab="${drawerTab}"]`) : closing ? host.querySelector("[data-batch-energy-close]") : null;
+    focus?.focus({ preventScroll: true });
+  };
+  return { open, close, refreshLanguage, reset: () => close({ restoreFocus: false }) };
 }

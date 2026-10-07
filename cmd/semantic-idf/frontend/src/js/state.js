@@ -1,4 +1,4 @@
-import { t } from "./i18n.js";
+import { resolveLocalizedText, t } from "./i18n.js";
 
 export const topologyModes = Object.freeze(["3d", "plan", "thermal"]);
 export const thermalTopologyMetrics = Object.freeze(["topology", "area", "ua", "exposure", "qa", "air"]);
@@ -373,8 +373,14 @@ export function backend() {
   return window.go && window.go.main && window.go.main.App;
 }
 
+let currentStatusMessage = null;
+
 export function setStatus(message, tone = "muted") {
-  elements.runtimeStatus.textContent = message;
+  currentStatusMessage = message;
+  if (!elements.runtimeStatus) return;
+  delete elements.runtimeStatus.dataset.i18n;
+  delete elements.runtimeStatus.dataset.i18nParams;
+  elements.runtimeStatus.textContent = resolveLocalizedText(message);
   const colors = {
     muted: "--muted",
     ok: "--green",
@@ -387,6 +393,13 @@ export function setStatus(message, tone = "muted") {
   refreshStatusTitle();
 }
 
+window.addEventListener("idfAnalyzer:languageChanged", () => {
+  if (elements.runtimeStatus && currentStatusMessage !== null) {
+    elements.runtimeStatus.textContent = resolveLocalizedText(currentStatusMessage);
+  }
+  refreshStatusTitle();
+});
+
 export function refreshStatusTitle() {
   if (!elements.runtimeStatus) {
     return;
@@ -398,7 +411,7 @@ export function refreshStatusTitle() {
   }
   const render = state.renderTiming?.last;
   if (render?.tab) {
-    details.push(`Last render: ${render.tab} ${formatMS(render.ms)}`);
+    details.push(t("status.lastRender", { tab: render.tab, duration: formatMS(render.ms) }));
   }
   elements.runtimeStatus.title = details.join("\n");
 }
@@ -410,8 +423,8 @@ function formatAnalysisTiming() {
     return "";
   }
   const mode = timing?.mode ? ` ${timing.mode}` : "";
-  const cache = timing?.cacheHit ? " (cache hit)" : "";
-  const parts = [`Analysis${mode}${cache}`];
+  const cache = timing?.cacheHit ? ` (${t("status.timingCacheHit")})` : "";
+  const parts = [t("status.analysisTiming", { mode, cache })];
   [
     ["total", timing?.totalMs],
     ["queue", timing?.queueWaitMs],
@@ -421,7 +434,7 @@ function formatAnalysisTiming() {
     ["epjson", timing?.epjsonMs],
   ].forEach(([label, value]) => {
     if (Number.isFinite(Number(value)) && Number(value) > 0) {
-      parts.push(`${label} ${formatMS(value)}`);
+      parts.push(`${t(`status.timing.${label}`, {}, label)} ${formatMS(value)}`);
     }
   });
   const stages = Object.entries(stageTimings)
@@ -430,7 +443,7 @@ function formatAnalysisTiming() {
     .slice(0, 8)
     .map(([label, value]) => `${label} ${formatMS(value)}`);
   if (stages.length) {
-    parts.push(`stages ${stages.join(", ")}`);
+    parts.push(`${t("status.timingStages")} ${stages.join(", ")}`);
   }
   return parts.join(" | ");
 }

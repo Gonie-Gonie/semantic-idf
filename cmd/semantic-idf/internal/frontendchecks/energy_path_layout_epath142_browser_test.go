@@ -91,7 +91,7 @@ func TestEPATH142ActualAppFrameEnergyPathLayoutBrowser(t *testing.T) {
 // This is an injection fragment, not a substitute app shell. The manual QA
 // server applies the same two-script replacement to the checked-in index.
 const epath142LayoutHTML = `<pre id="epath142-result" hidden>pending</pre>
-<script>window.go={main:{App:{GetSimulationEnvironment:async()=>({installations:[{version:"25.1",executablePath:"C:/fixtures/EnergyPlus/energyplus.exe"}],weatherFolders:[]})}}};window.runtime={EventsOn(){}};</script>
+<script>window.environmentCalls=0;window.go={main:{App:{GetSimulationEnvironment:async()=>{window.environmentCalls++;return {installations:[{version:"25.1",executablePath:"C:/fixtures/EnergyPlus/energyplus.exe"}],weatherFolders:[]};}}}};window.runtime={EventsOn(){}};</script>
 <script type="module">
 const failures=[],evidence=[];
 document.body.dataset.epath142Viewport=innerWidth+"x"+innerHeight;
@@ -214,6 +214,38 @@ try{
  check(setup.open&&document.activeElement===summary,"native setup summary failed to open with keyboard focus");
  check(document.getElementById("simulationWeatherSelect")?.getBoundingClientRect().height>0&&document.getElementById("simulationRunButton")?.getBoundingClientRect().height>0&&setup.querySelectorAll('input[type="checkbox"]').length>=4,"open setup does not expose actual Weather / Run / purpose controls");
  simulation.renderSimulation();check(setup.open,"same-result rerender discarded user-open setup choice");
+ const [analysisViews,localization,settingsClient]=await Promise.all([import('/src/js/views/analysis-views.js'),import('/src/js/i18n.js'),import('/src/js/settings-client.js')]);
+ state.report={metrics:{categories:[]}};state.analysisStage='complete';
+ const selectedNode=graph().nodes.find(node=>node.level==='load');button(selectedNode.id)?.click();
+ const periodControl=host.querySelector('[data-simulation-energy-path-period]');periodControl.focus();
+ const preservedContext=simulation.captureSimulationEnergyWorkspaceContext();
+ localization.setLanguage('ko');analysisViews.renderReport({preservePresentation:true});
+ check(JSON.stringify(simulation.captureSimulationEnergyWorkspaceContext())===JSON.stringify(preservedContext),'language change discarded Energy scope, period, selection or drawer');
+ check(setup.open&&document.activeElement===host.querySelector('[data-simulation-energy-path-period]'),'language change discarded Setup disclosure or focused Energy filter');
+ localization.setLanguage('en');analysisViews.renderReport({preservePresentation:true});
+ const beforeAppearance=window.environmentCalls,currentSettings=settingsClient.getCurrentAppSettings();
+ settingsClient.applyAppSettings({...currentSettings,appearance:{...currentSettings.appearance,theme:'dark'}});
+ window.dispatchEvent(new CustomEvent('idfAnalyzer:settingsChanged',{detail:{settings:settingsClient.getCurrentAppSettings(),external:true}}));
+ await simulation.loadSimulationEnvironment({render:false});
+ check(window.environmentCalls===beforeAppearance,'appearance-only update rescanned EnergyPlus and weather folders');
+ settingsClient.applyAppSettings({...currentSettings,simulation:{...currentSettings.simulation,extraWeatherDataPaths:['C:/fixtures/ChangedWeather']}});
+ window.dispatchEvent(new CustomEvent('idfAnalyzer:settingsChanged',{detail:{settings:settingsClient.getCurrentAppSettings(),external:true}}));
+ await simulation.loadSimulationEnvironment({render:false});
+ check(window.environmentCalls===beforeAppearance+1,'changed weather path must rescan the environment once');
+ check(JSON.stringify(simulation.captureSimulationEnergyWorkspaceContext())===JSON.stringify(preservedContext),'environment refresh changed Energy selection or filters');
+ const cachedEnvironment=state.simulationEnvironment,cachedSettings=settingsClient.getCurrentAppSettings(),originalEnvironmentLoader=window.go.main.App.GetSimulationEnvironment;
+ let releaseEnvironment;
+ window.go.main.App.GetSimulationEnvironment=()=>{window.environmentCalls++;return new Promise(resolve=>{releaseEnvironment=resolve;});};
+ settingsClient.applyAppSettings({...cachedSettings,simulation:{...cachedSettings.simulation,extraWeatherDataPaths:['C:/fixtures/PendingWeather']}});
+ const pendingEnvironment=simulation.loadSimulationEnvironment({render:false});
+ for(let wait=0;wait<20&&!releaseEnvironment;wait++)await new Promise(resolve=>setTimeout(resolve,0));
+ check(Boolean(releaseEnvironment),'changed environment discovery did not start');
+ settingsClient.applyAppSettings(cachedSettings);
+ check(await simulation.loadSimulationEnvironment({render:false})===cachedEnvironment,'returning to cached settings did not reuse the matching environment');
+ releaseEnvironment({installations:[],weatherFolders:[{label:'Stale weather'}]});await pendingEnvironment;
+ check(state.simulationEnvironment===cachedEnvironment&&window.environmentCalls===beforeAppearance+2,'late environment response overwrote a newer return to cached settings');
+ window.go.main.App.GetSimulationEnvironment=originalEnvironmentLoader;
+ state.report=null;
  summary.click();simulation.renderSimulation();check(!setup.open,"same-result rerender discarded user-closed setup choice");
  state.simulationRunning=true;simulation.renderSimulation();check(setup.open,"new running state did not reopen setup");
  state.simulationRunning=false;simulation.renderSimulation();summary.click();

@@ -110,8 +110,11 @@ try {
   check(!waterModel.entities.filter(e=>e.kind==='node').some(e=>e.properties.some(p=>/humidity/i.test(p.name))),'water loop offers humidity in custom property selector');
   check(snapshot(waterModel,0).nodes[0].metrics.length===3&&snapshot(waterModel,0).nodes[0].metrics.find(m=>m.id==='temperature').value===20,'water snapshot retained RH or lost temperature/flow/setpoint');
  }
- const {setLanguage}=await import('/src/js/i18n.js');setLanguage('ko');
- check(prepare(loop)!==model&&prepare(loop).entities[0].properties.find(p=>p.kind==='temperature').label!==node.properties.find(p=>p.kind==='temperature').label,'language change retained cached labels');setLanguage('en');
+ const {setLanguage,getLanguage}=await import('/src/js/i18n.js');setLanguage('ko');
+ const korean=prepare(loop);check(korean!==model&&korean.language===getLanguage()&&korean.language==='ko','language change retained cached presentation');
+ check(trace(korean,korean.entities[0].properties.find(p=>p.kind==='temperature')).points.map(p=>p.value).join(',')==='20,21,22','language change altered original observations');
+ setLanguage('ja');const japanese=prepare(loop);check(japanese!==korean&&japanese.language==='ja','non-Korean locale reused Korean presentation');
+ setLanguage('en');const english=prepare(loop);check(english!==japanese&&english.language==='en','locale cache depends on a translated term instead of locale identity');
  check(JSON.stringify(loop)===original,'inspection mutated original result');
  document.body.dataset.hvacDataStatus='passed';document.getElementById('result').textContent='passed';
 }catch(error){document.body.dataset.hvacDataStatus='failed';document.getElementById('result').textContent=error.stack;}

@@ -15,7 +15,7 @@
           </h1>
           <p id="runtimeStatus" class="status-loading" role="status" aria-live="polite" aria-atomic="true" data-i18n="status.loadingInterface">Loading interface</p>
         </div>
-        <div class="toolbar" role="toolbar" aria-label="IDF controls">
+        <div class="toolbar" role="toolbar" aria-label="IDF controls" data-i18n-aria-label="shell.idfControls">
           <button id="openButton" class="toolbar-button" type="button" title="Open" aria-label="Open" data-i18n-title="action.open" data-i18n-aria-label="action.open">
             <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -42,18 +42,18 @@
             <span class="toolbar-label" data-i18n="action.revert">Revert</span>
           </button>
           <div class="toolbar-item layout-toolbar">
-            <div class="layout-presets" role="group" aria-label="Layout presets">
-              <button type="button" data-layout-preset="analysis" title="Editor 10%, analysis focus" aria-label="Layout: analysis focus">
+            <div class="layout-presets" role="group" aria-label="Layout presets" data-i18n-aria-label="shell.layoutPresets">
+              <button type="button" data-layout-preset="analysis" title="Editor 10%, analysis focus" data-i18n-title="shell.layoutAnalysisHint" aria-label="Layout: analysis focus" data-i18n-aria-label="shell.layoutAnalysis">
                 <span class="layout-icon layout-icon-analysis" aria-hidden="true"><i></i></span>
               </button>
-              <button type="button" data-layout-preset="balanced" title="Editor 50%, balanced view" aria-label="Layout: balanced view">
+              <button type="button" data-layout-preset="balanced" title="Editor 50%, balanced view" data-i18n-title="shell.layoutBalancedHint" aria-label="Layout: balanced view" data-i18n-aria-label="shell.layoutBalanced">
                 <span class="layout-icon layout-icon-balanced" aria-hidden="true"><i></i></span>
               </button>
-              <button type="button" data-layout-preset="editor" title="Editor 90%, editor focus" aria-label="Layout: editor focus">
+              <button type="button" data-layout-preset="editor" title="Editor 90%, editor focus" data-i18n-title="shell.layoutEditorHint" aria-label="Layout: editor focus" data-i18n-aria-label="shell.layoutEditor">
                 <span class="layout-icon layout-icon-editor" aria-hidden="true"><i></i></span>
               </button>
             </div>
-            <span class="toolbar-label">Layout</span>
+            <span class="toolbar-label" data-i18n="shell.layout">Layout</span>
           </div>
           <button id="toolsButton" class="toolbar-button" type="button" title="Tools" aria-label="Tools" data-i18n-title="action.tools" data-i18n-aria-label="action.tools">
             <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -87,16 +87,16 @@
       <span id="semanticNavigationHelp" class="sr-only" data-i18n="navigation.keyboardHelp">Select an item, press Enter to open it, or use Alt+Enter for available views.</span>
 
       <section class="workspace">
-        <aside class="editor-panel" aria-label="IDF editor">
+        <aside class="editor-panel" aria-label="IDF editor" data-i18n-aria-label="shell.idfEditor">
           <div id="inputToolbarScroll" class="input-toolbar-scroll">
-            <nav class="tabs input-tabs" role="tablist" aria-label="Input views">
-              <button id="inputSemanticTab" class="tab" role="tab" aria-selected="false" aria-controls="semanticInputView" data-input-view="semantic" type="button" tabindex="-1" hidden>Semantic</button>
+            <nav class="tabs input-tabs" role="tablist" aria-label="Input views" data-i18n-aria-label="shell.inputViews">
+              <button id="inputSemanticTab" class="tab" role="tab" aria-selected="false" aria-controls="semanticInputView" data-input-view="semantic" data-i18n="input.semantic" type="button" tabindex="-1" hidden>Semantic</button>
               <button id="inputTextTab" class="tab active" role="tab" aria-selected="true" aria-controls="textInputView" data-input-view="text" type="button">Text</button>
               <button id="inputJSONTab" class="tab" role="tab" aria-selected="false" aria-controls="jsonInputView" data-input-view="json" type="button" tabindex="-1">JSON</button>
               <button id="inputTableTab" class="tab" role="tab" aria-selected="false" aria-controls="tableInputView" data-input-view="table" type="button" tabindex="-1">Table</button>
             </nav>
             <div class="input-filter-bar" role="search">
-              <input id="inputFilter" type="search" placeholder="Filter objects, fields, values" aria-label="Filter input objects" data-i18n-placeholder="input.filter" />
+              <input id="inputFilter" type="search" placeholder="Filter objects, fields, values" aria-label="Filter input objects" data-i18n-aria-label="shell.inputFilter" data-i18n-placeholder="input.filter" />
             </div>
           </div>
           <div class="input-view" id="semanticInputView" role="tabpanel" aria-labelledby="inputSemanticTab" hidden>
@@ -110,7 +110,7 @@
           </div>
           <div class="input-view" id="tableInputView" role="tabpanel" aria-labelledby="inputTableTab" hidden>
             <div class="table-tools">
-              <div class="orientation-controls" role="group" aria-label="Table orientation">
+              <div class="orientation-controls" role="group" aria-label="Table orientation" data-i18n-aria-label="shell.tableOrientation">
                 <button class="orientation-button active" data-table-orientation="objects" type="button" data-i18n="input.objectsRows">Objects as rows</button>
                 <button class="orientation-button" data-table-orientation="fields" type="button" data-i18n="input.fieldsRows">Fields as rows</button>
               </div>
@@ -119,10 +119,10 @@
           </div>
         </aside>
 
-        <div id="workspaceSplitter" class="workspace-splitter" role="separator" aria-orientation="vertical" aria-label="Resize input and analysis panels"></div>
+        <div id="workspaceSplitter" class="workspace-splitter" role="separator" aria-orientation="vertical" aria-label="Resize input and analysis panels" data-i18n-aria-label="shell.resizeWorkspace"></div>
 
-        <section class="analysis-panel" aria-label="Analysis results">
-          <nav class="tabs" aria-label="Result tabs">
+        <section class="analysis-panel" aria-label="Analysis results" data-i18n-aria-label="shell.analysisResults">
+          <nav class="tabs" aria-label="Result tabs" data-i18n-aria-label="shell.resultTabs">
             <button class="tab active" data-result-tab="metrics" type="button" data-i18n="tab.metrics">Metrics</button>
             <button class="tab" data-result-tab="topology" type="button" data-i18n="tab.topology">Topology</button>
             <button class="tab" data-result-tab="profile" type="button" data-i18n="tab.profile">Profile</button>
@@ -146,8 +146,8 @@
             <div class="profile-pane">
               <div id="profileSettings" class="profile-settings"></div>
               <div class="profile-layout">
-                <section class="profile-overview" aria-label="Profile overview">
-                  <div class="profile-overview-table" aria-label="Profile selection">
+                <section class="profile-overview" aria-label="Profile overview" data-i18n-aria-label="shell.profileOverview">
+                  <div class="profile-overview-table" aria-label="Profile selection" data-i18n-aria-label="shell.profileSelection">
                     <div class="profile-overview-table-head">
                       <span data-i18n="common.selection">Selection</span>
                       <span data-i18n="profile.assignment">Assignment</span>
@@ -159,7 +159,7 @@
                     <div id="profileOverview" class="profile-overview-list" role="listbox" aria-multiselectable="true"></div>
                   </div>
                 </section>
-                <section class="profile-visual" aria-label="Profile graph">
+                <section class="profile-visual" aria-label="Profile graph" data-i18n-aria-label="shell.profileGraph">
                   <div class="profile-section-head">
                     <h3 data-i18n="profile.graph">Profile Graph</h3>
                   </div>
@@ -187,7 +187,7 @@
             <div class="hvac-pane">
               <div id="hvacSummary" class="hvac-summary"></div>
               <div class="hvac-layout">
-                <section class="hvac-main" aria-label="HVAC graph">
+                <section class="hvac-main" aria-label="HVAC graph" data-i18n-aria-label="shell.hvacGraph">
                   <div id="hvacViewportActions" class="viewport-action-tools hvac-viewport-actions" role="group" aria-label="HVAC view actions" data-i18n-aria-label="hvac.viewportActions">
                     <button id="hvacBackButton" class="viewport-icon-button" type="button" data-hvac-nav-action="back" aria-label="Back" title="Back" data-i18n-aria-label="common.back" data-i18n-title="common.back" disabled>
                       <svg class="viewport-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -262,14 +262,14 @@
                 <details id="simulationRunSetup" class="simulation-run-setup" open>
                   <summary data-i18n="simulation.runSetup">Run setup</summary>
                   <div class="simulation-run-setup-content">
-                    <section class="simulation-controls" aria-label="Simulation controls">
+                    <section class="simulation-controls" aria-label="Simulation controls" data-i18n-aria-label="shell.simulationControls">
                       <label>
                         <span data-i18n="simulation.weather">Weather</span>
                         <select id="simulationWeatherSelect"></select>
                       </label>
                       <button id="simulationRunButton" type="button" data-i18n="action.runSimulation">Run & Inspect</button>
                     </section>
-                    <section class="simulation-purpose-panel" aria-label="Simulation purposes">
+                    <section class="simulation-purpose-panel" aria-label="Simulation purposes" data-i18n-aria-label="shell.simulationPurposes">
                       <div class="simulation-purpose-grid">
                         <label class="simulation-purpose-card">
                           <input type="checkbox" data-simulation-purpose="basic_energy" checked />
@@ -303,7 +303,7 @@
                     </section>
                   </div>
                 </details>
-                <section class="simulation-progress-card" aria-label="Simulation progress">
+                <section class="simulation-progress-card" aria-label="Simulation progress" data-i18n-aria-label="shell.simulationProgress">
                   <div class="simulation-progress-meta">
                     <span id="simulationStatus"></span>
                     <span id="simulationRunEstimate" class="simulation-run-estimate" hidden></span>
@@ -314,7 +314,7 @@
                   </div>
                 </section>
               </div>
-              <nav id="simulationResultTabs" class="simulation-result-tabs" aria-label="Simulation result views">
+              <nav id="simulationResultTabs" class="simulation-result-tabs" aria-label="Simulation result views" data-i18n-aria-label="shell.simulationViews">
                 <button type="button" data-simulation-result-view-button="energy" data-i18n="simulation.energy">Energy</button>
                 <button type="button" data-simulation-result-view-button="zone_heat_flow" data-i18n="simulation.heatFlow">Heat-Flow Ledger</button>
                 <button type="button" data-simulation-result-view-button="hvac_loops" data-i18n="simulation.hvacLoops">HVAC Loops</button>
@@ -343,38 +343,38 @@
                   <h3 data-i18n="simulation.heatFlow">Heat-Flow Ledger</h3>
                   <span id="simulationHeatFlowStats" class="tool-muted">No heat-flow output</span>
                 </div>
-                <div class="simulation-heatflow-controls" aria-label="Heat-flow controls">
+                <div class="simulation-heatflow-controls" aria-label="Heat-flow controls" data-i18n-aria-label="shell.heatFlowControls">
                   <button id="simulationHeatFlowPlay" type="button" title="Play heat-flow frames">Play</button>
-                  <input id="simulationHeatFlowSlider" type="range" min="0" max="0" value="0" aria-label="Heat-flow frame" />
+                  <input id="simulationHeatFlowSlider" type="range" min="0" max="0" value="0" aria-label="Heat-flow frame" data-i18n-aria-label="shell.heatFlowFrame" />
                   <output id="simulationHeatFlowFrame">No frame</output>
                   <label>
-                    <span>Story</span>
-                    <select id="simulationHeatFlowStory" aria-label="Heat-flow story">
-                      <option value="all">All stories</option>
+                    <span data-i18n="shell.story">Story</span>
+                    <select id="simulationHeatFlowStory" aria-label="Heat-flow story" data-i18n-aria-label="shell.heatFlowStory">
+                      <option value="all" data-i18n="topology.allLevels">All stories</option>
                     </select>
                   </label>
                   <label>
                     <span data-i18n="simulation.speed">Speed</span>
-                    <select id="simulationHeatFlowSpeed" aria-label="Heat-flow playback speed">
-                      <option value="900">Slow</option>
-                      <option value="420" selected>Normal</option>
-                      <option value="160">Fast</option>
+                    <select id="simulationHeatFlowSpeed" aria-label="Heat-flow playback speed" data-i18n-aria-label="shell.heatFlowSpeed">
+                      <option value="900" data-i18n="shell.slow">Slow</option>
+                      <option value="420" selected data-i18n="shell.normal">Normal</option>
+                      <option value="160" data-i18n="shell.fast">Fast</option>
                     </select>
                   </label>
                   <label>
                     <span data-i18n="simulation.overlay">Overlay</span>
-                    <select id="simulationHeatFlowOverlay" aria-label="Heat-flow overlay">
-                      <option value="net" selected>Net heat flow</option>
-                      <option value="temperature">Temperature</option>
+                    <select id="simulationHeatFlowOverlay" aria-label="Heat-flow overlay" data-i18n-aria-label="shell.heatFlowOverlay">
+                      <option value="net" selected data-i18n="shell.netHeatFlow">Net heat flow</option>
+                      <option value="temperature" data-i18n="shell.temperature">Temperature</option>
                     </select>
                   </label>
                   <label>
-                    <span>Start</span>
-                    <input id="simulationHeatFlowRangeStart" type="range" min="0" max="0" value="0" aria-label="Heat-flow visible range start" />
+                    <span data-i18n="shell.rangeStart">Start</span>
+                    <input id="simulationHeatFlowRangeStart" type="range" min="0" max="0" value="0" aria-label="Heat-flow visible range start" data-i18n-aria-label="shell.heatFlowRangeStart" />
                   </label>
                   <label>
-                    <span>End</span>
-                    <input id="simulationHeatFlowRangeEnd" type="range" min="0" max="0" value="0" aria-label="Heat-flow visible range end" />
+                    <span data-i18n="shell.rangeEnd">End</span>
+                    <input id="simulationHeatFlowRangeEnd" type="range" min="0" max="0" value="0" aria-label="Heat-flow visible range end" data-i18n-aria-label="shell.heatFlowRangeEnd" />
                   </label>
                 </div>
                 <div id="simulationHeatFlow" class="simulation-heatflow">
@@ -384,9 +384,9 @@
               <section class="simulation-section" data-simulation-result-view="series">
                 <div class="profile-section-head">
                   <span id="simulationSeriesStats" class="tool-muted">No variables</span>
-                  <div class="simulation-series-panel-actions" role="group" aria-label="Graph panels">
-                    <button type="button" class="viewport-icon-button" data-series-panel-action="add" aria-label="Add graph panel" title="Add graph panel">+</button>
-                    <button type="button" class="viewport-icon-button" data-series-panel-action="remove" aria-label="Remove graph panel" title="Remove graph panel">−</button>
+                  <div class="simulation-series-panel-actions" role="group" aria-label="Graph panels" data-i18n-aria-label="shell.graphPanels">
+                    <button type="button" class="viewport-icon-button" data-series-panel-action="add" aria-label="Add graph panel" data-i18n-aria-label="shell.addGraphPanel" title="Add graph panel" data-i18n-title="shell.addGraphPanel">+</button>
+                    <button type="button" class="viewport-icon-button" data-series-panel-action="remove" aria-label="Remove graph panel" data-i18n-aria-label="shell.removeGraphPanel" title="Remove graph panel" data-i18n-title="shell.removeGraphPanel">−</button>
                   </div>
                 </div>
                 <div id="simulationChart" class="simulation-chart simulation-series-workspace"></div>
@@ -397,24 +397,24 @@
           <div class="result-pane" id="topologyPane">
             <div class="topology-head">
               <div class="topology-tools">
-                <div class="topology-control-group topology-mode-controls" role="group" aria-label="Topology view">
+                <div class="topology-control-group topology-mode-controls" role="group" aria-label="Topology view" data-i18n-aria-label="shell.topologyView">
                   <button class="topology-mode-button active" data-topology-mode="3d" type="button">3D</button>
                   <button class="topology-mode-button" data-topology-mode="plan" type="button">Plan</button>
                   <button class="topology-mode-button" data-topology-mode="thermal" type="button" title="Network topology and boundary connections" data-i18n-title="topology.thermalTooltip">Network</button>
                 </div>
                 <label id="topologyStoryControl" class="topology-select-control topology-story-control">
                   <span data-i18n="topology.level">Level</span>
-                  <select id="topologyStorySelect" aria-label="Topology story"></select>
+                  <select id="topologyStorySelect" aria-label="Topology story" data-i18n-aria-label="shell.topologyStory"></select>
                 </label>
-                <div id="topologySpatialControls" class="topology-control-group topology-visibility-controls" aria-label="Spatial visibility">
+                <div id="topologySpatialControls" class="topology-control-group topology-visibility-controls" aria-label="Spatial visibility" data-i18n-aria-label="shell.spatialVisibility">
                   <label class="topology-toggle"><input id="topologyShowZones" type="checkbox" checked /> <span data-i18n="topology.showZones">Zones</span></label>
                   <label class="topology-toggle"><input id="topologyShowSurfaces" type="checkbox" checked /> <span data-i18n="topology.showSurfaces">Surfaces</span></label>
                   <label class="topology-toggle"><input id="topologyShowOpenings" type="checkbox" checked /> <span data-i18n="topology.showOpenings">Openings</span></label>
                 </div>
-                <div id="thermalTopologyControls" class="thermal-topology-controls" aria-label="Network controls" hidden>
+                <div id="thermalTopologyControls" class="thermal-topology-controls" aria-label="Network controls" data-i18n-aria-label="shell.networkControls" hidden>
                   <label class="topology-select-control">
                     <span data-i18n="topology.metric">Metric</span>
-                    <select id="thermalTopologyMetric" aria-label="Thermal graph metric">
+                    <select id="thermalTopologyMetric" aria-label="Thermal graph metric" data-i18n-aria-label="shell.thermalMetric">
                       <option value="topology" data-i18n="topology.metricConnectivity">Connectivity</option>
                       <option value="area" data-i18n="topology.metricArea">Area</option>
                       <option value="ua" data-i18n="topology.metricUA">UA</option>
@@ -424,7 +424,7 @@
                     </select>
                   </label>
                   <label class="topology-select-control">
-                    <span data-i18n="topology.layout">Layout</span>
+                    <span data-i18n="topology.layout" data-i18n="shell.layout">Layout</span>
                     <select id="thermalTopologyLayout">
                       <option value="spatial" data-i18n="topology.layoutSpatial">Spatial</option>
                       <option value="network" data-i18n="topology.layoutNetwork">Network</option>
@@ -436,7 +436,7 @@
             <div class="topology-body">
               <div id="topologyViewport" class="topology-viewport">
                 <div id="topology3DCanvasHost" class="topology-3d-canvas-host"></div>
-                <svg id="topologyPlan" class="topology-plan" role="img" aria-label="Topology floor plan"></svg>
+                <svg id="topologyPlan" class="topology-plan" role="img" aria-label="Topology floor plan" data-i18n-aria-label="shell.topologyPlan"></svg>
                 <div id="thermalTopologyView" class="thermal-topology-view">
                   <div id="thermalTopologyGraph" class="thermal-topology-graph" role="region" aria-label="Network topology and boundary connections" data-i18n-aria-label="topology.thermalTooltip"></div>
                 </div>
@@ -459,8 +459,8 @@
                   </button>
                 </div>
               </div>
-              <div id="topologyDetailsSplitter" class="vertical-splitter" role="separator" aria-orientation="horizontal" aria-label="Resize topology view and properties"></div>
-              <section id="topologyDetails" class="topology-details" aria-label="Selected topology properties">
+              <div id="topologyDetailsSplitter" class="vertical-splitter" role="separator" aria-orientation="horizontal" aria-label="Resize topology view and properties" data-i18n-aria-label="shell.resizeTopology"></div>
+              <section id="topologyDetails" class="topology-details" aria-label="Selected topology properties" data-i18n-aria-label="shell.topologyProperties">
                 <div class="empty" data-i18n="topology.selectObject">Select a topology object</div>
               </section>
             </div>

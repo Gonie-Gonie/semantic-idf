@@ -1,6 +1,7 @@
 import { loadAndApplyAppSettings } from "./settings-client.js";
 import { renderAppInfo } from "./app-info.js";
-import { t } from "./i18n.js";
+import { getLanguage, t } from "./i18n.js";
+import { setLocalizedText, setLiteralText } from "./localized-text.js";
 import { initializeMultiSimulationTool } from "./batch/batch-simulation.js";
 import { parseMetricNumber, metricUnit } from "./batch/batch-metrics-utils.js";
 
@@ -191,7 +192,7 @@ function updateProgress(completed, total, succeeded = 0, failed = 0) {
   elements.progressBar.style.width = `${percent}%`;
   elements.percent.textContent = `${percent}%`;
   if (total > 0) {
-    elements.status.textContent = t("tools.analyzedProgress", { completed, total, ok: succeeded, failed });
+    setLocalizedText(elements.status, "tools.analyzedProgress", { completed, total, ok: succeeded, failed });
   }
 }
 
@@ -210,9 +211,9 @@ async function runBatchMetrics() {
   state.progressFiles.clear();
   state.activeRunID = `batch-metrics-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   setRunning(true);
-  elements.stats.textContent = t("tools.waitingSelection");
-  elements.status.textContent = t("status.openDialog");
-  elements.table.innerHTML = `<div class="empty">${t("status.analysisWillStart")}</div>`;
+  setLocalizedText(elements.stats, "tools.waitingSelection");
+  setLocalizedText(elements.status, "status.openDialog");
+  elements.table.innerHTML = `<div class="empty" data-i18n="status.analysisWillStart">${t("status.analysisWillStart")}</div>`;
   elements.fileList.innerHTML = "";
   updateProgress(0, 0);
   waitForProgressRuntime();
@@ -220,8 +221,8 @@ async function runBatchMetrics() {
   try {
     const result = await analyzeBatchMetrics(state.activeRunID);
     if (result?.canceled) {
-      elements.stats.textContent = t("tools.noFilesSelected");
-      elements.status.textContent = t("status.fileSelectionCanceled");
+      setLocalizedText(elements.stats, "tools.noFilesSelected");
+      setLocalizedText(elements.status, "status.fileSelectionCanceled");
       elements.table.innerHTML = `<div class="empty">${t("tools.selectFilesHelp")}</div>`;
       return;
     }
@@ -229,8 +230,8 @@ async function runBatchMetrics() {
     updateProgress(result.completed || 0, result.total || 0, result.succeeded || 0, result.failed || 0);
     renderResult();
   } catch (error) {
-    elements.status.textContent = error?.message || String(error);
-    elements.stats.textContent = t("tools.analysisFailed");
+    setLocalizedText(elements.status, "shell.operationFailed", { message: error?.message || String(error) });
+    setLocalizedText(elements.stats, "tools.analysisFailed");
     elements.table.innerHTML = `<div class="empty">${escapeHTML(error?.message || String(error))}</div>`;
   } finally {
     setRunning(false);
@@ -273,7 +274,7 @@ function renderResult() {
   const succeeded = result.succeeded || 0;
   const failed = result.failed || 0;
   const workers = result.concurrency || 0;
-  elements.stats.textContent = t("count.filesMetrics", { total, ok: succeeded, failed, workers }, `${total} files, ${succeeded} ok, ${failed} failed, ${workers} workers`);
+  setLocalizedText(elements.stats, "count.filesMetrics", { total, ok: succeeded, failed, workers }, `${total} files, ${succeeded} ok, ${failed} failed, ${workers} workers`);
   renderFileList(result.files || []);
   renderTable();
   elements.exportButton.disabled = state.running || !result.metrics?.length;
@@ -386,13 +387,17 @@ function renderValueCell(file, metricID) {
   }
   const value = file.metricValues?.[metricID];
   const status = value?.status || "missing";
-  const coverage = value?.hasCoverage ? ` \u00b7 U coverage ${formatNumber(Number(value.coverage || 0) * 100)}%` : "";
-  return `<td class="tool-value ${escapeHTML(status)}" title="${escapeHTML(`${status}${coverage}`)}">${escapeHTML(metricDisplayValue(value))}${coverage ? `<span>${escapeHTML(coverage.slice(3))}</span>` : ""}</td>`;
+  const coverage = value?.hasCoverage ? ` \u00b7 ${t("batch.uCoverage", { percent: formatNumber(Number(value.coverage || 0) * 100) })}` : "";
+  return `<td class="tool-value ${escapeHTML(status)}" title="${escapeHTML(`${metricStatusLabel(status)}${coverage}`)}">${escapeHTML(metricDisplayValue(value))}${coverage ? `<span>${escapeHTML(coverage.slice(3))}</span>` : ""}</td>`;
+}
+
+function metricStatusLabel(status) {
+  return t(`batch.valueStatus.${status}`, {}, status);
 }
 
 function renderBatchHiddenRowsNotice(hiddenCount, label) {
   return hiddenCount > 0
-    ? `<div class="empty compact">${escapeHTML(`${hiddenCount} additional ${label} hidden. Narrow filters to render them.`)}</div>`
+    ? `<div class="empty compact">${escapeHTML(t(label === "metrics" ? "batch.hiddenMetrics" : "batch.hiddenFiles", { count: hiddenCount }))}</div>`
     : "";
 }
 
@@ -528,14 +533,14 @@ function metricsDeltaRow(metric, baseline, compare) {
   const aStatus = metricsValueStatus(baseline, metric.id);
   const bStatus = metricsValueStatus(compare, metric.id);
   const sameUnit = metricUnit(metric, a?.displayValue) === metricUnit(metric, b?.displayValue);
-  const status = [aStatus, bStatus].join(" -> ");
+  const status = [aStatus, bStatus].map(metricStatusLabel).join(" → ");
   const notComparable = metricsNotComparableReason(a, b);
   if (notComparable) {
     return {
       metric,
       a: metricDisplayValue(a),
       b: metricDisplayValue(b),
-      delta: "not comparable",
+      delta: t("batch.notComparable"),
       percent: "—",
       deltaValue: null,
       percentValue: null,
@@ -579,7 +584,7 @@ function metricsDeltaRow(metric, baseline, compare) {
 function metricsNotComparableReason(a, b) {
   if (a?.hasCoverage || b?.hasCoverage) {
     if (Boolean(a?.hasCoverage) !== Boolean(b?.hasCoverage) || Math.abs(Number(a?.coverage || 0) - Number(b?.coverage || 0)) > 0.0001) {
-      return "not comparable: U-value coverage differs";
+      return t("batch.uCoverageDiffers");
     }
   }
   return "";
@@ -639,7 +644,7 @@ function formatNumber(value) {
   }
   const abs = Math.abs(value);
   const digits = abs >= 100 ? 1 : abs >= 10 ? 2 : 3;
-  return Number(value.toFixed(digits)).toLocaleString();
+  return Number(value.toFixed(digits)).toLocaleString(getLanguage());
 }
 
 async function exportCSV() {
@@ -699,10 +704,10 @@ async function exportXLSX() {
   }
   const api = await waitForAppAPI("SaveBatchMetricsXLSX");
   if (!api) {
-    elements.status.textContent = t("tools.desktopOnly");
+    setLocalizedText(elements.status, "tools.desktopOnly");
     return;
   }
-  elements.status.textContent = t("common.loadingSettings", {}, "Loading");
+  setLocalizedText(elements.status, "shell.preparingExport", {}, "Preparing export");
   try {
     const saved = await api.SaveBatchMetricsXLSX({
       result,
@@ -711,10 +716,10 @@ async function exportXLSX() {
       compareIndex: state.deltaCompareIndex ?? -1,
     });
     if (!saved?.canceled) {
-      elements.status.textContent = t("status.savedNamed", { name: saved?.filename || "batch-metrics.xlsx" }, `Saved ${saved?.filename || "batch-metrics.xlsx"}`);
+      setLocalizedText(elements.status, "status.savedNamed", { name: saved?.filename || "batch-metrics.xlsx" }, `Saved ${saved?.filename || "batch-metrics.xlsx"}`);
     }
   } catch (error) {
-    elements.status.textContent = error?.message || String(error);
+    setLocalizedText(elements.status, "shell.operationFailed", { message: error?.message || String(error) });
   }
 }
 
@@ -753,7 +758,7 @@ function setDiagnoseDocument(documentState = {}, { persist = true, replaceWorksp
   state.diagnose.pendingScan = Boolean(state.diagnose.text.trim());
   elements.diagnoseCandidateFilter.value = "";
   elements.diagnoseFilename.removeAttribute("data-i18n");
-  elements.diagnoseFilename.textContent = state.diagnose.filename || t("common.inputFile", {}, "Input file");
+  setLiteralText(elements.diagnoseFilename, state.diagnose.filename || t("common.inputFile", {}, "Input file"));
   elements.diagnoseFilename.title = state.diagnose.path;
   if (persist) {
     persistDiagnoseDocument({ replaceWorkspace });
@@ -764,7 +769,7 @@ function setDiagnoseDocument(documentState = {}, { persist = true, replaceWorksp
     // Restoring the shared input is not a request to analyze it. Batch pages
     // keep Diagnose dormant until its panel is actually opened.
     const pending = t("diagnoseFix.pending", {}, "Scan current input for suggested fixes.");
-    elements.diagnoseStatus.textContent = pending;
+    setLocalizedText(elements.diagnoseStatus, "diagnoseFix.pending", {}, pending);
     elements.diagnoseList.innerHTML = `<div class="empty">${escapeHTML(pending)}</div>`;
     elements.diagnoseRules.innerHTML = elements.diagnoseList.innerHTML;
     elements.diagnoseCandidates.innerHTML = elements.diagnoseList.innerHTML;
@@ -801,7 +806,7 @@ async function refreshDiagnose() {
     return;
   }
   setDiagnoseBusy(true);
-  elements.diagnoseStatus.textContent = t("diagnose.running", {}, "Diagnostics are running");
+  setLocalizedText(elements.diagnoseStatus, "diagnose.running", {}, "Diagnostics are running");
   try {
     const [diagnostics, cleanup] = await Promise.all([
       analyzeDiagnoseText(state.diagnose.text),
@@ -873,7 +878,7 @@ async function applyDiagnoseFixes() {
     const preview = state.diagnose.preview || await buildDiagnosePreview();
     state.diagnose.text = preview.text || state.diagnose.text;
     persistDiagnoseDocument();
-    elements.diagnoseStatus.textContent = t(
+    setLocalizedText(elements.diagnoseStatus,
       "diagnoseFix.applied",
       { count: preview.removedCount || 0 },
       `${preview.removedCount || 0} selected fixes applied.`,
@@ -901,7 +906,7 @@ async function saveDiagnoseCopy() {
     }
     const result = await api.SaveCleanupAs(payload.text, diagnoseSaveAsFilename(), payload.ruleIds, payload.excludedCandidateKeys);
     if (!result?.canceled) {
-      elements.diagnoseStatus.textContent = t("status.savedNamed", { name: result.filename || diagnoseSaveAsFilename() });
+      setLocalizedText(elements.diagnoseStatus, "status.savedNamed", { name: result.filename || diagnoseSaveAsFilename() });
     }
   } catch (error) {
     renderDiagnoseError(error);
@@ -955,7 +960,7 @@ function renderDiagnose() {
   const diagnostics = state.diagnose.diagnostics || [];
   const candidates = state.diagnose.scan?.scan?.candidates || [];
   const errors = diagnostics.filter((item) => item.severity === "error").length;
-  elements.diagnoseStatus.textContent = `${diagnostics.length} diagnostics \u00b7 ${errors} errors \u00b7 ${candidates.length} fix candidates`;
+  setLocalizedText(elements.diagnoseStatus, "tools.diagnosticSummary", { diagnostics: diagnostics.length, errors, candidates: candidates.length });
   renderDiagnoseList(diagnostics);
   renderDiagnoseRules();
   renderDiagnoseCandidates();
@@ -972,8 +977,8 @@ function renderDiagnoseList(diagnostics) {
     <details class="diagnostic-item ${escapeHTML(item.severity || "warning")}">
       <summary class="diagnostic-metrics">
         <span class="diagnostic-row-main">
-          <span class="diagnostic-severity">${escapeHTML(item.severity || "warning")}</span>
-          <span class="diagnostic-category">${escapeHTML(item.category || "Diagnostic")}</span>
+          <span class="diagnostic-severity">${escapeHTML(t(`tools.severity.${item.severity || "warning"}`, {}, item.severity || "warning"))}</span>
+          <span class="diagnostic-category">${escapeHTML(item.category || t("tools.diagnosticCategory"))}</span>
           <strong>${escapeHTML(item.message || "")}</strong>
         </span>
         ${item.code ? `<span class="diagnostic-code">${escapeHTML(item.code)}</span>` : ""}
@@ -992,7 +997,7 @@ function renderDiagnoseRules() {
     const checked = rule.available && state.diagnose.selectedRuleIDs.has(rule.id) ? "checked" : "";
     return `<label class="cleanup-rule ${rule.available ? "" : "disabled"}">
       <input data-diagnose-rule="${escapeHTML(rule.id)}" type="checkbox" ${checked} ${rule.available ? "" : "disabled"} />
-      <span><strong>${escapeHTML(rule.name || rule.id)}</strong><small>${escapeHTML(rule.description || "")}</small><em>${escapeHTML(rule.group || "")}</em></span>
+      <span><strong>${escapeHTML(t(`tools.cleanupRule.${rule.id}.name`, {}, rule.name || rule.id))}</strong><small>${escapeHTML(t(`tools.cleanupRule.${rule.id}.description`, {}, rule.description || ""))}</small><em>${escapeHTML(t(`tools.cleanupGroup.${rule.group}`, {}, rule.group || ""))}</em></span>
     </label>`;
   }).join("") : `<div class="empty">${escapeHTML(t("tools.noCleanupCandidates", {}, "No cleanup candidates found."))}</div>`;
   elements.diagnoseRules.querySelectorAll("[data-diagnose-rule]").forEach((input) => input.addEventListener("change", () => {
@@ -1008,7 +1013,7 @@ function renderDiagnoseCandidates() {
   const query = state.diagnose.candidateFilter.trim().toLowerCase();
   const visible = candidates.filter((item) => !query || [item.ruleId, item.objectType, item.objectName, item.reason, item.risk].some((value) => String(value || "").toLowerCase().includes(query)));
   const selectedCount = selectedDiagnoseCandidates(candidates).length;
-  elements.diagnoseCandidateStats.textContent = `${selectedCount} selected of ${candidates.length}`;
+  setLocalizedText(elements.diagnoseCandidateStats, "tools.selectedOf", { selected: selectedCount, total: candidates.length });
   elements.diagnoseCandidates.innerHTML = visible.length ? `<div class="cleanup-candidate-list">${visible.map((item) => {
     const active = state.diagnose.selectedRuleIDs.has(item.ruleId);
     const selected = active && !state.diagnose.excludedCandidateKeys.has(item.key);
@@ -1029,14 +1034,14 @@ function renderDiagnoseCandidates() {
 function renderDiagnosePreview(preview) {
   elements.diagnosePreviewPanel.hidden = !preview;
   elements.diagnosePreviewPanel.innerHTML = preview ? `
-    <div class="diagnose-fix-preview-head"><strong>${escapeHTML(t("common.preview", {}, "Preview"))}</strong><span>${preview.removedCount || 0} removals \u00b7 ${preview.objectCount || 0} objects</span></div>
+    <div class="diagnose-fix-preview-head"><strong>${escapeHTML(t("common.preview", {}, "Preview"))}</strong><span>${escapeHTML(t("tools.cleanupPreviewSummary", { removed: preview.removedCount || 0, objects: preview.objectCount || 0 }))}</span></div>
     ${(preview.removedCandidates || []).length ? `<ul>${preview.removedCandidates.slice(0, 80).map((item) => `<li><strong>${escapeHTML(item.objectType || "")}</strong> ${escapeHTML(item.objectName || "")} <span>${escapeHTML(item.reason || "")}</span></li>`).join("")}</ul>` : `<div class="empty">${escapeHTML(t("diagnoseFix.formattingOnly", {}, "Formatting-only preview."))}</div>`}` : "";
 }
 
 function renderDiagnoseEmpty() {
   elements.diagnoseFilename.setAttribute("data-i18n", "tools.noCurrentInputShort");
-  elements.diagnoseFilename.textContent = t("tools.noCurrentInputShort", {}, "No current input.");
-  elements.diagnoseStatus.textContent = t("tools.noCurrentInput", {}, "Open an input first.");
+  setLocalizedText(elements.diagnoseFilename, "tools.noCurrentInputShort", {}, "No current input.");
+  setLocalizedText(elements.diagnoseStatus, "tools.noCurrentInput", {}, "Open an input first.");
   elements.diagnoseList.innerHTML = `<div class="empty">${escapeHTML(t("tools.noCurrentInput", {}, "Open an input first."))}</div>`;
   elements.diagnoseRules.innerHTML = elements.diagnoseList.innerHTML;
   elements.diagnoseCandidates.innerHTML = elements.diagnoseList.innerHTML;
@@ -1045,7 +1050,7 @@ function renderDiagnoseEmpty() {
 
 function renderDiagnoseError(error) {
   const message = error?.message || String(error);
-  elements.diagnoseStatus.textContent = message;
+  setLocalizedText(elements.diagnoseStatus, "shell.operationFailed", { message });
   elements.diagnoseList.innerHTML = `<div class="empty">${escapeHTML(message)}</div>`;
 }
 
@@ -1145,6 +1150,20 @@ elements.diagnoseSaveAs?.addEventListener("click", saveDiagnoseCopy);
 elements.diagnoseCandidateFilter?.addEventListener("input", () => {
   state.diagnose.candidateFilter = elements.diagnoseCandidateFilter.value || "";
   renderDiagnoseCandidates();
+});
+
+window.addEventListener("idfAnalyzer:languageChanged", () => {
+  if (state.result) renderResult();
+  else if (state.progressFiles.size) renderFileList([...state.progressFiles.values()]);
+  if (state.diagnose.scan) {
+    renderDiagnoseList(state.diagnose.diagnostics || []);
+    renderDiagnoseRules();
+    renderDiagnoseCandidates();
+    renderDiagnosePreview(state.diagnose.preview);
+  } else if (!state.diagnose.text.trim()) {
+    renderDiagnoseEmpty();
+  }
+  multiSimulationTool?.refreshLanguage();
 });
 
 registerProgressListener();

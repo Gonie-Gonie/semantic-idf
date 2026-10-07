@@ -360,7 +360,19 @@ try{
   for(const index of[3,4,5]){const allowed=[...target.options].some(option=>option.value===fixture.payload.results[index].runId&&!option.disabled);if(!allowed)continue;selectPair(0,index);const invalid=document.querySelector("[data-batch-energy-comparison]");check(/summary is unavailable/i.test(invalid.innerText)&&[...invalid.querySelectorAll("tbody tr")].every(row=>[...row.children].slice(2).every(cell=>!/[0-9]/.test(cell.innerText))),"wrong scope/period/legacy summary borrowed graph values instead of explicit unavailable comparison: "+index);}
   selectPair(0,6);check(document.querySelector("[data-batch-energy-comparison]").innerText.includes("Not requested")&&!/NaN|Infinity/.test(document.querySelector("[data-batch-energy-comparison]").innerText),"sparse summary invented zero completeness or missing values");
   const sparseOpener=open(6);if(sparseOpener&&!sparseOpener.disabled){sparseOpener.click();check(!region()?.querySelector("[data-energy-path-canvas]")&&/unavailable|not available|no.*graph/i.test(region()?.innerText||""),"summary-only model fabricated another model's detail graph");close()?.click();}
-  selectPair(0,1);check(fixture.calls.select===1&&fixture.calls.run===1&&fixture.calls.forbidden===0,"comparison/detail actions called backend work");check(JSON.stringify(fixture.payload)===fixture.rawJSON,"comparison/detail mutated completed Batch payload");check(sessionStorage.getItem("idfAnalyzer.currentDocument")===fixture.mainJSON&&JSON.stringify(Object.fromEntries(mainKeys.map(key=>[key,mainState[key]])))===mainBefore,"local Batch detail mutated main Energy workspace/global result");
+  selectPair(0,1);
+  const localeOpener=open(0,"baseline");localeOpener.click();detail=region();
+  const localeNode=detail.querySelector('[data-energy-path-stage="load"] [data-energy-path-layout-node]');localeNode.click();
+  const localeFrequency=detail.querySelector("[data-energy-path-chart-frequency]");if(localeFrequency){localeFrequency.value="hourly";localeFrequency.dispatchEvent(new Event("change",{bubbles:true}));}
+  detail.querySelector('[data-energy-path-quality-stage="drivers"]').click();
+  const pairBeforeLocale=[baseline.value,target.value].join("|");
+  const {setLanguage}=await import("/src/js/i18n.js");setLanguage("ko");detail=region();
+  check(visible(detail)&&detail.querySelector("[data-energy-path-inspector]")&&visible(detail.querySelector("[data-energy-path-data-details]")),"language change discarded selected-model detail or its selection/drawer");
+  check(detail.querySelector("[data-energy-path-chart-frequency]")?.value==="hourly"&&[baseline.value,target.value].join("|")===pairBeforeLocale,"language change reset frequency or comparison pair");
+  check(detail.querySelector("#batchEnergyDetailTitle")?.textContent==="모델 Energy Path"&&document.querySelector("#multiSimulationTable .tool-value")?.textContent==="완료","Batch detail or run status did not use Korean app language");
+  const translatedOpener=open(0,"baseline");close().click();check(document.activeElement===translatedOpener&&!visible(region()),"translated detail did not return focus to the current comparison opener");
+  setLanguage("en");
+  check(fixture.calls.select===1&&fixture.calls.run===1&&fixture.calls.forbidden===0,"comparison/detail actions called backend work");check(JSON.stringify(fixture.payload)===fixture.rawJSON,"comparison/detail mutated completed Batch payload");check(sessionStorage.getItem("idfAnalyzer.currentDocument")===fixture.mainJSON&&JSON.stringify(Object.fromEntries(mainKeys.map(key=>[key,mainState[key]])))===mainBefore,"local Batch detail mutated main Energy workspace/global result");
   evidence.push("100 actual Tools result rows, one six-column Building/Annual summary; exact arithmetic, missing/zero/basis/coverage/unit/duplicate guards passed");evidence.push("One selected model detail, native node/Data/focus interactions, no extra Run/Analyze and unchanged Batch/main workspace payloads");
   if(failures.length)throw new Error(failures.join("\n"));document.body.dataset.epath170Status="passed";document.getElementById("epath170-result").textContent=evidence.join("\n");
  }

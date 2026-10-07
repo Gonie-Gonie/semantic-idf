@@ -2,6 +2,46 @@ import { elements, escapeHTML, state } from "../state.js";
 import { t } from "../i18n.js";
 import { resolveThermalTopologyTarget } from "../thermal-topology-targets.js";
 
+const detailLabelKeys = {
+  "Kind": "topology.detailKind",
+  "Story": "topology.detailStory",
+  "Shell": "topology.detailShell",
+  "Adjacent zones": "topology.adjacentZones",
+  "From": "topology.detailFrom",
+  "To": "topology.detailTo",
+  "Relation": "topology.detailRelation",
+  "Surface count": "topology.surfaceCount",
+  "Opening count": "topology.openingCount",
+  "Dominant constructions": "topology.dominantConstructions",
+  "Source boundaries": "topology.sourceBoundaries",
+  "Source boundary": "topology.sourceBoundary",
+  "Object": "common.object",
+  "Owner zone": "topology.ownerZone",
+  "Owner space": "topology.ownerSpace",
+  "Counterpart": "topology.counterpart",
+  "Construction validation": "topology.constructionValidation",
+  "Validation": "topology.validation",
+  "Object type": "topology.objectType",
+  "Object name": "topology.objectName",
+  "Direction": "topology.direction",
+  "Component": "topology.component",
+  "Observation": "topology.observation",
+  "Declared connection": "topology.declaredConnection",
+  "Adjacent source surfaces": "topology.adjacentSourceSurfaces",
+  "External target": "topology.externalTarget",
+  "Connected zones": "topology.connectedZones",
+  "Boundary families": "topology.boundaryFamilies",
+  "Boundaries": "topology.boundaries",
+  "Topology issue": "topology.issue",
+  "Severity": "topology.severity",
+  "Code": "topology.code",
+  "Message": "common.message",
+  "Service paths": "hvac.servicePath",
+  "Services": "topology.services",
+  "Systems and loops": "topology.systemsAndLoops",
+};
+const detailLabel = (value) => detailLabelKeys[value] ? t(detailLabelKeys[value], {}, value) : value;
+
 let activeHelpers = null;
 let thermalDetailsInteractionsBound = false;
 
@@ -76,7 +116,7 @@ function renderZoneDetails(node, geometry) {
       ["Floor area", area(node.floorArea)],
       ["Volume", volume(node.volume)],
       ["Story", Number(node.storyIndex) + 1],
-      ["Shell", signature.closedShell ? "Closed" : `Open · ${signature.openEdgeCount || 0} edges`],
+      ["Shell", signature.closedShell ? t("topology.closedShell", {}, "Closed") : t("topology.openShellEdges", { count: signature.openEdgeCount || 0 }, "Open \u00b7 {count} edges")],
     ])),
     detailSection("Thermal exposure", renderRows([
       ["Outdoors", area(exposure.exteriorArea)],
@@ -135,7 +175,7 @@ function renderBoundaryDetails(boundary, geometry) {
       ["Counterpart", boundary.counterpartSurfaceEntityId || (boundary.virtualCounterpart ? "Virtual" : "—")],
       ["Relation", humanize(boundary.relationKind)],
       ["Construction", `${boundary.constructionName || "—"} · ${boundary.hasUValue ? `${number(boundary.uValue)} W/m²K` : "U —"}`],
-      ["Construction validation", humanize(boundary.constructionStatus || "not checked")],
+      ["Construction validation", humanize(boundary.constructionStatus || t("topology.notChecked", {}, "not checked"))],
     ])),
     detailSection("Area & UA", renderVariableTable([
       ["Multiplier", number(multiplier), "×"],
@@ -151,7 +191,7 @@ function renderBoundaryDetails(boundary, geometry) {
       ["Azimuth", `${number(boundary.azimuth)}°`],
       ["Sun exposure", boundary.sunExposure || "—"],
       ["Wind exposure", boundary.windExposure || "—"],
-      ["Validation", `${check.status || "not checked"}${check.message ? ` · ${check.message}` : ""}`],
+      ["Validation", `${check.status || t("topology.notChecked", {}, "not checked")}${check.message ? ` · ${check.message}` : ""}`],
       ["Overlap", percent(check.overlapRatio)],
       ["Plane distance", `${number(check.planeDistance)} m`],
     ])),
@@ -202,8 +242,8 @@ function renderObservationDetails(observation, geometry) {
     detailSection("Geometric adjacency QA", renderRows([
       ["Observation", humanize(observation.observationKind)],
       ["Overlap", percent(observation.overlapRatio)],
-      ["Declared connection", observation.declaredConnection ? "Yes" : "No"],
-      ["Thermal relation", "Not created · QA evidence only"],
+      ["Declared connection", observation.declaredConnection ? t("common.yes", {}, "Yes") : t("common.no", {}, "No")],
+      ["Thermal relation", t("topology.qaEvidenceOnly", {}, "Not created \u00b7 QA evidence only")],
     ])),
     detailSection("Adjacent source surfaces", boundaries.length
       ? `<div class="thermal-detail-source-list">${boundaries.map((boundary) => sourceButton("thermal_boundary", boundary.id, boundary.surfaceName)).join("")}</div>`
@@ -258,7 +298,7 @@ function renderZoneHVACSummary(node) {
       ["Services", services.join(", ") || "—"],
       ["Systems and loops", systems.join(", ") || "—"],
     ])
-    : emptyValue("No HVAC service path targets this zone"));
+    : emptyValue(t("topology.noHVACServicePath", {}, "No HVAC service path targets this zone")));
 }
 
 function sameThermalTopologyName(left, right) {
@@ -357,11 +397,11 @@ function zonePhysicalExposure(node, topology) {
 }
 
 function detailSection(title, content) {
-  return `<section class="thermal-detail-section"><h4>${escapeHTML(title)}</h4>${content}</section>`;
+  return `<section class="thermal-detail-section"><h4>${escapeHTML(detailLabel(title))}</h4>${content}</section>`;
 }
 
 function renderRows(rows) {
-  return `<dl class="thermal-detail-rows">${rows.filter(([, value]) => value !== "" && value !== undefined && value !== null).map(([label, value]) => `<div><dt>${escapeHTML(label)}</dt><dd>${escapeHTML(value)}</dd></div>`).join("")}</dl>`;
+  return `<dl class="thermal-detail-rows">${rows.filter(([, value]) => value !== "" && value !== undefined && value !== null).map(([label, value]) => `<div><dt>${escapeHTML(detailLabel(label))}</dt><dd>${escapeHTML(value)}</dd></div>`).join("")}</dl>`;
 }
 
 function renderVariableTable(rows) {
@@ -369,7 +409,7 @@ function renderVariableTable(rows) {
     .filter(([, value]) => value !== "" && value !== undefined && value !== null)
     .map(([variable, value, unit]) => `<tr><th scope="row">${escapeHTML(variable)}</th><td>${escapeHTML(value)}</td><td>${escapeHTML(unit || "—")}</td></tr>`)
     .join("");
-  return `<div class="thermal-detail-table-wrap"><table class="thermal-detail-table"><thead><tr><th scope="col">Variable</th><th scope="col">Value</th><th scope="col">Unit</th></tr></thead><tbody>${body}</tbody></table></div>`;
+  return `<div class="thermal-detail-table-wrap"><table class="thermal-detail-table"><thead><tr><th scope="col">${escapeHTML(t("common.variable", {}, "Variable"))}</th><th scope="col">${escapeHTML(t("common.value", {}, "Value"))}</th><th scope="col">${escapeHTML(t("common.unit", {}, "Unit"))}</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 function sourceButton(kind, id, label) {
@@ -411,4 +451,4 @@ function percent(value) { return `${number((Number(value) || 0) * 100)}%`; }
 function wattsPerKelvin(value, available) { return available ? `${number(value)} W/K` : "—"; }
 function number(value) { return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 }); }
 function humanize(value) { return String(value || "—").replaceAll("_", " "); }
-function emptyValue(text = "None") { return `<div class="empty compact">${escapeHTML(text)}</div>`; }
+function emptyValue(text = t("common.none", {}, "None")) { return `<div class="empty compact">${escapeHTML(text)}</div>`; }

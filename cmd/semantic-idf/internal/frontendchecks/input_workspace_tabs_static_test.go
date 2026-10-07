@@ -167,7 +167,7 @@ func TestInputWorkspaceHeadingLineCountAndExplicitSemanticRevealAreRemoved(t *te
 	files := map[string]string{
 		"app settings":      readTestFile(t, "settings_app.go"),
 		"input markup":      readTestFile(t, "frontend/src/index.html"),
-		"translations":      readTestFile(t, "frontend/src/js/i18n.js"),
+		"translations":      readTranslationSource(t),
 		"main runtime":      readTestFile(t, "frontend/src/js/main.js"),
 		"state runtime":     readTestFile(t, "frontend/src/js/state.js"),
 		"input views":       readTestFile(t, "frontend/src/js/views/input-views.js"),

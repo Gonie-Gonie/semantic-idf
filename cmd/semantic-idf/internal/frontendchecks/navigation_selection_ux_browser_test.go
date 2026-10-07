@@ -78,6 +78,7 @@ func TestNavigationSelectionUXBrowserHarness(t *testing.T) {
 		`"semanticShortcutWithheld":true`,
 		`"altEnterPalette":true`,
 		`"isolatedResultClicks":2`,
+		`"localePresentationPreserved":true`,
 	} {
 		if !strings.Contains(document, signal) {
 			t.Fatalf("headless browser navigation UX result is missing %s:\n%s", signal, document)
@@ -374,6 +375,39 @@ async function runNavigationSelectionUXHarness() {
   }
   assert(!semanticReveals && !openedViews && !chosenOccurrences, "standalone result panels still follow semantic links");
 
+  const [analysis, localization, navigationModule, store] = await Promise.all([
+    import("/src/js/views/analysis-views.js"), import("/src/js/i18n.js"),
+    import("/src/js/navigation.js"), import("/src/js/state.js"),
+  ]);
+  localization.setLanguage("en");
+  state.report = { metrics: { categories: Array.from({length: 20}, (_, index) => ({
+    id: "locale-category-" + index, name: "Category " + index,
+    metrics: [{id: "locale-metric-" + index, name: "Source count", value: 1, displayValue: "1"}],
+  })) } };
+  state.analysisStage = "complete";
+  navigationModule.switchResultTab("metrics", {recordHistory: false});
+  analysis.renderReport();
+  const metric = () => document.querySelector('[data-metric-id="locale-metric-0"]');
+  metric().closest("details").open = true;
+  document.querySelector('[data-metric-category-id="locale-category-1"]').open = false;
+  metric().focus({preventScroll: true});
+  const metricsScroll = document.querySelector(".metrics-pane");
+  metricsScroll.scrollTop = 70;
+  const previousScroll = metricsScroll.scrollTop;
+  assert(previousScroll > 0, "Metrics locale fixture must have a real scrollable pane");
+  store.setStatus(localization.localizedMessage("status.metricsExported", {format: "CSV"}), "ok");
+  localization.setLanguage("ko");
+  const localePresentationPreserved = metric().closest("details").open
+    && !document.querySelector('[data-metric-category-id="locale-category-1"]').open
+    && document.activeElement === metric()
+    && metricsScroll.scrollTop === previousScroll
+    && document.getElementById("runtimeStatus").textContent === localization.t("status.metricsExported", {format: "CSV"});
+  assert(localePresentationPreserved, "language change reset Metrics disclosure, focus, scroll or status");
+  assert(document.querySelector(".metrics-source-empty").textContent === localization.t("metrics.noSourceObjects"), "Metrics source drawer did not translate");
+  state.report = {...state.report};
+  analysis.renderReport();
+  assert(!metric().closest("details").open && document.querySelector('[data-metric-category-id="locale-category-1"]').open, "new report retained old Metrics presentation");
+
   return {
     profilePrimary,
     metricsPrimary,
@@ -383,6 +417,7 @@ async function runNavigationSelectionUXHarness() {
     semanticShortcutWithheld,
     altEnterPalette,
     isolatedResultClicks,
+    localePresentationPreserved,
   };
 }
 

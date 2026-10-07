@@ -11,6 +11,7 @@ import { refreshResultPanelSelectionStyles } from "../panel-navigation-adapters.
 import { clearSemanticHover, hoverSemanticEntity, selectSemanticEntity } from "../selection-controller.js";
 import { resolveThermalTopologyTarget } from "../thermal-topology-targets.js";
 import { createTopologyFocusContext } from "../topology-focus.js";
+import { captureViewPresentation } from "../view-presentation.js";
 
 let rendererState = null;
 let temporaryTopologyReveal = null;
@@ -66,7 +67,7 @@ window.addEventListener("idfAnalyzer:semanticHoverChanged", (event) => {
   highlightSelectedPlan();
 });
 
-export function renderTopologyView(geometry = state.report?.geometry) {
+export function renderTopologyView(geometry = state.report?.geometry, options = {}) {
   if (!elements.topology3DCanvasHost) {
     return;
   }
@@ -75,6 +76,9 @@ export function renderTopologyView(geometry = state.report?.geometry) {
     return;
   }
 
+  const restorePresentation = options.preservePresentation
+    ? captureViewPresentation(elements.topologyDetails?.closest("#topologyPane") || elements.topologyDetails)
+    : () => {};
   ensureSelectedStory(geometry);
   syncTopologyVisibilityControls();
   renderStoryOptions(geometry);
@@ -82,11 +86,12 @@ export function renderTopologyView(geometry = state.report?.geometry) {
   if (state.topologyMode === "plan") {
     renderPlan(geometry);
   } else if (state.topologyMode === "3d") {
-    renderScene(geometry);
+    renderScene(geometry, options);
   } else {
-    renderThermalTopologyLazy(geometry);
+    renderThermalTopologyLazy(geometry, options);
   }
-  renderTopologyDetails(geometry);
+  renderTopologyDetails(geometry, options);
+  restorePresentation();
 }
 
 export function setTopologyMode(mode) {
@@ -321,8 +326,9 @@ function updateModeVisibility() {
   });
 }
 
-function renderThermalTopologyLazy(geometry) {
+function renderThermalTopologyLazy(geometry, { preservePresentation = false } = {}) {
   const request = ++thermalTopologyRenderRequest;
+  const restorePresentation = preservePresentation ? captureViewPresentation(elements.thermalTopologyGraph) : () => {};
   if (!thermalTopologyModule) {
     elements.thermalTopologyGraph.innerHTML = `<div class="thermal-topology-shell-status status-loading">${escapeHTML(t("topology.loadingGraph"))}</div>`;
   }
@@ -332,6 +338,7 @@ function renderThermalTopologyLazy(geometry) {
         return;
       }
       module.renderThermalTopology(geometry, thermalTopologyHelpers());
+      restorePresentation();
     })
     .catch((error) => {
       if (request === thermalTopologyRenderRequest && state.topologyMode === "thermal") {
@@ -371,13 +378,14 @@ function syncTopologyVisibilityControls() {
   elements.topologyShowOpenings.checked = visibility.openings !== false;
 }
 
-function renderScene(geometry) {
+function renderScene(geometry, { preservePresentation = false } = {}) {
   elements.topologyPlan.innerHTML = "";
   ensureRenderer();
   const { scene, group, camera, renderer } = rendererState;
+  const preserveCamera = preservePresentation && rendererState.geometry === geometry;
   scene.background = new THREE.Color(geometryColor("background", 0xf7fafc));
   clearGroup(group);
-  group.rotation.set(-0.22, 0.72, 0);
+  if (!preserveCamera) group.rotation.set(-0.22, 0.72, 0);
 
   const bounds = geometry.bounds || {};
   const center = bounds.ok
@@ -408,11 +416,14 @@ function renderScene(geometry) {
 
   addAxes(group, bounds, center);
   resizeRenderer();
-  camera.position.set(0, modelSize * 0.72, modelSize * 1.65);
-  camera.near = 0.1;
-  camera.far = modelSize * 10;
-  camera.lookAt(0, 0, 0);
-  camera.updateProjectionMatrix();
+  if (!preserveCamera) {
+    camera.position.set(0, modelSize * 0.72, modelSize * 1.65);
+    camera.near = 0.1;
+    camera.far = modelSize * 10;
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+  }
+  rendererState.geometry = geometry;
   highlightSelectedMeshes();
   renderer.render(scene, camera);
   window.requestAnimationFrame(() => {
@@ -835,11 +846,13 @@ function isHorizontalSurface(surface) {
   return /floor|roof|ceiling/i.test(surface.surfaceType || "");
 }
 
-function renderTopologyDetails(geometry = state.report?.geometry) {
+function renderTopologyDetails(geometry = state.report?.geometry, { preservePresentation = false } = {}) {
   const request = ++topologyDetailsRenderRequest;
+  const restorePresentation = preservePresentation ? captureViewPresentation(elements.topologyDetails) : () => {};
   const entity = selectedGeometryEntity(geometry);
   if (entity) {
     renderGeometryTopologyDetails(geometry, entity);
+    restorePresentation();
     return;
   }
   const selectedID = state.selectedTopologyEntityId || state.thermalTopologySelectedEntityId;
@@ -852,6 +865,7 @@ function renderTopologyDetails(geometry = state.report?.geometry) {
     .then((module) => {
       if (request !== topologyDetailsRenderRequest || geometry !== state.report?.geometry) return;
       module.renderThermalTopologyDetails(geometry, thermalTopologyHelpers());
+      restorePresentation();
     })
     .catch((error) => {
       if (request !== topologyDetailsRenderRequest) return;
@@ -952,7 +966,7 @@ function selectedGeometryEntity(geometry) {
       id: windowItem.id,
       item: windowItem,
       title: windowItem.name || windowItem.type,
-      subtitle: `${windowItem.surfaceType || windowItem.type} on ${windowItem.baseSurfaceName || "unknown surface"}`,
+      subtitle: t("topology.openingOnSurface", { type: windowItem.surfaceType || windowItem.type, surface: windowItem.baseSurfaceName || t("topology.unknownSurface", {}, "unknown surface") }, "{type} on {surface}"),
       objectIndex: windowItem.objectIndex,
       objectType: windowItem.type,
       metrics: windowItem.metrics,
@@ -964,7 +978,7 @@ function selectedGeometryEntity(geometry) {
     id: surface.id,
     item: surface,
     title: surface.name || surface.type,
-    subtitle: `${surface.surfaceType || surface.type} / ${surface.zoneName || "No zone"}`,
+    subtitle: `${surface.surfaceType || surface.type} / ${surface.zoneName || t("topology.noZone", {}, "No zone")}`,
     objectIndex: surface.objectIndex,
     objectType: surface.type,
     metrics: surface.metrics,
@@ -976,7 +990,7 @@ function renderMetricList(metrics = []) {
     ? `<div class="topology-property-list">${metrics
         .map((metric) => `<div><span>${escapeHTML(metric.name)}</span><strong>${escapeHTML(metric.displayValue)}${metric.unit ? ` ${escapeHTML(metric.unit)}` : ""}</strong></div>`)
         .join("")}</div>`
-    : `<div class="empty">No metrics</div>`;
+    : `<div class="empty">${escapeHTML(t("topology.noMetrics", {}, "No metrics"))}</div>`;
 }
 
 function geometryRelatedGroups(geometry, entity) {
@@ -1015,7 +1029,7 @@ function geometryRelatedGroupsForZone(geometry, zone) {
     { title: "Spaces", items: spaces.map((space) => relatedItemForSpace(space, "Space", geometry)) },
     { title: "Boundary Surfaces", items: surfaces.map((surface) => relatedItemForSurface(surface, surface.surfaceType || "Surface", geometry)) },
     { title: "Openings", items: windows.map((windowItem) => relatedItemForWindow(windowItem, windowItem.surfaceType || "Window", geometry)) },
-    { title: "Adjacent", items: adjacent },
+    { title: t("topology.relatedAdjacent", {}, "Adjacent"), items: adjacent },
   ];
 }
 
@@ -1024,7 +1038,7 @@ function geometryRelatedGroupsForSpace(geometry, space) {
   const surfaces = (geometry.surfaces || []).filter((surface) => normalizeGeometryName(surface.spaceName) === normalizeGeometryName(space.name));
   const windows = surfaces.flatMap((surface) => windowsForSurface(geometry, surface));
   return [
-    { title: "Parent", items: parentZone ? [relatedItemForZone(parentZone, "Zone")] : [] },
+    { title: t("topology.relatedParent", {}, "Parent"), items: parentZone ? [relatedItemForZone(parentZone, "Zone")] : [] },
     { title: "Boundary Surfaces", items: surfaces.map((surface) => relatedItemForSurface(surface, surface.surfaceType || "Surface", geometry)) },
     { title: "Openings", items: uniqueRelatedItems(windows.map((item) => relatedItemForWindow(item, item.surfaceType || "Window", geometry))) },
   ];
@@ -1041,9 +1055,9 @@ function geometryRelatedGroupsForSurface(geometry, surface) {
     adjacentSurface ? relatedItemForSurface(adjacentSurface, "Adjacent surface", geometry) : referencedBoundaryItem(surface),
   ].filter(Boolean);
   return [
-    { title: "Parent", items: [parentZone && relatedItemForZone(parentZone, "Zone"), parentSpace && relatedItemForSpace(parentSpace, "Space", geometry)].filter(Boolean) },
+    { title: t("topology.relatedParent", {}, "Parent"), items: [parentZone && relatedItemForZone(parentZone, "Zone"), parentSpace && relatedItemForSpace(parentSpace, "Space", geometry)].filter(Boolean) },
     { title: "Openings", items: windows.map((windowItem) => relatedItemForWindow(windowItem, windowItem.surfaceType || "Window", geometry)) },
-    { title: "Adjacent", items: adjacentItems },
+    { title: t("topology.relatedAdjacent", {}, "Adjacent"), items: adjacentItems },
   ];
 }
 
@@ -1056,15 +1070,15 @@ function geometryRelatedGroupsForWindow(geometry, windowItem) {
     ? windowsForSurface(geometry, parentSurface).filter((item) => item.id !== windowItem.id)
     : [];
   return [
-    { title: "Parent", items: [parentZone && relatedItemForZone(parentZone, "Zone"), parentSurface && relatedItemForSurface(parentSurface, "Base surface", geometry)].filter(Boolean) },
-    { title: "Sibling Openings", items: siblingWindows.map((item) => relatedItemForWindow(item, item.surfaceType || "Window", geometry)) },
+    { title: t("topology.relatedParent", {}, "Parent"), items: [parentZone && relatedItemForZone(parentZone, "Zone"), parentSurface && relatedItemForSurface(parentSurface, "Base surface", geometry)].filter(Boolean) },
+    { title: t("topology.siblingOpenings", {}, "Sibling Openings"), items: siblingWindows.map((item) => relatedItemForWindow(item, item.surfaceType || "Window", geometry)) },
   ];
 }
 
 function renderRelatedGroups(groups = []) {
   const visibleGroups = groups.filter((group) => group.items.length);
   if (!visibleGroups.length) {
-    return `<div class="empty">No related objects</div>`;
+    return `<div class="empty">${escapeHTML(t("topology.noRelatedObjects", {}, "No related objects"))}</div>`;
   }
   return `
     <div class="topology-related-groups">
@@ -1202,7 +1216,7 @@ function renderConstructionGraphic(construction, sides) {
       </div>
       <div class="construction-stack-frame">
         <span class="construction-side-label">${t("topology.outside", {}, "Outside")} <em>${escapeHTML(sides.outside)}</em></span>
-        <div class="construction-stack" role="img" aria-label="${escapeHTML(construction.name)} construction layers">
+        <div class="construction-stack" role="img" aria-label="${escapeHTML(t("topology.constructionLayersAria", { name: construction.name }, "{name} construction layers"))}">
           ${layers.length ? layers.map((layer, index) => renderConstructionLayer(layer, index, totalThickness)).join("") : `<div class="empty">${t("topology.noConstruction", {}, "No construction layers parsed")}</div>`}
         </div>
         <span class="construction-side-label">${t("topology.inside", {}, "Inside")} <em>${escapeHTML(sides.inside)}</em></span>
@@ -1397,7 +1411,7 @@ function referencedBoundaryItem(surface) {
   return {
     role: "Referenced surface",
     title: boundaryName,
-    subtitle: "Not parsed in geometry",
+    subtitle: t("topology.notParsed", {}, "Not parsed in geometry"),
   };
 }
 
@@ -1982,7 +1996,7 @@ function fieldValueByCommentWords(fields = [], words = []) {
 
 function storyLabelForIndex(geometry, storyIndex) {
   const story = geometryLookupIndex(geometry).storyByIndex.get(storyIndex);
-  return story ? `${story.name} (${formatNumber(story.elevation)} m)` : "Story unknown";
+  return story ? `${story.name} (${formatNumber(story.elevation)} m)` : t("topology.storyUnknown", {}, "Story unknown");
 }
 
 function normalizeGeometryName(value) {

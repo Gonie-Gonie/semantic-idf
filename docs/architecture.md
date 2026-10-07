@@ -21,6 +21,7 @@ Paths below are relative to `cmd/semantic-idf/` unless specified otherwise.
 | CLI and Python consumers | `internal/cli/`, repository `clients/python/` | [CLI/Python contract](energy-path.md#cli-and-python) |
 | Settings persistence and migration | `settings_app.go` | Normalize through the backend settings API |
 | Frontend state, actions and views | `frontend/src/js/`, `frontend/src/styles/` | Feature contracts linked above |
+| Language registry, catalogs and runtime translation | `frontend/src/js/i18n.js`, `frontend/src/js/locales/`, `frontend/src/js/localized-text.js` | [frontend language policy](../cmd/semantic-idf/frontend/README.md) |
 | Frontend acceptance harnesses | `internal/frontendchecks/` | [testing workflow](testing.md) |
 | Shipped technical manual | `frontend/src/manual/`, `frontend/src/js/guide-manual.js` | [manual authoring](../cmd/semantic-idf/frontend/src/manual/README.md); metadata comes from `idf.MetricGuides()` |
 
@@ -99,6 +100,15 @@ Detailed accounting and ownership rules belong in the
 Settings persist through the backend API in the local app data/config directory.
 Keep defaults and migration in `settings_app.go`, rather than duplicating them
 across frontend views.
+
+The app retains six languages. English is the authoritative interface catalog;
+Korean covers its keys, while Japanese/Hindi/Spanish/French supply translations
+where available and fall back per key to English. Language-change events update
+static and dynamic presentation without changing model IDs, units or selection.
+Other windows synchronize Settings through storage events, and restored pages
+reread cached settings. Late settings loads cannot overwrite a newer choice.
+Guide uses Korean only for the Korean app locale and English for every other
+locale; manual content and metric-description overlays belong to `frontend/src/manual/`.
 
 ## Where to make a change
 

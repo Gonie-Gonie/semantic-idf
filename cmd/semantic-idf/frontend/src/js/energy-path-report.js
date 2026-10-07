@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 import { energyPathSummaryForState, energyPathZoneDirectCoverage } from "./views/energy-path-view.js";
 import { energyPathQualityForState } from "./energy-path-details.js";
 import { energyPathCoverageBoundaries } from "./energy-path-kpis.js";
@@ -16,22 +17,22 @@ function selectedCanonical(explanation, context) {
   if (context.scopeKind === "zone") {
     const matches = list(explanation.zoneResults).filter((zone) => token(zone?.scope?.kind) === "zone" && token(zone.scope.zoneName) === token(context.zoneName));
     if (token(explanation.scope?.kind) === "zone" && token(explanation.scope.zoneName) === token(context.zoneName)) matches.push(explanation);
-    if (matches.length !== 1) throw new Error("The selected Zone result is unavailable or ambiguous.");
+    if (matches.length !== 1) throw new Error(t("simulation.energyReportZoneUnavailable", {}, "The selected Zone result is unavailable or ambiguous."));
     scoped = matches[0];
   } else if (token(scoped.scope?.kind) !== "building") {
-    throw new Error("Building results are unavailable in this scoped snapshot.");
+    throw new Error(t("simulation.energyReportBuildingUnavailable", {}, "Building results are unavailable in this scoped snapshot."));
   }
   const periods = list(scoped.periods).filter((period) => token(period?.id) === token(context.period));
-  if (periods.length > 1) throw new Error("The selected result period is ambiguous.");
+  if (periods.length > 1) throw new Error(t("simulation.energyReportPeriodAmbiguous", {}, "The selected result period is ambiguous."));
   let selected = scoped;
   if (context.period !== "annual") {
-    if (!periods.length) throw new Error("The selected month is unavailable; annual data cannot replace it.");
+    if (!periods.length) throw new Error(t("simulation.energyReportMonthUnavailable", {}, "The selected month is unavailable; annual data cannot replace it."));
     selected = periods[0]; // An explicit empty month stays empty.
   } else if (!list(scoped.nodes).length && !list(scoped.links).length && periods.length) {
     selected = periods[0];
   }
   for (const item of [...list(selected.nodes), ...list(selected.links)]) {
-    if (item.period && token(item.period) !== token(context.period)) throw new Error("A trace row contradicts the selected period.");
+    if (item.period && token(item.period) !== token(context.period)) throw new Error(t("simulation.energyReportPeriodMismatch", {}, "A trace row contradicts the selected period."));
   }
   return { scoped, selected };
 }
@@ -87,7 +88,7 @@ export function buildEnergyPathReport(result = {}, viewState = {}) {
   const period = rawPeriod === "annual" ? "annual" : rawPeriod.toUpperCase();
   const service = token(viewState.simulationEnergyService) || "all";
   if (!["building", "zone"].includes(scopeKind) || scopeKind === "zone" && !zoneName ||
-      !/^(annual|M[1-9]|M1[0-2])$/.test(period) || !["all", "cooling", "heating"].includes(service)) throw new Error("Invalid Energy Path export context.");
+      !/^(annual|M[1-9]|M1[0-2])$/.test(period) || !["all", "cooling", "heating"].includes(service)) throw new Error(t("simulation.energyReportContextInvalid", {}, "Invalid Energy Path export context."));
   const context = { runId: String(result.runId || ""), filename: String(result.filename || ""), inputPath: String(result.inputPath || ""),
     finishedAt: String(result.finishedAt || ""), scopeKind, zoneName, period, service,
     summaryService: "all", modelContext: "simulation_result_snapshot" };
@@ -106,14 +107,43 @@ export function buildEnergyPathReport(result = {}, viewState = {}) {
 
 const displayNumber = (value) => numeric(value) === null ? "—" : String(numeric(value));
 const join = (value) => list(value).join(", ");
-const table = (headers, rows, attribute = "") => `<div class="energy-report-table"><table ${attribute}><thead><tr>${headers.map((header) => `<th>${escape(header)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${escape(cell)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${headers.length}">No data available for this selection.</td></tr>`}</tbody></table></div>`;
+const reportLabelKeys = {
+  "Category": "common.category",
+  "Service": "simulation.service",
+  "Value": "common.value",
+  "Unit": "common.unit",
+  "Basis": "simulation.basis",
+  "Metric": "common.metric",
+  "Status": "common.status",
+  "Found": "simulation.found",
+  "Total": "common.total",
+  "Notes": "common.notes",
+  "Source ID": "simulation.energyReportSourceID",
+  "Output": "common.output",
+  "Source unit": "simulation.sourceUnit",
+  "Normalized unit": "simulation.normalizedUnit",
+  "Table": "simulation.table",
+  "Original source JSON": "simulation.energyReportOriginalSourceJSON",
+  "Link ID": "simulation.energyReportLinkID",
+  "Relation": "topology.detailRelation",
+  "From": "topology.detailFrom",
+  "To": "topology.detailTo",
+  "From value": "simulation.energyReportFromValue",
+  "To value": "simulation.energyReportToValue",
+  "From unit": "simulation.energyReportFromUnit",
+  "To unit": "simulation.energyReportToUnit",
+  "Sources": "simulation.energyReportSources",
+  "Original link JSON": "simulation.energyReportOriginalLinkJSON",
+};
+const reportLabel = (label) => reportLabelKeys[label] ? t(reportLabelKeys[label], {}, label) : label;
+const table = (headers, rows, attribute = "") => `<div class="energy-report-table"><table ${attribute}><thead><tr>${headers.map((header) => `<th>${escape(reportLabel(header))}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${escape(cell)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${headers.length}">${escape(t("simulation.energyReportNoData", {}, "No data available for this selection."))}</td></tr>`}</tbody></table></div>`;
 
 function basisLabel(item) {
   const basis = String(item.basis || ""), normalized = token(basis);
-  if (/unassigned/.test(normalized)) return `Unassigned · ${basis}`;
-  if (/allocat|load_share/.test(normalized)) return `Allocated · ${basis}`;
-  if (["direct_zone_energy", "reported_variable", "reported_meter", "integrated_rate"].includes(normalized)) return `Direct / reported · ${basis}`;
-  return basis || "Unavailable";
+  if (/unassigned/.test(normalized)) return `${t("simulation.energyReportUnassigned", {}, "Unassigned")} · ${basis}`;
+  if (/allocat|load_share/.test(normalized)) return `${t("simulation.energyReportAllocated", {}, "Allocated")} · ${basis}`;
+  if (["direct_zone_energy", "reported_variable", "reported_meter", "integrated_rate"].includes(normalized)) return `${t("simulation.energyReportDirectReported", {}, "Direct / reported")} · ${basis}`;
+  return basis || t("simulation.energyPathQualityUnavailable", {}, "Unavailable");
 }
 
 /** A self-contained fragment; the existing purpose report keeps other purposes. */
@@ -134,22 +164,22 @@ export function renderEnergyPathReportHTML(report) {
 <h1>Energy Path</h1>
 <div class="energy-report-context" data-energy-path-report-context>
 <p><strong>${escape(context.scopeKind === "zone" ? `Zone · ${context.zoneName}` : "Building")} · ${escape(context.period)}</strong></p>
-<p>Summary: all services · Graph selection: ${escape(context.service)}</p>
-<p>Run: ${escape(context.filename || context.runId || "Unnamed result")} ${escape(context.finishedAt || "")}</p>
-<p class="energy-report-note">Simulation result snapshot. Current editor changes are not included.</p>
-<p class="energy-report-note">Drivers and loads are thermal energy; end uses and carriers are site energy. Do not add the two domains.</p>
-${context.scopeKind === "zone" ? '<p class="energy-report-note">Direct observations and allocated HVAC contributions retain their basis. Unassigned building energy is not added to this Zone.</p>' : ""}
+<p>${escape(t("simulation.energyReportSummaryContext", { service: context.service }, "Summary: all services \u00b7 Graph selection: {service}"))}</p>
+<p>${escape(t("simulation.runDetailsHeading", {}, "Run"))}: ${escape(context.filename || context.runId || t("simulation.unnamedResult", {}, "Unnamed result"))} ${escape(context.finishedAt || "")}</p>
+<p class="energy-report-note">${escape(t("simulation.energyReportSnapshotNote", {}, "Simulation result snapshot. Current editor changes are not included."))}</p>
+<p class="energy-report-note">${escape(t("simulation.energyReportDomainsNote", {}, "Drivers and loads are thermal energy; end uses and carriers are site energy. Do not add the two domains."))}</p>
+${context.scopeKind === "zone" ? `<p class="energy-report-note">${escape(t("simulation.energyReportZoneBasisNote", {}, "Direct observations and allocated HVAC contributions retain their basis. Unassigned building energy is not added to this Zone."))}</p>` : ""}
 </div>
-${report.summary ? "" : '<p role="status">Summary unavailable for this selection; no annual or Building values have been substituted.</p>'}
-${groups.map((group) => `<section data-energy-path-report-stage="${group.key}"><h3>${escape(group.label)}${["drivers", "loads"].includes(group.key) ? " · thermal" : ["endUses", "carriers"].includes(group.key) ? " · site" : ""}</h3>${table(["Category", "Service", "Value", "Unit", "Basis"], group.items.map((item) => [item.label || "Unlabeled category", item.serviceKind || "", displayNumber(item.value), item.unit || "—", basisLabel(item)]))}</section>`).join("")}
-<h3>Quality</h3>
+${report.summary ? "" : `<p role="status">${escape(t("simulation.energyReportSummaryUnavailable", {}, "Summary unavailable for this selection; no annual or Building values have been substituted."))}</p>`}
+${groups.map((group) => `<section data-energy-path-report-stage="${group.key}"><h3>${escape(group.label)}${["drivers", "loads"].includes(group.key) ? " · thermal" : ["endUses", "carriers"].includes(group.key) ? " · site" : ""}</h3>${table(["Category", "Service", "Value", "Unit", "Basis"], group.items.map((item) => [item.label || t("simulation.unlabeledCategory", {}, "Unlabeled category"), item.serviceKind || "", displayNumber(item.value), item.unit || "—", basisLabel(item)]))}</section>`).join("")}
+<h3>${escape(t("simulation.energyReportQuality", {}, "Quality"))}</h3>
 ${table(["Metric", "Value", "Unit", "Status", "Found", "Total", "Notes"], report.qualityRows.map((row) => [row.label, displayNumber(row.value), row.unit, row.status, displayNumber(row.found), displayNumber(row.total), row.message]), "data-energy-path-report-quality")}
-<details class="energy-report-trace" data-energy-path-report-trace><summary>Trace · sources, links and original result</summary>
-<p class="energy-report-note">Trace graph: selected scope/period, all services. Source dictionary: full-run metadata; annual source scalars are not monthly observations. Source correspondence is non-flow, not consumption.</p>
-<h3>Source trace</h3>${table(["Source ID", "Output", "Source unit", "Normalized unit", "Basis", "SQL / file", "Table", "Original source JSON"], sourceRows)}
-<h3>Link trace</h3>${table(["Link ID", "Relation", "From", "From value", "From unit", "To", "To value", "To unit", "Ratio", "Ratio kind", "Basis", "Sources", "Original link JSON"], linkRows)}
-<details><summary>Node trace</summary><pre>${escape(JSON.stringify(trace.nodes, null, 2))}</pre></details>
-<details><summary>Reconciliation and warnings</summary><pre>${escape(JSON.stringify({ reconciliation: trace.reconciliation, warnings: trace.warnings }, null, 2))}</pre></details>
-<details><summary>Original simulation result JSON · full run</summary><pre>${escape(report.rawResult)}</pre></details>
+<details class="energy-report-trace" data-energy-path-report-trace><summary>${escape(t("simulation.energyReportTrace", {}, "Trace \u00b7 sources, links and original result"))}</summary>
+<p class="energy-report-note">${escape(t("simulation.energyReportTraceNote", {}, "Trace graph: selected scope/period, all services. Source dictionary: full-run metadata; annual source scalars are not monthly observations. Source correspondence is non-flow, not consumption."))}</p>
+<h3>${escape(t("simulation.energyReportSourceTrace", {}, "Source trace"))}</h3>${table(["Source ID", "Output", "Source unit", "Normalized unit", "Basis", "SQL / file", "Table", "Original source JSON"], sourceRows)}
+<h3>${escape(t("simulation.energyReportLinkTrace", {}, "Link trace"))}</h3>${table(["Link ID", "Relation", "From", "From value", "From unit", "To", "To value", "To unit", "Ratio", "Ratio kind", "Basis", "Sources", "Original link JSON"], linkRows)}
+<details><summary>${escape(t("simulation.energyReportNodeTrace", {}, "Node trace"))}</summary><pre>${escape(JSON.stringify(trace.nodes, null, 2))}</pre></details>
+<details><summary>${escape(t("simulation.energyReportReconciliationWarnings", {}, "Reconciliation and warnings"))}</summary><pre>${escape(JSON.stringify({ reconciliation: trace.reconciliation, warnings: trace.warnings }, null, 2))}</pre></details>
+<details><summary>${escape(t("simulation.energyReportOriginalJSON", {}, "Original simulation result JSON \u00b7 full run"))}</summary><pre>${escape(report.rawResult)}</pre></details>
 </details></section>`;
 }

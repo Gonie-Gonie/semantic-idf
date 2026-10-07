@@ -38,7 +38,10 @@ you explicitly need the complete regression suite.
 Features describe product behavior rather than historical implementation phases.
 Common areas include `input`, `analysis`, `topology`, `profile`, `hvac`,
 `simulation`, `energy-path`, `batch`, `export`, `settings`, `navigation` and
-`tooling`. Energy Path and Simulation also have finer areas for specific backend
+`tooling`, `guide` and `i18n`. The `i18n` area covers catalog completeness and
+placeholders, dynamic language changes, settings synchronization and the
+English/Korean manual. Shared locale sources select all frontend features and
+desktop asset contracts. Energy Path and Simulation also have finer areas for specific backend
 pipelines; use `dev test -List` to discover the current names and counts.
 
 | Tier | Purpose |

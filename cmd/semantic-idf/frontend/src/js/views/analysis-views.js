@@ -4,7 +4,8 @@ import { renderHVAC } from "./hvac-views.js";
 import { renderInputViews } from "./input-views.js";
 import { renderProfile } from "./profile-views.js";
 import { renderSimulation } from "./simulation-views.js";
-import { t } from "../i18n.js";
+import { getLanguage, t } from "../i18n.js";
+import { captureViewPresentation } from "../view-presentation.js";
 import {
   configureResultPanelNavigationHooks,
   refreshResultPanelSelectionStyles,
@@ -13,6 +14,7 @@ import {
 let metricsSourceIndexCache = { navigation: null, records: [] };
 let metricsTableResizeObserver = null;
 let metricsTableLayoutFrame = 0;
+const resultViewLanguages = new WeakMap();
 
 export function renderReport(options = {}) {
   const report = state.report;
@@ -22,14 +24,27 @@ export function renderReport(options = {}) {
     return;
   }
   updateResultTabReadiness();
+  const restorePresentation = options.preservePresentation
+    ? [document.getElementById("metricsPane"), document.getElementById(`${state.activeResultTab}Pane`), document.querySelector(".editor-panel")]
+      .filter((root, index, roots) => root && roots.indexOf(root) === index)
+      .map(captureViewPresentation)
+    : [];
 
+  try {
+    renderReportContent(report, options);
+  } finally {
+    restorePresentation.forEach((restore) => restore());
+  }
+}
+
+function renderReportContent(report, options) {
   if (options.scope === "all") {
     renderMetrics(report.metrics);
     renderProfile(report.profile);
     renderHVAC(report.hvac);
     renderSimulation();
     if (state.activeResultTab === "topology") {
-      renderTopology(report.geometry);
+      renderTopology(report.geometry, options);
     } else {
       renderDeferredTopology(report.geometry);
     }
@@ -40,22 +55,26 @@ export function renderReport(options = {}) {
 
   renderMetrics(report.metrics);
   markAnalysisRendered("metrics");
-  renderActiveResultTab(report);
+  renderActiveResultTab(report, options);
   renderInputViews();
   markAnalysisRendered("input");
 }
 
-export function renderActiveResultTab(report = state.report) {
-  renderResultTab(state.activeResultTab, report);
+export function renderActiveResultTab(report = state.report, options = {}) {
+  renderResultTab(state.activeResultTab, report, options);
 }
 
-export function renderResultTab(tab, report = state.report) {
+export function renderResultTab(tab, report = state.report, options = {}) {
   if (!report) {
     return;
   }
   if (renderPendingResultTab(tab)) {
     return;
   }
+  const previousLanguage = resultViewLanguages.get(report)?.get(tab);
+  const preservePresentation = options.preservePresentation || (previousLanguage && previousLanguage !== getLanguage());
+  const restorePresentation = preservePresentation ? captureViewPresentation(document.getElementById(`${tab}Pane`)) : () => {};
+  const renderOptions = { ...options, preservePresentation };
   const startedAt = nowMS();
   try {
     switch (tab) {
@@ -73,7 +92,7 @@ export function renderResultTab(tab, report = state.report) {
         break;
       case "topology":
         if (state.geometryReady) {
-          renderTopology(report.geometry);
+          renderTopology(report.geometry, renderOptions);
         } else {
           renderDeferredTopology(report.geometry);
         }
@@ -86,6 +105,9 @@ export function renderResultTab(tab, report = state.report) {
         break;
     }
   } finally {
+    if (!resultViewLanguages.has(report)) resultViewLanguages.set(report, new Map());
+    resultViewLanguages.get(report).set(tab, getLanguage());
+    restorePresentation();
     recordRenderTiming(tab, nowMS() - startedAt);
   }
 }
@@ -136,7 +158,7 @@ export function updateResultTabReadiness() {
     const readiness = resultTabReadiness(tab);
     button.dataset.readiness = readiness;
     const baseLabel = button.textContent.replace(/\s+/g, " ").trim();
-    const label = `${baseLabel} · ${readiness}`;
+    const label = `${baseLabel} · ${t(`analysis.readiness.${readiness}`, {}, readiness)}`;
     button.title = label;
     button.setAttribute("aria-label", label);
   });
@@ -522,19 +544,19 @@ function sourceRecordNavigation(record, sections = []) {
 
 function renderMetricsSourceChooser(sources, metric = {}) {
   if (!sources.length) {
-    return `<div class="metrics-source-empty">No source object information</div>`;
+    return `<div class="metrics-source-empty">${escapeHTML(t("metrics.noSourceObjects", {}, "No source object information"))}</div>`;
   }
   return `
     <div class="metrics-source-objects">
-      <strong class="metrics-source-title">Source objects</strong>
-      <div class="metrics-source-object-list" role="listbox" aria-label="Contributing source objects">
+      <strong class="metrics-source-title">${escapeHTML(t("metrics.sourceObjects", {}, "Source objects"))}</strong>
+      <div class="metrics-source-object-list" role="listbox" aria-label="${escapeHTML(t("metrics.contributingSourceObjects", {}, "Contributing source objects"))}">
         ${sources.map((source, index) => `
           <button class="metrics-source-object navigable-row" type="button" role="option" ${panelNavigationAttributes({
             ...source.navigation,
             panelTargetId: metricSourcePanelTargetID(metric, source, index),
           })}>
             <strong title="${escapeHTML(sourceAnchorLabel(source.anchor))}">${escapeHTML(sourceAnchorLabel(source.anchor))}</strong>
-            <small>${escapeHTML(source.anchor.objectType || "Source object")}</small>
+            <small>${escapeHTML(source.anchor.objectType || t("metrics.sourceObject", {}, "Source object"))}</small>
           </button>`).join("")}
       </div>
     </div>`;
@@ -554,7 +576,7 @@ function sourceAnchorLabel(anchor = {}) {
   if (String(anchor.objectType || "").trim()) {
     return String(anchor.objectType);
   }
-  return hasNavigationIndex(anchor.objectIndex) ? `Object #${Number(anchor.objectIndex) + 1}` : "Source object";
+  return hasNavigationIndex(anchor.objectIndex) ? t("metrics.numberedObject", { number: Number(anchor.objectIndex) + 1 }, "Object #{number}") : t("metrics.sourceObject", {}, "Source object");
 }
 
 function sourceNavigationForAnchor(anchor) {
@@ -669,19 +691,19 @@ function metricNoteBadges(metric) {
   const badges = [];
 
   if (rawBadges.has("inferred") || confidence === "inferred" || source.includes("inference") || source.includes("semantic_evidence")) {
-    badges.push(metricNoteBadge("Inferred", "I", evidence ? `Inferred value. ${evidence}` : "Inferred value."));
+    badges.push(metricNoteBadge("Inferred", "I", evidence ? `${t("metrics.inferredValue", {}, "Inferred value.")} ${evidence}` : t("metrics.inferredValue", {}, "Inferred value.")));
   }
   if (rawBadges.has("orientation")) {
-    badges.push(metricNoteBadge("Orientation", "O", evidence ? `Orientation-dependent value. ${evidence}` : "Orientation-dependent value."));
+    badges.push(metricNoteBadge("Orientation", "O", evidence ? `${t("metrics.orientationDependent", {}, "Orientation-dependent value.")} ${evidence}` : t("metrics.orientationDependent", {}, "Orientation-dependent value.")));
   }
   if (rawBadges.has("base-surface")) {
-    badges.push(metricNoteBadge("Base surface", "B", evidence ? `Depends on base-surface resolution. ${evidence}` : "Depends on base-surface resolution."));
+    badges.push(metricNoteBadge("Base surface", "B", evidence ? `${t("metrics.baseSurfaceDependent", {}, "Depends on base-surface resolution.")} ${evidence}` : t("metrics.baseSurfaceDependent", {}, "Depends on base-surface resolution.")));
   }
   if (rawBadges.has("readiness")) {
-    badges.push(metricNoteBadge("Readiness", "R", evidence ? `Readiness check. ${evidence}` : "Readiness check."));
+    badges.push(metricNoteBadge("Readiness", "R", evidence ? `${t("metrics.readinessCheck", {}, "Readiness check.")} ${evidence}` : t("metrics.readinessCheck", {}, "Readiness check.")));
   }
   if (rawBadges.has("diagnostic")) {
-    badges.push(metricNoteBadge("Diagnostic", "D", evidence ? `Diagnostic summary. ${evidence}` : "Diagnostic summary."));
+    badges.push(metricNoteBadge("Diagnostic", "D", evidence ? `${t("metrics.diagnosticSummary", {}, "Diagnostic summary.")} ${evidence}` : t("metrics.diagnosticSummary", {}, "Diagnostic summary.")));
   }
   return badges;
 }
@@ -695,7 +717,7 @@ function renderMetricStatus(metric) {
   const title = metricStatusTitle(metric);
   switch (status) {
     case "ok":
-      return `<span class="metrics-status metrics-status-ok" role="cell" aria-label="OK"></span>`;
+      return `<span class="metrics-status metrics-status-ok" role="cell" aria-label="${escapeHTML(t("metrics.statusOK", {}, "OK"))}"></span>`;
     case "partial":
       return `
         <span class="metrics-status metrics-status-partial" role="cell" title="${escapeHTML(title)}" aria-label="${escapeHTML(title)}">
@@ -718,7 +740,7 @@ function renderMetricStatus(metric) {
 }
 
 function metricStatusTitle(metric) {
-  const status = metric.status === "partial" ? "Partial result" : "Missing result";
+  const status = metric.status === "partial" ? t("metrics.partialResult", {}, "Partial result") : t("metrics.missingResult", {}, "Missing result");
   const evidence = String(metric.evidence || "").trim();
   if (evidence) {
     return `${status}. ${evidence}`;

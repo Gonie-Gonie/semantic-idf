@@ -49,6 +49,7 @@
       import { SHOW_SEMANTIC_STRUCTURE } from "./js/ui-features.js";
       import {
         analysisTabLabel,
+        getLanguage,
         normalizeAnalyzeTabOrder,
         profileDimensionLabel,
         profileMetricLabel,
@@ -56,6 +57,8 @@
         t,
         translatePage,
       } from "./js/i18n.js";
+
+      import { setLocalizedText } from "./js/localized-text.js";
 
       const container = document.querySelector("#settingsStatus");
       const colorControls = [
@@ -139,6 +142,7 @@
       let activeSettings = mergeSettings();
       let activeAppInfo = null;
       let activeSimulationEnvironment = null;
+      let settingsSaveSequence = 0;
 
       function escapeHTML(value) {
         return String(value ?? "")
@@ -538,16 +542,13 @@
 
       function bindSettingsForm() {
         const form = document.querySelector("#settingsForm");
-        const saveStatus = document.querySelector("#settingsSaveStatus");
         const workerFractionRange = document.querySelector("#simulationWorkerFractionRange");
         const workerFractionInput = document.querySelector("#simulationWorkerFraction");
-        const updatePreview = (event) => {
+        const updatePreview = () => {
           activeSettings = readFormSettings();
           applyAppSettings(activeSettings);
-          saveStatus.textContent = t("status.unsavedPreview");
-          if (event?.target?.id === "languageSelect") {
-            renderSettings({ path: loadedPath, settings: activeSettings });
-          }
+          const liveStatus = document.querySelector("#settingsSaveStatus");
+          if (!liveStatus?.classList.contains("status-loading")) setLocalizedText(liveStatus, "status.unsavedPreview");
         };
         bindAnalysisTabOrderControls(updatePreview);
         bindShortcutCapture();
@@ -565,17 +566,27 @@
         form.addEventListener("change", updatePreview);
         form.addEventListener("submit", async (event) => {
           event.preventDefault();
-          saveStatus.textContent = t("status.savingSettings");
-          saveStatus.classList.add("status-loading");
+          const sequence = ++settingsSaveSequence;
+          const requestedSettings = readFormSettings();
+          const liveSaveStatus = () => document.querySelector("#settingsSaveStatus");
+          setLocalizedText(liveSaveStatus(), "status.savingSettings");
+          liveSaveStatus()?.classList.add("status-loading");
           try {
-            const result = await saveAppSettings(readFormSettings());
+            const result = await saveAppSettings(requestedSettings);
             await loadSimulationEnvironment();
-            saveStatus.classList.remove("status-loading");
-            saveStatus.textContent = t("status.savedSettings");
+            if (sequence !== settingsSaveSequence) return;
+            if (result.stale || JSON.stringify(readFormSettings()) !== JSON.stringify(requestedSettings)) {
+              setLocalizedText(liveSaveStatus(), "status.settingsSavedEarlier");
+              return;
+            }
             renderSettings(result);
+            setLocalizedText(liveSaveStatus(), "status.savedSettings");
           } catch (error) {
-            saveStatus.classList.remove("status-loading");
-            saveStatus.textContent = error?.message || String(error);
+            if (sequence === settingsSaveSequence) {
+              setLocalizedText(liveSaveStatus(), "shell.operationFailed", { message: error?.message || String(error) });
+            }
+          } finally {
+            if (sequence === settingsSaveSequence) liveSaveStatus()?.classList.remove("status-loading");
           }
         });
         document.querySelector("#settingsReset").addEventListener("click", () => {
@@ -695,7 +706,7 @@
         owners.forEach((inputs, accelerator) => {
           if (inputs.length < 2) return;
           inputs.forEach((input) => {
-            input.setCustomValidity(`Shortcut ${accelerator} is already assigned.`);
+            input.setCustomValidity(t("shortcut.alreadyAssigned", { accelerator }));
             input.setAttribute("aria-invalid", "true");
           });
         });
@@ -942,6 +953,30 @@
         });
         return values;
       }
+
+      function refreshSettingsForm(settings) {
+        if (!document.querySelector("#settingsForm")) return;
+        const focusedID = document.activeElement?.id;
+        const previousStatus = document.querySelector("#settingsSaveStatus");
+        const statusKey = previousStatus?.dataset.i18n;
+        const statusParams = previousStatus?.dataset.i18nParams || "{}";
+        const saving = previousStatus?.classList.contains("status-loading");
+        renderSettings({ path: loadedPath, settings });
+        if (statusKey) setLocalizedText(document.querySelector("#settingsSaveStatus"), statusKey, JSON.parse(statusParams));
+        if (saving) document.querySelector("#settingsSaveStatus")?.classList.add("status-loading");
+        if (focusedID) document.getElementById(focusedID)?.focus({ preventScroll: true });
+      }
+
+      window.addEventListener("idfAnalyzer:languageChanged", () => {
+        if (!document.querySelector("#settingsForm")) return;
+        const settings = readFormSettings();
+        settings.appearance.language = getLanguage();
+        refreshSettingsForm(settings);
+      });
+
+      window.addEventListener("idfAnalyzer:settingsChanged", (event) => {
+        if (event.detail?.external) refreshSettingsForm(event.detail.settings);
+      });
 
       Promise.all([loadAndApplyAppSettings(), loadAppInfo(), loadSimulationEnvironment()]).then(([settingsResult, appInfo]) => {
         activeAppInfo = appInfo;

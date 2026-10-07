@@ -1,4 +1,4 @@
-import { t } from "./i18n.js";
+import { getLanguage, t } from "./i18n.js";
 import { hasHVACTemperatureSetpoint } from "./hvac-setpoint.js";
 
 const cache = new WeakMap();
@@ -72,7 +72,7 @@ function measurement(name, rawUnit) {
 // Use the shared SQL/CSV row identity first. A secondary file can join the
 // calendar only when both files have exactly one observation for that label.
 export function prepareHVACInspection(loop = {}) {
-  const language = t("simulation.hvacInspectTemperature");
+  const language = getLanguage();
   const saved = cache.get(loop);
   if (saved?.language === language) return saved;
   const waterLoop = ["plantloop", "condenserloop"].includes(token(loop.loopType || loop.topology?.type));

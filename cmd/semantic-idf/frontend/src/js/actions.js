@@ -8,7 +8,7 @@ import {
   updateResultTabReadiness,
 } from "./views/analysis-views.js";
 import { preloadTopologyRenderer, renderTopology } from "./topology-loader.js";
-import { t } from "./i18n.js";
+import { localizedMessage } from "./i18n.js";
 import { clearSemanticHover, clearSemanticSelection } from "./selection-controller.js";
 import { captureViewSnapshot } from "./view-history.js";
 import { captureWorkspaceLayout } from "./layout.js";
@@ -32,7 +32,7 @@ export async function analyze(options = {}) {
   const api = backend();
   updateDocumentActions();
   if (!api) {
-    setStatus(t("status.backendUnavailable"), "warn");
+    setStatus(localizedMessage("status.backendUnavailable"), "warn");
     renderEmpty();
     return;
   }
@@ -47,7 +47,7 @@ export async function analyze(options = {}) {
   clearScheduledAnalyze();
   const runID = ++analysisRunID;
   activeAnalysisText = text;
-  setStatus(options.loadingMessage || t("status.analyzingInput"), "loading");
+  setStatus(options.loadingMessage || localizedMessage("status.analyzingInput"), "loading");
   activeAnalysisPromise = runAnalysis(api, text, analysisKey, runID, options);
   return activeAnalysisPromise;
 }
@@ -66,7 +66,7 @@ async function runAnalysis(api, text, analysisKey, runID, options) {
     return result;
   } catch (error) {
     if (isCurrentAnalysis(runID, text)) {
-      setStatus(error.message || String(error), "error");
+      setStatus(localizedMessage("shell.operationFailed", { message: error.message || String(error) }), "error");
     }
     return null;
   } finally {
@@ -83,7 +83,7 @@ async function runQueuedStageAnalysis(api, text, analysisKey, runID, options) {
     return null;
   }
   applyOverviewResult(quick, text, { analysisKey, stage: "quick" });
-  setStatus(t("status.metricsReadyAnalysis", {}, "Metrics ready; preparing analysis stages"), "loading");
+  setStatus(localizedMessage("status.metricsReadyAnalysis", {}, "Metrics ready; preparing analysis stages"), "loading");
   await nextPaint();
 
   const stages = orderedAnalysisStages(state.activeResultTab);
@@ -103,7 +103,7 @@ async function runQueuedStageAnalysis(api, text, analysisKey, runID, options) {
   captureInstalledReportReadiness();
   scheduleIdlePreRender();
   dispatchAnalysisLifecycleEvent("idfAnalyzer:analysisComplete", { text, analysisKey, stage: "complete" });
-  setStatus(options.statusMessage || t("status.analysisComplete"), "ok");
+  setStatus(options.statusMessage || localizedMessage("status.analysisComplete"), "ok");
   return { ...quick, report: state.report, stages: results.filter(Boolean) };
 }
 
@@ -130,7 +130,7 @@ async function runFullAnalysis(api, text, analysisKey, runID, options) {
   applyOverviewResult(result, text, { complete: true, analysisKey });
   scheduleIdlePreRender();
   dispatchAnalysisLifecycleEvent("idfAnalyzer:analysisComplete", { text, analysisKey, stage: "complete" });
-  setStatus(options.statusMessage || t("status.analysisComplete"), "ok");
+  setStatus(options.statusMessage || localizedMessage("status.analysisComplete"), "ok");
   return result;
 }
 
@@ -140,7 +140,7 @@ async function runStagedAnalysis(api, text, analysisKey, runID, options) {
     return null;
   }
   applyOverviewResult(overview, text, { analysisKey });
-  setStatus(t("status.preparingTopology", {}, "Preparing topology"), "loading");
+  setStatus(localizedMessage("status.preparingTopology", {}, "Preparing topology"), "loading");
   await nextPaint();
 
   const geometryPromise = api.AnalyzeInputGeometryText(text);
@@ -162,7 +162,7 @@ async function runStagedAnalysis(api, text, analysisKey, runID, options) {
   captureInstalledReportReadiness();
   scheduleIdlePreRender();
   dispatchAnalysisLifecycleEvent("idfAnalyzer:analysisComplete", { text, analysisKey, stage: "complete" });
-  setStatus(options.statusMessage || t("status.analysisComplete"), "ok");
+  setStatus(options.statusMessage || localizedMessage("status.analysisComplete"), "ok");
   return { ...overview, report: state.report };
 }
 
@@ -245,13 +245,13 @@ function resultTabStage(tab) {
 function stageStatusMessage(stage) {
   switch (stage) {
     case "profile":
-      return t("status.buildingProfile", {}, "Building profile graphs");
+      return localizedMessage("status.buildingProfile", {}, "Building profile graphs");
     case "hvac":
-      return t("status.resolvingHVAC", {}, "Resolving HVAC service paths");
+      return localizedMessage("status.resolvingHVAC", {}, "Resolving HVAC service paths");
     case "geometry":
-      return t("status.preparingTopology", {}, "Preparing topology");
+      return localizedMessage("status.preparingTopology", {}, "Preparing topology");
     default:
-      return t("status.analyzingInput");
+      return localizedMessage("status.analyzingInput");
   }
 }
 
@@ -266,7 +266,7 @@ async function readBackendCachedAnalysis(api, text, analysisKey, runID, options)
   applyOverviewResult(cached, text, { complete: true, analysisKey });
   scheduleIdlePreRender();
   dispatchAnalysisLifecycleEvent("idfAnalyzer:analysisComplete", { text, analysisKey, stage: "complete" });
-  setStatus(options.statusMessage || t("status.analysisComplete"), "ok");
+  setStatus(options.statusMessage || localizedMessage("status.analysisComplete"), "ok");
   return cached;
 }
 
@@ -347,7 +347,7 @@ export function scheduleAnalyzeAfterPaint(options = {}) {
   resetAnalysisReadiness();
   state.geometryReady = false;
   updateDocumentActions();
-  setStatus(options.queuedMessage || t("status.analysisQueued"), "muted");
+  setStatus(options.queuedMessage || localizedMessage("status.analysisQueued"), "muted");
   const delay = Number.isFinite(Number(options.delay)) ? Math.max(0, Number(options.delay)) : 40;
   afterPaintAnalyzeTimer = window.setTimeout(() => {
     afterPaintAnalyzeTimer = 0;
@@ -456,12 +456,12 @@ export async function openInputFile() {
       filename: result.filename || "",
     });
     scheduleAnalyzeAfterPaint({
-      loadingMessage: t("status.analyzingNamed", { name: result.filename || t("common.inputFile") }),
-      queuedMessage: t("status.openedQueued", { name: result.filename || t("common.inputFile") }),
-      statusMessage: t("status.openedNamed", { name: result.filename || t("common.inputFile") }),
+      loadingMessage: localizedMessage("status.analyzingNamed", { name: result.filename || localizedMessage("common.inputFile") }),
+      queuedMessage: localizedMessage("status.openedQueued", { name: result.filename || localizedMessage("common.inputFile") }),
+      statusMessage: localizedMessage("status.openedNamed", { name: result.filename || localizedMessage("common.inputFile") }),
     });
   } catch (error) {
-    setStatus(error.message || String(error), "error");
+    setStatus(localizedMessage("shell.operationFailed", { message: error.message || String(error) }), "error");
   }
 }
 
@@ -469,16 +469,16 @@ export async function loadBrowserFile(file) {
   setDocumentText(await file.text());
   registerLoadedDocument(getDocumentText(), { filename: file.name || "" });
   scheduleAnalyzeAfterPaint({
-    loadingMessage: t("status.analyzingNamed", { name: file.name || t("common.inputFile") }),
-    queuedMessage: t("status.openedQueued", { name: file.name || t("common.inputFile") }),
-    statusMessage: t("status.openedNamed", { name: file.name || t("common.inputFile") }),
+    loadingMessage: localizedMessage("status.analyzingNamed", { name: file.name || localizedMessage("common.inputFile") }),
+    queuedMessage: localizedMessage("status.openedQueued", { name: file.name || localizedMessage("common.inputFile") }),
+    statusMessage: localizedMessage("status.openedNamed", { name: file.name || localizedMessage("common.inputFile") }),
   });
 }
 
 export async function saveInputFile() {
   const api = backend();
   if (!api || typeof api.SaveInputFile !== "function") {
-    setStatus(t("status.backendUnavailable"), "warn");
+    setStatus(localizedMessage("status.backendUnavailable"), "warn");
     return;
   }
 
@@ -495,9 +495,9 @@ export async function saveInputFile() {
     state.currentFilename = result.filename || state.currentFilename || suggestedFilename;
     state.savedText = text;
     updateDocumentActions();
-    setStatus(t("status.savedNamed", { name: state.currentFilename || t("common.inputFile") }), "ok");
+    setStatus(localizedMessage("status.savedNamed", { name: state.currentFilename || localizedMessage("common.inputFile") }), "ok");
   } catch (error) {
-    setStatus(error.message || String(error), "error");
+    setStatus(localizedMessage("shell.operationFailed", { message: error.message || String(error) }), "error");
   }
 }
 
@@ -508,15 +508,15 @@ export async function revertToLoadedDocument() {
   setDocumentText(state.loadedText);
   markDocumentChanged();
   scheduleAnalyzeAfterPaint({
-    queuedMessage: t("status.revertedQueued"),
-    statusMessage: t("status.reverted"),
+    queuedMessage: localizedMessage("status.revertedQueued"),
+    statusMessage: localizedMessage("status.reverted"),
   });
 }
 
 export async function exportMetrics(format) {
   const api = backend();
   if (!api || typeof api.ExportMetricsText !== "function") {
-    setStatus(t("status.backendUnavailable"), "warn");
+    setStatus(localizedMessage("status.backendUnavailable"), "warn");
     return;
   }
 
@@ -529,9 +529,9 @@ export async function exportMetrics(format) {
     link.download = result.filename || `metrics.${format}`;
     link.click();
     URL.revokeObjectURL(url);
-    setStatus(t("status.metricsExported", { format: String(format).toUpperCase() }), "ok");
+    setStatus(localizedMessage("status.metricsExported", { format: String(format).toUpperCase() }), "ok");
   } catch (error) {
-    setStatus(error.message || String(error), "error");
+    setStatus(localizedMessage("shell.operationFailed", { message: error.message || String(error) }), "error");
   }
 }
 
@@ -567,7 +567,7 @@ export async function saveWorkspaceSnapshot() {
   // An edited document must never reuse the previous analysis/result hash.
   const analysisKey = await computeAnalysisKey(text);
   if (text !== getDocumentText() || path !== (state.currentFilePath || "") || filename !== (state.currentFilename || "")) {
-    setStatus(t("status.workspaceChangedBeforeNavigation", {}, "The input changed while preparing navigation. Please try opening the page again."), "warn");
+    setStatus(localizedMessage("status.workspaceChangedBeforeNavigation", {}, "The input changed while preparing navigation. Please try opening the page again."), "warn");
     return false;
   }
   const viewSnapshot = captureViewSnapshot();

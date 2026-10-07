@@ -6,7 +6,7 @@ SemanticIDF reads an EnergyPlus model, presents its editable input, derives stat
 
 The chapter list takes you from basic use to technical interpretation. The section list opens a specific topic in the current chapter. Search covers chapter text and the metric catalog; a result opens its chapter and section. You can bookmark a chapter/section URL and use browser Back/Forward.
 
-Use the language selector for English or Korean. Section identifiers are shared between translations, so switching languages retains the same topic. Application labels can vary with the app language; names such as Metrics, Profile and Energy Path identify the same feature.
+The manual follows the application language selected in Settings: Korean uses the Korean reference, and all other languages use the English reference. Shared section identifiers keep the same topic when the app language changes. Established feature and industry names such as Metrics, Profile, Energy Path and HVAC remain in English where they make the reference clearer.
 
 | Task | Start here |
 | --- | --- |

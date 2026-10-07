@@ -5,6 +5,14 @@ chapter order, titles and English/Korean source filenames. Guide HTML contains
 the application shell; guide-manual.js reads and renders these local sources.
 The build embeds this directory through the existing frontend asset filesystem.
 
+The Guide follows the application language in Settings. Korean app locales
+(`ko`, `kr`, and regional variants) use `.ko.md`; all other app languages use
+the English reference. There is no separate manual language preference, and
+legacy `?lang=` links retain their chapter/section without overriding Settings.
+Shared section IDs preserve context when the application language changes.
+Keep established EnergyPlus/HVAC terms, object names, variable names and units
+in English; translate explanations and general navigation into natural Korean.
+
 ## Authoring
 
 - Update the owning chapter rather than creating progress notes or duplicated
@@ -36,6 +44,21 @@ The renderer prefers live Wails/local HTTP definitions when available. The
 asset contract test compares the fallback with the registry and validates source
 files, translation section IDs and cross-links. Browser tests validate the actual
 Guide, navigation/history/search, safe rendering, cache and offline behavior.
+
+`metric-guides.ko.json` contains the Korean descriptions as a versioned overlay
+keyed by the canonical metric ID. Each record holds the six descriptive fields
+in `original` and `translation`: name, category, source, method, assumptions and
+missingData. Keep familiar metric names/categories and industry terms in English;
+translate the explanatory sentences. IDs, units and calculated values belong
+exclusively to the registry and must never be added to this overlay.
+
+After changing a registry description, regenerate the English catalog, review
+the affected Korean wording and copy the exact new English field into `original`.
+The asset test requires all 59 IDs and exact source snapshots. At runtime each
+translated field is used only when its live/bundled English field still matches
+the snapshot; changed definitions or unavailable overlays fall back to English.
+The overlay is fetched only for the Korean manual, cached across navigation and
+included in whole-manual search alongside the canonical English text.
 
 ## Verify a manual change
 

@@ -1,5 +1,5 @@
 import { backend, elements, escapeHTML, getDocumentText, setDocumentText, setStatus, state } from "../state.js";
-import { t } from "../i18n.js";
+import { localizedMessage, t } from "../i18n.js";
 import { recordViewHistory } from "../view-history.js";
 import {
   clearSemanticHover,
@@ -167,7 +167,7 @@ function renderSemanticView() {
       ${renderSemanticSectionIndex(projection.lines)}
       <div class="semantic-sticky-path" aria-live="polite"></div>
     </div>
-    <div class="semantic-yaml" data-semantic-mode="${escapeHTML(mode)}" role="tree" aria-label="Semantic YAML projection">
+    <div class="semantic-yaml" data-semantic-mode="${escapeHTML(mode)}" role="tree" aria-label="${escapeHTML(t("semantic.projectionAria", {}, "Semantic YAML projection"))}">
       ${visibleLines.map((line, index) => renderSemanticLine(line, index, keyWidths)).join("")}
     </div>
   `;
@@ -475,7 +475,7 @@ function renderSemanticSectionIndex(lines = []) {
     ? state.semanticExpandedSectionIds
     : new Set();
   return `
-    <nav class="semantic-section-index" aria-label="Semantic sections">
+    <nav class="semantic-section-index" aria-label="${escapeHTML(t("semantic.sectionsAria", {}, "Semantic sections"))}">
       ${sections
         .map(({ line, index }) => {
           const label = semanticSectionLabel(line);
@@ -756,7 +756,7 @@ function renderSemanticSelectionContext(selection = currentSemanticSelection()) 
   const sourceAnchor = selection.sourceAnchor || {};
   const source = [sourceAnchor.objectType, sourceAnchor.objectName, sourceAnchor.fieldName].filter(Boolean).join(" / ") ||
     sourceAnchor.objectId || "—";
-  return `<section class="semantic-context-bar" aria-label="Semantic selection">
+  return `<section class="semantic-context-bar" aria-label="${escapeHTML(t("semantic.selectionAria", {}, "Semantic selection"))}">
     <div class="semantic-context-bar__identity"><span class="semantic-context-bar__label">${escapeHTML(t("semantic.selected", {}, "Selected"))}</span><span class="semantic-context-bar__value">${escapeHTML(entity.label || selection.semanticPathHint || selection.entityId)}</span></div>
     <div class="semantic-context-bar__item"><span class="semantic-context-bar__label">${escapeHTML(t("semantic.source", {}, "Source"))}</span><span class="semantic-context-bar__value semantic-context-bar__source">${escapeHTML(source)}</span></div>
     <div class="semantic-context-bar__views"><span class="semantic-context-bar__label">${escapeHTML(t("semantic.views", {}, "Views"))}</span>${views.map(({ view }) => `<button type="button" data-semantic-context-view="${escapeHTML(view)}">${escapeHTML(semanticViewLabel(view))}</button>`).join("")}</div>
@@ -1092,7 +1092,7 @@ async function openSemanticLine(line, requestedView = "", requestedTargetId = ""
   state.semanticCurrentPath = selection.semanticPathHint || "";
   const view = requestedView || line.dataset.preferredView || semanticAvailableViews(selection)[0]?.view || "";
   if (!view) {
-    setStatus(t("semantic.noAvailableView", {}, "No available view can reveal this selection"), "warn");
+    setStatus(localizedMessage("semantic.noAvailableView", {}, "No available view can reveal this selection"), "warn");
     return false;
   }
   const opened = await openSelectionInView(view, {
@@ -1284,7 +1284,7 @@ function editSemanticValue(button) {
       restore();
       return;
     }
-    await applyFieldValue(editor, t("semantic.fieldUpdated", {}, "Semantic YAML field updated"));
+    await applyFieldValue(editor, localizedMessage("semantic.fieldUpdated", {}, "Semantic YAML field updated"));
   };
   editor.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -1303,7 +1303,7 @@ function editSemanticValue(button) {
 async function applySemanticDuplicateFixes() {
   const api = backend();
   if (!api || typeof api.ApplySemanticDuplicateNameFixText !== "function") {
-    setStatus(t("status.backendUnavailable"), "warn");
+    setStatus(localizedMessage("status.backendUnavailable"), "warn");
     return;
   }
   try {
@@ -1313,7 +1313,7 @@ async function applySemanticDuplicateFixes() {
     state.semanticProjection = result.semantic || null;
     await analyzeCallback();
     const count = result.warnings?.length || 0;
-    setStatus(t("semantic.duplicatesFixed", { count }, `Renamed ${count} duplicate objects`), "ok");
+    setStatus(localizedMessage("semantic.duplicatesFixed", { count }, `Renamed ${count} duplicate objects`), "ok");
   } catch (error) {
     setStatus(error.message || String(error), "error");
   }
@@ -1535,7 +1535,7 @@ async function commitJSONValueEdit(editor, nextRaw, restore) {
 
   const api = backend();
   if (!api || typeof api.PatchModelValueText !== "function") {
-    setStatus(t("status.backendUnavailable"), "warn");
+    setStatus(localizedMessage("status.backendUnavailable"), "warn");
     restore();
     return;
   }
@@ -1572,7 +1572,7 @@ async function commitJSONValueEdit(editor, nextRaw, restore) {
     window.dispatchEvent(new CustomEvent("idfAnalyzer:analysisComplete", {
       detail: { text: result.text, analysisKey: state.reportAnalysisKey, stage: "complete" },
     }));
-    setStatus(t("input.jsonValueUpdated"), "ok");
+    setStatus(localizedMessage("input.jsonValueUpdated"), "ok");
   } catch (error) {
     setStatus(error.message || String(error), "error");
     restore();
@@ -1836,7 +1836,7 @@ async function loadFieldSuggestions(input) {
     input.dataset.suggestionsLoaded = "true";
     attachFieldSuggestionList(input, suggestions);
   } catch (error) {
-    console.debug("Field suggestions unavailable", error);
+    console.debug(t("input.fieldSuggestionsUnavailable", {}, "Field suggestions unavailable"), error);
   } finally {
     delete input.dataset.suggestionsLoading;
   }
@@ -1880,10 +1880,10 @@ function attachFieldSuggestionList(input, suggestions) {
 }
 
 async function applyTextValue(input) {
-  await applyFieldValue(input, t("input.textFieldUpdated"));
+  await applyFieldValue(input, localizedMessage("input.textFieldUpdated"));
 }
 
-async function applyFieldValue(input, successMessage = t("input.fieldUpdated")) {
+async function applyFieldValue(input, successMessage = localizedMessage("input.fieldUpdated")) {
   const nextValue = input.value;
   if (nextValue === input.dataset.original || input.dataset.committing === "true") {
     return;
@@ -1891,7 +1891,7 @@ async function applyFieldValue(input, successMessage = t("input.fieldUpdated")) 
 
   const api = backend();
   if (!api || typeof api.UpdateFieldText !== "function") {
-    setStatus(t("status.backendUnavailable"), "warn");
+    setStatus(localizedMessage("status.backendUnavailable"), "warn");
     input.value = input.dataset.original || "";
     return;
   }
@@ -2197,7 +2197,7 @@ function renderFieldsAsRowsTable(group, columns) {
     <table>
       <thead>
         <tr>
-          <th class="sticky-col">Field</th>
+          <th class="sticky-col">${escapeHTML(t("common.field", {}, "Field"))}</th>
           ${group.objects
             .map(
               (object) => `
@@ -2264,7 +2264,7 @@ function tableObjectLabel(object) {
 }
 
 async function applyTableValue(input) {
-  await applyFieldValue(input, t("input.fieldUpdated"));
+  await applyFieldValue(input, localizedMessage("input.fieldUpdated"));
 }
 
 export async function switchInputView(viewName, options = {}) {

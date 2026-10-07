@@ -42,6 +42,8 @@ $modules = @(
     "command-palette.js",
     "comfort-inspection-data.js",
     "guide-manual.js",
+    "i18n.js",
+    "localized-text.js",
     "topology-loader.js",
     "topology-focus.js",
     "layout.js",
@@ -61,7 +63,8 @@ $modules = @(
     "state.js",
     "thermal-topology-targets.js",
     "tools.js",
-    "view-history.js"
+    "view-history.js",
+    "view-presentation.js"
 )
 
 foreach ($module in $modules) {
@@ -72,6 +75,13 @@ foreach ($module in $modules) {
 }
 
 $nestedModules = @(
+    "locales/index.js",
+    "locales/en.js",
+    "locales/ko.js",
+    "locales/ja.js",
+    "locales/hi.js",
+    "locales/es.js",
+    "locales/fr.js",
     "views/analysis-views.js",
     "views/topology-view.js",
     "views/thermal-topology-view.js",
@@ -145,6 +155,14 @@ foreach ($chapter in $manualManifest.chapters) {
 }
 if (-not (Test-Path -LiteralPath (Join-Path $manualRoot "metric-guides.json") -PathType Leaf)) {
     throw "Missing frontend/src/manual/metric-guides.json"
+}
+$koreanMetricPath = Join-Path $manualRoot "metric-guides.ko.json"
+if (-not (Test-Path -LiteralPath $koreanMetricPath -PathType Leaf)) {
+    throw "Missing frontend/src/manual/metric-guides.ko.json"
+}
+$koreanMetrics = Get-Content -LiteralPath $koreanMetricPath -Raw -Encoding UTF8 | ConvertFrom-Json
+if ($koreanMetrics.version -ne 1 -or @($koreanMetrics.guides.PSObject.Properties).Count -eq 0) {
+    throw "Invalid Korean metric description overlay"
 }
 
 $wailsPath = Join-Path $PSScriptRoot "..\cmd\semantic-idf\wails.json"

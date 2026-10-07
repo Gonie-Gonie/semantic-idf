@@ -1,5 +1,5 @@
 import { elements, setStatus, state } from "./state.js";
-import { t } from "./i18n.js";
+import { localizedMessage } from "./i18n.js";
 import { bundledAppInfo } from "./app-info.js";
 import { prioritizeAnalysisStageForTab } from "./actions.js";
 import { getPanelNavigationAdapter, registerPanelNavigationAdapter } from "./panel-navigation-registry.js";
@@ -226,14 +226,14 @@ function revealInputSourceTarget(target, options = {}) {
     element = findInputTarget(target);
   }
   if (!element) {
-    setStatus(t("input.objectTargetMissing"), "warn");
+    setStatus(localizedMessage("input.objectTargetMissing"), "warn");
     return false;
   }
   expandDetailsFor(element);
   scrollInputTargetIntoView(element);
   highlightInputTarget(element);
   focusNavigatedInputTarget(element);
-  setStatus(t("input.objectLocated"), "ok");
+  setStatus(localizedMessage("input.objectLocated"), "ok");
   return true;
 }
 
@@ -262,7 +262,7 @@ export function jumpInputReferences(options = {}) {
 function jumpFromInputSource(kind, source, options = {}) {
   const targets = resolveInputJumpTargets(kind, source);
   if (!targets.length) {
-    setStatus(kind === "definition" ? t("input.noDefinitionTarget") : t("input.noReferenceTarget"), "warn");
+    setStatus(localizedMessage(kind === "definition" ? "input.noDefinitionTarget" : "input.noReferenceTarget"), "warn");
     return;
   }
   const target = kind === "references" ? nextReferenceTarget(source, targets) : targets[0];
@@ -272,8 +272,8 @@ function jumpFromInputSource(kind, source, options = {}) {
   focusInputObject(target, { recordHistory: false });
   setStatus(
     kind === "definition"
-      ? t("input.definitionLocated")
-      : t("input.referenceLocated", { count: targets.length }),
+      ? localizedMessage("input.definitionLocated")
+      : localizedMessage("input.referenceLocated", { count: targets.length }),
     "ok",
   );
 }
@@ -565,7 +565,7 @@ function knownResultTabIDs() {
 export async function undoViewNavigation(options = {}) {
   const snapshot = popUndoSnapshot(captureViewSnapshot());
   if (!snapshot) {
-    setStatus(t("status.noViewHistory"), "warn");
+    setStatus(localizedMessage("status.noViewHistory"), "warn");
     return;
   }
   await restoreViewSnapshot(snapshot, options);
@@ -574,7 +574,7 @@ export async function undoViewNavigation(options = {}) {
 export async function redoViewNavigation(options = {}) {
   const snapshot = popRedoSnapshot(captureViewSnapshot());
   if (!snapshot) {
-    setStatus(t("status.noViewHistory"), "warn");
+    setStatus(localizedMessage("status.noViewHistory"), "warn");
     return;
   }
   await restoreViewSnapshot(snapshot, options);
@@ -633,7 +633,7 @@ export async function restoreViewSnapshot(snapshot, options = {}) {
     restoreViewScrolls(snapshot);
   });
   if (!options.quiet) {
-    setStatus(t("status.viewHistoryRestored"), "ok");
+    setStatus(localizedMessage("status.viewHistoryRestored"), "ok");
   }
 }
 

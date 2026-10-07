@@ -161,7 +161,7 @@ func TestTopologyThermalRendererIsSplitAndLazyLoaded(t *testing.T) {
 	view := readTestFile(t, "frontend/src/js/views/topology-view.js")
 	for _, required := range []string{
 		`import("./thermal-topology-view.js")`,
-		`renderThermalTopologyLazy(geometry)`,
+		`renderThermalTopologyLazy(geometry, options)`,
 		`export function topologySelectionForTarget`,
 		`export function topologyNavigationAttributes`,
 	} {
@@ -196,7 +196,7 @@ func TestTopologyToolbarSeparatesModeSpecificControls(t *testing.T) {
 			t.Fatalf("removed Topology count UI is still referenced by %s", file)
 		}
 	}
-	if translations := readTestFile(t, "frontend/src/js/i18n.js"); strings.Contains(translations, `"topology.stats"`) {
+	if translations := readTranslationSource(t); strings.Contains(translations, `"topology.stats"`) {
 		t.Fatal("removed Topology count UI retains its translation key")
 	}
 	for _, required := range []string{

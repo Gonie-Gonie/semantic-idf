@@ -184,7 +184,7 @@ The app version is shown in the window title, page headers, Settings storage det
 
 ## Technical Reference Manual
 
-The app toolbar includes top-level Tools, Guide, and Settings pages in the Wails WebView. Guide reads its English/Korean technical manual from the single [manual source directory](cmd/semantic-idf/frontend/src/manual/README.md), with chapter/section navigation, search and shareable section links. The Markdown chapters cover workflows, algorithms, units, assumptions, examples and troubleshooting; `guide.html` contains the page shell. Metric definitions use the backend registry with a generated offline fallback. Keep repository maintenance instructions in this README or `docs/agent.md`.
+The app toolbar includes top-level Tools, Guide, and Settings pages in the Wails WebView. The app supports English, Korean, Japanese, Hindi, Spanish and French, with English fallback for untranslated text. Guide follows the app language: Korean uses the Korean reference, and every other language uses English. It reads from the single [manual source directory](cmd/semantic-idf/frontend/src/manual/README.md), with chapter/section navigation, search and shareable section links. The Markdown chapters cover workflows, algorithms, units, assumptions, examples and troubleshooting; `guide.html` contains the page shell. Metric definitions use the backend registry with a generated offline fallback and a Korean description overlay. Keep repository maintenance instructions in this README or `docs/agent.md`.
 
 ## Input Views
 

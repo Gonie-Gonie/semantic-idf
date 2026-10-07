@@ -74,7 +74,7 @@ func TestEPATH092FrontendConversionAndAuxiliaryLaneContract(t *testing.T) {
 }
 
 func TestEPATH092FrontendConversionTranslationsAndStyles(t *testing.T) {
-	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	i18n := readTranslationSource(t)
 	for _, required := range []string{
 		`"simulation.energyPathCoolingConversion": "Cooling load → Cooling equipment energy"`,
 		`"simulation.energyPathHeatingConversion": "Heating load → Heating equipment energy"`,

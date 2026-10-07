@@ -56,7 +56,7 @@ func TestRuntimeMissingValuesUseEmDash(t *testing.T) {
 		t.Fatalf("scan runtime sources: %v", err)
 	}
 
-	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	i18n := readTranslationSource(t)
 	if count := strings.Count(i18n, `"common.notAvailable": "—"`); count != 2 {
 		t.Fatalf("common.notAvailable must be an em dash in the English and Korean dictionaries, got %d entries", count)
 	}

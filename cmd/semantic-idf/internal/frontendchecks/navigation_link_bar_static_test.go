@@ -66,7 +66,7 @@ func TestWorkspaceLinkBarAndModeControlsAreRemoved(t *testing.T) {
 		}
 	}
 
-	translations := readTestFile(t, "frontend/src/js/i18n.js")
+	translations := readTranslationSource(t)
 	for _, removed := range []string{
 		`"navigation.linkBar"`,
 		`"navigation.linked"`,

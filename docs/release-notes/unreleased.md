@@ -25,6 +25,10 @@ The release script infers bump size from these sections:
 
 ## Changed
 
+- Separate the six app translation catalogs from the language engine, with
+  per-key English fallback, complete Korean interface text and retained
+  industry terminology. Guide follows Settings, with Korean metric descriptions
+  and English content for the other app languages.
 - Group desktop analysis, batch metrics and settings methods in feature modules,
   and isolate frontend analysis scheduling in a dedicated queue module.
 - Add a documentation index and remove completed temporary investigation artifacts.
@@ -36,6 +40,9 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
+- Refresh dynamic labels, status messages, accessible text and open detail
+  views after language changes, preserving selection and technical source data.
+- Synchronize language settings across app pages and ignore stale settings loads.
 - Preserve source-model metadata during EPJSON export so concurrent exports and
   serialization can safely read shared analysis inputs.
 - Run the test script from the repository root and propagate Go test failures.
@@ -43,6 +50,7 @@ The release script infers bump size from these sections:
 
 ## Performance
 
+- Skip Simulation environment discovery when only appearance settings change.
 - Share parsed inputs and document indexes across concurrent analysis stages,
   and reuse HVAC, Diagnostics and Output reports for Metrics readiness.
 - Index thermal geometry ownership and reduce IDF serialization allocations.

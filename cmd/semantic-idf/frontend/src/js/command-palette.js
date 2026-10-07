@@ -10,16 +10,18 @@ export function initializeCommandPalette(provider) {
 
 export function openCommandPalette() {
   return openPalette({
-    title: t("navigation.commandPalette", {}, "Command palette"),
-    placeholder: t("navigation.commandSearch", {}, "Type a command"),
+    titleKey: "navigation.commandPalette",
+    placeholderKey: "navigation.commandSearch",
+    kind: "commands",
     items: commandProvider(),
   });
 }
 
 export function openAvailableViewsPalette(items = []) {
   return openPalette({
-    title: t("semantic.chooseViewTarget", {}, "Choose a panel target"),
-    placeholder: t("navigation.viewSearch", {}, "Filter available views"),
+    titleKey: "semantic.chooseViewTarget",
+    placeholderKey: "navigation.viewSearch",
+    kind: "views",
     items,
   });
 }
@@ -32,14 +34,16 @@ export function closeCommandPalette() {
   return false;
 }
 
-function openPalette({ title, placeholder, items }) {
+function openPalette({ titleKey, placeholderKey, kind, items }) {
   const ui = ensurePalette();
   const available = (items || []).filter((item) => item && item.id && item.label && typeof item.run === "function");
   if (!available.length) {
     return false;
   }
-  ui.title.textContent = title;
-  ui.search.placeholder = placeholder;
+  ui.titleKey = titleKey;
+  ui.placeholderKey = placeholderKey;
+  ui.kind = kind;
+  translatePaletteLabels(ui);
   ui.search.value = "";
   ui.items = available;
   renderItems(ui, available);
@@ -76,17 +80,44 @@ function ensurePalette() {
   document.body.append(dialog);
 
   palette = { dialog, title, search, list, items: [] };
-  search.addEventListener("input", () => {
-    const query = search.value.trim().toLocaleLowerCase();
-    renderItems(palette, palette.items.filter((item) => searchableItem(item).includes(query)));
-  });
+  search.addEventListener("input", () => filterItems(palette));
   search.addEventListener("keydown", (event) => handlePaletteKeydown(event, palette));
   dialog.addEventListener("click", (event) => {
     if (event.target === dialog) {
       dialog.close();
     }
   });
+  window.addEventListener("idfAnalyzer:languageChanged", () => {
+    if (!dialog.open) return;
+    const selectedID = list.querySelector('[aria-selected="true"]')?.dataset.commandId;
+    if (palette.kind === "commands") palette.items = commandProvider();
+    translatePaletteLabels(palette);
+    filterItems(palette);
+    const selected = [...list.querySelectorAll("button")].find((button) => button.dataset.commandId === selectedID);
+    if (selected) {
+      list.querySelectorAll("button").forEach((button) => button.setAttribute("aria-selected", String(button === selected)));
+    }
+  });
   return palette;
+}
+
+function translatePaletteLabels(ui) {
+  ui.title.textContent = t(ui.titleKey);
+  ui.search.placeholder = t(ui.placeholderKey);
+  ui.search.setAttribute("aria-label", t(ui.placeholderKey));
+}
+
+function filterItems(ui) {
+  const query = ui.search.value.trim().toLocaleLowerCase();
+  renderItems(ui, ui.items.filter((item) => searchableItem(item).includes(query)));
+}
+
+function itemLabel(item) {
+  return item.labelKey ? t(item.labelKey, item.labelParams || {}, item.label || "") : item.label || "";
+}
+
+function itemMeta(item) {
+  return item.metaKey ? t(item.metaKey, item.metaParams || {}, item.meta || "") : item.meta || "";
 }
 
 function renderItems(ui, items) {
@@ -99,9 +130,9 @@ function renderItems(ui, items) {
     button.setAttribute("role", "option");
     button.setAttribute("aria-selected", index === 0 ? "true" : "false");
     const label = document.createElement("span");
-    label.textContent = item.label;
+    label.textContent = itemLabel(item);
     const meta = document.createElement("kbd");
-    meta.textContent = item.shortcut || item.meta || "";
+    meta.textContent = item.shortcut || itemMeta(item);
     meta.hidden = !meta.textContent;
     button.append(label, meta);
     button.addEventListener("click", async () => {
@@ -130,5 +161,5 @@ function handlePaletteKeydown(event, ui) {
 }
 
 function searchableItem(item) {
-  return `${item.label || ""} ${item.meta || ""} ${item.shortcut || ""}`.toLocaleLowerCase();
+  return `${itemLabel(item)} ${itemMeta(item)} ${item.shortcut || ""}`.toLocaleLowerCase();
 }

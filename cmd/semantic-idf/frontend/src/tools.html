@@ -45,7 +45,7 @@
             <div class="tool-actions">
               <button id="batchMetricsSelect" type="button" data-i18n="action.selectFiles">Select Files</button>
               <button id="batchMetricsExport" type="button" disabled data-i18n="action.exportCsv">Export CSV</button>
-              <button id="batchMetricsExportJSON" type="button" disabled>Export JSON</button>
+              <button id="batchMetricsExportJSON" type="button" disabled data-i18n="action.exportJson">Export JSON</button>
               <button id="batchMetricsExportXLSX" type="button" disabled data-i18n="action.exportXlsx">Export XLSX</button>
             </div>
           </div>
@@ -66,20 +66,20 @@
                 <option value="loads">Internal Loads</option>
                 <option value="schedules">Schedules</option>
                 <option value="hvac">HVAC</option>
-                <option value="reliable">Reliable-only</option>
+                <option value="reliable" data-i18n="batch.group.reliable">Reliable-only</option>
               </select>
             </label>
-            <label class="tool-inline-control"><input id="batchMetricsIncludeTopology" type="checkbox" /> Include full topology in JSON</label>
+            <label class="tool-inline-control"><input id="batchMetricsIncludeTopology" type="checkbox" /> <span data-i18n="batch.includeFullTopology">Include full topology in JSON</span></label>
             <label class="tool-inline-control">
               <span data-i18n="common.status">Status</span>
               <select id="batchMetricsStatusFilter">
                 <option value="all" data-i18n="common.all">All</option>
-                <option value="ok">ok</option>
-                <option value="partial">partial</option>
-                <option value="missing">missing</option>
-                <option value="not_applicable">not applicable</option>
-                <option value="inferred">inferred</option>
-                <option value="analyzer-limited">analyzer-limited</option>
+                <option value="ok" data-i18n="batch.valueStatus.ok">ok</option>
+                <option value="partial" data-i18n="batch.valueStatus.partial">partial</option>
+                <option value="missing" data-i18n="batch.valueStatus.missing">missing</option>
+                <option value="not_applicable" data-i18n="batch.valueStatus.not_applicable">not applicable</option>
+                <option value="inferred" data-i18n="batch.valueStatus.inferred">inferred</option>
+                <option value="analyzer-limited" data-i18n="batch.valueStatus.analyzer-limited">analyzer-limited</option>
               </select>
             </label>
             <label class="tool-inline-control">
@@ -133,7 +133,7 @@
             <strong id="diagnoseFilename" data-i18n="tools.noCurrentInputShort">No current input.</strong>
             <span id="diagnoseStatus" class="tool-muted" data-i18n="diagnoseFix.pending">Open an input or return from the app, then refresh.</span>
             <input id="diagnoseCandidateFilter" type="search" placeholder="Filter fix candidates" aria-label="Filter fix candidates" data-i18n-placeholder="tools.filterCandidates" data-i18n-aria-label="tools.filterCandidates" />
-            <span id="diagnoseCandidateStats" class="tool-muted">0 selected of 0</span>
+            <span id="diagnoseCandidateStats" class="tool-muted" data-i18n="tools.selectedOf" data-i18n-params='{"selected":0,"total":0}'>0 selected of 0</span>
           </div>
           <div id="diagnosePreviewPanel" class="diagnose-fix-preview" hidden></div>
           <div class="cleanup-grid diagnose-fix-grid">
@@ -172,9 +172,9 @@
           <div class="tool-simulation-controls">
             <fieldset class="batch-purpose-fieldset">
               <legend data-i18n="batch.purposes">Purposes</legend>
-              <label><input data-batch-purpose="basic_energy" type="checkbox" checked /> <span>Basic Energy</span></label>
-              <label><input data-batch-purpose="zone_heat_flow" type="checkbox" checked /> <span>Zone Heat Flow</span></label>
-              <label><input data-batch-purpose="hvac_loop_check" type="checkbox" /> <span>HVAC Loop Check</span></label>
+              <label><input data-batch-purpose="basic_energy" type="checkbox" checked /> <span data-i18n="simulation.purposeBasicEnergy">Basic Energy</span></label>
+              <label><input data-batch-purpose="zone_heat_flow" type="checkbox" checked /> <span data-i18n="simulation.purposeZoneHeatFlow">Zone Heat Flow</span></label>
+              <label><input data-batch-purpose="hvac_loop_check" type="checkbox" /> <span data-i18n="simulation.purposeHVACLoop">HVAC Loop Check</span></label>
             </fieldset>
             <label>
               <span data-i18n="simulation.weather">Weather</span>
@@ -199,7 +199,7 @@
 
           <div class="tool-control-row">
             <span id="multiSimulationStats" class="tool-muted" data-i18n="tools.noSimulationFiles">No simulation files selected</span>
-            <select id="multiSimulationSort">
+            <select id="multiSimulationSort" aria-label="Sort simulation results" data-i18n-aria-label="shell.metricSort">
               <option value="filename" data-i18n="common.name">name</option>
               <option value="status" data-i18n="common.status">Status</option>
               <option value="warnings" data-i18n="simulation.errWarnings">ERR warnings</option>
@@ -222,7 +222,7 @@
             <div class="profile-section-head">
               <h3 data-i18n="tools.simulationComparison">Simulation comparison</h3>
               <div class="batch-simulation-compare-controls">
-                <select id="multiSimulationMetric"></select>
+                <select id="multiSimulationMetric" aria-label="Simulation comparison metric" data-i18n-aria-label="shell.simulationMetric"></select>
                 <label>
                   <span data-i18n="batch.baselineCase">Baseline</span>
                   <select id="multiSimulationCompareBaseline" disabled></select>

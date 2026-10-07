@@ -41,7 +41,7 @@ func TestEPATH111FrontendDeclaresFacilityReconciliationAndSupplyContracts(t *tes
 }
 
 func TestEPATH111FrontendHasUserFacingSupplyAndResidualCopy(t *testing.T) {
-	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	i18n := readTranslationSource(t)
 	for _, required := range []string{
 		"Supply breakdown",
 		"Purchased electricity",

@@ -13,18 +13,19 @@ const titles = () => ({ temperature: copy("Temperature", "Temperature & setpoint
 function scopeName(scope) { return scope.id === COMFORT_BUILDING_SCOPE ? copy("Building", "Building") : scope.name; }
 
 function metricLabel(metric, metrics, scope) {
+  const label = metric.category === "unmet" ? hoursLabel(metric) : metric.label;
   const matching = metrics.filter((item) => item.kind === metric.kind);
   const group = metric.keyValue && metric.keyValue.toLowerCase() !== scope.name.toLowerCase() ? metric.keyValue : "";
   if (group && matching.length > 1) {
     const sameGroup = matching.filter((item) => item.keyValue === metric.keyValue);
     const method = sameGroup.length > 1 ? /\b(Fanger|Pierce|KSU)\b/i.exec(metric.name)?.[1] : "";
-    return `${metric.label} · ${group}${method ? ` · ${method}` : ""}`;
+    return `${label} · ${group}${method ? ` · ${method}` : ""}`;
   }
   if (matching.length > 1) {
     const method = /\b(Fanger|Pierce|KSU)\b/i.exec(metric.name)?.[1];
-    if (method) return `${metric.label} · ${method}`;
+    if (method) return `${label} · ${method}`;
   }
-  return metric.label;
+  return label;
 }
 
 function hoursLabel(metric) {

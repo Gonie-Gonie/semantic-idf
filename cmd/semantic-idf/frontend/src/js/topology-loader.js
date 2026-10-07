@@ -53,7 +53,7 @@ export function preloadTopologyRenderer() {
   return loadTopologyModule();
 }
 
-export function renderTopology(geometry = state.report?.geometry) {
+export function renderTopology(geometry = state.report?.geometry, options = {}) {
   if (!state.geometryReady && state.report) {
     renderTopologyPlaceholder(geometry);
     preloadTopologyRenderer();
@@ -63,13 +63,13 @@ export function renderTopology(geometry = state.report?.geometry) {
     renderTopologyPlaceholder(null);
     return;
   }
-  renderTopologyPlaceholder(geometry);
+  if (!options.preservePresentation || !topologyModule) renderTopologyPlaceholder(geometry);
   loadTopologyModule()
     .then((module) => {
       if (geometry !== state.report?.geometry && state.report?.geometry) {
         return;
       }
-      module.renderTopologyView(geometry);
+      module.renderTopologyView(geometry, options);
     })
     .catch((error) => {
       elements.topology3DCanvasHost.innerHTML = `<div class="empty">${error?.message || String(error)}</div>`;

@@ -89,7 +89,7 @@ func TestRawTextSurfaceStateHistoryLayoutAndSettingsAreRemoved(t *testing.T) {
 		}
 	}
 
-	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	i18n := readTranslationSource(t)
 	for _, removed := range []string{
 		`"behavior.rawSync"`,
 		`"behavior.autoDelay"`,

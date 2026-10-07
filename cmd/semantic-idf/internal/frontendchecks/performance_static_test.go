@@ -36,11 +36,14 @@ func TestFrontendPerformanceTimingContracts(t *testing.T) {
 		"renderTiming:",
 		"export function refreshStatusTitle",
 		"formatAnalysisTiming",
-		"Last render:",
+		`t("status.lastRender"`,
 	} {
 		if !strings.Contains(stateContent, term) {
 			t.Fatalf("status timing contract missing %q", term)
 		}
+	}
+	if !strings.Contains(readTranslationSource(t), `"status.lastRender": "Last render: {tab} {duration}"`) {
+		t.Fatal("English render timing must preserve its tab and duration placeholders")
 	}
 	views := readTestFile(t, "frontend/src/js/views/analysis-views.js")
 	for _, term := range []string{

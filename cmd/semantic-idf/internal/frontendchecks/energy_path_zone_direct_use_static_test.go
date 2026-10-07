@@ -40,7 +40,7 @@ func TestEPATH094FrontendZoneDirectUseAndPartialCoverageContract(t *testing.T) {
 }
 
 func TestEPATH094FrontendZoneCoverageLocalesAndStyles(t *testing.T) {
-	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	i18n := readTranslationSource(t)
 	for _, required := range []string{
 		`"simulation.energyPathKnownZoneSiteEnergy": "Known zone site energy"`,
 		`"simulation.energyPathPartialDirectUseCoverage": "Partial direct-use coverage"`,

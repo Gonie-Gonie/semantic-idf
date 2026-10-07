@@ -1,5 +1,6 @@
 import { backend, elements, escapeHTML, getDocumentText, setStatus, state } from "../state.js";
-import { t } from "../i18n.js";
+import { localizedMessage, t } from "../i18n.js";
+import { getCurrentAppSettings } from "../settings-client.js";
 import { configureResultPanelNavigationHooks } from "../panel-navigation-adapters.js";
 import { getSemanticNavigationCache } from "../semantic-navigation-cache.js";
 import { openSelectionInView, selectSemanticEntity } from "../selection-controller.js";
@@ -38,6 +39,8 @@ let progressListenerRegistered = false;
 let simulationPendingResponseRunID = "";
 let simulationProgressClock = null;
 let heatFlowPlayTimer = 0;
+let simulationEnvironmentSettingsKey = "";
+let simulationEnvironmentRequest = null;
 let simulationNavigationCleanup = null;
 let simulationNavigationRevealTarget = null;
 let simulationSeriesPanels = [];
@@ -622,7 +625,7 @@ export function initializeSimulationControls() {
   window.addEventListener("idfAnalyzer:analysisComplete", () => maybeAutoRunSimulation());
   window.addEventListener("idfAnalyzer:settingsChanged", (event) => {
     state.simulationAutoRunOnOpen = event.detail?.settings?.simulation?.autoRunOnOpen ?? state.simulationAutoRunOnOpen;
-    loadSimulationEnvironment();
+    loadSimulationEnvironment({ settings: event.detail?.settings?.simulation });
   });
   waitForProgressRuntime();
   loadSimulationEnvironment();
@@ -1166,21 +1169,38 @@ function restoreSimulationElementScroll(element, value) {
   }
 }
 
-export async function loadSimulationEnvironment({ render = true } = {}) {
-  try {
-    const env = await callSimulationAPI("GetSimulationEnvironment", "/api/simulation-environment");
-    state.simulationEnvironment = env;
-    state.simulationAutoRunOnOpen = env?.settings?.autoRunOnOpen ?? state.simulationAutoRunOnOpen;
-    if (render) {
-      renderSimulation();
-    }
-    return env;
-  } catch (error) {
-    if (elements.simulationStatus) {
-      elements.simulationStatus.textContent = error.message || String(error);
-    }
-    return null;
+export async function loadSimulationEnvironment({ render = true, force = false, settings = getCurrentAppSettings().simulation } = {}) {
+  const key = JSON.stringify(settings || getCurrentAppSettings().simulation);
+  if (!force && simulationEnvironmentRequest?.key === key) {
+    simulationEnvironmentRequest.render ||= render;
+    return simulationEnvironmentRequest.promise;
   }
+  if (!force && state.simulationEnvironment && simulationEnvironmentSettingsKey === key) {
+    // Returning to cached settings invalidates a scan for another settings set.
+    simulationEnvironmentRequest = null;
+    return state.simulationEnvironment;
+  }
+  const request = { key, render, promise: null };
+  simulationEnvironmentRequest = request;
+  request.promise = (async () => {
+    try {
+      const env = await callSimulationAPI("GetSimulationEnvironment", "/api/simulation-environment");
+      if (simulationEnvironmentRequest !== request) return state.simulationEnvironment;
+      state.simulationEnvironment = env;
+      simulationEnvironmentSettingsKey = key;
+      state.simulationAutoRunOnOpen = env?.settings?.autoRunOnOpen ?? state.simulationAutoRunOnOpen;
+      if (request.render) renderSimulation();
+      return env;
+    } catch (error) {
+      if (simulationEnvironmentRequest === request && elements.simulationStatus) {
+        elements.simulationStatus.textContent = error.message || String(error);
+      }
+      return null;
+    } finally {
+      if (simulationEnvironmentRequest === request) simulationEnvironmentRequest = null;
+    }
+  })();
+  return request.promise;
 }
 
 export function renderSimulation() {
@@ -1761,7 +1781,7 @@ function renderEnergySystemsSubview(explanation = {}) {
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>Zone</th><th>Service</th><th>${escapeHTML(t("simulation.sourceEnergy", {}, "Source energy"))}</th><th>${escapeHTML(t("simulation.deliveredLoad", {}, "Delivered Load"))}</th><th>${escapeHTML(t("simulation.heatDrivers", {}, "Heat Drivers"))}</th><th>${escapeHTML(t("hvac.delivery", {}, "Delivery"))}</th><th>${escapeHTML(t("hvac.connectedSystems", {}, "Connected systems"))}</th><th>${escapeHTML(t("hvac.supportingAssets", {}, "Supporting assets"))}</th><th>Path type</th><th>${escapeHTML(t("common.view", {}, "View"))}</th></tr></thead>
+          <thead><tr><th>Zone</th><th>${escapeHTML(t("simulation.service", {}, "Service"))}</th><th>${escapeHTML(t("simulation.sourceEnergy", {}, "Source energy"))}</th><th>${escapeHTML(t("simulation.deliveredLoad", {}, "Delivered Load"))}</th><th>${escapeHTML(t("simulation.heatDrivers", {}, "Heat Drivers"))}</th><th>${escapeHTML(t("hvac.delivery", {}, "Delivery"))}</th><th>${escapeHTML(t("hvac.connectedSystems", {}, "Connected systems"))}</th><th>${escapeHTML(t("hvac.supportingAssets", {}, "Supporting assets"))}</th><th>${escapeHTML(t("hvac.pathType", {}, "Path type"))}</th><th>${escapeHTML(t("common.view", {}, "View"))}</th></tr></thead>
           <tbody>${rows || `<tr><td colspan="10">${escapeHTML(hasHVAC ? t("simulation.noRelatedSystems", {}, "No related service paths for the current energy graph.") : t("hvac.noServicePaths", {}, "No service paths"))}</td></tr>`}</tbody>
         </table>
       </div>
@@ -1793,7 +1813,7 @@ function renderEnergyDerivedKPISection(explanation = {}, explanationSummary = {}
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>Service</th><th>Path type</th><th>Delivered load</th><th>Electric energy</th><th>COP</th></tr></thead>
+          <thead><tr><th>${escapeHTML(t("simulation.service", {}, "Service"))}</th><th>${escapeHTML(t("hvac.pathType", {}, "Path type"))}</th><th>${escapeHTML(t("simulation.deliveredLoad", {}, "Delivered load"))}</th><th>${escapeHTML(t("simulation.electricEnergy", {}, "Electric energy"))}</th><th>COP</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -2034,7 +2054,7 @@ function renderEnergyMonthlySubview(explanation = {}, facility = [], endUse = []
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>${escapeHTML(t("common.period", {}, "Period"))}</th><th>Energy Use</th><th>Delivered Load</th><th>Heat Drivers</th><th>Residual</th></tr></thead>
+          <thead><tr><th>${escapeHTML(t("common.period", {}, "Period"))}</th><th>${escapeHTML(t("simulation.energyUse", {}, "Energy Use"))}</th><th>${escapeHTML(t("simulation.deliveredLoad", {}, "Delivered Load"))}</th><th>${escapeHTML(t("simulation.heatDrivers", {}, "Heat Drivers"))}</th><th>${escapeHTML(t("simulation.residual", {}, "Residual"))}</th></tr></thead>
           <tbody>${rows || `<tr><td colspan="5">${escapeHTML(t("common.notAvailable", {}, "—"))}</td></tr>`}</tbody>
         </table>
       </div>
@@ -2137,7 +2157,7 @@ function renderEnergyZonesSubview(zones = [], explanation = {}) {
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>${escapeHTML(t("common.zone", {}, "Zone"))}</th><th>Driver</th><th>Category</th><th>Service</th><th>Display</th><th>Signed</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
+          <thead><tr><th>${escapeHTML(t("common.zone", {}, "Zone"))}</th><th>${escapeHTML(t("simulation.driver", {}, "Driver"))}</th><th>${escapeHTML(t("common.category", {}, "Category"))}</th><th>${escapeHTML(t("simulation.service", {}, "Service"))}</th><th>${escapeHTML(t("simulation.displayValue", {}, "Display"))}</th><th>${escapeHTML(t("simulation.signedValue", {}, "Signed"))}</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
           <tbody>${heatRows || `<tr><td colspan="7">${escapeHTML(t("common.notAvailable", {}, "—"))}</td></tr>`}</tbody>
         </table>
       </div>
@@ -2347,7 +2367,7 @@ function renderEnergyExplanationCompleteness(explanation = {}) {
         availabilityRows
           ? `<div class="energy-source-availability">
               <table>
-                <thead><tr><th>Level</th><th>${escapeHTML(t("common.output", {}, "Output"))}</th><th>Status</th></tr></thead>
+                <thead><tr><th>${escapeHTML(t("simulation.level", {}, "Level"))}</th><th>${escapeHTML(t("common.output", {}, "Output"))}</th><th>${escapeHTML(t("common.status", {}, "Status"))}</th></tr></thead>
                 <tbody>${availabilityRows}</tbody>
               </table>
             </div>`
@@ -3044,7 +3064,7 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
       ${relatedHVAC}
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>ID</th><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>Key</th><th>Name</th><th>Frequency</th><th>Aggregation</th><th>Table</th><th>Row</th><th>Column</th><th>Source Unit</th><th>Normalized Unit</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th><th>${escapeHTML(t("simulation.inspectSeriesAction", {}, "Chart"))}</th></tr></thead>
+          <thead><tr><th>ID</th><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>${escapeHTML(t("simulation.requestKey", {}, "Key"))}</th><th>${escapeHTML(t("common.name", {}, "Name"))}</th><th>${escapeHTML(t("simulation.frequency", {}, "Frequency"))}</th><th>${escapeHTML(t("simulation.aggregation", {}, "Aggregation"))}</th><th>${escapeHTML(t("simulation.table", {}, "Table"))}</th><th>${escapeHTML(t("simulation.row", {}, "Row"))}</th><th>${escapeHTML(t("simulation.column", {}, "Column"))}</th><th>${escapeHTML(t("simulation.sourceUnit", {}, "Source Unit"))}</th><th>${escapeHTML(t("simulation.normalizedUnit", {}, "Normalized Unit"))}</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th><th>${escapeHTML(t("simulation.inspectSeriesAction", {}, "Chart"))}</th></tr></thead>
           <tbody>${sourceRows || `<tr><td colspan="13">${escapeHTML(t("common.notAvailable", {}, "—"))}</td></tr>`}</tbody>
         </table>
       </div>
@@ -3082,7 +3102,7 @@ function renderEnergyExplanationSources(explanation = {}) {
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>ID</th><th>Source</th><th>Basis</th><th>Key</th><th>Name</th><th>Frequency</th><th>Aggregation</th><th>Table</th><th>Row</th><th>Column</th><th>Source Unit</th><th>Normalized Unit</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th><th>${escapeHTML(t("simulation.inspectSeriesAction", {}, "Chart"))}</th></tr></thead>
+          <thead><tr><th>ID</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th><th>${escapeHTML(t("simulation.basis", {}, "Basis"))}</th><th>${escapeHTML(t("simulation.requestKey", {}, "Key"))}</th><th>${escapeHTML(t("common.name", {}, "Name"))}</th><th>${escapeHTML(t("simulation.frequency", {}, "Frequency"))}</th><th>${escapeHTML(t("simulation.aggregation", {}, "Aggregation"))}</th><th>${escapeHTML(t("simulation.table", {}, "Table"))}</th><th>${escapeHTML(t("simulation.row", {}, "Row"))}</th><th>${escapeHTML(t("simulation.column", {}, "Column"))}</th><th>${escapeHTML(t("simulation.sourceUnit", {}, "Source Unit"))}</th><th>${escapeHTML(t("simulation.normalizedUnit", {}, "Normalized Unit"))}</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th><th>${escapeHTML(t("simulation.inspectSeriesAction", {}, "Chart"))}</th></tr></thead>
           <tbody>${rows || `<tr><td colspan="14">${escapeHTML(t("simulation.noEnergyExplanation", {}, "No energy explanation graph is available."))}</td></tr>`}</tbody>
         </table>
       </div>
@@ -3130,7 +3150,7 @@ function renderEnergyExplanationReconciliation(explanation = {}) {
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.period", {}, "Period"))}</th><th>${escapeHTML(t("common.zone", {}, "Zone"))}</th><th>${escapeHTML(t("simulation.service", {}, "Service"))}</th><th>${escapeHTML(t("common.status", {}, "Status"))}</th><th>Expected</th><th>Mapped</th><th>Residual</th><th>${escapeHTML(t("simulation.basis", {}, "Basis"))}</th><th>Formula</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
+          <thead><tr><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.period", {}, "Period"))}</th><th>${escapeHTML(t("common.zone", {}, "Zone"))}</th><th>${escapeHTML(t("simulation.service", {}, "Service"))}</th><th>${escapeHTML(t("common.status", {}, "Status"))}</th><th>${escapeHTML(t("simulation.expected", {}, "Expected"))}</th><th>${escapeHTML(t("simulation.mapped", {}, "Mapped"))}</th><th>${escapeHTML(t("simulation.residual", {}, "Residual"))}</th><th>${escapeHTML(t("simulation.basis", {}, "Basis"))}</th><th>${escapeHTML(t("simulation.formula", {}, "Formula"))}</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
           <tbody>${rows || `<tr><td colspan="11">${escapeHTML(t("common.notAvailable", {}, "—"))}</td></tr>`}</tbody>
         </table>
       </div>
@@ -3167,7 +3187,7 @@ function renderEnergyZoneResidualRanking(reconciliation = []) {
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>${escapeHTML(t("common.zone", {}, "Zone"))}</th><th>${escapeHTML(t("simulation.service", {}, "Service"))}</th><th>${escapeHTML(t("common.status", {}, "Status"))}</th><th>Residual</th><th>Expected</th><th>Mapped</th></tr></thead>
+          <thead><tr><th>${escapeHTML(t("common.zone", {}, "Zone"))}</th><th>${escapeHTML(t("simulation.service", {}, "Service"))}</th><th>${escapeHTML(t("common.status", {}, "Status"))}</th><th>${escapeHTML(t("simulation.residual", {}, "Residual"))}</th><th>${escapeHTML(t("simulation.expected", {}, "Expected"))}</th><th>${escapeHTML(t("simulation.mapped", {}, "Mapped"))}</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -4823,7 +4843,7 @@ export function handleSimulationSeriesInspectClick(event) {
     const series = exact && findSimulationSeriesByID(requestedID);
     const range = series && energyPathSeriesPeriodRange(series, period);
     if (!range) {
-      setStatus(t("simulation.energyPathSeriesUnavailable", {}, "No reported series can be matched exactly to these sources."), "warn");
+      setStatus(localizedMessage("simulation.energyPathSeriesUnavailable", {}, "No reported series can be matched exactly to these sources."), "warn");
       return;
     }
     selectSimulationSeries(series, range);
@@ -4900,7 +4920,7 @@ export function handleSimulationSeriesInspectClick(event) {
     || findSimulationSeriesForMetric(button.dataset.simulationSeriesKey || "", button.dataset.simulationSeriesMetric || "")
     || findSimulationSeriesForMeter(button.dataset.simulationSeriesMeter || "");
   if (!series) {
-    setStatus(t("simulation.inspectSeriesUnavailable", {}, "No matching variable is available for this row"), "warn");
+    setStatus(localizedMessage("simulation.inspectSeriesUnavailable", {}, "No matching variable is available for this row"), "warn");
     return;
   }
   selectSimulationSeries(series);
@@ -4908,7 +4928,7 @@ export function handleSimulationSeriesInspectClick(event) {
 
 export async function openSimulationEnergyDriverDestination(element) {
   const unavailable = () => {
-    setStatus(t("simulation.energyPathDriverDestinationUnavailable", {}, "This related model destination is unavailable."), "warn");
+    setStatus(localizedMessage("simulation.energyPathDriverDestinationUnavailable", {}, "This related model destination is unavailable."), "warn");
     return false;
   };
   const id = String(element?.dataset?.energyPathDriverDestination || "");
@@ -4927,7 +4947,7 @@ export async function openSimulationEnergyDriverDestination(element) {
 
 export async function openSimulationEnergyServiceDestination(element) {
   const unavailable = () => {
-    setStatus(t("simulation.energyPathServiceDestinationUnavailable", {}, "This related energy-path destination is unavailable."), "warn");
+    setStatus(localizedMessage("simulation.energyPathServiceDestinationUnavailable", {}, "This related energy-path destination is unavailable."), "warn");
     return false;
   };
   const id = String(element?.dataset?.energyPathServiceDestination || "");
@@ -5043,7 +5063,7 @@ export async function openSimulationEnergyPathTopologyAirCoupling(element) {
   const available = state.simulationEnergyScopeKind === "zone" &&
     (state.report?.geometry?.topology?.airCouplings || []).some((coupling) => coupling?.id === couplingID);
   if (!couplingID || !available) {
-    setStatus(t(
+    setStatus(localizedMessage(
       "simulation.energyPathTopologyAirCouplingUnavailable",
       {},
       "The related Topology air coupling is unavailable.",
@@ -5071,7 +5091,7 @@ export async function openSimulationEnergyPathTopologyAirCoupling(element) {
     preserveFilters: true,
   });
   if (!opened) {
-    setStatus(t(
+    setStatus(localizedMessage(
       "simulation.energyPathTopologyAirCouplingUnavailable",
       {},
       "The related Topology air coupling is unavailable.",
@@ -5191,7 +5211,7 @@ function selectSimulationSeries(series, range = { start: 0, end: -1 }) {
   toggleSimulationResultSections();
   renderSimulationSeriesSelect(state.simulationResult || {});
   renderSimulationChart();
-  setStatus(t("simulation.inspectSeriesOpened", {}, "Series chart opened"), "ok");
+  setStatus(localizedMessage("simulation.inspectSeriesOpened", {}, "Series chart opened"), "ok");
   elements.simulationChart?.querySelector("select[data-series-panel-id]")?.focus({ preventScroll: true });
   elements.simulationChart?.scrollIntoView({ block: "nearest" });
 }
@@ -5380,6 +5400,14 @@ function renderSimulationProgress() {
   const receiving = progress.phase === "complete" && simulationPendingResponseRunID === progress.runId;
   const phase = receiving ? "receiving_results" : String(progress.phase || "");
   const phaseKeys = {
+    prepare: "simulation.preparing",
+    discovery: "simulation.phaseDiscovery",
+    plan: "simulation.phasePlan",
+    apply_temporary_outputs: "simulation.phaseApplyTemporaryOutputs",
+    execute: "simulation.running",
+    parse_sql: "simulation.phaseReadSQL",
+    parse_fallback: "simulation.phaseReadFallback",
+    render_results: "simulation.preparingResults",
     build_purpose_results: "simulation.phasePurposeResults",
     energy_geometry: "simulation.phaseEnergyGeometry",
     energy_dashboard: "simulation.phaseEnergyDashboard",
@@ -5391,8 +5419,12 @@ function renderSimulationProgress() {
   };
   const message = progress.message || statusText(progress.status);
   const phaseLabel = phaseKeys[phase] ? t(phaseKeys[phase], {}, message) : "";
+  const completed = phase === "complete" && state.simulationResult?.runId === progress.runId
+    ? simulationDoneMessage(state.simulationResult) : "";
+  const displayFailed = phase === "display_failed" && progress.displayError
+    ? t("simulation.resultDisplayFailed", { message: progress.displayError }, "Results received, but display failed: {message}") : "";
   const label = receiving ? t("simulation.receivingResults", {}, "Receiving simulation results")
-    : phaseLabel || message;
+    : phaseLabel || completed || displayFailed || message;
   const elapsed = simulationProgressClock && simulationProgressClock.runId === progress.runId
     ? Math.max(0, Math.floor((performance.now() - simulationProgressClock.startedAt) / 1000)) : null;
   const elapsedLabel = elapsed === null ? "" : t("simulation.progressElapsed", { seconds: elapsed }, `Elapsed ${elapsed}s`);
@@ -5486,7 +5518,7 @@ function simulationVersionIssue() {
   if (selectedVersion === requiredVersion) {
     return null;
   }
-  const availableVersion = String(selectedInstall?.version || "").trim() || "unknown version";
+  const availableVersion = String(selectedInstall?.version || "").trim() || t("common.unknown", {}, "Unknown");
   return {
     requiredVersion,
     selectedVersion: availableVersion,
@@ -5496,6 +5528,10 @@ function simulationVersionIssue() {
       { idf: requiredVersion, ep: availableVersion },
       `IDF Version ${requiredVersion} requires a compatible EnergyPlus installation. Available: ${availableVersion}. Register the matching version in Settings.`,
     ),
+    statusMessage: localizedMessage("simulation.versionMismatch", {
+      idf: requiredVersion,
+      ep: String(selectedInstall?.version || "").trim() || localizedMessage("common.unknown", {}, "Unknown"),
+    }),
   };
 }
 
@@ -5509,6 +5545,7 @@ function simulationBlockingIssue() {
     return {
       title: t("simulation.energyPlusBlockedTitle", {}, "EnergyPlus is not configured"),
       message: t("simulation.registerEnergyPlus", {}, "Register EnergyPlus in Settings"),
+      statusMessage: localizedMessage("simulation.registerEnergyPlus", {}, "Register EnergyPlus in Settings"),
     };
   }
   const versionIssue = simulationVersionIssue();
@@ -5519,6 +5556,7 @@ function simulationBlockingIssue() {
     return {
       title: t("simulation.weatherBlockedTitle", {}, "Weather file required"),
       message: t("simulation.weatherRequired", {}, "This IDF uses weather-file design days or weather run periods. Select an EPW weather file before running."),
+      statusMessage: localizedMessage("simulation.weatherRequired", {}, "This IDF uses weather-file design days or weather run periods. Select an EPW weather file before running."),
     };
   }
   return null;
@@ -5720,7 +5758,7 @@ function renderSimulationSeriesSelect(result) {
     if (!panel.seriesIDs.length) panel.seriesIDs = [state.simulationSelectedSeries];
   });
   if (elements.simulationSeriesStats) {
-    elements.simulationSeriesStats.textContent = `${series.length} variables`;
+    elements.simulationSeriesStats.textContent = t("simulation.variableCount", { count: series.length }, "{count} variables");
   }
 }
 
@@ -5795,8 +5833,8 @@ function renderSimulationSeriesPanel(panel, allSeries) {
   if (panel.end < 0 || panel.end > maxIndex) panel.end = maxIndex;
   panel.start = Math.min(Math.max(0, panel.start || 0), panel.end);
   const options = simulationSeriesPickerOptions(allSeries);
-  const rows = panel.seriesIDs.map((id, index) => `<div class="simulation-series-variable-row"><button type="button" class="viewport-icon-button" data-series-variable-action="${index ? "remove" : "add"}" data-series-panel-id="${panel.id}" data-series-variable-index="${index}" aria-label="${index ? "Remove variable" : "Add variable"}" title="${index ? "Remove variable" : "Add variable"}">${index ? "−" : "+"}</button><select data-series-panel-id="${panel.id}" data-series-variable-index="${index}" aria-label="Variable by category">${options(id)}</select></div>`).join("");
-  return `<section class="simulation-series-panel" data-series-panel-id="${panel.id}"><div class="simulation-series-variable-list">${rows}</div><div class="simulation-series-viewport-meta"><button type="button" class="viewport-icon-button" data-series-range-all="${panel.id}" aria-label="Fit full range" title="Fit full range">↔</button><span>${maxPoints ? `${panel.start + 1}-${panel.end + 1} / ${maxPoints}` : ""}</span></div>${renderSimulationMultiSeriesSVG(selected, panel)}</section>`;
+  const rows = panel.seriesIDs.map((id, index) => `<div class="simulation-series-variable-row"><button type="button" class="viewport-icon-button" data-series-variable-action="${index ? "remove" : "add"}" data-series-panel-id="${panel.id}" data-series-variable-index="${index}" aria-label="${escapeHTML(index ? t("simulation.removeVariable", {}, "Remove variable") : t("simulation.addVariable", {}, "Add variable"))}" title="${escapeHTML(index ? t("simulation.removeVariable", {}, "Remove variable") : t("simulation.addVariable", {}, "Add variable"))}">${index ? "−" : "+"}</button><select data-series-panel-id="${panel.id}" data-series-variable-index="${index}" aria-label="${escapeHTML(t("simulation.variableByCategory", {}, "Variable by category"))}">${options(id)}</select></div>`).join("");
+  return `<section class="simulation-series-panel" data-series-panel-id="${panel.id}"><div class="simulation-series-variable-list">${rows}</div><div class="simulation-series-viewport-meta"><button type="button" class="viewport-icon-button" data-series-range-all="${panel.id}" aria-label="${escapeHTML(t("simulation.fitFullRange", {}, "Fit full range"))}" title="${escapeHTML(t("simulation.fitFullRange", {}, "Fit full range"))}">↔</button><span>${maxPoints ? `${panel.start + 1}-${panel.end + 1} / ${maxPoints}` : ""}</span></div>${renderSimulationMultiSeriesSVG(selected, panel)}</section>`;
 }
 
 function simulationSeriesPickerOptions(allSeries) {
@@ -5856,7 +5894,7 @@ function renderSimulationMultiSeriesSVG(seriesList, panel) {
     return `<line x1="${x}" x2="${x}" y1="${pad.top}" y2="${height - pad.bottom}" class="simulation-grid"/><line x1="${x}" x2="${x}" y1="${height - pad.bottom}" y2="${height - pad.bottom + 4}" class="simulation-axis-line"/><text x="${x}" y="${height - pad.bottom + 18}" text-anchor="middle" class="simulation-axis">${escapeHTML(referencePoints[pointIndex]?.label || String(panel.start + pointIndex + 1))}</text>`;
   }).join("");
   const legend = seriesList.map((series, index) => `<span><i style="background:${colors[index % colors.length]}"></i>${escapeHTML(simulationSeriesDisplayColumn(series))}</span>`).join("");
-  return `<div class="simulation-series-legend">${legend}</div><svg class="simulation-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Variables">${axes}${xTicks}<line x1="${pad.left}" x2="${width - pad.right}" y1="${height - pad.bottom}" y2="${height - pad.bottom}" class="simulation-axis-line"/>${lines}<rect class="simulation-chart-hit" x="${pad.left}" y="${pad.top}" width="${plotWidth}" height="${plotHeight}" data-simulation-chart-hit="1" data-series-panel-id="${panel.id}"></rect><text x="${pad.left + plotWidth / 2}" y="${height - 8}" text-anchor="middle" class="simulation-axis-title">Time</text></svg>`;
+  return `<div class="simulation-series-legend">${legend}</div><svg class="simulation-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(t("simulation.variablesAria", {}, "Variables"))}">${axes}${xTicks}<line x1="${pad.left}" x2="${width - pad.right}" y1="${height - pad.bottom}" y2="${height - pad.bottom}" class="simulation-axis-line"/>${lines}<rect class="simulation-chart-hit" x="${pad.left}" y="${pad.top}" width="${plotWidth}" height="${plotHeight}" data-simulation-chart-hit="1" data-series-panel-id="${panel.id}"></rect><text x="${pad.left + plotWidth / 2}" y="${height - 8}" text-anchor="middle" class="simulation-axis-title">${escapeHTML(t("common.time", {}, "Time"))}</text></svg>`;
 }
 
 function currentSimulationSeries() {
@@ -6087,10 +6125,10 @@ function renderSimulationHeatFlow() {
   const selectedZone = ensureHeatFlowSelectedZone(dataset, geometry, zoneMap);
   const stats = [
     t("count.zones", { count: dataset.zones.length }, `${dataset.zones.length} zones`),
-    `${geometry.stories.length} floors`,
+    t("count.floors", { count: geometry.stories.length }, `${geometry.stories.length} floors`),
     dataset.originalFrameCount > dataset.frameCount
-      ? `${dataset.frameCount}/${dataset.originalFrameCount} frames`
-      : `${dataset.frameCount} frames`,
+      ? t("simulation.sampledFrames", { shown: dataset.frameCount, total: dataset.originalFrameCount }, `${dataset.frameCount}/${dataset.originalFrameCount} frames`)
+      : t("count.frames", { count: dataset.frameCount }, `${dataset.frameCount} frames`),
     dataset.sourceFile || "",
   ].filter(Boolean);
 
@@ -6229,7 +6267,7 @@ function renderHeatFlowTimelineBrush(dataset, zoneSeries, visibleRange, frameInd
       <div class="heatflow-range-actions">
         ${presets.map(([preset, label]) => `<button type="button" data-heatflow-range-preset="${escapeHTML(preset)}">${escapeHTML(label)}</button>`).join("")}
       </div>
-      <svg class="heatflow-timeline-brush" viewBox="0 0 ${width} ${height}" role="img" aria-label="Heat-flow visible frame range">
+      <svg class="heatflow-timeline-brush" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(t("simulation.heatFlowFrameRange", {}, "Heat-flow visible frame range"))}">
         <line x1="${pad.left}" x2="${width - pad.right}" y1="${roundSVG(yMid)}" y2="${roundSVG(yMid)}" class="simulation-axis-line" />
         ${path ? `<path d="${path}" class="heatflow-timeline-line" />` : ""}
         <rect x="${roundSVG(rangeStartX)}" y="${pad.top}" width="${roundSVG(Math.max(2, rangeEndX - rangeStartX))}" height="${plotHeight}" class="heatflow-range-window"></rect>
@@ -6429,7 +6467,7 @@ function renderHeatFlowStoryCard(geometry, story, dataset, zoneMap, frameIndex, 
     <article class="heatflow-floor-card">
       <h4>${escapeHTML(story.name || `Level ${story.index + 1}`)}</h4>
       <div class="heatflow-floor-viewport">
-        <svg class="heatflow-floor-plan" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(story.name || "Floor")} heat-flow plan" data-heatflow-plan="1">
+        <svg class="heatflow-floor-plan" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(t("simulation.heatFlowPlanAria", { name: story.name || t("simulation.floor", {}, "Floor") }, "{name} heat-flow plan"))}" data-heatflow-plan="1">
           <g class="heatflow-plan-content" data-heatflow-plan-content transform="${escapeHTML(heatFlowPlanTransform())}">
             ${shapes.join("")}
           </g>
@@ -6551,7 +6589,7 @@ function renderHeatFlowStackChart(dataset, zoneSeries, frameIndex) {
   const firstLabel = dataset.labels?.[start] || `Frame ${start + 1}`;
   const lastLabel = dataset.labels?.[end] || `Frame ${end + 1}`;
   return `
-    <svg class="heatflow-stack-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(zoneSeries.name)} heat-flow stack">
+    <svg class="heatflow-stack-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(t("simulation.heatFlowStackAria", { name: zoneSeries.name }, "{name} heat-flow stack"))}">
       <line x1="${pad.left}" x2="${width - pad.right}" y1="${yZero}" y2="${yZero}" class="simulation-axis-line" />
       <line x1="${pad.left}" x2="${pad.left}" y1="${pad.top}" y2="${height - pad.bottom}" class="simulation-axis-line" />
       <text x="8" y="${pad.top + 10}" class="simulation-axis">${escapeHTML(formatWatts(maxAbs))}</text>
@@ -7189,7 +7227,7 @@ async function exportSimulationEnergyPath(button) {
     !elements.simulationEnergyDashboard?.contains(button) || !scene || scene.result !== state.simulationResult ||
     scene.path.token !== button.dataset.energyPathExportScene || sceneRoot?.dataset.energyPathScene !== scene.path.token ||
     String(scene.result.runId || "") !== button.dataset.energyPathExportRun) {
-    setStatus(t("simulation.energyPathExportUnavailable", {}, "This export no longer matches the displayed run. Reopen Data details and try again."), "warn");
+    setStatus(localizedMessage("simulation.energyPathExportUnavailable", {}, "This export no longer matches the displayed run. Reopen Data details and try again."), "warn");
     return;
   }
   const viewState = Object.fromEntries(simulationEnergyPrimaryKeys.map((key) => [key, state[key]]));
@@ -7205,10 +7243,10 @@ async function exportSimulationEnergyPath(button) {
     else {
       button.disabled = true;
       const saved = await callSimulationAPI("SaveEnergyPathXLSX", "/api/energy-path-xlsx", { report, includeTraceSheets });
-      if (!saved?.canceled) setStatus(t("simulation.energyPathExportSaved", {}, "Energy Path report saved"), "ok");
+      if (!saved?.canceled) setStatus(localizedMessage("simulation.energyPathExportSaved", {}, "Energy Path report saved"), "ok");
     }
   } catch (error) {
-    setStatus(t("simulation.energyPathExportFailed", { message: error.message || String(error) }, "Energy Path export failed: {message}"), "error");
+    setStatus(localizedMessage("simulation.energyPathExportFailed", { message: error.message || String(error) }, "Energy Path export failed: {message}"), "error");
   } finally {
     if (button.isConnected) button.disabled = false;
   }
@@ -7226,7 +7264,7 @@ function exportPurposeResultJSON(result = state.simulationResult, report = null)
   link.download = purposeResultExportFilename(result, "json");
   link.click();
   URL.revokeObjectURL(url);
-  setStatus(report ? t("simulation.energyPathExportJSONSaved", {}, "Full-run JSON exported") : t("status.purposeResultsExported", {}, "Purpose result JSON exported"), "ok");
+  setStatus(report ? localizedMessage("simulation.energyPathExportJSONSaved", {}, "Full-run JSON exported") : localizedMessage("status.purposeResultsExported", {}, "Purpose result JSON exported"), "ok");
 }
 
 function exportPurposeResultHTML(result = state.simulationResult, report = null) {
@@ -7241,7 +7279,7 @@ function exportPurposeResultHTML(result = state.simulationResult, report = null)
   link.download = purposeResultExportFilename(result, "html");
   link.click();
   URL.revokeObjectURL(url);
-  setStatus(report ? t("simulation.energyPathExportSaved", {}, "Energy Path report saved") : t("status.purposeHTMLExported", {}, "Purpose result HTML exported"), "ok");
+  setStatus(report ? localizedMessage("simulation.energyPathExportSaved", {}, "Energy Path report saved") : localizedMessage("status.purposeHTMLExported", {}, "Purpose result HTML exported"), "ok");
 }
 
 function purposeResultExportPayload(result) {
@@ -7284,21 +7322,21 @@ function purposeResultHTML(payload, report = null) {
   const files = payload.files || [];
   const summaryRows = [
     ["Run ID", payload.runId],
-    ["Status", payload.status],
-    ["Input", payload.filename || payload.inputPath],
-    ["Weather", payload.weatherPath],
-    ["Output directory", payload.outputDirectory],
+    [t("common.status", {}, "Status"), payload.status],
+    [t("common.input", {}, "Input"), payload.filename || payload.inputPath],
+    [t("simulation.weather", {}, "Weather"), payload.weatherPath],
+    [t("simulation.outputDirectory", {}, "Output directory"), payload.outputDirectory],
     ["Result source priority", (payload.resultSourcePriority || []).join(" -> ")],
     ["Result sources used", (payload.resultSources || []).join(", ")],
-    ["Started", payload.startedAt],
-    ["Finished", payload.finishedAt],
+    [t("simulation.started", {}, "Started"), payload.startedAt],
+    [t("simulation.finished", {}, "Finished"), payload.finishedAt],
   ];
   return `<!doctype html>
 <html lang="${escapeHTML(document.documentElement.lang || "en")}">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${escapeHTML(payload.filename || "Purpose Simulation Results")}</title>
+<title>${escapeHTML(payload.filename || t("simulation.purposeResults", {}, "Purpose Simulation Results"))}</title>
 <style>
 body{margin:0;background:#f6f8fb;color:#17202a;font:14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 main{max-width:1180px;margin:0 auto;padding:24px}
@@ -7314,18 +7352,18 @@ ${comfortPurposeReportStyles()}
 </head>
 <body>
 <main>
-${report ? "" : `<h1>Purpose Simulation Results</h1><p class="muted">${escapeHTML(payload.filename || payload.runId || "")}</p>`}
+${report ? "" : `<h1>${escapeHTML(t("simulation.purposeResults", {}, "Purpose Simulation Results"))}</h1><p class="muted">${escapeHTML(payload.filename || payload.runId || "")}</p>`}
 ${report ? renderEnergyPathReportHTML(report) : ""}
 ${report ? `<details data-energy-path-report-run-details><summary>${escapeHTML(t("simulation.energyPathExportRunDetails", {}, "Run details"))}</summary>` : ""}
-<h2>Run</h2>
+<h2>${escapeHTML(t("simulation.runDetailsHeading", {}, "Run"))}</h2>
 ${renderPurposeHTMLTable(["Field", "Value"], summaryRows)}
-<h2>Completeness</h2>
+<h2>${escapeHTML(t("simulation.completenessHeading", {}, "Completeness"))}</h2>
 ${renderPurposeHTMLTable(
   ["Purpose", "Required Output", "Found", "Source"],
-  completeness.map((item) => [item.purposeId || "", item.requiredOutput || "", item.found ? "Yes" : "No", item.source || ""]),
+  completeness.map((item) => [item.purposeId || "", item.requiredOutput || "", item.found ? t("common.yes", {}, "Yes") : t("common.no", {}, "No"), item.source || ""]),
 )}
 ${report ? "" : renderPurposeHTMLResultSections(payload.purposeResults || {})}
-<h2>Files</h2>
+<h2>${escapeHTML(t("simulation.filesHeading", {}, "Files"))}</h2>
 ${renderPurposeHTMLTable(
   ["Name", "Type", "Path"],
   files.map((file) => [file.name || "", file.kind || "", file.path || ""]),
@@ -7365,7 +7403,7 @@ function renderPurposeHTMLEnergy(energy) {
   if (!rows.length) {
     return "";
   }
-  return `<h2>Energy Results</h2>${renderPurposeHTMLTable(["Metric", "Unit", "Total", "Source"], rows.slice(0, 120))}`;
+  return `<h2>${escapeHTML(t("simulation.energyResultsHeading", {}, "Energy Results"))}</h2>${renderPurposeHTMLTable(["Metric", "Unit", "Total", "Source"], rows.slice(0, 120))}`;
 }
 
 function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
@@ -7373,7 +7411,7 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
   const completeness = summary.completeness || explanation.completeness || {};
   if (summary.schema || explanation.schema || completeness.status) {
     sections.push(
-      `<h2>Energy Explanation Completeness</h2>${renderPurposeHTMLTable(
+      `<h2>${escapeHTML(t("simulation.energyCompletenessHeading", {}, "Energy Explanation Completeness"))}</h2>${renderPurposeHTMLTable(
         ["Field", "Value"],
         [
           ["Schema", summary.schema || explanation.schema || ""],
@@ -7397,7 +7435,7 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
     ]);
   if (availabilityRows.length) {
     sections.push(
-      `<h2>Energy Explanation Source Availability</h2>${renderPurposeHTMLTable(
+      `<h2>${escapeHTML(t("simulation.energyAvailabilityHeading", {}, "Energy Explanation Source Availability"))}</h2>${renderPurposeHTMLTable(
         ["Level", "Output", "Status", "Source IDs", "Output Object", "Table", "Row", "Column", "Source Unit", "Normalized Unit"],
         availabilityRows,
       )}`,
@@ -7415,13 +7453,13 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
     ]);
   if (ruleRows.length) {
     sections.push(
-      `<h2>Energy Explanation Relationship Rules</h2>${renderPurposeHTMLTable(["Rule", "Level flow", "Kind flow", "Basis", "Required source", "Formula"], ruleRows)}`,
+      `<h2>${escapeHTML(t("simulation.energyRulesHeading", {}, "Energy Explanation Relationship Rules"))}</h2>${renderPurposeHTMLTable(["Rule", "Level flow", "Kind flow", "Basis", "Required source", "Formula"], ruleRows)}`,
     );
   }
   const summaryRows = purposeHTMLEnergySummaryRows(summary, explanation);
   if (summaryRows.length) {
     sections.push(
-      `<h2>Energy Explanation Summary</h2>${renderPurposeHTMLTable(
+      `<h2>${escapeHTML(t("simulation.energySummaryHeading", {}, "Energy Explanation Summary"))}</h2>${renderPurposeHTMLTable(
         [
           "Type",
           "Metric",
@@ -7451,7 +7489,7 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
   }
   const monthlyRows = purposeHTMLEnergyMonthlyRows(explanation);
   if (monthlyRows.length) {
-    sections.push(`<h2>Energy Explanation Monthly Ledger</h2>${renderPurposeHTMLTable(["Period", "Energy Use", "Delivered Load", "Heat Drivers", "Residual"], monthlyRows)}`);
+    sections.push(`<h2>${escapeHTML(t("simulation.energyMonthlyHeading", {}, "Energy Explanation Monthly Ledger"))}</h2>${renderPurposeHTMLTable(["Period", "Energy Use", "Delivered Load", "Heat Drivers", "Residual"], monthlyRows)}`);
   }
   const graph = purposeHTMLAnnualEnergyGraph(explanation);
   const nodeRows = (graph.nodes || [])
@@ -7477,7 +7515,7 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
     ]);
   if (nodeRows.length) {
     sections.push(
-      `<h2>Energy Explanation Annual Nodes</h2>${renderPurposeHTMLTable(
+      `<h2>${escapeHTML(t("simulation.energyNodesHeading", {}, "Energy Explanation Annual Nodes"))}</h2>${renderPurposeHTMLTable(
         [
           "ID",
           "Level",
@@ -7530,7 +7568,7 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
     ]);
   if (edgeRows.length) {
     sections.push(
-      `<h2>Energy Explanation Annual Edges</h2>${renderPurposeHTMLTable(
+      `<h2>${escapeHTML(t("simulation.energyEdgesHeading", {}, "Energy Explanation Annual Edges"))}</h2>${renderPurposeHTMLTable(
         ["ID", "Period", "Relation", "Basis", "Rule", "From ID", "From", "To ID", "To", "Value", "Zone", "Service", "Path", "Source IDs", "Output Object", "Table", "Row", "Column", "Source Unit", "Normalized Unit", "Related Paths", "Formula"],
         edgeRows,
       )}`,
@@ -7538,7 +7576,7 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
   }
   const warningRows = purposeHTMLEnergyWarningRows(explanation).slice(0, 120);
   if (warningRows.length) {
-    sections.push(`<h2>Energy Explanation Warnings</h2>${renderPurposeHTMLTable(["Severity", "Code", "Period", "Message"], warningRows)}`);
+    sections.push(`<h2>${escapeHTML(t("simulation.energyWarningsHeading", {}, "Energy Explanation Warnings"))}</h2>${renderPurposeHTMLTable(["Severity", "Code", "Period", "Message"], warningRows)}`);
   }
   const reconciliationRows = (graph.reconciliation || [])
     .slice(0, 180)
@@ -7559,7 +7597,7 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
     ]);
   if (reconciliationRows.length) {
     sections.push(
-      `<h2>Energy Explanation Reconciliation</h2>${renderPurposeHTMLTable(
+      `<h2>${escapeHTML(t("simulation.energyReconciliationHeading", {}, "Energy Explanation Reconciliation"))}</h2>${renderPurposeHTMLTable(
         ["Metric", "Period", "Level", "Status", "Zone", "Service", "Expected", "Mapped", "Residual", "Basis", "Source IDs", "Output Object", "Table", "Row", "Column", "Source Unit", "Normalized Unit", "Formula"],
         reconciliationRows,
       )}`,
@@ -7584,7 +7622,7 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
     ]);
   if (sourceRows.length) {
     sections.push(
-      `<h2>Energy Explanation Sources</h2>${renderPurposeHTMLTable(
+      `<h2>${escapeHTML(t("simulation.energySourcesHeading", {}, "Energy Explanation Sources"))}</h2>${renderPurposeHTMLTable(
         ["ID", "Source", "Basis", "Key", "Name", "Frequency", "Aggregation", "Table", "Row", "Column", "Source Unit", "Normalized Unit", "Output Object"],
         sourceRows,
       )}`,
@@ -7708,7 +7746,7 @@ function renderPurposeHTMLHeatFlow(heatFlow) {
     formatValueWithUnit(maxAbsNestedValues(zone.values || []), heatFlow.unit || "W"),
     formatValueWithUnit(maxNumber(zone.temperature || []), heatFlow.temperatureUnit || "C"),
   ]);
-  return `<h2>Zone Heat Flow Results</h2>${renderPurposeHTMLTable(["Zone", "Frames", "Peak abs heat flow", "Max temperature"], rows.slice(0, 120))}`;
+  return `<h2>${escapeHTML(t("simulation.heatFlowResultsHeading", {}, "Zone Heat Flow Results"))}</h2>${renderPurposeHTMLTable(["Zone", "Frames", "Peak abs heat flow", "Max temperature"], rows.slice(0, 120))}`;
 }
 
 function renderPurposeHTMLHVAC(loops) {
@@ -7761,13 +7799,13 @@ function renderPurposeHTMLHVAC(loops) {
     )
     .slice(0, 120);
   return [
-    statusRows.length ? `<h2>HVAC Loop Status</h2>${renderPurposeHTMLTable(["Loop", "Status", "Message", "Type"], statusRows)}` : "",
+    statusRows.length ? `<h2>${escapeHTML(t("simulation.hvacStatusHeading", {}, "HVAC Loop Status"))}</h2>${renderPurposeHTMLTable(["Loop", "Status", "Message", "Type"], statusRows)}` : "",
     derivedRows.length
-      ? `<h2>HVAC Derived Metrics</h2>${renderPurposeHTMLTable(["Loop", "Metric", "Value", "Source", "Status", "Message"], derivedRows)}`
+      ? `<h2>${escapeHTML(t("simulation.hvacMetricsHeading", {}, "HVAC Derived Metrics"))}</h2>${renderPurposeHTMLTable(["Loop", "Metric", "Value", "Source", "Status", "Message"], derivedRows)}`
       : "",
-    nodeRows.length ? `<h2>HVAC Node Results</h2>${renderPurposeHTMLTable(["Loop", "Node", "Avg temp", "Peak flow", "Avg delta", "Source"], nodeRows)}` : "",
+    nodeRows.length ? `<h2>${escapeHTML(t("simulation.hvacNodeResultsHeading", {}, "HVAC Node Results"))}</h2>${renderPurposeHTMLTable(["Loop", "Node", "Avg temp", "Peak flow", "Avg delta", "Source"], nodeRows)}` : "",
     componentRows.length
-      ? `<h2>HVAC Component Results</h2>${renderPurposeHTMLTable(["Loop", "Component", "Type", "Metric", "Peak", "Total", "Source"], componentRows)}`
+      ? `<h2>${escapeHTML(t("simulation.hvacComponentResultsHeading", {}, "HVAC Component Results"))}</h2>${renderPurposeHTMLTable(["Loop", "Component", "Type", "Metric", "Peak", "Total", "Source"], componentRows)}`
       : "",
   ]
     .filter(Boolean)
@@ -7819,13 +7857,57 @@ function maxNumber(values) {
   return Number.isFinite(maximum) ? maximum : NaN;
 }
 
+const purposeReportLabelKeys = {
+  "Field": "common.field",
+  "Value": "common.value",
+  "Status": "common.status",
+  "Input": "common.input",
+  "Weather": "simulation.weather",
+  "Output directory": "simulation.outputDirectory",
+  "Result source priority": "simulation.resultSourcePriority",
+  "Result sources used": "simulation.resultSourcesUsed",
+  "Started": "simulation.started",
+  "Finished": "simulation.finished",
+  "Purpose": "simulation.purpose",
+  "Required Output": "simulation.requiredOutput",
+  "Found": "simulation.found",
+  "Source": "common.source",
+  "Name": "common.name",
+  "Type": "common.type",
+  "Path": "common.path",
+  "Metric": "common.metric",
+  "Unit": "common.unit",
+  "Total": "common.total",
+  "Period": "common.period",
+  "Message": "common.message",
+  "Severity": "topology.severity",
+  "Code": "topology.code",
+  "Notes": "common.notes",
+  "Category": "common.category",
+  "Service": "simulation.service",
+  "Basis": "simulation.basis",
+  "Expected": "simulation.expected",
+  "Mapped": "simulation.mapped",
+  "Frequency": "simulation.frequency",
+  "Aggregation": "simulation.aggregation",
+  "Table": "simulation.table",
+  "Row": "simulation.row",
+  "Column": "simulation.column",
+  "Source Unit": "simulation.sourceUnit",
+  "Normalized Unit": "simulation.normalizedUnit",
+  "Source unit": "simulation.sourceUnit",
+  "Normalized unit": "simulation.normalizedUnit",
+  "Formula": "simulation.formula",
+};
+const purposeReportLabel = (label) => purposeReportLabelKeys[label] ? t(purposeReportLabelKeys[label], {}, label) : label;
+
 function renderPurposeHTMLTable(headers, rows) {
   const body = rows.length
     ? rows
         .map((row) => `<tr>${row.map((cell) => `<td>${escapeHTML(String(cell ?? ""))}</td>`).join("")}</tr>`)
         .join("")
-    : `<tr><td colspan="${headers.length}"><span class="muted">No data</span></td></tr>`;
-  return `<table><thead><tr>${headers.map((header) => `<th>${escapeHTML(header)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`;
+    : `<tr><td colspan="${headers.length}"><span class="muted">${escapeHTML(t("common.noData", {}, "No data"))}</span></td></tr>`;
+  return `<table><thead><tr>${headers.map((header) => `<th>${escapeHTML(purposeReportLabel(header))}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
 async function runCurrentSimulation({ silent = false, auto = false } = {}) {
@@ -7838,7 +7920,7 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
   const installPath = selectedEnergyPlusInstall()?.executablePath || "";
   if (!installPath) {
     if (!silent) {
-      setStatus(t("simulation.registerEnergyPlus", {}, "Register EnergyPlus in Settings"), "warn");
+      setStatus(localizedMessage("simulation.registerEnergyPlus", {}, "Register EnergyPlus in Settings"), "warn");
     }
     renderSimulation();
     return null;
@@ -7846,7 +7928,7 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
   const versionIssue = simulationVersionIssue();
   if (versionIssue) {
     if (!silent) {
-      setStatus(versionIssue.message, "warn");
+      setStatus(versionIssue.statusMessage, "warn");
     }
     renderSimulation();
     return null;
@@ -7854,7 +7936,7 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
   const blockingIssue = simulationBlockingIssue();
   if (blockingIssue) {
     if (!silent) {
-      setStatus(blockingIssue.message, "warn");
+      setStatus(blockingIssue.statusMessage, "warn");
     }
     renderSimulation();
     return null;
@@ -7863,11 +7945,11 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
   state.simulationRunning = true;
   state.simulationActiveRunID = runID;
   simulationPendingResponseRunID = runID;
-  state.simulationProgress = { runId: runID, percent: 0, message: t("simulation.preparing", {}, "Preparing simulation") };
+  state.simulationProgress = { runId: runID, phase: "prepare", percent: 0, message: t("simulation.preparing", {}, "Preparing simulation") };
   startSimulationProgressClock(runID);
   renderSimulation();
   if (!silent) {
-    setStatus(t("simulation.running", {}, "EnergyPlus simulation is running"), "loading");
+    setStatus(localizedMessage("simulation.running", {}, "EnergyPlus simulation is running"), "loading");
   }
   const purposeRequest = buildSimulationPurposeRequest();
   const request = {
@@ -7917,14 +7999,14 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
     renderSimulation();
   } catch (error) {
     const message = t("simulation.resultDisplayFailed", { message: error.message || String(error) }, `Results received, but display failed: ${error.message || String(error)}`);
-    state.simulationProgress = { runId: runID, phase: "display_failed", percent: 100, message, status: "display_failed" };
+    state.simulationProgress = { runId: runID, phase: "display_failed", percent: 100, message, displayError: error.message || String(error), status: "display_failed" };
     updateSimulationProgressUI();
-    if (!silent) setStatus(message, "error");
+    if (!silent) setStatus(localizedMessage("simulation.resultDisplayFailed", { message: error.message || String(error) }, "Results received, but display failed: {message}"), "error");
     return result;
   }
   state.simulationProgress = { runId: runID, phase: "complete", percent: 100, message: simulationDoneMessage(result), status: result.status };
   updateSimulationProgressUI();
-  if (!silent) setStatus(simulationDoneMessage(result), result.status === "succeeded" ? "ok" : "warn");
+  if (!silent) setStatus(() => simulationDoneMessage(result), result.status === "succeeded" ? "ok" : "warn");
   return result;
 }
 

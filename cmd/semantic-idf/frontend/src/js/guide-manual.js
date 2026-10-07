@@ -1,11 +1,12 @@
 import { renderAppInfo } from "./app-info.js";
-import { applyCachedAppSettings, getCurrentAppSettings, loadAndApplyAppSettings } from "./settings-client.js";
-import { t, translatePage } from "./i18n.js";
+import { applyCachedAppSettings, loadAndApplyAppSettings } from "./settings-client.js";
+import { getLanguage, getManualLanguage, translatePage } from "./i18n.js";
 import { auxiliaryReturnDepth, setAuxiliaryReturnDepth } from "./auxiliary-navigation.js";
 
 const labels = {
   en: {
-    title: "Technical Reference Manual", language: "Manual language", search: "Search all chapters", clear: "Clear",
+    title: "Technical Reference Manual", search: "Search all chapters", clear: "Clear",
+    skip: "Skip to chapter", chapter: "Technical reference chapter", pagination: "Previous and next chapters",
     shortcut: "Press / to search, Escape to clear.", results: "Search results", onThisPage: "On this page",
     loading: "Loading chapter…", searching: "Searching all chapters…", noResults: "No matching sections.",
     chapters: "Manual chapters", sections: "Chapter sections", previous: "Previous", next: "Next",
@@ -13,23 +14,38 @@ const labels = {
     searchIncomplete: "Some chapters are unavailable; showing results from the chapters that loaded.",
     catalogLoading: "Loading metric catalog…", catalogUnavailable: "The metric catalog is unavailable.",
     catalogFallback: "Bundled metric reference (live catalog unavailable).", unit: "Unit", source: "Source", method: "Method",
-    assumptions: "Assumptions", missingData: "Missing data", count: (n) => `${n} matching section${n === 1 ? "" : "s"}`,
+    assumptions: "Assumptions", missingData: "Missing data", catalogTitle: "Metric catalog", uncategorized: "Other",
+    count: (n) => `${n} matching section${n === 1 ? "" : "s"}`,
   },
   ko: {
-    title: "기술 참고 매뉴얼", language: "매뉴얼 언어", search: "전체 챕터 검색", clear: "지우기",
-    shortcut: "/ 키로 검색, Escape 키로 검색을 지웁니다.", results: "검색 결과", onThisPage: "이 챕터의 목차",
-    loading: "챕터를 불러오는 중…", searching: "전체 챕터를 검색하는 중…", noResults: "일치하는 섹션이 없습니다.",
-    chapters: "매뉴얼 챕터", sections: "챕터 섹션", previous: "이전", next: "다음",
-    unavailable: "이 챕터를 불러올 수 없습니다. 다른 챕터를 선택하거나 Guide를 다시 열어 주세요.",
-    searchIncomplete: "일부 챕터를 불러올 수 없어, 사용 가능한 챕터의 검색 결과를 표시합니다.",
+    title: "기술 참고 매뉴얼", search: "전체 장 검색", clear: "지우기",
+    skip: "본문으로 이동", chapter: "기술 참고 매뉴얼 본문", pagination: "이전 장과 다음 장",
+    shortcut: "/ 키로 검색, Escape 키로 검색을 지웁니다.", results: "검색 결과", onThisPage: "이 장의 목차",
+    loading: "본문을 불러오는 중…", searching: "전체 장을 검색하는 중…", noResults: "일치하는 절이 없습니다.",
+    chapters: "매뉴얼 목차", sections: "이 장의 절", previous: "이전", next: "다음",
+    unavailable: "본문을 불러올 수 없습니다. 다른 장을 선택하거나 매뉴얼을 다시 열어 주세요.",
+    searchIncomplete: "일부 장을 불러올 수 없어, 사용 가능한 장의 검색 결과를 표시합니다.",
     catalogLoading: "지표 카탈로그를 불러오는 중…", catalogUnavailable: "지표 카탈로그를 불러올 수 없습니다.",
     catalogFallback: "내장 지표 참고 자료 (실시간 카탈로그 사용 불가).", unit: "단위", source: "원본", method: "계산 방법",
-    assumptions: "가정", missingData: "누락 데이터", count: (n) => `${n}개 섹션 일치`,
+    assumptions: "가정", missingData: "누락 데이터", catalogTitle: "지표 카탈로그", uncategorized: "기타",
+    count: (n) => `${n}개 절 일치`,
   },
 };
 
 export function escapeManualHTML(value) {
   return String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
+}
+
+const localizedMetricFields = ["name", "category", "source", "method", "assumptions", "missingData"];
+
+function localizedMetricGuide(guide, entry) {
+  const localized = { ...guide };
+  for (const field of localizedMetricFields) {
+    // The registry stays authoritative. A changed live definition must not
+    // acquire an old translation, and IDs/units never enter this overlay.
+    if (typeof entry?.translation?.[field] === "string" && entry.translation[field].trim() && guide[field] === entry.original?.[field]) localized[field] = entry.translation[field];
+  }
+  return localized;
 }
 
 function plainText(value) {
@@ -225,15 +241,20 @@ function highlightSnippet(text, query) {
 }
 
 export class GuideManual {
-  constructor({ root = document, fetcher = (...args) => fetch(...args), sourceURL = "./manual/", language = "en" } = {}) {
-    this.root = root; this.fetcher = fetcher; this.sourceURL = sourceURL; this.language = language === "ko" ? "ko" : "en";
+  constructor({ root = document, fetcher = (...args) => fetch(...args), sourceURL = "./manual/", language = getLanguage() } = {}) {
+    this.root = root; this.fetcher = fetcher; this.sourceURL = sourceURL; this.language = getManualLanguage(language);
     this.chapterCache = new Map(); this.renderGeneration = 0; this.searchGeneration = 0; this.searchTimer = null; this.observer = null;
+    this.languageGeneration = 0;
     this.content = root.querySelector("#manualContent"); this.status = root.querySelector("#manualStatus"); this.searchInput = root.querySelector("#manualSearch");
     this.onHashChange = () => { void this.openRoute(); }; this.onScroll = () => this.trackSection(); this.scrollScheduled = false;
+    this.onLanguageChange = () => { void this.setLanguage(getLanguage()); };
   }
   get ui() { return labels[this.language]; }
   title(chapter) { return chapter.title[this.language] || chapter.title.en; }
   async initialize() {
+    // Subscribe before the manifest fetch: desktop settings can arrive while
+    // sources are loading, and the app language remains the only preference.
+    window.addEventListener("idfAnalyzer:languageChanged", this.onLanguageChange);
     const response = await this.fetcher(`${this.sourceURL}manifest.json`); if (!response.ok) throw new Error("Manual manifest unavailable");
     this.manifest = validateManifest(await response.json()); this.chapterIds = new Set(this.manifest.chapters.map((chapter) => chapter.id));
     if (!validHistoryDepth(window.history.state?.manualDepth)) window.history.replaceState({ ...window.history.state, manualDepth: auxiliaryReturnDepth() - 1 }, "");
@@ -243,7 +264,6 @@ export class GuideManual {
       if (!link || event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
       event.preventDefault(); this.navigate(link.getAttribute("href"));
     });
-    this.root.querySelector("#manualLanguage").addEventListener("change", (event) => { void this.setLanguage(event.target.value); });
     this.searchInput.addEventListener("input", () => { this.searchGeneration += 1; clearTimeout(this.searchTimer); this.searchTimer = setTimeout(() => { void this.search(this.searchInput.value); }, 160); });
     this.root.querySelector("#manualSearchClear").addEventListener("click", () => { this.clearSearch(); this.searchInput.focus(); });
     this.initializeDisclosures();
@@ -269,8 +289,9 @@ export class GuideManual {
     this.compactQuery.addEventListener("change", apply); window.addEventListener("resize", apply); apply();
   }
   localize() {
-    this.root.querySelectorAll("[data-manual-label]").forEach((element) => { element.textContent = this.ui[element.dataset.manualLabel] || element.textContent; });
-    this.root.querySelector("#manualLanguage").value = this.language;
+    this.root.querySelectorAll("[data-manual-label]").forEach((element) => { element.textContent = this.ui[element.dataset.manualLabel] || element.textContent; element.lang = this.language; });
+    this.root.querySelectorAll("[data-manual-aria]").forEach((element) => { element.setAttribute("aria-label", this.ui[element.dataset.manualAria]); });
+    this.root.querySelector(".manual-layout").lang = this.language;
     this.root.querySelector("#manualChapters").setAttribute("aria-label", this.ui.chapters);
     this.root.querySelector("#manualSections").setAttribute("aria-label", this.ui.sections);
     this.searchInput.placeholder = this.ui.search; this.searchInput.setAttribute("aria-label", this.ui.search);
@@ -278,11 +299,18 @@ export class GuideManual {
     if (this.root === document) document.title = `SemanticIDF — ${this.ui.title}`;
   }
   async setLanguage(language) {
-    const next = language === "ko" ? "ko" : "en"; if (next === this.language) return;
-    if (!this.manifest) { this.language = next; return; }
-    this.language = next; this.searchGeneration += 1; this.localize();
-    const url = new URL(window.location.href); url.searchParams.set("lang", next); window.history.replaceState(window.history.state, "", url);
-    await this.openRoute(); if (this.searchInput.value.trim()) await this.search(this.searchInput.value);
+    const next = getManualLanguage(language); if (next === this.language) return;
+    this.language = next; this.searchGeneration += 1; const generation = ++this.languageGeneration;
+    clearTimeout(this.searchTimer);
+    if (!this.manifest) {
+      if (this.status.dataset.error) this.status.textContent = this.ui.unavailable;
+      return;
+    }
+    this.localize();
+    this.root.querySelector("#manualResultsList").replaceChildren();
+    if (this.searchInput.value.trim()) this.root.querySelector("#manualSearchStatus").textContent = this.ui.searching;
+    await this.openRoute();
+    if (generation === this.languageGeneration && this.searchInput.value.trim()) await this.search(this.searchInput.value);
   }
   loadChapter(chapter, language = this.language) {
     const key = `${chapter.id}:${language}`;
@@ -377,14 +405,15 @@ export class GuideManual {
     const generation = ++this.searchGeneration; const language = this.language; const terms = value.toLowerCase().split(/\s+/);
     this.root.querySelector("#manualSearchResults").hidden = false; this.root.querySelector("#manualSearchStatus").textContent = this.ui.searching;
     const chapters = await Promise.allSettled(this.manifest.chapters.map(async (chapter) => ({ chapter, rendered: await this.loadChapter(chapter, language) })));
-    let catalog = null; try { catalog = await this.loadMetricCatalog(); } catch { /* Manual search remains available without the live catalog. */ }
+    let catalog = null; let localizedGuides = [];
+    try { catalog = await this.loadMetricCatalog(); localizedGuides = await this.metricGuidesForLanguage(catalog.guides, language); } catch { /* Manual search remains available without the live catalog. */ }
     if (generation !== this.searchGeneration || language !== this.language) return [];
     const found = [];
     for (const item of chapters) {
       if (item.status !== "fulfilled") continue;
       const { chapter, rendered } = item.value;
       const records = [...rendered.records];
-      if (chapter.id === "metrics" && catalog) records.push(...catalog.guides.map((guide) => ({ section: `metric-${manualSlug(guide.id)}`, title: `${guide.name} (${guide.id})`, text: Object.values(guide).join(" ") })));
+      if (chapter.id === "metrics" && catalog) records.push(...catalog.guides.map((guide, index) => ({ section: `metric-${manualSlug(guide.id)}`, title: `${localizedGuides[index]?.name || guide.name} (${guide.id})`, text: [...Object.values(guide), ...Object.values(localizedGuides[index] || {})].join(" ") })));
       for (const record of records) {
         const haystack = `${this.title(chapter)} ${record.title} ${record.text}`.toLowerCase();
         if (terms.every((term) => haystack.includes(term))) found.push({ chapter, ...record, score: terms.filter((term) => record.title.toLowerCase().includes(term)).length });
@@ -419,15 +448,30 @@ export class GuideManual {
     }
     return this.metricCatalogPromise;
   }
+  async metricGuidesForLanguage(guides, language) {
+    if (language !== "ko") return guides;
+    if (!this.metricLocalizationPromise) {
+      this.metricLocalizationPromise = this.fetcher(`${this.sourceURL}metric-guides.ko.json`).then(async (response) => {
+        if (!response.ok) throw new Error("Korean metric reference unavailable");
+        const overlay = await response.json();
+        if (overlay?.version !== 1 || !overlay.guides || typeof overlay.guides !== "object" || Array.isArray(overlay.guides)) throw new Error("Invalid Korean metric reference");
+        return overlay.guides;
+      }).catch(() => { this.metricLocalizationPromise = null; return null; });
+    }
+    const entries = await this.metricLocalizationPromise;
+    return entries ? guides.map((guide) => localizedMetricGuide(guide, entries[guide.id])) : guides;
+  }
   async mountMetricCatalog(generation) {
+    const language = this.language;
     let heading = this.content.querySelector("#metric-catalog");
-    if (!heading) { heading = document.createElement("h2"); heading.id = "metric-catalog"; heading.textContent = t("guide.metricCatalog.title"); this.content.append(heading); }
+    if (!heading) { heading = document.createElement("h2"); heading.id = "metric-catalog"; heading.textContent = this.ui.catalogTitle; this.content.append(heading); }
     const container = document.createElement("div"); container.id = "metricGuide"; container.className = "guide-metric-list"; container.textContent = this.ui.catalogLoading;
     let nextHeading = heading.nextElementSibling; while (nextHeading && !/^H[12]$/.test(nextHeading.tagName)) nextHeading = nextHeading.nextElementSibling;
     this.content.insertBefore(container, nextHeading);
     try {
-      const catalog = await this.loadMetricCatalog(); if (generation !== this.renderGeneration) return;
-      const groups = new Map(); for (const guide of catalog.guides) { const category = guide.category || t("guide.metricCatalog.uncategorized"); if (!groups.has(category)) groups.set(category, []); groups.get(category).push(guide); }
+      const catalog = await this.loadMetricCatalog(); const guides = await this.metricGuidesForLanguage(catalog.guides, language);
+      if (generation !== this.renderGeneration || language !== this.language) return;
+      const groups = new Map(); for (const guide of guides) { const category = guide.category || this.ui.uncategorized; if (!groups.has(category)) groups.set(category, []); groups.get(category).push(guide); }
       container.innerHTML = `${catalog.bundled ? `<p class="manual-status">${this.ui.catalogFallback}</p>` : ""}` + [...groups.entries()].map(([category, guides]) => `<details class="guide-metric-group" open><summary><span>${escapeManualHTML(category)}</span><span class="badge">${guides.length}</span></summary><div class="guide-metric-cards">${guides.map((guide) => `<article class="guide-metric-card" id="metric-${manualSlug(guide.id)}"><h3>${escapeManualHTML(guide.name)} <code>${escapeManualHTML(guide.id)}</code></h3><dl>${["unit", "source", "method", "assumptions", "missingData"].map((field) => `<dt>${escapeManualHTML(this.ui[field])}</dt><dd>${escapeManualHTML(field === "unit" ? guide.unit || "[-]" : guide[field])}</dd>`).join("")}</dl></article>`).join("")}</div></details>`).join("");
       const route = this.readRoute(); if (route.section.startsWith("metric-") && route.section !== "metric-catalog") { const target = this.content.querySelector(`#${CSS.escape(route.section)}`); if (target) { const group = target.closest("details"); if (group) group.open = true; target.scrollIntoView({ block: "start" }); this.markSection("metric-catalog"); } }
     } catch { if (generation === this.renderGeneration) container.textContent = this.ui.catalogUnavailable; }
@@ -436,15 +480,17 @@ export class GuideManual {
 
 async function bootGuideManual() {
   renderAppInfo(); applyCachedAppSettings(); translatePage();
-  const requestedLanguage = new URL(window.location.href).searchParams.get("lang");
-  const language = requestedLanguage === "en" || requestedLanguage === "ko" ? requestedLanguage : getCurrentAppSettings().appearance.language;
-  const manual = new GuideManual({ language });
-  try { await manual.initialize(); }
+  // Old shared links may include a manual language. Keep their section and
+  // other query parameters, but use the application's settings everywhere.
+  const url = new URL(window.location.href);
+  if (url.searchParams.has("lang")) { url.searchParams.delete("lang"); window.history.replaceState(window.history.state, "", url); }
+  const manual = new GuideManual();
+  const initialization = manual.initialize();
+  // Cached settings paint immediately; the language event applies the final
+  // backend snapshot even if it arrives before initialization finishes.
+  void loadAndApplyAppSettings();
+  try { await initialization; }
   catch { const status = document.querySelector("#manualStatus"); status.textContent = manual.ui.unavailable; status.dataset.error = "true"; }
-  // The manual itself is static and can paint while a desktop settings bridge
-  // becomes available. Cached appearance and language are applied immediately.
-  void loadAndApplyAppSettings().then((result) => { if (!requestedLanguage && !new URL(window.location.href).searchParams.has("lang")) void manual.setLanguage(result.settings?.appearance?.language); });
-  window.addEventListener("idfAnalyzer:settingsChanged", (event) => { if (!new URL(window.location.href).searchParams.has("lang")) void manual.setLanguage(event.detail?.settings?.appearance?.language); });
 }
 
 if (document.querySelector("[data-guide-manual]")) void bootGuideManual();

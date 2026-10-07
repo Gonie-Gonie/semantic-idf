@@ -47,7 +47,7 @@ func TestTOPO280To285IntegratedBrowserFlows(t *testing.T) {
 	if !strings.Contains(document, `data-topology-integrated-status="passed"`) {
 		t.Fatalf("integrated thermal topology browser flows did not pass:\n%s", document)
 	}
-	for _, signal := range []string{`"topo280":true`, `"topo281":true`, `"topo282":true`, `"topo283":true`, `"topo284":true`, `"topo285":true`, `"singleDetailsHost":true`, `"networkDetailsBelow":true`, `"sameZoneDetails":true`, `"modeSpecificControls":true`, `"selectionPersists":true`, `"backendCalls":0`} {
+	for _, signal := range []string{`"topo280":true`, `"topo281":true`, `"topo282":true`, `"topo283":true`, `"topo284":true`, `"topo285":true`, `"singleDetailsHost":true`, `"networkDetailsBelow":true`, `"sameZoneDetails":true`, `"modeSpecificControls":true`, `"selectionPersists":true`, `"localeCameraPreserved":true`, `"newGeometryResetsCamera":true`, `"fitResetsCamera":true`, `"backendCalls":0`} {
 		if !strings.Contains(document, signal) {
 			t.Fatalf("integrated thermal topology result is missing %s:\n%s", signal, document)
 		}
@@ -243,7 +243,25 @@ try {
   const topo285=state.thermalTopologyMetric==='area'&&state.thermalTopologySelectedEntityId==='connection:pair'&&state.thermalTopologyPanX===17&&state.thermalTopologyScale===1.4&&delta===2&&percent===50&&backendCalls===0;
 
   assert(topo280&&topo281&&topo282&&topo283&&topo284&&topo285&&singleDetailsHost&&networkDetailsBelow&&sameZoneDetails&&modeSpecificControls&&selectionPersists,JSON.stringify({topo280,topo281,topo282,topo283,topo284,topo285,singleDetailsHost,networkDetailsBelow,sameZoneDetails,modeSpecificControls,selectionPersists}));
-  document.getElementById('result').textContent=JSON.stringify({topo280,topo281,topo282,topo283,topo284,topo285,singleDetailsHost,networkDetailsBelow,sameZoneDetails,modeSpecificControls,selectionPersists,backendCalls});
+  const viewportGeometry={...geometry,bounds:{ok:true,minX:0,minY:0,minZ:0,maxX:10,maxY:10,maxZ:10},
+    surfaces:[{...geometry.surfaces[0],worldVertices:[{x:0,y:0,z:0},{x:10,y:0,z:0},{x:10,y:0,z:10},{x:0,y:0,z:10}]}],windows:[]};
+  const canvasHost=document.getElementById('topology3DCanvasHost');canvasHost.style.width='600px';canvasHost.style.height='300px';
+  state.report.geometry=viewportGeometry;state.topologyMode='3d';select('zone','zone:a');
+  topologyView.renderTopologyView(viewportGeometry);
+  const canvas=canvasHost.querySelector('canvas'),defaultImage=canvas.toDataURL();
+  canvas.dispatchEvent(new WheelEvent('wheel',{deltaY:-120,bubbles:true,cancelable:true}));
+  const zoomedImage=canvas.toDataURL();assert(zoomedImage!==defaultImage,'3D zoom must change the rendered model');
+  const localization=await import('/src/js/i18n.js');localization.setLanguage('ko');
+  topologyView.renderTopologyView(viewportGeometry,{preservePresentation:true});
+  const localeCameraPreserved=canvas.toDataURL()===zoomedImage&&state.selectedTopologyEntityId==='zone:a';
+  assert(localeCameraPreserved,'language change reset the user 3D camera');
+  state.report.geometry={...viewportGeometry};topologyView.renderTopologyView(state.report.geometry,{preservePresentation:true});
+  const newGeometryResetsCamera=canvas.toDataURL()===defaultImage;
+  assert(newGeometryResetsCamera,'new geometry retained the previous user camera');
+  canvas.dispatchEvent(new WheelEvent('wheel',{deltaY:-120,bubbles:true,cancelable:true}));
+  await topologyView.fitTopologyView();const fitResetsCamera=canvas.toDataURL()===defaultImage;
+  assert(fitResetsCamera,'explicit Fit no longer resets the user 3D camera');
+  document.getElementById('result').textContent=JSON.stringify({topo280,topo281,topo282,topo283,topo284,topo285,singleDetailsHost,networkDetailsBelow,sameZoneDetails,modeSpecificControls,selectionPersists,localeCameraPreserved,newGeometryResetsCamera,fitResetsCamera,backendCalls});
   document.body.dataset.topologyIntegratedStatus='passed';
 } catch(error) {
   document.getElementById('result').textContent=error.stack||String(error);

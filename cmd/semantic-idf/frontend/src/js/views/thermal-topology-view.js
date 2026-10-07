@@ -527,11 +527,11 @@ function edgeMetricPresentation(connection, model, context) {
 
 function renderMetricLegend() {
   const metric = state.thermalTopologyMetric;
-  return `<div class="thermal-topology-legend" data-topology-metric="${escapeHTML(metric)}" role="note" aria-label="Network connection types">
+  return `<div class="thermal-topology-legend" data-topology-metric="${escapeHTML(metric)}" role="note" aria-label="${escapeHTML(t("topology.connectionTypes", {}, "Network connection types"))}">
     <span class="thermal-legend-item"><i class="thermal-legend-line conductive" aria-hidden="true"></i>Conductive and exterior</span>
     <span class="thermal-legend-item"><i class="thermal-legend-line ground" aria-hidden="true"></i>Ground</span>
     <span class="thermal-legend-item"><i class="thermal-legend-line adiabatic" aria-hidden="true"></i>Adiabatic</span>
-    <span class="thermal-legend-item"><i class="thermal-legend-line air" aria-hidden="true"></i>Air and issue pattern</span>
+    <span class="thermal-legend-item"><i class="thermal-legend-line air" aria-hidden="true"></i>${escapeHTML(t("topology.airAndIssuePattern", {}, "Air and issue pattern"))}</span>
   </div>`;
 }
 

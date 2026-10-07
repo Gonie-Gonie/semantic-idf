@@ -101,6 +101,9 @@ export const defaultAppSettings = {
 };
 
 let currentSettings = mergeSettings();
+let settingsRevision = 0;
+let loadSequence = 0;
+let settingsSaveQueue = Promise.resolve();
 let systemThemeQuery = null;
 let systemThemeListenerAttached = false;
 
@@ -123,11 +126,13 @@ export function applyCachedAppSettings() {
 
 export async function loadAndApplyAppSettings() {
   const result = await loadAppSettings();
-  applyAppSettings(result.settings);
+  if (!result.stale) applyAppSettings(result.settings);
   return result;
 }
 
 export async function loadAppSettings() {
+  const revision = settingsRevision;
+  const sequence = ++loadSequence;
   try {
     const api = await waitForAppAPI("GetSettings");
     const result = api
@@ -138,11 +143,17 @@ export async function loadAppSettings() {
           }
           return response.json();
         });
+    if (revision !== settingsRevision || sequence !== loadSequence) {
+      return { ...result, settings: getCurrentAppSettings(), stale: true };
+    }
     const settings = mergeSettings(result?.settings);
     cacheSettings(settings);
     currentSettings = settings;
     return { ...result, settings };
   } catch (error) {
+    if (revision !== settingsRevision || sequence !== loadSequence) {
+      return { path: "", settings: getCurrentAppSettings(), stale: true };
+    }
     const settings = readCachedAppSettings();
     currentSettings = settings;
     return {
@@ -154,21 +165,28 @@ export async function loadAppSettings() {
 }
 
 export async function saveAppSettings(settingsInput) {
+  const revision = ++settingsRevision;
   const settings = mergeSettings(settingsInput);
-  const api = await waitForAppAPI("SaveSettings");
-  const result = api
-    ? await api.SaveSettings(settings)
-    : await fetch("/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settings),
-      }).then((response) => {
-        if (!response.ok) {
-          throw new Error(`Settings save failed: ${response.status}`);
-        }
-        return response.json();
-      });
+  // Keep writes in request order so an earlier, slower write cannot replace a later save.
+  const operation = settingsSaveQueue.catch(() => {}).then(async () => {
+    const api = await waitForAppAPI("SaveSettings");
+    return api
+      ? api.SaveSettings(settings)
+      : fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(settings),
+        }).then((response) => {
+          if (!response.ok) {
+            throw new Error(`Settings save failed: ${response.status}`);
+          }
+          return response.json();
+        });
+  });
+  settingsSaveQueue = operation;
+  const result = await operation;
   const savedSettings = mergeSettings(result?.settings || settings);
+  if (revision !== settingsRevision) return { ...result, settings: getCurrentAppSettings(), savedSettings, stale: true };
   cacheSettings(savedSettings);
   applyAppSettings(savedSettings);
   window.dispatchEvent(new CustomEvent("idfAnalyzer:settingsChanged", { detail: { settings: savedSettings } }));
@@ -176,6 +194,7 @@ export async function saveAppSettings(settingsInput) {
 }
 
 export function applyAppSettings(settingsInput) {
+  settingsRevision += 1;
   currentSettings = mergeSettings(settingsInput);
   const resolvedTheme = resolvedThemeName(currentSettings.appearance.theme);
   document.documentElement.dataset.theme = resolvedTheme;
@@ -192,6 +211,23 @@ export function applyAppSettings(settingsInput) {
   attachSystemThemeListener();
   return mergeSettings(currentSettings);
 }
+
+function applyExternalSettings(settings) {
+  const applied = applyAppSettings(settings);
+  window.dispatchEvent(new CustomEvent("idfAnalyzer:settingsChanged", { detail: { settings: applied, external: true } }));
+}
+
+window.addEventListener("storage", (event) => {
+  if (event.key !== settingsStorageKey && event.key !== null) return;
+  try {
+    applyExternalSettings(event.newValue ? JSON.parse(event.newValue) : mergeSettings());
+  } catch { /* Preserve the active settings if another window writes invalid JSON. */ }
+});
+
+window.addEventListener("pageshow", () => {
+  const cached = readCachedAppSettings();
+  if (JSON.stringify(cached) !== JSON.stringify(currentSettings)) applyExternalSettings(cached);
+});
 
 export function mergeSettings(settingsInput = {}) {
   const settings = settingsInput || {};

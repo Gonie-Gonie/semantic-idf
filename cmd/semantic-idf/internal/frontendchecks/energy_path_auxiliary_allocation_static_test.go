@@ -81,7 +81,7 @@ func TestEPATH101FrontendRemainsAutomaticWithoutOutputPlanExpansion(t *testing.T
 }
 
 func TestEPATH101FrontendLocalesAndDocumentation(t *testing.T) {
-	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	i18n := readTranslationSource(t)
 	for _, required := range []string{
 		`"simulation.energyPathAuxiliaryAllocationCoverage": "HVAC auxiliary allocation coverage"`,
 		`"simulation.energyPathAllocationDirect": "Direct"`,

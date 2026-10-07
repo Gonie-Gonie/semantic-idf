@@ -1,0 +1,1067 @@
+{
+  "version": 1,
+  "guides": {
+    "energyplus_version": {
+      "original": {
+        "name": "EnergyPlus version",
+        "category": "Model & Inventory",
+        "source": "Version / Version Identifier.",
+        "method": "Reads the version identifier directly from the Version object.",
+        "assumptions": "Accepted versions are checked elsewhere; this metric only reports the value found in the model.",
+        "missingData": "Shown as — when no Version object or version identifier is present."
+      },
+      "translation": {
+        "name": "EnergyPlus version",
+        "category": "Model & Inventory",
+        "source": "Version 객체의 Version Identifier 필드.",
+        "method": "Version 객체에서 버전 식별자를 직접 읽습니다.",
+        "assumptions": "지원 버전 검사는 별도로 수행합니다. 이 지표는 모델에 기록된 값만 표시합니다.",
+        "missingData": "Version 객체나 버전 식별자가 없으면 —로 표시합니다."
+      }
+    },
+    "building_name": {
+      "original": {
+        "name": "Building name",
+        "category": "Model & Inventory",
+        "source": "Building / Name.",
+        "method": "Reads the Building object name field.",
+        "assumptions": "The first Building object is used when more than one is present.",
+        "missingData": "Shown as — when no Building name is present."
+      },
+      "translation": {
+        "name": "Building name",
+        "category": "Model & Inventory",
+        "source": "Building 객체의 Name 필드.",
+        "method": "Building 객체의 이름 필드를 읽습니다.",
+        "assumptions": "Building 객체가 여러 개이면 첫 번째 객체를 사용합니다.",
+        "missingData": "Building 이름이 없으면 —로 표시합니다."
+      }
+    },
+    "building_north_axis_deg": {
+      "original": {
+        "name": "Building north axis",
+        "category": "Model & Inventory",
+        "source": "Building / North Axis.",
+        "method": "Reads the numeric north-axis rotation.",
+        "assumptions": "This rotation is added to calculated surface azimuths for orientation bins.",
+        "missingData": "Shown as — when the field is blank or nonnumeric."
+      },
+      "translation": {
+        "name": "Building north axis",
+        "category": "Model & Inventory",
+        "source": "Building 객체의 North Axis 필드.",
+        "method": "North Axis의 숫자 회전각을 읽습니다.",
+        "assumptions": "방위별 분류에는 계산된 Surface azimuth에 이 회전각을 더합니다.",
+        "missingData": "필드가 비어 있거나 숫자가 아니면 —로 표시합니다."
+      }
+    },
+    "object_count": {
+      "original": {
+        "name": "Object count",
+        "category": "Model & Inventory",
+        "source": "Parsed IDF or epJSON object list.",
+        "method": "Counts all parsed objects.",
+        "assumptions": "No filtering is applied.",
+        "missingData": "Always available; zero means the input contains no parsed objects."
+      },
+      "translation": {
+        "name": "Object count",
+        "category": "Model & Inventory",
+        "source": "파싱된 IDF 또는 epJSON 객체 목록.",
+        "method": "파싱된 모든 객체 수를 셉니다.",
+        "assumptions": "별도의 필터를 적용하지 않습니다.",
+        "missingData": "항상 제공됩니다. 0은 파싱된 객체가 없다는 뜻입니다."
+      }
+    },
+    "object_type_count": {
+      "original": {
+        "name": "Object type count",
+        "category": "Model & Inventory",
+        "source": "Parsed IDF or epJSON object list.",
+        "method": "Counts distinct object type names.",
+        "assumptions": "Type names are compared exactly after parsing.",
+        "missingData": "Always available; zero means the input contains no parsed object types."
+      },
+      "translation": {
+        "name": "Object type count",
+        "category": "Model & Inventory",
+        "source": "파싱된 IDF 또는 epJSON 객체 목록.",
+        "method": "서로 다른 객체 유형 이름의 수를 셉니다.",
+        "assumptions": "파싱 후의 유형 이름을 정확히 비교합니다.",
+        "missingData": "항상 제공됩니다. 0은 파싱된 객체 유형이 없다는 뜻입니다."
+      }
+    },
+    "zone_count": {
+      "original": {
+        "name": "Zone count",
+        "category": "Model & Inventory",
+        "source": "Zone objects.",
+        "method": "Counts Zone objects with or without names.",
+        "assumptions": "Spaces are not counted as zones.",
+        "missingData": "Always available; zero means no Zone objects were found."
+      },
+      "translation": {
+        "name": "Zone count",
+        "category": "Model & Inventory",
+        "source": "Zone 객체.",
+        "method": "이름 유무와 관계없이 Zone 객체 수를 셉니다.",
+        "assumptions": "Space는 Zone 수에 포함하지 않습니다.",
+        "missingData": "항상 제공됩니다. 0은 Zone 객체가 없다는 뜻입니다."
+      }
+    },
+    "space_count": {
+      "original": {
+        "name": "Space count",
+        "category": "Model & Inventory",
+        "source": "Space objects.",
+        "method": "Counts Space objects.",
+        "assumptions": "The metric is independent from Zone count.",
+        "missingData": "Always available; zero means no Space objects were found."
+      },
+      "translation": {
+        "name": "Space count",
+        "category": "Model & Inventory",
+        "source": "Space 객체.",
+        "method": "Space 객체 수를 셉니다.",
+        "assumptions": "Zone 수와 독립적으로 집계합니다.",
+        "missingData": "항상 제공됩니다. 0은 Space 객체가 없다는 뜻입니다."
+      }
+    },
+    "schedule_count": {
+      "original": {
+        "name": "Schedule count",
+        "category": "Model & Inventory",
+        "source": "Objects whose type starts with Schedule:.",
+        "method": "Counts all schedule objects.",
+        "assumptions": "ScheduleTypeLimits is not counted as a schedule.",
+        "missingData": "Always available; zero means no schedule objects were found."
+      },
+      "translation": {
+        "name": "Schedule count",
+        "category": "Model & Inventory",
+        "source": "유형 이름이 Schedule:로 시작하는 객체.",
+        "method": "모든 Schedule 객체 수를 셉니다.",
+        "assumptions": "ScheduleTypeLimits는 Schedule 수에 포함하지 않습니다.",
+        "missingData": "항상 제공됩니다. 0은 Schedule 객체가 없다는 뜻입니다."
+      }
+    },
+    "construction_count": {
+      "original": {
+        "name": "Construction count",
+        "category": "Model & Inventory",
+        "source": "Objects whose type starts with Construction.",
+        "method": "Counts construction objects.",
+        "assumptions": "All Construction:* variants are included.",
+        "missingData": "Always available; zero means no construction objects were found."
+      },
+      "translation": {
+        "name": "Construction count",
+        "category": "Model & Inventory",
+        "source": "유형 이름이 Construction으로 시작하는 객체.",
+        "method": "Construction 객체 수를 셉니다.",
+        "assumptions": "모든 Construction:* 유형을 포함합니다.",
+        "missingData": "항상 제공됩니다. 0은 Construction 객체가 없다는 뜻입니다."
+      }
+    },
+    "material_count": {
+      "original": {
+        "name": "Material count",
+        "category": "Model & Inventory",
+        "source": "Material* and WindowMaterial* objects.",
+        "method": "Counts opaque and window material objects.",
+        "assumptions": "Construction objects are excluded.",
+        "missingData": "Always available; zero means no material objects were found."
+      },
+      "translation": {
+        "name": "Material count",
+        "category": "Model & Inventory",
+        "source": "Material* 및 WindowMaterial* 객체.",
+        "method": "불투명 재료와 창 재료 객체 수를 셉니다.",
+        "assumptions": "Construction 객체는 제외합니다.",
+        "missingData": "항상 제공됩니다. 0은 재료 객체가 없다는 뜻입니다."
+      }
+    },
+    "gross_floor_area_m2": {
+      "original": {
+        "name": "Gross floor area",
+        "category": "Geometry & Areas",
+        "source": "Zone floor fields and floor surfaces.",
+        "method": "Sums zone floor area fields when present; otherwise sums Floor surface polygon or rectangle areas.",
+        "assumptions": "Zone multipliers are applied. Surface-derived floor area includes all floor surfaces assigned to zones.",
+        "missingData": "Shown as — when no numeric zone floor area or floor surface area can be computed."
+      },
+      "translation": {
+        "name": "Gross floor area",
+        "category": "Geometry & Areas",
+        "source": "Zone의 바닥 면적 필드와 Floor Surface.",
+        "method": "Zone의 바닥 면적 필드가 있으면 합산합니다. 없으면 Floor Surface의 다각형 또는 직사각형 면적을 합산합니다.",
+        "assumptions": "Zone multiplier를 적용합니다. Surface에서 계산한 바닥 면적에는 Zone에 연결된 모든 Floor Surface가 포함됩니다.",
+        "missingData": "숫자로 입력된 Zone 바닥 면적이나 Floor Surface 면적을 계산할 수 없으면 —로 표시합니다."
+      }
+    },
+    "conditioned_floor_area_m2": {
+      "original": {
+        "name": "Conditioned floor area",
+        "category": "Geometry & Areas",
+        "source": "Gross floor area and conditioned-zone detection.",
+        "method": "Sums floor area for zones referenced by ZoneHVAC, ZoneHVAC:EquipmentConnections, or ZoneControl:Thermostat objects.",
+        "assumptions": "Zone multipliers are applied. Only zones with known floor area can contribute.",
+        "missingData": "Shown as — when conditioned zones or floor areas cannot be identified."
+      },
+      "translation": {
+        "name": "Conditioned floor area",
+        "category": "Geometry & Areas",
+        "source": "Gross floor area와 공조 Zone 판별 결과.",
+        "method": "ZoneHVAC, ZoneHVAC:EquipmentConnections 또는 ZoneControl:Thermostat 객체가 참조하는 Zone의 바닥 면적을 합산합니다.",
+        "assumptions": "Zone multiplier를 적용합니다. 바닥 면적을 알 수 있는 Zone만 합산에 기여합니다.",
+        "missingData": "공조 Zone이나 바닥 면적을 판별할 수 없으면 —로 표시합니다."
+      }
+    },
+    "unconditioned_floor_area_m2": {
+      "original": {
+        "name": "Unconditioned floor area",
+        "category": "Geometry & Areas",
+        "source": "Gross and conditioned floor area.",
+        "method": "Subtracts conditioned floor area from gross floor area.",
+        "assumptions": "The value is clamped at zero to avoid negative results from partial data.",
+        "missingData": "Shown as — when gross or conditioned floor area is unavailable."
+      },
+      "translation": {
+        "name": "Unconditioned floor area",
+        "category": "Geometry & Areas",
+        "source": "Gross floor area와 Conditioned floor area.",
+        "method": "Gross floor area에서 Conditioned floor area를 뺍니다.",
+        "assumptions": "불완전한 자료로 음수가 나오지 않도록 최솟값을 0으로 제한합니다.",
+        "missingData": "Gross floor area 또는 Conditioned floor area가 없으면 —로 표시합니다."
+      }
+    },
+    "footprint_area_m2": {
+      "original": {
+        "name": "Footprint area",
+        "category": "Geometry & Areas",
+        "source": "Lowest floor surfaces.",
+        "method": "Sums ground-contact floor surfaces, or the lowest horizontal floor surfaces when ground boundary data is absent.",
+        "assumptions": "Zone multipliers are applied to surface areas. Bounding-box dimensions are reported separately and are not used as footprint area.",
+        "missingData": "Shown as — when no floor surface area can be computed."
+      },
+      "translation": {
+        "name": "Footprint area",
+        "category": "Geometry & Areas",
+        "source": "가장 낮은 Floor Surface.",
+        "method": "지면과 접한 Floor Surface를 합산합니다. Ground 경계 자료가 없으면 가장 낮은 수평 Floor Surface를 합산합니다.",
+        "assumptions": "Surface 면적에 Zone multiplier를 적용합니다. Bounding box 치수는 별도로 표시하며 Footprint area 계산에는 사용하지 않습니다.",
+        "missingData": "Floor Surface 면적을 계산할 수 없으면 —로 표시합니다."
+      }
+    },
+    "bounding_box_area_m2": {
+      "original": {
+        "name": "Bounding box area",
+        "category": "Geometry & Areas",
+        "source": "Detailed surface vertices.",
+        "method": "Calculates the XY bounding-box area from all detailed vertices.",
+        "assumptions": "This is a coarse geometric extent, not a true footprint polygon.",
+        "missingData": "Shown as — when detailed vertex extents are unavailable."
+      },
+      "translation": {
+        "name": "Bounding box area",
+        "category": "Geometry & Areas",
+        "source": "Detailed Surface의 꼭짓점 좌표.",
+        "method": "모든 Detailed 꼭짓점에서 XY bounding box 면적을 계산합니다.",
+        "assumptions": "대략적인 기하 범위이며 실제 Footprint 다각형 면적은 아닙니다.",
+        "missingData": "Detailed 꼭짓점의 범위를 구할 수 없으면 —로 표시합니다."
+      }
+    },
+    "total_zone_volume_m3": {
+      "original": {
+        "name": "Total zone volume",
+        "category": "Geometry & Areas",
+        "source": "Zone and Space volume fields, floor areas, and resolved heights.",
+        "method": "Uses numeric Zone Volume first, otherwise resolves the independent Zone volume from zone floor area and height; resolved Space volumes are a fallback only when Zone dimensions are unavailable.",
+        "assumptions": "Zone multipliers are applied exactly once. A declared Space Volume does not override its parent Zone volume. Estimated or incompletely resolved values are marked partial.",
+        "missingData": "Shown as — when neither declared nor estimated zone volume is available."
+      },
+      "translation": {
+        "name": "Total zone volume",
+        "category": "Geometry & Areas",
+        "source": "Zone 및 Space의 Volume 필드, 바닥 면적과 산정된 높이.",
+        "method": "숫자로 입력된 Zone Volume을 우선 사용합니다. 없으면 Zone의 바닥 면적과 높이로 독립적인 Zone 체적을 산정합니다. Space 체적은 Zone 치수를 구할 수 없을 때만 대체값으로 사용합니다.",
+        "assumptions": "Zone multiplier는 정확히 한 번 적용합니다. 명시된 Space Volume이 상위 Zone 체적을 덮어쓰지 않습니다. 추정값이나 불완전하게 산정된 값은 partial로 표시합니다.",
+        "missingData": "명시된 Zone 체적과 추정 체적을 모두 구할 수 없으면 —로 표시합니다."
+      }
+    },
+    "average_floor_height_m": {
+      "original": {
+        "name": "Average floor height",
+        "category": "Geometry & Areas",
+        "source": "Zone / Ceiling Height and detailed surface extents.",
+        "method": "Averages numeric zone ceiling heights; falls back to max-min vertex Z height by zone.",
+        "assumptions": "Each zone contributes once; autocalculate fields require geometry fallback.",
+        "missingData": "Shown as — when no zone height can be read or inferred."
+      },
+      "translation": {
+        "name": "Average floor height",
+        "category": "Geometry & Areas",
+        "source": "Zone의 Ceiling Height 필드와 Detailed Surface의 범위.",
+        "method": "숫자로 입력된 Zone의 Ceiling Height를 평균합니다. 없으면 Zone별 꼭짓점의 최대 Z와 최소 Z 차이를 사용합니다.",
+        "assumptions": "각 Zone은 한 번씩 기여합니다. autocalculate 필드는 기하 자료를 통한 대체 계산이 필요합니다.",
+        "missingData": "Zone 높이를 읽거나 추정할 수 없으면 —로 표시합니다."
+      }
+    },
+    "building_long_side_m": {
+      "original": {
+        "name": "Building long side",
+        "category": "Geometry & Areas",
+        "source": "Detailed surface vertices.",
+        "method": "Uses the larger of the model XY bounding-box width and depth.",
+        "assumptions": "Only detailed vertices are considered.",
+        "missingData": "Shown as — when detailed vertex coordinates are unavailable."
+      },
+      "translation": {
+        "name": "Building long side",
+        "category": "Geometry & Areas",
+        "source": "Detailed Surface의 꼭짓점 좌표.",
+        "method": "모델 XY bounding box의 폭과 깊이 중 큰 값을 사용합니다.",
+        "assumptions": "Detailed 꼭짓점만 고려합니다.",
+        "missingData": "Detailed 꼭짓점 좌표가 없으면 —로 표시합니다."
+      }
+    },
+    "building_short_side_m": {
+      "original": {
+        "name": "Building short side",
+        "category": "Geometry & Areas",
+        "source": "Detailed surface vertices.",
+        "method": "Uses the smaller nonzero side of the model XY bounding box.",
+        "assumptions": "Only detailed vertices are considered.",
+        "missingData": "Shown as — when detailed vertex coordinates are unavailable or one side is zero."
+      },
+      "translation": {
+        "name": "Building short side",
+        "category": "Geometry & Areas",
+        "source": "Detailed Surface의 꼭짓점 좌표.",
+        "method": "모델 XY bounding box에서 0이 아닌 짧은 변을 사용합니다.",
+        "assumptions": "Detailed 꼭짓점만 고려합니다.",
+        "missingData": "Detailed 꼭짓점 좌표가 없거나 한 변이 0이면 —로 표시합니다."
+      }
+    },
+    "footprint_aspect_ratio": {
+      "original": {
+        "name": "Footprint aspect ratio",
+        "category": "Geometry & Areas",
+        "source": "Detailed surface vertices.",
+        "method": "Divides building long side by building short side.",
+        "assumptions": "A value of 1.0 indicates a square bounding footprint.",
+        "missingData": "Shown as — when either side length is unavailable."
+      },
+      "translation": {
+        "name": "Footprint aspect ratio",
+        "category": "Geometry & Areas",
+        "source": "Detailed Surface의 꼭짓점 좌표.",
+        "method": "Building long side를 Building short side로 나눕니다.",
+        "assumptions": "1.0은 Bounding footprint가 정사각형이라는 뜻입니다.",
+        "missingData": "어느 한쪽 변 길이를 구할 수 없으면 —로 표시합니다."
+      }
+    },
+    "envelope_area_m2": {
+      "original": {
+        "name": "Gross envelope area",
+        "category": "Geometry & Areas",
+        "source": "Exterior walls, roofs, and ground floors.",
+        "method": "Sums exterior opaque wall area, roof area, and ground-contact floor area.",
+        "assumptions": "Fenestration is not subtracted from opaque base surfaces; see net opaque envelope area for the subtracted value.",
+        "missingData": "Shown as — when no envelope surface area can be computed."
+      },
+      "translation": {
+        "name": "Gross envelope area",
+        "category": "Geometry & Areas",
+        "source": "외벽, 지붕과 지면 접촉 바닥.",
+        "method": "외부 불투명 Wall 면적, Roof 면적과 지면 접촉 Floor 면적을 합산합니다.",
+        "assumptions": "기본 불투명 Surface에서 Fenestration 면적을 빼지 않습니다. 이를 뺀 값은 Net opaque envelope area를 참고합니다.",
+        "missingData": "외피 Surface 면적을 계산할 수 없으면 —로 표시합니다."
+      }
+    },
+    "net_opaque_envelope_area_m2": {
+      "original": {
+        "name": "Net opaque envelope area",
+        "category": "Geometry & Areas",
+        "source": "Gross envelope area and fenestration area.",
+        "method": "Subtracts recognized window and opaque door area from gross envelope area.",
+        "assumptions": "This is an analyzer area balance and depends on resolved fenestration geometry.",
+        "missingData": "Shown as — when gross envelope area cannot be computed."
+      },
+      "translation": {
+        "name": "Net opaque envelope area",
+        "category": "Geometry & Areas",
+        "source": "Gross envelope area와 Fenestration 면적.",
+        "method": "Gross envelope area에서 인식된 창 면적과 불투명 문 면적을 뺍니다.",
+        "assumptions": "분석기의 면적 수지이며, 산정 가능한 Fenestration 기하 자료에 따라 달라집니다.",
+        "missingData": "Gross envelope area를 계산할 수 없으면 —로 표시합니다."
+      }
+    },
+    "envelope_area_to_volume_ratio": {
+      "original": {
+        "name": "Envelope area to volume ratio",
+        "category": "Geometry & Areas",
+        "source": "Envelope area and total zone volume.",
+        "method": "Divides envelope area by total zone volume.",
+        "assumptions": "Uses partial volume estimates when declared volumes are incomplete.",
+        "missingData": "Shown as — when envelope area or volume is unavailable."
+      },
+      "translation": {
+        "name": "Envelope area to volume ratio",
+        "category": "Geometry & Areas",
+        "source": "Envelope area와 Total zone volume.",
+        "method": "Envelope area를 Total zone volume으로 나눕니다.",
+        "assumptions": "명시된 체적이 불완전하면 부분적인 체적 추정값을 사용합니다.",
+        "missingData": "Envelope area 또는 체적이 없으면 —로 표시합니다."
+      }
+    },
+    "floor_area_to_volume_ratio": {
+      "original": {
+        "name": "Floor area to volume ratio",
+        "category": "Geometry & Areas",
+        "source": "Gross floor area and total zone volume.",
+        "method": "Divides gross floor area by total zone volume.",
+        "assumptions": "Uses partial volume estimates when declared volumes are incomplete.",
+        "missingData": "Shown as — when floor area or volume is unavailable."
+      },
+      "translation": {
+        "name": "Floor area to volume ratio",
+        "category": "Geometry & Areas",
+        "source": "Gross floor area와 Total zone volume.",
+        "method": "Gross floor area를 Total zone volume으로 나눕니다.",
+        "assumptions": "명시된 체적이 불완전하면 부분적인 체적 추정값을 사용합니다.",
+        "missingData": "바닥 면적 또는 체적이 없으면 —로 표시합니다."
+      }
+    },
+    "exterior_wall_area_m2": {
+      "original": {
+        "name": "Exterior wall area",
+        "category": "Envelope & Fenestration",
+        "source": "Building wall surfaces with exterior boundary conditions.",
+        "method": "Sums Wall surfaces exposed to Outdoors or exterior wall object types.",
+        "assumptions": "Zone multipliers are applied. Wall area is gross wall area.",
+        "missingData": "Shown as — when no exterior wall area can be computed."
+      },
+      "translation": {
+        "name": "Exterior wall area",
+        "category": "Envelope & Fenestration",
+        "source": "외부 경계 조건을 가진 건물 Wall Surface.",
+        "method": "Outdoors에 노출된 Wall Surface 또는 외벽 객체 유형의 면적을 합산합니다.",
+        "assumptions": "Zone multiplier를 적용합니다. Wall 면적은 Gross wall area입니다.",
+        "missingData": "외벽 면적을 계산할 수 없으면 —로 표시합니다."
+      }
+    },
+    "roof_area_m2": {
+      "original": {
+        "name": "Roof area",
+        "category": "Envelope & Fenestration",
+        "source": "Roof and RoofCeiling surfaces.",
+        "method": "Sums exterior roof or roof/ceiling surface area.",
+        "assumptions": "Zone multipliers are applied.",
+        "missingData": "Shown as — when no roof surface area can be computed."
+      },
+      "translation": {
+        "name": "Roof area",
+        "category": "Envelope & Fenestration",
+        "source": "Roof 및 RoofCeiling Surface.",
+        "method": "외부 Roof 또는 Roof/Ceiling Surface 면적을 합산합니다.",
+        "assumptions": "Zone multiplier를 적용합니다.",
+        "missingData": "Roof Surface 면적을 계산할 수 없으면 —로 표시합니다."
+      }
+    },
+    "ground_floor_area_m2": {
+      "original": {
+        "name": "Ground floor area",
+        "category": "Envelope & Fenestration",
+        "source": "Floor surfaces with Ground boundary or lowest floor fallback.",
+        "method": "Sums floor surfaces adjacent to ground; uses lowest floor surfaces when boundary data is absent.",
+        "assumptions": "Zone multipliers are applied.",
+        "missingData": "Shown as — when no ground or lowest floor area can be computed."
+      },
+      "translation": {
+        "name": "Ground floor area",
+        "category": "Envelope & Fenestration",
+        "source": "Ground 경계의 Floor Surface 또는 대체용 최하층 Floor.",
+        "method": "지면과 접한 Floor Surface를 합산합니다. 경계 자료가 없으면 가장 낮은 Floor Surface를 사용합니다.",
+        "assumptions": "Zone multiplier를 적용합니다.",
+        "missingData": "지면 접촉 바닥이나 최하층 바닥 면적을 계산할 수 없으면 —로 표시합니다."
+      }
+    },
+    "window_area_m2": {
+      "original": {
+        "name": "Window area",
+        "category": "Envelope & Fenestration",
+        "source": "FenestrationSurface:Detailed and simple Window objects.",
+        "method": "Sums fenestration objects whose surface type indicates window or glass door.",
+        "assumptions": "Fenestration multipliers and base-zone multipliers are applied.",
+        "missingData": "Shown as — when no window area can be computed."
+      },
+      "translation": {
+        "name": "Window area",
+        "category": "Envelope & Fenestration",
+        "source": "FenestrationSurface:Detailed 및 단순 Window 객체.",
+        "method": "Surface Type이 Window 또는 GlassDoor인 Fenestration 객체 면적을 합산합니다.",
+        "assumptions": "Fenestration multiplier와 기본 Surface가 속한 Zone의 multiplier를 적용합니다.",
+        "missingData": "창 면적을 계산할 수 없으면 —로 표시합니다."
+      }
+    },
+    "door_area_m2": {
+      "original": {
+        "name": "Door area",
+        "category": "Envelope & Fenestration",
+        "source": "Fenestration and Door objects.",
+        "method": "Sums non-glazed door area from detailed or rectangular geometry.",
+        "assumptions": "Fenestration multipliers and base-zone multipliers are applied.",
+        "missingData": "Shown as — when no door area can be computed."
+      },
+      "translation": {
+        "name": "Door area",
+        "category": "Envelope & Fenestration",
+        "source": "Fenestration 및 Door 객체.",
+        "method": "Detailed 또는 직사각형 기하 자료에서 유리가 없는 문 면적을 합산합니다.",
+        "assumptions": "Fenestration multiplier와 기본 Surface가 속한 Zone의 multiplier를 적용합니다.",
+        "missingData": "문 면적을 계산할 수 없으면 —로 표시합니다."
+      }
+    },
+    "total_wwr_percent": {
+      "original": {
+        "name": "Total WWR",
+        "category": "Envelope & Fenestration",
+        "source": "Exterior wall area and window area.",
+        "method": "Divides total window area by gross exterior wall area.",
+        "assumptions": "Glass doors count as window area. Wall area is gross and not net of windows.",
+        "missingData": "Shown as — when wall area is zero or unavailable."
+      },
+      "translation": {
+        "name": "Total WWR",
+        "category": "Envelope & Fenestration",
+        "source": "Exterior wall area와 Window area.",
+        "method": "전체 Window area를 Gross exterior wall area로 나눕니다.",
+        "assumptions": "GlassDoor는 Window area에 포함합니다. Wall area는 창을 빼지 않은 Gross 면적입니다.",
+        "missingData": "Wall area가 0이거나 없으면 —로 표시합니다."
+      }
+    },
+    "north_wwr_percent": {
+      "original": {
+        "name": "North WWR",
+        "category": "Envelope & Fenestration",
+        "source": "Surface azimuth and WWR inputs.",
+        "method": "Divides north-facing window area by north-facing exterior wall area.",
+        "assumptions": "North is [315,360) plus [0,45) degrees after building and zone rotations.",
+        "missingData": "Shown as — when no north-facing exterior wall area is available."
+      },
+      "translation": {
+        "name": "North WWR",
+        "category": "Envelope & Fenestration",
+        "source": "Surface azimuth와 WWR 입력값.",
+        "method": "북향 Window area를 북향 Exterior wall area로 나눕니다.",
+        "assumptions": "Building 및 Zone 회전 적용 후 북향 범위는 [315,360)과 [0,45)도입니다.",
+        "missingData": "북향 Exterior wall area가 없으면 —로 표시합니다."
+      }
+    },
+    "east_wwr_percent": {
+      "original": {
+        "name": "East WWR",
+        "category": "Envelope & Fenestration",
+        "source": "Surface azimuth and WWR inputs.",
+        "method": "Divides east-facing window area by east-facing exterior wall area.",
+        "assumptions": "East is [45,135) degrees after building and zone rotations.",
+        "missingData": "Shown as — when no east-facing exterior wall area is available."
+      },
+      "translation": {
+        "name": "East WWR",
+        "category": "Envelope & Fenestration",
+        "source": "Surface azimuth와 WWR 입력값.",
+        "method": "동향 Window area를 동향 Exterior wall area로 나눕니다.",
+        "assumptions": "Building 및 Zone 회전 적용 후 동향 범위는 [45,135)도입니다.",
+        "missingData": "동향 Exterior wall area가 없으면 —로 표시합니다."
+      }
+    },
+    "south_wwr_percent": {
+      "original": {
+        "name": "South WWR",
+        "category": "Envelope & Fenestration",
+        "source": "Surface azimuth and WWR inputs.",
+        "method": "Divides south-facing window area by south-facing exterior wall area.",
+        "assumptions": "South is [135,225) degrees after building and zone rotations.",
+        "missingData": "Shown as — when no south-facing exterior wall area is available."
+      },
+      "translation": {
+        "name": "South WWR",
+        "category": "Envelope & Fenestration",
+        "source": "Surface azimuth와 WWR 입력값.",
+        "method": "남향 Window area를 남향 Exterior wall area로 나눕니다.",
+        "assumptions": "Building 및 Zone 회전 적용 후 남향 범위는 [135,225)도입니다.",
+        "missingData": "남향 Exterior wall area가 없으면 —로 표시합니다."
+      }
+    },
+    "west_wwr_percent": {
+      "original": {
+        "name": "West WWR",
+        "category": "Envelope & Fenestration",
+        "source": "Surface azimuth and WWR inputs.",
+        "method": "Divides west-facing window area by west-facing exterior wall area.",
+        "assumptions": "West is [225,315) degrees after building and zone rotations.",
+        "missingData": "Shown as — when no west-facing exterior wall area is available."
+      },
+      "translation": {
+        "name": "West WWR",
+        "category": "Envelope & Fenestration",
+        "source": "Surface azimuth와 WWR 입력값.",
+        "method": "서향 Window area를 서향 Exterior wall area로 나눕니다.",
+        "assumptions": "Building 및 Zone 회전 적용 후 서향 범위는 [225,315)도입니다.",
+        "missingData": "서향 Exterior wall area가 없으면 —로 표시합니다."
+      }
+    },
+    "skylight_roof_ratio_percent": {
+      "original": {
+        "name": "Skylight roof ratio",
+        "category": "Envelope & Fenestration",
+        "source": "Window area on roof base surfaces and roof area.",
+        "method": "Divides skylight window area by roof area.",
+        "assumptions": "A fenestration object is treated as skylight when its base surface is a roof.",
+        "missingData": "Shown as — when roof area is zero or no skylight area can be identified."
+      },
+      "translation": {
+        "name": "Skylight roof ratio",
+        "category": "Envelope & Fenestration",
+        "source": "Roof를 기본 Surface로 사용하는 창 면적과 Roof area.",
+        "method": "Skylight의 Window area를 Roof area로 나눕니다.",
+        "assumptions": "기본 Surface가 Roof이면 해당 Fenestration 객체를 Skylight로 취급합니다.",
+        "missingData": "Roof area가 0이거나 Skylight 면적을 판별할 수 없으면 —로 표시합니다."
+      }
+    },
+    "total_lighting_power_w": {
+      "original": {
+        "name": "Total lighting power",
+        "category": "Internal Loads",
+        "source": "Lights objects.",
+        "method": "Sums LightingLevel directly and resolves Watts/Area or Watts/Person methods where supporting area or people data is available.",
+        "assumptions": "Zone and ZoneList references are expanded where possible; zone multipliers are applied.",
+        "missingData": "Shown as — when no lighting design level can be computed."
+      },
+      "translation": {
+        "name": "Total lighting power",
+        "category": "Internal Loads",
+        "source": "Lights 객체.",
+        "method": "LightingLevel을 직접 합산합니다. 필요한 면적 또는 재실 인원 자료가 있으면 Watts/Area나 Watts/Person 방식도 산정합니다.",
+        "assumptions": "가능한 경우 Zone 및 ZoneList 참조를 펼치고 Zone multiplier를 적용합니다.",
+        "missingData": "조명 Design level을 계산할 수 없으면 —로 표시합니다."
+      }
+    },
+    "average_lighting_power_density_w_per_m2": {
+      "original": {
+        "name": "Average lighting power density",
+        "category": "Internal Loads",
+        "source": "Lighting power and floor area.",
+        "method": "Divides total lighting power by conditioned floor area, falling back to gross floor area.",
+        "assumptions": "Partial lighting or floor-area inputs produce a partial status.",
+        "missingData": "Shown as — when lighting power or floor area is unavailable."
+      },
+      "translation": {
+        "name": "Average lighting power density",
+        "category": "Internal Loads",
+        "source": "Lighting power와 바닥 면적.",
+        "method": "Total lighting power를 Conditioned floor area로 나눕니다. 해당 면적이 없으면 Gross floor area를 사용합니다.",
+        "assumptions": "조명이나 바닥 면적 입력이 불완전하면 partial 상태가 됩니다.",
+        "missingData": "Lighting power 또는 바닥 면적이 없으면 —로 표시합니다."
+      }
+    },
+    "total_equipment_power_w": {
+      "original": {
+        "name": "Total equipment power",
+        "category": "Internal Loads",
+        "source": "ElectricEquipment, GasEquipment, HotWaterEquipment, SteamEquipment, and OtherEquipment objects.",
+        "method": "Sums direct design levels and resolves Watts/Area, Power/Area, Watts/Person, or Power/Person methods where supporting area or people data is available.",
+        "assumptions": "Zone and ZoneList references are expanded where possible; zone multipliers are applied.",
+        "missingData": "Shown as — when no equipment design level can be computed."
+      },
+      "translation": {
+        "name": "Total equipment power",
+        "category": "Internal Loads",
+        "source": "ElectricEquipment, GasEquipment, HotWaterEquipment, SteamEquipment 및 OtherEquipment 객체.",
+        "method": "직접 지정한 Design level을 합산합니다. 필요한 면적 또는 재실 인원 자료가 있으면 Watts/Area, Power/Area, Watts/Person 또는 Power/Person 방식도 산정합니다.",
+        "assumptions": "가능한 경우 Zone 및 ZoneList 참조를 펼치고 Zone multiplier를 적용합니다.",
+        "missingData": "Equipment Design level을 계산할 수 없으면 —로 표시합니다."
+      }
+    },
+    "average_equipment_power_density_w_per_m2": {
+      "original": {
+        "name": "Average equipment power density",
+        "category": "Internal Loads",
+        "source": "Equipment power and floor area.",
+        "method": "Divides total equipment power by conditioned floor area, falling back to gross floor area.",
+        "assumptions": "Partial equipment or floor-area inputs produce a partial status.",
+        "missingData": "Shown as — when equipment power or floor area is unavailable."
+      },
+      "translation": {
+        "name": "Average equipment power density",
+        "category": "Internal Loads",
+        "source": "Equipment power와 바닥 면적.",
+        "method": "Total equipment power를 Conditioned floor area로 나눕니다. 해당 면적이 없으면 Gross floor area를 사용합니다.",
+        "assumptions": "Equipment 또는 바닥 면적 입력이 불완전하면 partial 상태가 됩니다.",
+        "missingData": "Equipment power 또는 바닥 면적이 없으면 —로 표시합니다."
+      }
+    },
+    "total_people": {
+      "original": {
+        "name": "Total people",
+        "category": "Internal Loads",
+        "source": "People objects.",
+        "method": "Sums People, People/Area, or Area/Person methods where supporting floor area is available.",
+        "assumptions": "Zone and ZoneList references are expanded where possible; zone multipliers are applied.",
+        "missingData": "Shown as — when no people count can be computed."
+      },
+      "translation": {
+        "name": "Total people",
+        "category": "Internal Loads",
+        "source": "People 객체.",
+        "method": "필요한 바닥 면적이 있으면 People, People/Area 또는 Area/Person 방식으로 재실 인원을 산정해 합산합니다.",
+        "assumptions": "가능한 경우 Zone 및 ZoneList 참조를 펼치고 Zone multiplier를 적용합니다.",
+        "missingData": "재실 인원을 계산할 수 없으면 —로 표시합니다."
+      }
+    },
+    "people_density_per_100m2": {
+      "original": {
+        "name": "People density",
+        "category": "Internal Loads",
+        "source": "People count and floor area.",
+        "method": "Divides total people by floor area and scales to 100 m2.",
+        "assumptions": "Conditioned floor area is preferred; gross floor area is used as fallback.",
+        "missingData": "Shown as — when people count or floor area is unavailable."
+      },
+      "translation": {
+        "name": "People density",
+        "category": "Internal Loads",
+        "source": "재실 인원과 바닥 면적.",
+        "method": "Total people을 바닥 면적으로 나눈 뒤 100 m2당 인원으로 환산합니다.",
+        "assumptions": "Conditioned floor area를 우선 사용합니다. 없으면 Gross floor area를 사용합니다.",
+        "missingData": "재실 인원 또는 바닥 면적이 없으면 —로 표시합니다."
+      }
+    },
+    "internal_load_object_count": {
+      "original": {
+        "name": "Internal load object count",
+        "category": "Internal Loads",
+        "source": "People, Lights, ElectricEquipment, GasEquipment, HotWaterEquipment, SteamEquipment, and OtherEquipment objects.",
+        "method": "Counts the supported internal load objects represented in these metrics.",
+        "assumptions": "Specialized internal gains with different sizing models are excluded.",
+        "missingData": "Always available; zero means no supported internal load objects were found."
+      },
+      "translation": {
+        "name": "Internal load object count",
+        "category": "Internal Loads",
+        "source": "People, Lights, ElectricEquipment, GasEquipment, HotWaterEquipment, SteamEquipment 및 OtherEquipment 객체.",
+        "method": "이 지표들이 다루는 지원 가능한 Internal load 객체 수를 셉니다.",
+        "assumptions": "다른 Sizing 모델을 사용하는 특수 Internal gain은 제외합니다.",
+        "missingData": "항상 제공됩니다. 0은 지원 가능한 Internal load 객체가 없다는 뜻입니다."
+      }
+    },
+    "internal_load_method_coverage": {
+      "original": {
+        "name": "Internal load method coverage",
+        "category": "Internal Loads",
+        "source": "People, Lights, ElectricEquipment, GasEquipment, HotWaterEquipment, SteamEquipment, and OtherEquipment calculation methods.",
+        "method": "Reports resolved_objects / total_objects and unresolved_method_count for supported internal load metric objects.",
+        "assumptions": "A method is unresolved when the required people, floor-area, or design-level fields cannot be resolved.",
+        "missingData": "Always available; zero totals mean no supported internal load objects were found."
+      },
+      "translation": {
+        "name": "Internal load method coverage",
+        "category": "Internal Loads",
+        "source": "People, Lights, ElectricEquipment, GasEquipment, HotWaterEquipment, SteamEquipment 및 OtherEquipment의 계산 방식.",
+        "method": "지원되는 Internal load 지표 객체의 resolved_objects / total_objects와 unresolved_method_count를 표시합니다.",
+        "assumptions": "필요한 재실 인원, 바닥 면적 또는 Design level 필드를 산정할 수 없으면 해당 계산 방식은 unresolved입니다.",
+        "missingData": "항상 제공됩니다. 전체 수가 0이면 지원 가능한 Internal load 객체가 없다는 뜻입니다."
+      }
+    },
+    "referenced_schedule_count": {
+      "original": {
+        "name": "Referenced schedule count",
+        "category": "Schedules & Operation",
+        "source": "Fields whose comments include Schedule Name.",
+        "method": "Counts distinct schedule names referenced by non-schedule objects.",
+        "assumptions": "Schedule names are matched case-insensitively after trimming.",
+        "missingData": "Always available; zero means no schedule references were found."
+      },
+      "translation": {
+        "name": "Referenced schedule count",
+        "category": "Schedules & Operation",
+        "source": "필드 주석에 Schedule Name이 포함된 필드.",
+        "method": "Schedule 이외 객체에서 참조하는 서로 다른 Schedule 이름의 수를 셉니다.",
+        "assumptions": "Schedule 이름은 앞뒤 공백을 제거한 후 대소문자를 구분하지 않고 비교합니다.",
+        "missingData": "항상 제공됩니다. 0은 Schedule 참조가 없다는 뜻입니다."
+      }
+    },
+    "supported_schedule_count": {
+      "original": {
+        "name": "Supported annual schedule count",
+        "category": "Schedules & Operation",
+        "source": "Schedule:Constant and Schedule:Compact objects.",
+        "method": "Counts schedules whose annual active hours can be evaluated by the v1 parser.",
+        "assumptions": "Schedule value greater than zero is treated as active.",
+        "missingData": "Always available; zero means no supported annual schedules were found."
+      },
+      "translation": {
+        "name": "Supported annual schedule count",
+        "category": "Schedules & Operation",
+        "source": "Schedule:Constant 및 Schedule:Compact 객체.",
+        "method": "v1 파서로 연간 활성 시간을 계산할 수 있는 Schedule 수를 셉니다.",
+        "assumptions": "Schedule 값이 0보다 크면 활성 상태로 취급합니다.",
+        "missingData": "항상 제공됩니다. 0은 지원되는 연간 Schedule이 없다는 뜻입니다."
+      }
+    },
+    "unsupported_schedule_count": {
+      "original": {
+        "name": "Unsupported schedule count",
+        "category": "Schedules & Operation",
+        "source": "Schedule objects.",
+        "method": "Subtracts supported schedules from total schedule objects.",
+        "assumptions": "Unsupported schedules remain visible so operating-hour results can be interpreted.",
+        "missingData": "Always available; zero means every schedule was supported or no schedules exist."
+      },
+      "translation": {
+        "name": "Unsupported schedule count",
+        "category": "Schedules & Operation",
+        "source": "Schedule 객체.",
+        "method": "전체 Schedule 객체 수에서 지원되는 Schedule 수를 뺍니다.",
+        "assumptions": "Operating hours 결과를 해석할 수 있도록 미지원 Schedule도 표시합니다.",
+        "missingData": "항상 제공됩니다. 0은 모든 Schedule이 지원되거나 Schedule 자체가 없다는 뜻입니다."
+      }
+    },
+    "model_operating_hours_h": {
+      "original": {
+        "name": "Representative operating hours",
+        "category": "Schedules & Operation",
+        "source": "Referenced supported schedules.",
+        "method": "Uses the maximum active annual hours among referenced supported schedules; falls back to all supported schedules.",
+        "assumptions": "A non-leap 8760-hour year is used. Compact weekday/weekend rules use a fixed Monday-start annual calendar.",
+        "missingData": "Shown as — when no supported schedule hours are available."
+      },
+      "translation": {
+        "name": "Representative operating hours",
+        "category": "Schedules & Operation",
+        "source": "참조된 Schedule 중 지원 가능한 Schedule.",
+        "method": "참조된 지원 Schedule의 연간 활성 시간 중 최댓값을 사용합니다. 없으면 지원되는 전체 Schedule을 사용합니다.",
+        "assumptions": "윤년이 아닌 8760시간의 한 해를 사용합니다. Compact의 주중/주말 규칙에는 월요일로 시작하는 고정 연간 달력을 사용합니다.",
+        "missingData": "지원되는 Schedule의 시간을 구할 수 없으면 —로 표시합니다."
+      }
+    },
+    "average_schedule_operating_hours_h": {
+      "original": {
+        "name": "Average schedule operating hours",
+        "category": "Schedules & Operation",
+        "source": "Supported schedules.",
+        "method": "Averages annual active hours across supported schedules.",
+        "assumptions": "A non-leap 8760-hour year is used. Schedule value greater than zero is active.",
+        "missingData": "Shown as — when no supported schedule hours are available."
+      },
+      "translation": {
+        "name": "Average schedule operating hours",
+        "category": "Schedules & Operation",
+        "source": "지원 가능한 Schedule.",
+        "method": "지원되는 Schedule의 연간 활성 시간을 평균합니다.",
+        "assumptions": "윤년이 아닌 8760시간의 한 해를 사용합니다. Schedule 값이 0보다 크면 활성 상태입니다.",
+        "missingData": "지원되는 Schedule의 시간을 구할 수 없으면 —로 표시합니다."
+      }
+    },
+    "hvac_object_count": {
+      "original": {
+        "name": "HVAC object count",
+        "category": "HVAC & Conditioning",
+        "source": "HVAC-related object types.",
+        "method": "Counts objects whose types indicate HVAC, air loops, plant loops, coils, fans, pumps, boilers, chillers, or setpoint managers.",
+        "assumptions": "This is a broad inventory count, not a system simulation result.",
+        "missingData": "Always available; zero means no recognized HVAC objects were found."
+      },
+      "translation": {
+        "name": "HVAC object count",
+        "category": "HVAC & Conditioning",
+        "source": "HVAC 관련 객체 유형.",
+        "method": "HVAC, Air loop, Plant loop, Coil, Fan, Pump, Boiler, Chiller 또는 Setpoint manager를 나타내는 유형의 객체 수를 셉니다.",
+        "assumptions": "포괄적인 객체 목록 집계이며 시스템 시뮬레이션 결과는 아닙니다.",
+        "missingData": "항상 제공됩니다. 0은 인식된 HVAC 객체가 없다는 뜻입니다."
+      }
+    },
+    "zone_hvac_object_count": {
+      "original": {
+        "name": "Zone HVAC object count",
+        "category": "HVAC & Conditioning",
+        "source": "ZoneHVAC:* objects.",
+        "method": "Counts objects whose type starts with ZoneHVAC:.",
+        "assumptions": "ZoneHVAC:EquipmentConnections is included.",
+        "missingData": "Always available; zero means no ZoneHVAC objects were found."
+      },
+      "translation": {
+        "name": "Zone HVAC object count",
+        "category": "HVAC & Conditioning",
+        "source": "ZoneHVAC:* 객체.",
+        "method": "유형 이름이 ZoneHVAC:로 시작하는 객체 수를 셉니다.",
+        "assumptions": "ZoneHVAC:EquipmentConnections를 포함합니다.",
+        "missingData": "항상 제공됩니다. 0은 ZoneHVAC 객체가 없다는 뜻입니다."
+      }
+    },
+    "thermostat_count": {
+      "original": {
+        "name": "Thermostat count",
+        "category": "HVAC & Conditioning",
+        "source": "ZoneControl:Thermostat and ThermostatSetpoint:* objects.",
+        "method": "Counts thermostat control and setpoint objects.",
+        "assumptions": "Both controllers and setpoint definitions are included.",
+        "missingData": "Always available; zero means no thermostat objects were found."
+      },
+      "translation": {
+        "name": "Thermostat count",
+        "category": "HVAC & Conditioning",
+        "source": "ZoneControl:Thermostat 및 ThermostatSetpoint:* 객체.",
+        "method": "Thermostat 제어 객체와 Setpoint 객체 수를 셉니다.",
+        "assumptions": "Controller와 Setpoint 정의를 모두 포함합니다.",
+        "missingData": "항상 제공됩니다. 0은 Thermostat 객체가 없다는 뜻입니다."
+      }
+    },
+    "conditioned_zone_count": {
+      "original": {
+        "name": "Conditioned zone count",
+        "category": "HVAC & Conditioning",
+        "source": "ZoneHVAC, SpaceHVAC, and thermostat zone references.",
+        "method": "Counts distinct zones referenced by ZoneHVAC, SpaceHVAC, ZoneHVAC:EquipmentConnections, or ZoneControl:Thermostat objects.",
+        "assumptions": "ZoneList references are expanded when a matching ZoneList object exists. SpaceHVAC references are mapped through Space parent zones.",
+        "missingData": "Always available; zero means no conditioned-zone references were found."
+      },
+      "translation": {
+        "name": "Conditioned zone count",
+        "category": "HVAC & Conditioning",
+        "source": "ZoneHVAC, SpaceHVAC 및 Thermostat의 Zone 참조.",
+        "method": "ZoneHVAC, SpaceHVAC, ZoneHVAC:EquipmentConnections 또는 ZoneControl:Thermostat 객체가 참조하는 서로 다른 Zone 수를 셉니다.",
+        "assumptions": "일치하는 ZoneList 객체가 있으면 해당 참조를 펼칩니다. SpaceHVAC 참조는 Space의 상위 Zone으로 연결합니다.",
+        "missingData": "항상 제공됩니다. 0은 공조 Zone 참조가 없다는 뜻입니다."
+      }
+    },
+    "conditioned_zone_evidence_breakdown": {
+      "original": {
+        "name": "Conditioned zone evidence",
+        "category": "HVAC & Conditioning",
+        "source": "Conditioned-zone source buckets.",
+        "method": "Counts conditioned zones separately by equipment connections, ZoneHVAC objects, thermostat controls, and SpaceHVAC objects.",
+        "assumptions": "A zone may appear in more than one evidence bucket; the total conditioned zone count is deduplicated.",
+        "missingData": "Always available; zero buckets mean no conditioned-zone references were found."
+      },
+      "translation": {
+        "name": "Conditioned zone evidence",
+        "category": "HVAC & Conditioning",
+        "source": "공조 Zone 판별에 사용한 원본별 집계.",
+        "method": "Equipment connections, ZoneHVAC 객체, Thermostat 제어 및 SpaceHVAC 객체별로 공조 Zone 수를 따로 셉니다.",
+        "assumptions": "하나의 Zone이 여러 근거 그룹에 들어갈 수 있습니다. 전체 Conditioned zone count에서는 중복을 제거합니다.",
+        "missingData": "항상 제공됩니다. 모든 그룹이 0이면 공조 Zone 참조가 없다는 뜻입니다."
+      }
+    },
+    "hvac_node_connection_count": {
+      "original": {
+        "name": "HVAC node connection count",
+        "category": "HVAC & Conditioning",
+        "source": "Typed HVAC loop branch components.",
+        "method": "Counts typed inlet-to-outlet edges produced by AnalyzeHVAC for parsed loop branch components.",
+        "assumptions": "The result is an analyzer topology count, not a full EnergyPlus simulation solve.",
+        "missingData": "Always available; zero means no typed loop component edges were parsed."
+      },
+      "translation": {
+        "name": "HVAC node connection count",
+        "category": "HVAC & Conditioning",
+        "source": "유형이 지정된 HVAC Loop Branch 구성요소.",
+        "method": "파싱된 Loop Branch 구성요소에 대해 AnalyzeHVAC가 생성한 유형별 inlet-to-outlet 연결 수를 셉니다.",
+        "assumptions": "분석기의 Topology 집계이며 완전한 EnergyPlus 시뮬레이션 풀이 결과는 아닙니다.",
+        "missingData": "항상 제공됩니다. 0은 유형이 지정된 Loop 구성요소 연결이 파싱되지 않았다는 뜻입니다."
+      }
+    },
+    "geometry_coverage_percent": {
+      "original": {
+        "name": "Geometry coverage",
+        "category": "Model & Inventory",
+        "source": "Detailed geometry inputs.",
+        "method": "Compares surfaces/fenestration with usable detailed vertices against geometry-bearing objects.",
+        "assumptions": "Simple geometry objects are counted as uncovered because detailed polygon checks cannot verify them.",
+        "missingData": "Always available; zero means no detailed geometry was available."
+      },
+      "translation": {
+        "name": "Geometry coverage",
+        "category": "Model & Inventory",
+        "source": "Detailed 기하 입력 자료.",
+        "method": "기하 정보를 가진 객체 중 사용할 수 있는 Detailed 꼭짓점이 있는 Surface/Fenestration의 비율을 비교합니다.",
+        "assumptions": "단순 기하 객체는 Detailed 다각형 검사로 검증할 수 없으므로 Coverage에 포함하지 않습니다.",
+        "missingData": "항상 제공됩니다. 0은 Detailed 기하 자료가 없다는 뜻입니다."
+      }
+    },
+    "profile_coverage_percent": {
+      "original": {
+        "name": "Profile coverage",
+        "category": "Model & Inventory",
+        "source": "Schedule references and supported annual-hour parser.",
+        "method": "Divides referenced schedules that can be evaluated for annual hours by all referenced schedules.",
+        "assumptions": "Unreferenced schedules are excluded from this readiness metric.",
+        "missingData": "Shown as — when no schedule references are present."
+      },
+      "translation": {
+        "name": "Profile coverage",
+        "category": "Model & Inventory",
+        "source": "Schedule 참조와 지원되는 연간 시간 파서.",
+        "method": "참조된 전체 Schedule 중 연간 시간을 계산할 수 있는 Schedule의 비율을 계산합니다.",
+        "assumptions": "참조되지 않은 Schedule은 이 준비도 지표에서 제외합니다.",
+        "missingData": "Schedule 참조가 없으면 —로 표시합니다."
+      }
+    },
+    "hvac_rule_edge_count": {
+      "original": {
+        "name": "HVAC rule edge count",
+        "category": "HVAC & Conditioning",
+        "source": "HVAC RuleGraph edges.",
+        "method": "Counts HVAC graph edges that were created from EnergyPlus object and field rules.",
+        "assumptions": "Only rule-resolved edges are counted; invalid relations remain diagnostics.",
+        "missingData": "Always available; zero means no HVAC rule edges were resolved."
+      },
+      "translation": {
+        "name": "HVAC rule edge count",
+        "category": "HVAC & Conditioning",
+        "source": "HVAC RuleGraph의 Edge.",
+        "method": "EnergyPlus 객체와 필드 규칙으로 생성된 HVAC Graph Edge 수를 셉니다.",
+        "assumptions": "규칙으로 해석된 Edge만 셉니다. 유효하지 않은 관계는 진단으로 남깁니다.",
+        "missingData": "항상 제공됩니다. 0은 해석된 HVAC Rule Edge가 없다는 뜻입니다."
+      }
+    },
+    "diagnostics_by_source": {
+      "original": {
+        "name": "Diagnostics by source",
+        "category": "Model & Inventory",
+        "source": "Analyzer diagnostics.",
+        "method": "Counts diagnostics grouped by source such as energyplus_rule, analyzer_limitation, user_quality_check, or heuristic_inference.",
+        "assumptions": "Counts depend on the analyzer diagnostic rules enabled in this build.",
+        "missingData": "Always available; empty means no diagnostics were emitted."
+      },
+      "translation": {
+        "name": "Diagnostics by source",
+        "category": "Model & Inventory",
+        "source": "분석기 진단 결과.",
+        "method": "energyplus_rule, analyzer_limitation, user_quality_check 또는 heuristic_inference와 같은 원본별로 진단 수를 셉니다.",
+        "assumptions": "진단 수는 이 빌드에서 활성화된 분석기 진단 규칙에 따라 달라집니다.",
+        "missingData": "항상 제공됩니다. 비어 있으면 발생한 진단이 없다는 뜻입니다."
+      }
+    },
+    "output_readiness_percent": {
+      "original": {
+        "name": "Output readiness",
+        "category": "Model & Inventory",
+        "source": "Output:* requests.",
+        "method": "Compares requested simulation outputs against the standard output groups recognized by the analyzer.",
+        "assumptions": "This is a reporting-readiness metric and does not guarantee a successful simulation.",
+        "missingData": "Always available; zero means no recognized output requests were present."
+      },
+      "translation": {
+        "name": "Output readiness",
+        "category": "Model & Inventory",
+        "source": "Output:* 요청.",
+        "method": "요청된 시뮬레이션 출력을 분석기가 인식하는 표준 출력 그룹과 비교합니다.",
+        "assumptions": "출력 보고 준비도 지표이며 시뮬레이션 성공을 보장하지 않습니다.",
+        "missingData": "항상 제공됩니다. 0은 인식된 출력 요청이 없다는 뜻입니다."
+      }
+    }
+  }
+}

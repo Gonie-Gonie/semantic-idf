@@ -56,7 +56,7 @@ func TestEPATH093FrontendCorrespondenceAccessibilityStylesAndLocales(t *testing.
 		}
 	}
 
-	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	i18n := readTranslationSource(t)
 	for _, required := range []string{
 		`"simulation.energyPathRelatedThermalEffect": "Related thermal effect"`,
 		`"simulation.energyPathRelatedEnergyUse": "Related energy use"`,

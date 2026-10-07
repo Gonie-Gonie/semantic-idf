@@ -34,6 +34,11 @@ read the relevant contract before changing a shared model or consumer.
 - Keep frontend entrypoints small and feature logic in the existing JS modules.
   End-user help belongs in the bundled Guide; developer instructions belong here
   and in the project README.
+- Keep app translations in `frontend/src/js/locales/`, with English authority and
+  per-key fallback for incomplete locales. Preserve all six app languages and
+  familiar industry terms. Use locale descriptors for dynamic status text; never
+  localize source IDs, units or backend evidence. Guide follows the app language
+  and supports Korean/English only. See the frontend README for owning modules.
 
 ## Documentation and artifacts
 

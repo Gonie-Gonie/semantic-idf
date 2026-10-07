@@ -56,6 +56,7 @@ func TestToolsDiagnoseBrowserHarness(t *testing.T) {
 		`"diagnostic":true`,
 		`"candidate":true`,
 		`"preview":true`,
+		`"localePreserved":true`,
 		`"hydrationPreserved":true`,
 		`"snapshotApplied":true`,
 		`"analysisInvalidated":true`,
@@ -131,6 +132,20 @@ const toolsDiagnoseHarnessAssertions = `<script>
     document.querySelector("#diagnosePreview").click();
     await waitFor(() => !document.querySelector("#diagnosePreviewPanel").hidden);
     const preview = document.querySelector("#diagnosePreviewPanel").textContent.includes("1 removals");
+    const { setLanguage } = await import("/src/js/i18n.js");
+    const beforeLanguageChange = sessionStorage.getItem("idfAnalyzer.currentDocument");
+    setLanguage("ko");
+    const koreanPreview = !document.querySelector("#diagnosePreviewPanel").hidden
+      && document.querySelector("#diagnosePreviewPanel").textContent.includes("1개 제거");
+    const koreanStatus = document.querySelector("#diagnoseStatus").textContent.includes("진단 1개")
+      && document.querySelector("#diagnoseCandidateStats").textContent.includes("1개 선택")
+      && document.querySelector("[data-diagnose-candidate]")?.checked;
+    setLanguage("fr");
+    const englishFallback = document.querySelector("#multiSimulationStats").textContent === "No simulation files selected";
+    setLanguage("en");
+    const localePreserved = koreanPreview && koreanStatus && englishFallback
+      && document.querySelector("#diagnosePreviewPanel").textContent.includes("1 removals")
+      && sessionStorage.getItem("idfAnalyzer.currentDocument") === beforeLanguageChange;
     document.querySelector("#diagnoseApply").click();
     await waitFor(() => JSON.parse(sessionStorage.getItem("idfAnalyzer.currentDocument")).text.includes("24.2"));
     const appliedSnapshot = JSON.parse(sessionStorage.getItem("idfAnalyzer.currentDocument"));
@@ -161,6 +176,7 @@ const toolsDiagnoseHarnessAssertions = `<script>
       diagnostic,
       candidate: candidateVisible,
       preview,
+      localePreserved,
       hydrationPreserved,
       snapshotApplied,
       analysisInvalidated,
@@ -168,7 +184,7 @@ const toolsDiagnoseHarnessAssertions = `<script>
       legacyModesDropped,
       replacementReset
     });
-    document.body.dataset.toolsDiagnoseStatus = diagnostic && candidateVisible && preview
+    document.body.dataset.toolsDiagnoseStatus = diagnostic && candidateVisible && preview && localePreserved
       && hydrationPreserved && snapshotApplied && analysisInvalidated && workspaceContextRetained
       && legacyModesDropped && replacementReset ? "passed" : "failed";
   })().catch((error) => {

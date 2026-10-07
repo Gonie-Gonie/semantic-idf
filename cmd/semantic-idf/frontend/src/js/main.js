@@ -84,7 +84,7 @@ import {
   restoreSimulationEnergyWorkspaceContext,
   suppressSimulationAutoRunForCurrentDocument,
 } from "./views/simulation-views.js";
-import { normalizeAnalyzeTabOrder, t, translatePage } from "./i18n.js";
+import { localizedMessage, normalizeAnalyzeTabOrder, t, translatePage } from "./i18n.js";
 import { initializeKeyboardShortcuts } from "./shortcuts.js";
 import { getSemanticNavigationCache } from "./semantic-navigation-cache.js";
 import { SHOW_SEMANTIC_STRUCTURE } from "./ui-features.js";
@@ -94,7 +94,7 @@ if (semanticInputTab) {
   semanticInputTab.hidden = !SHOW_SEMANTIC_STRUCTURE;
 }
 
-loadAndApplyAppSettings().then((result) => applyRuntimeSettings(result.settings));
+loadAndApplyAppSettings().then((result) => applyRuntimeSettings(result.settings, { preserveCurrentView: Boolean(result.stale) }));
 
 function clearAuxiliaryNavigationMarker() {
   try {
@@ -154,7 +154,7 @@ configureSelectionController({
     }
   },
   onAnalysisPending: () => {
-    setStatus(t("status.navigationAnalysisPending", {}, "Analysis pending; navigation target will be restored when ready."), "muted");
+    setStatus(localizedMessage("status.navigationAnalysisPending", {}, "Analysis pending; navigation target will be restored when ready."), "muted");
   },
   onSelectionChange: ({ selection, options, temporaryRevealCleared }) => {
     const objectIndex = selection.sourceAnchor?.objectIndex;
@@ -174,11 +174,11 @@ configureSelectionController({
   onSelectionRemapped: (detail) => {
     window.dispatchEvent(new CustomEvent("idfAnalyzer:semanticSelectionRemapped", { detail }));
     if (detail.reason === "source" && detail.previous?.entityId !== detail.selection?.entityId) {
-      setStatus(t("semantic.selectionMovedAfterRename", {}, "Selection moved to the renamed entity."), "ok");
+      setStatus(localizedMessage("semantic.selectionMovedAfterRename", {}, "Selection moved to the renamed entity."), "ok");
     } else if (detail.reason === "parent") {
-      setStatus(t("semantic.selectionMovedToParent", {}, "The selected item no longer exists; selected its nearest parent."), "warn");
+      setStatus(localizedMessage("semantic.selectionMovedToParent", {}, "The selected item no longer exists; selected its nearest parent."), "warn");
     } else if (detail.reason === "missing") {
-      setStatus(t("semantic.selectionClearedAfterEdit", {}, "The selected item no longer exists; selection was cleared."), "warn");
+      setStatus(localizedMessage("semantic.selectionClearedAfterEdit", {}, "The selected item no longer exists; selection was cleared."), "warn");
     }
   },
 });
@@ -383,8 +383,17 @@ elements.analysisPanel.addEventListener("keydown", (event) => {
   event.preventDefault();
   handleAnalysisActivation(target);
 });
+window.addEventListener("idfAnalyzer:languageChanged", () => {
+  translatePage();
+  // Refresh dormant analysis panes when they are next opened as well.
+  Object.keys(state.analysisDirty || {}).forEach((tab) => markAnalysisDirty(tab));
+  state.profileViewCache?.clear?.();
+  if (state.report) renderReport({ preservePresentation: true });
+  else renderEmpty();
+  updateExpandButtons();
+});
 window.addEventListener("idfAnalyzer:settingsChanged", (event) => {
-  applyRuntimeSettings(event.detail?.settings);
+  applyRuntimeSettings(event.detail?.settings, { preserveCurrentView: Boolean(event.detail?.external) });
 });
 window.addEventListener("idfAnalyzer:profileApplied", (event) => {
   const result = event.detail || {};
@@ -408,7 +417,7 @@ window.addEventListener("idfAnalyzer:profileApplied", (event) => {
   dispatchInstalledAnalysisComplete(result);
   updateDocumentActions();
   const changeCount = result.preview?.changes?.length || 0;
-  setStatus(t("status.profileApplied", { count: changeCount }), "ok");
+  setStatus(localizedMessage("status.profileApplied", { count: changeCount }), "ok");
 });
 window.addEventListener("idfAnalyzer:hvacApplied", (event) => {
   const result = event.detail || {};
@@ -432,7 +441,7 @@ window.addEventListener("idfAnalyzer:hvacApplied", (event) => {
   dispatchInstalledAnalysisComplete(result);
   updateDocumentActions();
   const changeCount = result.preview?.changes?.filter((change) => change.requiresSave).length || 0;
-  setStatus(t("status.hvacApplied", { count: changeCount }), "ok");
+  setStatus(localizedMessage("status.hvacApplied", { count: changeCount }), "ok");
 });
 function dispatchInstalledAnalysisComplete(result = {}) {
   window.dispatchEvent(new CustomEvent("idfAnalyzer:analysisComplete", {
@@ -573,7 +582,7 @@ function handleHardwareHistoryMouseButton(event) {
 async function revealCurrentSelectionSource() {
   if (isStandaloneResultView(state.activeResultTab) && elements.analysisPanel?.contains(document.activeElement)) return false;
   if (!state.globalSelection?.entityId) {
-    setStatus(t("semantic.noAvailableView", {}, "No selection to reveal"), "warn");
+    setStatus(localizedMessage("semantic.noAvailableView", {}, "No selection to reveal"), "warn");
     return false;
   }
   return revealSelectionSource({
@@ -607,7 +616,7 @@ function focusCurrentViewSearch() {
     : document.querySelector(`#${state.activeInputView}InputView`)?.parentElement || elements.editorPanel;
   const search = root?.querySelector?.('input[type="search"]') || (inAnalysis ? null : elements.inputFilter);
   if (!search) {
-    setStatus(t("navigation.noSearch", {}, "This view has no search field"), "warn");
+    setStatus(localizedMessage("navigation.noSearch", {}, "This view has no search field"), "warn");
     return false;
   }
   search.focus();
@@ -633,7 +642,7 @@ async function openAvailableViewsForSelection() {
   if (isStandaloneResultView(state.activeResultTab) && elements.analysisPanel?.contains(document.activeElement)) return false;
   const selection = state.globalSelection;
   if (!selection?.entityId) {
-    setStatus(t("semantic.noAvailableView", {}, "No available view can reveal this selection"), "warn");
+    setStatus(localizedMessage("semantic.noAvailableView", {}, "No available view can reveal this selection"), "warn");
     return false;
   }
   const items = [];
@@ -655,7 +664,10 @@ async function openAvailableViewsForSelection() {
     items.push({
       id: viewID,
       label: navigationViewLabel(viewID),
+      labelKey: viewID === "input-semantic" ? "input.semantic" : `tab.${viewID}`,
       meta: targets.length > 1 ? t("semantic.occurrences", { count: targets.length }, `${targets.length} targets`) : "",
+      metaKey: targets.length > 1 ? "semantic.occurrences" : "",
+      metaParams: { count: targets.length },
       run: () => openSelectionInView(viewID, {
         originView,
         action: "open",
@@ -667,11 +679,12 @@ async function openAvailableViewsForSelection() {
     items.push({
       id: "source",
       label: t("semantic.revealSource", {}, "Reveal source"),
+      labelKey: "semantic.revealSource",
       run: revealCurrentSelectionSource,
     });
   }
   if (!items.length) {
-    setStatus(t("semantic.noAvailableView", {}, "No available view can reveal this selection"), "warn");
+    setStatus(localizedMessage("semantic.noAvailableView", {}, "No available view can reveal this selection"), "warn");
     return false;
   }
   return openAvailableViewsPalette(items);
@@ -761,27 +774,28 @@ if (restoredDocument) {
   }
   restoreCachedDocumentAnalysis(restoredDocument);
 } else {
-  setStatus(t("status.analysisWillStart"), "loading");
+  setStatus(localizedMessage("status.analysisWillStart"), "loading");
   loadDefaultSampleIDF().then(async (sampleText) => {
     setDocumentText(sampleText);
     const loadedText = getDocumentText();
-    const sourceLabel = sampleText.includes("RefBldgLargeOfficeNew2004_Chicago") ? defaultSample.name : "Fallback sample";
-    const sourceFilename = sourceLabel === "Fallback sample" ? "fallback-sample.idf" : "RefBldgLargeOfficeNew2004_Chicago.idf";
+    const bundledSample = sampleText.includes("RefBldgLargeOfficeNew2004_Chicago");
+    const sourceLabel = bundledSample ? defaultSample.name : localizedMessage("shell.fallbackSample");
+    const sourceFilename = bundledSample ? "RefBldgLargeOfficeNew2004_Chicago.idf" : "fallback-sample.idf";
     registerLoadedDocument(loadedText, { filename: sourceFilename });
-    if (sourceLabel !== "Fallback sample") {
+    if (bundledSample) {
       elements.runtimeStatus.title = defaultSample.source;
     }
     scheduleAnalyzeAfterPaint({
-      loadingMessage: t("status.analyzingNamed", { name: sourceLabel }),
-      queuedMessage: t("status.loadedQueued", { name: sourceLabel }),
-      statusMessage: t("status.loadedNamed", { name: sourceLabel }),
+      loadingMessage: localizedMessage("status.analyzingNamed", { name: sourceLabel }),
+      queuedMessage: localizedMessage("status.loadedQueued", { name: sourceLabel }),
+      statusMessage: localizedMessage("status.loadedNamed", { name: sourceLabel }),
       textSnapshot: loadedText,
     });
   });
 }
 
 async function restoreCachedDocumentAnalysis(restoredDocument) {
-  const label = restoredDocument.filename || "current input";
+  const label = restoredDocument.filename || localizedMessage("common.inputFile");
   const api = backend();
   await restoreCachedSimulationWorkspace(restoredDocument);
   if (!isCurrentWorkspaceDocument(restoredDocument)) return;
@@ -791,7 +805,7 @@ async function restoreCachedDocumentAnalysis(restoredDocument) {
       if (!isCurrentWorkspaceDocument(restoredDocument)) return;
       if (cached && applyCachedAnalysisResult(cached, restoredDocument)) {
         await restoreSavedWorkspaceContext(restoredDocument);
-        setStatus(t("status.loadedNamed", { name: label }), "ok");
+        setStatus(localizedMessage("status.loadedNamed", { name: label }), "ok");
         return;
       }
     } catch {
@@ -801,9 +815,9 @@ async function restoreCachedDocumentAnalysis(restoredDocument) {
   if (!isCurrentWorkspaceDocument(restoredDocument)) return;
   state.pendingWorkspaceRestore = restoredDocument;
   scheduleAnalyzeAfterPaint({
-    loadingMessage: t("status.analyzingNamed", { name: label }),
-    queuedMessage: t("status.loadedQueued", { name: label }),
-    statusMessage: t("status.loadedNamed", { name: label }),
+    loadingMessage: localizedMessage("status.analyzingNamed", { name: label }),
+    queuedMessage: localizedMessage("status.loadedQueued", { name: label }),
+    statusMessage: localizedMessage("status.loadedNamed", { name: label }),
     textSnapshot: getDocumentText(),
     analysisKey: restoredDocument.analysisKey || "",
     preferCache: Boolean(restoredDocument.analysisKey),
@@ -888,7 +902,7 @@ function restoreCurrentDocument() {
   }
 }
 
-function applyRuntimeSettings(settings) {
+function applyRuntimeSettings(settings, { preserveCurrentView = false } = {}) {
   if (!settings) {
     return;
   }
@@ -902,22 +916,22 @@ function applyRuntimeSettings(settings) {
     state.profileViewCache?.clear?.();
     if (state.report?.profile) {
       markAnalysisDirty("profile");
-      if (state.activeResultTab === "profile") {
+      if (state.activeResultTab === "profile" && !settings.appearance) {
         renderProfile(state.report.profile);
       }
     }
   }
   if (settings.appearance) {
-    applyDefaultResultTab(settings.appearance.analysisTabOrder);
+    if (!preserveCurrentView) applyDefaultResultTab(settings.appearance.analysisTabOrder);
     translatePage();
     if (state.report) {
-      renderReport();
+      renderReport({ preservePresentation: preserveCurrentView });
     } else {
       renderEmpty();
     }
   }
-  if (state.report?.geometry && state.activeResultTab === "topology") {
-    renderTopology();
+  if (!settings.appearance && state.report?.geometry && state.activeResultTab === "topology") {
+    renderTopology(undefined, { preservePresentation: preserveCurrentView });
   }
 }
 

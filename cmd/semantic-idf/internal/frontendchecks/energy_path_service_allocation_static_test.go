@@ -36,7 +36,7 @@ func TestEPATH100FrontendServiceAllocationContract(t *testing.T) {
 }
 
 func TestEPATH100FrontendServiceAllocationLocales(t *testing.T) {
-	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	i18n := readTranslationSource(t)
 	for _, required := range []string{
 		`"simulation.energyPathServicePathAllocation": "Allocated by HVAC service-path load share"`,
 		`"simulation.energyPathUnassignedBuildingHVACEnergy": "Unassigned building HVAC energy"`,

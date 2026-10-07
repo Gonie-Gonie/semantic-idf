@@ -1,3 +1,4 @@
+import { setLocalizedText } from "../localized-text.js";
 import { energyPathSummaryGroups, isEnergyPathSummaryV2 } from "../energy-path-summary.js";
 import { ENERGY_PATH_BATCH_STAGES, energyPathBatchSummary, energyPathBatchComparison } from "../energy-path-batch-comparison.js";
 import { energyPathBatchExport } from "../energy-path-batch-export.js";
@@ -61,12 +62,12 @@ export function initializeMultiSimulationTool(context) {
   async function selectFiles() {
     const api = await waitForAppAPI("SelectSimulationInputFiles");
     if (!api) {
-      elements.multiSimulationStatus.textContent = t("tools.desktopOnly");
+      setLocalizedText(elements.multiSimulationStatus, "tools.desktopOnly");
       return;
     }
     const result = await api.SelectSimulationInputFiles();
     if (!result || result.canceled) {
-      elements.multiSimulationStatus.textContent = t("status.fileSelectionCanceled");
+      setLocalizedText(elements.multiSimulationStatus, "status.fileSelectionCanceled");
       return;
     }
     updateSelection(result.paths || [], result.rootDirectory || "");
@@ -75,13 +76,13 @@ export function initializeMultiSimulationTool(context) {
   async function selectFolder() {
     const api = await waitForAppAPI("SelectSimulationInputFolder");
     if (!api) {
-      elements.multiSimulationStatus.textContent = t("tools.desktopOnly");
+      setLocalizedText(elements.multiSimulationStatus, "tools.desktopOnly");
       return;
     }
     const recursive = Boolean(elements.multiSimulationRecursive?.checked);
     const result = await api.SelectSimulationInputFolder(recursive);
     if (!result || result.canceled) {
-      elements.multiSimulationStatus.textContent = t("status.fileSelectionCanceled");
+      setLocalizedText(elements.multiSimulationStatus, "status.fileSelectionCanceled");
       return;
     }
     updateSelection(result.paths || [], result.rootDirectory || "");
@@ -97,12 +98,12 @@ export function initializeMultiSimulationTool(context) {
     state.multiSimulation.compareTargetId = "";
     elements.multiSimulationRun.disabled = !state.multiSimulation.selectedPaths.length || state.multiSimulation.running;
     setExportButtonsDisabled(true);
-    elements.multiSimulationStats.textContent = t(
+    setLocalizedText(elements.multiSimulationStats,
       "tools.simulationFilesSelected",
       { count: state.multiSimulation.selectedPaths.length },
       `${state.multiSimulation.selectedPaths.length} files selected`,
     );
-    elements.multiSimulationStatus.textContent = t("tools.readyToRun", {}, "Ready to run");
+    setLocalizedText(elements.multiSimulationStatus, "tools.readyToRun", {}, "Ready to run");
     updateProgress(0, state.multiSimulation.selectedPaths.length, "", "idle");
     renderSelectedFiles();
     renderResult();
@@ -141,7 +142,7 @@ export function initializeMultiSimulationTool(context) {
     state.multiSimulation.activeRunID = `multi-sim-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     state.multiSimulation.running = true;
     elements.multiSimulationRun.disabled = true;
-    elements.multiSimulationTable.innerHTML = `<div class="empty status-loading">${escapeHTML(t("tools.simulationRunning", {}, "EnergyPlus batch is running"))}</div>`;
+    elements.multiSimulationTable.innerHTML = `<div class="empty status-loading" data-i18n="tools.simulationRunning">${escapeHTML(t("tools.simulationRunning", {}, "EnergyPlus batch is running"))}</div>`;
     updateProgress(0, paths.length, t("tools.simulationRunning", {}, "EnergyPlus batch is running"), "running");
     waitForProgressRuntime();
     try {
@@ -164,7 +165,7 @@ export function initializeMultiSimulationTool(context) {
       updateProgress(result.completed || 0, result.total || paths.length, t("tools.simulationComplete", {}, "Batch simulation complete"), "complete");
       renderResult();
     } catch (error) {
-      elements.multiSimulationStatus.textContent = error?.message || String(error);
+      setLocalizedText(elements.multiSimulationStatus, "shell.operationFailed", { message: error?.message || String(error) });
       elements.multiSimulationTable.innerHTML = `<div class="empty">${escapeHTML(error?.message || String(error))}</div>`;
     } finally {
       state.multiSimulation.running = false;
@@ -201,13 +202,18 @@ export function initializeMultiSimulationTool(context) {
       elements.multiSimulationPercent.textContent = `${percent}%`;
     }
     if (elements.multiSimulationStatus) {
-      elements.multiSimulationStatus.textContent = message || (total ? `${completed} / ${total}` : t("tools.waitingFiles"));
+      const params = { completed, total, message };
+      if (status === "complete") setLocalizedText(elements.multiSimulationStatus, "tools.simulationComplete");
+      else if (status === "idle" && total) setLocalizedText(elements.multiSimulationStatus, "tools.readyToRun");
+      else if (!total) setLocalizedText(elements.multiSimulationStatus, "tools.waitingFiles");
+      else if (message && message !== t("tools.simulationRunning")) setLocalizedText(elements.multiSimulationStatus, "tools.batchProgressDetail", params);
+      else setLocalizedText(elements.multiSimulationStatus, "tools.simulationRunningProgress", params);
     }
     elements.multiSimulationStatus?.classList.toggle("status-loading", status === "running" && total > 0 && completed < total);
   }
 
-  function renderResult() {
-    energyDetail?.reset();
+  function renderResult({ resetDetail = true } = {}) {
+    if (resetDetail) energyDetail?.reset();
     const result = state.multiSimulation.result;
     if (!result) {
       setExportButtonsDisabled(true);
@@ -223,7 +229,7 @@ export function initializeMultiSimulationTool(context) {
     const succeeded = result.succeeded || 0;
     const failed = result.failed || 0;
     setExportButtonsDisabled(!(result.results || []).length);
-    elements.multiSimulationStats.textContent = t(
+    setLocalizedText(elements.multiSimulationStats,
       "tools.simulationResultStats",
       { total, succeeded, failed, workers: result.workers || 0 },
       `${total} runs, ${succeeded} succeeded, ${failed} failed`,
@@ -277,7 +283,7 @@ export function initializeMultiSimulationTool(context) {
                     <strong>${escapeHTML(item.filename || fileName(item.inputPath))}</strong>
                     <span title="${escapeHTML(item.outputDirectory || "")}">${escapeHTML(item.error || item.outputDirectory || "")}</span>
                   </th>
-                  <td class="tool-value ${escapeHTML(item.status || "")}">${escapeHTML(item.status || "")}</td>
+                  <td class="tool-value ${escapeHTML(item.status || "")}">${escapeHTML(t(`batch.runStatus.${item.status || ""}`, {}, item.status || ""))}</td>
                   <td>${escapeHTML(item.err?.warnings || 0)}</td>
                   <td>${escapeHTML((item.err?.severe || 0) + (item.err?.fatal || 0))}</td>
                   <td>${escapeHTML(primaryPurposeMetric(item))}</td>
@@ -731,7 +737,7 @@ export function initializeMultiSimulationTool(context) {
     });
     downloadCSV(rows, "batch-simulation-purpose-results.csv");
     if (elements.multiSimulationStatus) {
-      elements.multiSimulationStatus.textContent = t("status.exportedCsv", {}, "CSV exported");
+      setLocalizedText(elements.multiSimulationStatus, "status.exportedCsv", {}, "CSV exported");
     }
   }
 
@@ -743,12 +749,12 @@ export function initializeMultiSimulationTool(context) {
     const api = await waitForAppAPI("SaveBatchSimulationXLSX");
     if (!api) {
       if (elements.multiSimulationStatus) {
-        elements.multiSimulationStatus.textContent = t("tools.desktopOnly");
+        setLocalizedText(elements.multiSimulationStatus, "tools.desktopOnly");
       }
       return;
     }
     if (elements.multiSimulationStatus) {
-      elements.multiSimulationStatus.textContent = t("common.loadingSettings", {}, "Loading");
+      setLocalizedText(elements.multiSimulationStatus, "shell.preparingExport", {}, "Preparing export");
     }
     try {
       const exportContext = multiSimulationExportContext(result);
@@ -760,7 +766,7 @@ export function initializeMultiSimulationTool(context) {
         energyPath: energyPathBatchExport(result, exportContext.comparison),
       });
       if (!saved?.canceled && elements.multiSimulationStatus) {
-        elements.multiSimulationStatus.textContent = t(
+        setLocalizedText(elements.multiSimulationStatus,
           "status.savedNamed",
           { name: saved?.filename || "batch-simulation-purpose-results.xlsx" },
           `Saved ${saved?.filename || "batch-simulation-purpose-results.xlsx"}`,
@@ -768,7 +774,7 @@ export function initializeMultiSimulationTool(context) {
       }
     } catch (error) {
       if (elements.multiSimulationStatus) {
-        elements.multiSimulationStatus.textContent = error?.message || String(error);
+        setLocalizedText(elements.multiSimulationStatus, "shell.operationFailed", { message: error?.message || String(error) });
       }
     }
   }
@@ -792,7 +798,7 @@ export function initializeMultiSimulationTool(context) {
     link.click();
     URL.revokeObjectURL(url);
     if (elements.multiSimulationStatus) {
-      elements.multiSimulationStatus.textContent = t("status.exportedJson", {}, "JSON exported");
+      setLocalizedText(elements.multiSimulationStatus, "status.exportedJson", {}, "JSON exported");
     }
   }
 
@@ -1589,7 +1595,7 @@ export function initializeMultiSimulationTool(context) {
       if (!button || button.disabled) return;
       event.preventDefault();
       if (!energyDetail?.open(button.dataset.batchEnergyOpen, button) && elements.multiSimulationStatus) {
-        elements.multiSimulationStatus.textContent = t("batch.energyPathDetailUnavailable", {}, "The annual Energy Path graph is not included in this run.");
+        setLocalizedText(elements.multiSimulationStatus, "batch.energyPathDetailUnavailable", {}, "The annual Energy Path graph is not included in this run.");
       }
     });
     elements.multiSimulationSelectFiles?.addEventListener("click", selectFiles);
@@ -1619,5 +1625,13 @@ export function initializeMultiSimulationTool(context) {
   return {
     handleProgress,
     loadEnvironment,
+    refreshLanguage: () => {
+      renderEnvironment();
+      if (!state.multiSimulation.running) {
+        if (!state.multiSimulation.result) renderSelectedFiles();
+        renderResult({ resetDetail: false });
+      }
+      energyDetail?.refreshLanguage();
+    },
   };
 }

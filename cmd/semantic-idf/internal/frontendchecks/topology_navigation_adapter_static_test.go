@@ -36,7 +36,7 @@ func TestTopologySyncLocateIsAlwaysOnWithoutUserStateOrUI(t *testing.T) {
 	view := readTestFile(t, "frontend/src/js/views/topology-view.js")
 	thermalView := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
 	details := readTestFile(t, "frontend/src/js/views/thermal-topology-details.js")
-	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	i18n := readTranslationSource(t)
 
 	selection := sliceBetween(view, "export async function selectTopologyEntity", "export async function revealTopologySelection")
 	for _, required := range []string{"selectSemanticEntity(selection", `originView: "topology"`, `recordHistory: options.recordHistory !== false`} {

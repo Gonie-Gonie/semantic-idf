@@ -255,7 +255,7 @@ func TestFrontendProfileOverviewUsesStructuredMetricsAndCountAssignments(t *test
 }
 
 func TestFrontendProfileAvailabilityAndAirflowMetricsHaveEnglishAndKoreanLabels(t *testing.T) {
-	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	i18n := readTranslationSource(t)
 	for _, key := range []string{
 		"profile.metricFallback",
 		"profile.metricNotConfigured",
@@ -362,7 +362,7 @@ func TestFrontendProfileRemovesMatrixDetailSourceAndCandidateUI(t *testing.T) {
 		"views":      readTestFile(t, "frontend/src/js/views/profile-views.js"),
 		"styles":     readTestFile(t, "frontend/src/styles/profile.css"),
 		"responsive": readTestFile(t, "frontend/src/styles/responsive.css"),
-		"i18n":       readTestFile(t, "frontend/src/js/i18n.js"),
+		"i18n":       readTranslationSource(t),
 	}
 	removed := map[string][]string{
 		"markup": {
@@ -501,7 +501,7 @@ func TestFrontendProfileLineViewsAlwaysUseLegendAndAnnualViewsUseParallelHeatmap
 func TestFrontendProfileGraphsExposeEngineeringFidelityStatusAndReasons(t *testing.T) {
 	views := readTestFile(t, "frontend/src/js/views/profile-views.js")
 	styles := readTestFile(t, "frontend/src/styles/profile.css")
-	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	i18n := readTranslationSource(t)
 
 	for _, required := range []string{
 		"profileNominalWarningCodes",
@@ -549,7 +549,7 @@ func TestFrontendProfileGraphsExposeEngineeringFidelityStatusAndReasons(t *testi
 func TestFrontendProfileIdenticalRenderedCurvesUseInterleavedColorsAndLineLegend(t *testing.T) {
 	views := readTestFile(t, "frontend/src/js/views/profile-views.js")
 	styles := readTestFile(t, "frontend/src/styles/profile.css")
-	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	i18n := readTranslationSource(t)
 	legend := sliceBetween(views, "function renderProfileSeriesLegend", "function profileYAxisScale")
 	overlay := sliceBetween(views, "function renderOverlayGraph", "function renderProfileGraphSummary")
 	pathRendering := sliceBetween(overlay, "const paths = renderedPaths", "const horizontalGrid")
@@ -831,7 +831,7 @@ func TestFrontendProfileGraphControlsUseFixedTimeProfileAndDirectViewButtons(t *
 	settingsClient := readTestFile(t, "frontend/src/js/settings-client.js")
 	styles := readTestFile(t, "frontend/src/styles/profile.css")
 	responsive := readTestFile(t, "frontend/src/styles/responsive.css")
-	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	i18n := readTranslationSource(t)
 	graphTypes := readTestFile(t, "internal/idf/profile_graph_types.go")
 	graphBuilder := readTestFile(t, "internal/idf/profile_graph.go")
 	graphBody := sliceBetween(views, "function renderProfileGraph", "function renderProfileGraphBody")
@@ -1053,7 +1053,7 @@ func TestFrontendProfileUsesTableAboveGraphWithoutTopFilter(t *testing.T) {
 	views := readTestFile(t, "frontend/src/js/views/profile-views.js")
 	analysis := readTestFile(t, "frontend/src/js/views/analysis-views.js")
 	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
-	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	i18n := readTranslationSource(t)
 	styles := readTestFile(t, "frontend/src/styles/profile.css")
 
 	for label, content := range map[string]string{

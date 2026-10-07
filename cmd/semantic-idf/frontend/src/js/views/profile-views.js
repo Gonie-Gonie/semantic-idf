@@ -1,6 +1,6 @@
 import { backend, elements, escapeHTML, getDocumentText, setStatus, state } from "../state.js";
 import { getCurrentAppSettings, saveAppSettings } from "../settings-client.js";
-import { profileDimensionLabel as i18nProfileDimensionLabel, profileMetricLabel, t } from "../i18n.js";
+import { getLanguage, profileDimensionLabel as i18nProfileDimensionLabel, profileMetricLabel, t } from "../i18n.js";
 import { configureResultPanelNavigationHooks } from "../panel-navigation-adapters.js";
 import { getPanelNavigationAdapter } from "../panel-navigation-registry.js";
 import { getSemanticNavigationCache } from "../semantic-navigation-cache.js";
@@ -2008,7 +2008,7 @@ async function callProfileApplyAPI(methodName, endpoint, request) {
     body: JSON.stringify({ text: getDocumentText(), apply: request }),
   });
   if (!response.ok) {
-    throw new Error(`Profile apply request failed: ${response.status}`);
+    throw new Error(t("profile.applyRequestFailed", { status: response.status }, "Profile apply request failed: {status}"));
   }
   return response.json();
 }
@@ -2042,6 +2042,7 @@ function cachedProfileView(profile, settings) {
 
 function profileViewCacheKey(profile, settings) {
   return [
+    getLanguage(),
     state.analysisKey || state.lastAnalyzedKey || "",
     profile.itemCount || 0,
     (profile.zoneProfiles || []).length,

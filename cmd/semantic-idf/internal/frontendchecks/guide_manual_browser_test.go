@@ -10,11 +10,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
 func TestGuideManualNavigationSearchAndSafeMarkdownBrowser(t *testing.T) {
+	_ = readTranslationSource(t)
 	if testing.Short() {
 		t.Skip("skipping technical reference browser harness in short mode")
 	}
@@ -57,6 +59,7 @@ func TestGuideManualNavigationSearchAndSafeMarkdownBrowser(t *testing.T) {
 }
 
 func TestGuideManualBundledReferenceBrowser(t *testing.T) {
+	_ = readTranslationSource(t)
 	if testing.Short() {
 		t.Skip("skipping bundled technical reference browser in short mode")
 	}
@@ -85,14 +88,25 @@ func TestGuideManualBundledReferenceBrowser(t *testing.T) {
 		}
 	}
 	readTestFile(t, "frontend/src/manual/metric-guides.json")
+	readTestFile(t, "frontend/src/manual/metric-guides.ko.json")
 	for _, path := range []string{"frontend/src/guide.html", "frontend/src/js/guide-manual.js", "frontend/src/js/auxiliary-navigation.js", "frontend/src/js/app-info.js", "frontend/src/js/settings-client.js", "frontend/src/js/i18n.js", "frontend/src/styles/guide-manual.css"} {
 		readTestFile(t, path)
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/src/", http.StripPrefix("/src/", http.FileServer(http.Dir(repoPath("frontend/src")))))
-	mux.HandleFunc("/api/settings", func(writer http.ResponseWriter, _ *http.Request) {
+	var settingsMu sync.Mutex
+	settings := map[string]any{"appearance": map[string]any{"language": "ko", "theme": "dark"}}
+	mux.HandleFunc("/api/settings", func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(writer, `{"settings":{"appearance":{"language":"ko","theme":"dark"}}}`)
+		settingsMu.Lock()
+		defer settingsMu.Unlock()
+		if request.Method == http.MethodPost {
+			if err := json.NewDecoder(request.Body).Decode(&settings); err != nil {
+				http.Error(writer, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		_ = json.NewEncoder(writer).Encode(map[string]any{"settings": settings})
 	})
 	mux.HandleFunc("/api/metric-guides", func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusServiceUnavailable)
@@ -121,7 +135,8 @@ func TestGuideManualBundledReferenceBrowser(t *testing.T) {
 
 const guideManualBundledBrowserHarnessHTML = `<!doctype html><html><head><meta charset="utf-8"><title>Bundled manual</title></head>
 <body data-bundled-guide-status="pending"><pre id="bundledResult">pending</pre>
-<iframe id="manualFrame" src="/src/guide.html?lang=ko#metrics/metric-catalog" width="1400" height="900"></iframe>
+<script>localStorage.setItem("idfAnalyzer.appSettings", JSON.stringify({appearance: {language: "ja", theme: "dark"}}));</script>
+<iframe id="manualFrame" src="/src/guide.html?lang=ko&amp;source=shared#metrics/metric-catalog" width="1400" height="900"></iframe>
 <script type="module">
 const output = document.querySelector("#bundledResult");
 const frame = document.querySelector("#manualFrame");
@@ -130,10 +145,20 @@ const sleep = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(condition, message) { for (let n = 0; n < 250; n += 1) { if (condition()) return; await sleep(); } throw new Error(message); }
 const doc = () => frame.contentDocument;
 try {
-  await until(() => doc()?.querySelectorAll("#metricGuide .guide-metric-card").length === 59, "offline bundled catalog must load all 59 definitions");
+  await until(() => doc()?.querySelector("#manualContent h1"), "cached settings must render the initial manual before backend settings load");
+  assert(doc().documentElement.lang === "ja" && doc().querySelector("#manualContent").lang === "en", "cached Japanese app language uses the English manual even with a legacy Korean query");
+  assert(!new URL(frame.contentWindow.location.href).searchParams.has("lang") && new URL(frame.contentWindow.location.href).searchParams.get("source") === "shared", "legacy language override is removed without losing other link context");
+  assert(!doc().querySelector("#manualLanguage"), "manual has no independent language selector");
+  await until(() => doc()?.querySelector("#manualContent").lang === "ko" && doc()?.querySelectorAll("#metricGuide .guide-metric-card").length === 59, "final Korean backend settings and all 59 offline definitions must load");
   assert(doc().querySelector("#manualContent").lang === "ko", "Korean deep-linked chapter is rendered");
+  assert(doc().querySelector(".manual-skip-link").textContent === "본문으로 이동" && doc().querySelector("#manualContent").getAttribute("aria-label") === "기술 참고 매뉴얼 본문", "manual navigation and accessible labels use Korean");
   assert(doc().querySelector("#manualChapters a[aria-current]").getAttribute("href") === "#metrics", "deep link chapter is active");
   assert(doc().querySelectorAll("#metricGuide dd").length === 59 * 5, "all catalog units and interpretation fields are present");
+  assert(doc().querySelector("#metric-energyplus_version").querySelectorAll("dd")[2].textContent === "Version 객체에서 버전 식별자를 직접 읽습니다.", "offline metric method uses the Korean explanation");
+  assert(doc().querySelector("#metric-gross_floor_area_m2 dd").textContent === "m2", "Korean catalog keeps the canonical unit unchanged");
+  const koreanSearch = doc().querySelector("#manualSearch"); koreanSearch.value = "버전 식별자를 직접"; koreanSearch.dispatchEvent(new Event("input", { bubbles: true }));
+  await until(() => [...doc().querySelectorAll("#manualResultsList a")].some((link) => link.getAttribute("href") === "#metrics/metric-energyplus_version"), "whole-manual search includes the Korean metric explanation");
+  doc().querySelector("#manualSearchClear").click();
   doc().querySelector("#metricGuide .guide-metric-card:last-child").scrollIntoView();
   await sleep(80);
   assert(doc().querySelector("#manualSections [aria-current=location]")?.dataset.section === "metric-catalog", "catalog cards keep the catalog section active while scrolling");
@@ -155,8 +180,20 @@ try {
   frame.width = "1400";
   frame.getBoundingClientRect(); doc().body.offsetWidth; frame.contentWindow.dispatchEvent(new Event("resize"));
   await until(() => frame.contentWindow.innerWidth > 780, "restore desktop width");
-  const language = doc().querySelector("#manualLanguage"); language.value = "en"; language.dispatchEvent(new Event("change", { bubbles: true }));
-  await until(() => doc().querySelector("#manualContent").lang === "en" && doc().querySelectorAll("#metricGuide .guide-metric-card").length === 59, "English source should replace Korean source");
+  const settingsModule = doc().createElement("script"); settingsModule.type = "module";
+  settingsModule.textContent = 'import * as settings from "/src/js/settings-client.js"; window.guideSettingsHarness = settings;';
+  doc().head.append(settingsModule);
+  await until(() => frame.contentWindow.guideSettingsHarness, "app settings harness module should load");
+  const appSettings = frame.contentWindow.guideSettingsHarness;
+  const beforeLanguageDepth = frame.contentWindow.history.state.manualDepth;
+  for (const [language, appLanguage, manualLanguage] of [["en", "en", "en"], ["ko-KR", "ko", "ko"], ["KR", "ko", "ko"], ["ja", "ja", "en"], ["hi", "hi", "en"], ["es", "es", "en"], ["fr", "fr", "en"], ["unknown", "en", "en"]]) {
+    const snapshot = appSettings.getCurrentAppSettings(); snapshot.appearance.language = language; appSettings.applyAppSettings(snapshot);
+    await until(() => doc().querySelector("#manualContent").lang === manualLanguage && doc().querySelectorAll("#metricGuide .guide-metric-card").length === 59, "manual must follow normalized app language: " + language);
+    assert(doc().documentElement.lang === appLanguage, "app language is normalized: " + language);
+    assert(frame.contentWindow.location.hash === "#metrics/metric-catalog" && frame.contentWindow.history.state.manualDepth === beforeLanguageDepth, "app language preserves section and history: " + language);
+  }
+  const saved = appSettings.getCurrentAppSettings(); saved.appearance.language = "en";
+  await appSettings.saveAppSettings(saved);
   const chapters = [...doc().querySelectorAll("#manualChapters a")].map((link) => link.getAttribute("href"));
   assert(chapters.length === 10, "all ten chapters are navigable");
   for (const href of chapters) {
@@ -174,7 +211,7 @@ try {
   const beforeReload = frame.contentWindow.location.hash;
   await new Promise((resolve) => { frame.addEventListener("load", resolve, { once: true }); frame.contentWindow.location.reload(); });
   await until(() => doc().querySelector("#manualContent h1"), "reload restores deep-linked manual");
-  assert(frame.contentWindow.location.hash === beforeReload && doc().querySelector("#manualContent").lang === "en", "reload preserves chapter, section and explicit language");
+  assert(frame.contentWindow.location.hash === beforeReload && doc().querySelector("#manualContent").lang === "en", "reload preserves chapter and section while following saved app language");
   const resources = frame.contentWindow.performance.getEntriesByType("resource");
   assert(resources.every((entry) => new URL(entry.name).origin === location.origin), "manual loads without remote assets");
   document.body.dataset.bundledGuideStatus = "passed"; output.textContent = JSON.stringify({ chapters: chapters.length, catalog: 59, offline: true, search: true, reload: true });
@@ -190,6 +227,8 @@ const sleep = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(condition, message) { for (let n = 0; n < 100; n += 1) { if (condition()) return; await sleep(); } throw new Error(message); }
 try {
   const { GuideManual, renderManualMarkdown } = await import("/src/js/guide-manual.js");
+  const { setLanguage } = await import("/src/js/i18n.js");
+  setLanguage("en");
   const shell = new DOMParser().parseFromString(await (await fetch("/src/guide.html")).text(), "text/html");
   const root = document.querySelector("#manualTestRoot");
   for (const script of shell.querySelectorAll("script")) script.remove();
@@ -214,13 +253,20 @@ try {
     "metrics.ko.md": "# 지표\n\n## 지표 카탈로그 {#metric-catalog}\n\n원본과 계산 방법.",
   };
   const calls = new Map();
+  let deferKoreanSource = false; let releaseKoreanSource;
   const guides = [{ id: "floor_area", name: "Floor <scr" + "ipt>area</scr" + "ipt>", category: "Envelope", unit: "m²", source: "variable source", method: "polygon area", assumptions: "planar surfaces", missingData: "unavailable" }];
+  const originalFields = Object.fromEntries(["name", "category", "source", "method", "assumptions", "missingData"].map((field) => [field, guides[0][field]]));
+  const koreanOverlay = { version: 1, guides: { floor_area: { original: originalFields, translation: { ...originalFields, source: "변수 원본", method: "다각형 면적 계산", assumptions: "평면 Surface", missingData: "제공 불가" } } } };
   const fetcher = async (url) => {
     calls.set(url, (calls.get(url) || 0) + 1);
     const file = url.split("/").at(-1);
     if (file === "manifest.json") return { ok: true, json: async () => manifest };
+    if (file === "metric-guides.ko.json") return { ok: true, json: async () => koreanOverlay };
     if (url === "/api/metric-guides") return { ok: true, json: async () => guides };
-    if (Object.hasOwn(sources, file)) return { ok: true, text: async () => sources[file] };
+    if (Object.hasOwn(sources, file)) {
+      if (file === "input.ko.md" && deferKoreanSource) await new Promise((resolve) => { releaseKoreanSource = resolve; });
+      return { ok: true, text: async () => sources[file] };
+    }
     return { ok: false };
   };
   history.replaceState({}, "", "/main-sentinel");
@@ -260,17 +306,38 @@ try {
   await until(() => root.querySelector("#editing"), "input chapter did not return");
   assert(calls.get("/manual-fixture/input.en.md") === 1, "chapter parsed and fetched once");
   assert(calls.get("/api/metric-guides") === 1, "catalog fetched once across search/navigation");
+  assert(!calls.has("/manual-fixture/metric-guides.ko.json"), "English manual does not load the Korean overlay");
   history.back();
   await until(() => location.hash === "#metrics/metric-floor_area" && root.querySelector("#metric-floor_area"), "browser back restores chapter");
   history.forward();
   await until(() => location.hash === "#input/editing" && root.querySelector("#editing"), "browser forward restores chapter");
   const depthBeforeLanguage = history.state.manualDepth;
-  await manual.setLanguage("ko");
+  deferKoreanSource = true;
+  setLanguage("ko");
+  await until(() => releaseKoreanSource, "Korean chapter request should be pending");
+  setLanguage("en");
+  releaseKoreanSource();
+  await sleep(20);
+  assert(manual.language === "en" && root.querySelector("#manualContent").lang === "en", "late Korean response cannot overwrite the newer English app setting");
+  setLanguage("ko-KR");
+  await until(() => root.querySelector("#manualContent").lang === "ko", "app language event should select the Korean source");
   assert(root.querySelector("#manualContent").textContent.includes("입력 참고서"), "localized chapter source loaded");
   assert(root.querySelector("#manualChapters").textContent.includes("한국어"), "localized chapter titles");
   assert(root.querySelector("#manualContent").lang === "ko", "content language declared");
   assert(history.state.manualDepth === depthBeforeLanguage && location.hash === "#input/editing", "language change keeps history depth and section");
-  await manual.setLanguage("en");
+  history.replaceState(history.state, "", "#metrics/metric-floor_area"); await manual.openRoute();
+  await until(() => root.querySelector("#metric-floor_area")?.querySelectorAll("dd")[2].textContent === "다각형 면적 계산", "live metric method uses the Korean explanation");
+  assert((await manual.search("다각형")).some((item) => item.section === "metric-floor_area"), "Korean metric explanations are searchable");
+  assert((await manual.search("polygon")).some((item) => item.section === "metric-floor_area"), "Korean search also retains canonical English terminology");
+  manual.clearSearch(); guides[0].method = "Updated authoritative method"; await manual.openRoute();
+  await until(() => root.querySelector("#metric-floor_area")?.querySelectorAll("dd")[2].textContent === "Updated authoritative method", "changed live method must fall back to its authoritative English definition");
+  assert(root.querySelector("#metric-floor_area").querySelectorAll("dd")[1].textContent === "변수 원본", "unchanged fields retain their valid Korean translation");
+  assert(root.querySelector("#metric-floor_area dd").textContent === "m²" && guides[0].source === "variable source", "localization preserves the original unit and catalog object");
+  assert(calls.get("/manual-fixture/metric-guides.ko.json") === 1, "Korean overlay is fetched once across navigation and search");
+  guides[0].method = originalFields.method;
+  history.replaceState(history.state, "", "#input/editing"); await manual.openRoute();
+  setLanguage("en");
+  await until(() => root.querySelector("#manualContent").lang === "en", "app language event should restore the English source");
   assert(calls.get("/manual-fixture/input.en.md") === 1, "language switch reuses cache");
   const staleSearch = manual.search("field"); manual.clearSearch();
   assert((await staleSearch).length === 0 && root.querySelector("#manualSearchResults").hidden, "cleared search cannot restore stale results");
@@ -281,6 +348,7 @@ try {
   window.go = { main: { App: { GetMetricGuides: async () => { throw new Error("offline bridge"); } } } };
   const offlineManual = new GuideManual({ root, sourceURL: "/offline/", fetcher: async (url) => ({ ok: url === "/offline/metric-guides.json", json: async () => guides }) });
   assert((await offlineManual.loadMetricCatalog()).bundled, "bundled catalog fallback remains available offline");
+  assert((await offlineManual.metricGuidesForLanguage(guides, "ko"))[0].method === originalFields.method, "unavailable Korean overlay falls back to the canonical description");
   window.go = oldBridge;
   let failedAttempts = 0;
   const retryManual = new GuideManual({ root, fetcher: async () => ({ ok: ++failedAttempts > 1, text: async () => "# Retry" }) });

@@ -425,7 +425,7 @@ func TestFrontendSimulationUsesSimplifiedDefaultsAndAutomaticEnergyPlus(t *testi
 		}
 	}
 
-	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	i18n := readTranslationSource(t)
 	if !strings.Contains(i18n, `"simulation.runEstimate"`) {
 		t.Fatal("run-plan estimate translation is missing")
 	}
@@ -668,7 +668,7 @@ func TestFrontendSimulationAutomaticEnergyPlusVersionEdges(t *testing.T) {
 		"const selectedInstall = selectedEnergyPlusInstall()",
 		"const selectedVersion = normalizedVersionKey(selectedInstall?.version)",
 		"selectedInstall?.version || \"\"",
-		"unknown version",
+		`t("common.unknown", {}, "Unknown")`,
 		"simulation.versionMismatch",
 	} {
 		if !strings.Contains(versionIssue, required) {
