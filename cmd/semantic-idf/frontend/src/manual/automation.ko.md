@@ -160,3 +160,21 @@ print(result["view"]["summary"])
 ```
 
 두 방식 모두 Python에서 배분을 다시 계산하지 않고 공통 builder의 결과를 읽습니다. 실행 파일 버전·원본/실행 입력·SQL·엔진/기상·선택값을 비교 근거와 함께 유지합니다. 대응되는 단위·관측값을 비교하고 결측/null/0을 보존합니다. 내보내기를 파싱할 수 있다는 사실만으로 물리 모델이 승인되지는 않습니다.
+
+## 개발 저장소 정리 {#repository-cleanup}
+
+Windows의 소스 checkout에서 실행하는 개발 명령입니다. PowerShell에서는 `.\dev.bat`, 명령 프롬프트에서는 `dev`를 사용합니다. 저장소 정리는 개발 생성물을 관리하며, 위의 실행 파일 `cli clean` 명령은 모델을 편집합니다.
+
+```text
+.\dev.bat clean-repo -WhatIf
+.\dev.bat clean-repo
+.\dev.bat clean-repo --hard -WhatIf
+.\dev.bat clean-repo --hard
+.\dev.bat setup
+```
+
+`-WhatIf`로 파일 삭제 없이 정리 계획을 확인할 수 있습니다. 일반 `clean-repo`는 Go 빌드 캐시, 자동 생성된 프런트엔드 binding·빌드 파일과 확인된 임시 개발 생성물을 삭제합니다. `build/bin`, 설치된 Go/Wails 도구, 의존성 캐시, 로컬 시뮬레이션 근거와 재사용 비교 기준은 보존하므로 setup을 다시 실행할 필요가 없습니다. 다음 빌드·테스트에서 필요한 생성물이 다시 만들어집니다.
+
+`clean-repo --hard`는 `build/bin`, `.runtime/`, `.tools/`도 삭제하여 도구 설치와 생성 상태를 처음 clone한 수준으로 초기화합니다. `.runtime/`의 로컬 시뮬레이션 capture와 baseline도 모두 삭제되므로 보관할 내용은 먼저 해당 디렉터리 밖으로 복사합니다. 다음 빌드·테스트 전에 `dev setup`을 실행합니다.
+
+두 모드 모두 추적 소스, 유지 관리되는 빌드 아이콘, Git 메타데이터·hook과 명시적 생성 경로 밖의 모델·설정 파일을 보존합니다. 디렉터리 junction이나 symbolic link를 통해 checkout 밖의 파일을 삭제하지 않습니다.

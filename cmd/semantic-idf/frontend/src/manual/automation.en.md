@@ -160,3 +160,21 @@ print(result["view"]["summary"])
 ```
 
 Neither transport recomputes allocations in Python; both consume the shared builder's result. Keep executable version, original/executed inputs, SQL, engine/weather and selectors with a comparison. Compare corresponding units and observed values, preserving missing/null/zero distinctions. A parseable export alone does not certify the physical model.
+
+## Repository cleanup {#repository-cleanup}
+
+These commands run from a source checkout on Windows. From PowerShell, use `.\dev.bat`; from Command Prompt, `dev` also works. Repository cleanup manages development artifacts; the executable's `cli clean` command above edits a model.
+
+```text
+.\dev.bat clean-repo -WhatIf
+.\dev.bat clean-repo
+.\dev.bat clean-repo --hard -WhatIf
+.\dev.bat clean-repo --hard
+.\dev.bat setup
+```
+
+Use `-WhatIf` to inspect the cleanup plan without deleting files. Normal `clean-repo` removes the Go build cache, generated frontend bindings/build files and known temporary development artifacts. It keeps `build/bin`, the installed Go/Wails tools, dependency caches, local simulation evidence and reusable baselines, so setup is not required again. Subsequent builds and tests recreate removed artifacts as needed.
+
+`clean-repo --hard` also removes `build/bin`, `.runtime/` and `.tools/`, returning installed tooling and generated files to a fresh-clone state. Everything kept under `.runtime/`, including local simulation captures and baselines, is removed; copy anything you want to retain outside that directory first. Run `dev setup` before the next build or test.
+
+Both modes preserve tracked source files, maintained build icons, Git metadata/hooks, and model/settings files outside the explicit generated paths. A directory junction or symbolic link does not permit cleanup to reach files outside the checkout.

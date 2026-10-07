@@ -14,6 +14,10 @@ The release script infers bump size from these sections:
 
 ## Added
 
+- Add `dev clean-repo` to remove regenerable development files while preserving
+  `build/bin` and installed tools, and `--hard` to reset generated files and the
+  repo-local toolchain before another `dev setup`. Include `-WhatIf` previews,
+  with Git-tracked files and path boundaries protected.
 - Add a bundled English/Korean technical reference manual with ten Markdown
   chapters, chapter/section navigation, whole-manual search and stable deep links.
 - Include a registry-generated offline metric catalog alongside the live desktop

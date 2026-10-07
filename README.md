@@ -29,7 +29,7 @@ Default setup versions:
 
 ## Commands
 
-Use the top-level batch wrapper on Windows. From PowerShell, prefix it with `.\`; from `cmd.exe`, `dev setup` also works.
+Use the top-level `dev.bat` wrapper on Windows. From PowerShell, prefix it with `.\`; from `cmd.exe`, `dev setup` also works.
 
 ```bat
 .\dev.bat setup
@@ -40,6 +40,8 @@ Use the top-level batch wrapper on Windows. From PowerShell, prefix it with `.\`
 .\dev.bat verify
 .\dev.bat release
 .\dev.bat guide
+.\dev.bat clean-repo
+.\dev.bat clean-repo --hard
 ```
 
 The wrapper calls PowerShell with `-NoProfile -ExecutionPolicy Bypass` and forwards to scripts under `scripts/`.
@@ -80,6 +82,26 @@ packaging always uses `verify -Full`. See [Testing workflow](docs/testing.md) fo
 selection, catalog maintenance and commit checks.
 
 Build artifacts and downloaded runtimes stay ignored by git.
+
+### Repository cleanup
+
+`dev clean-repo` removes generated frontend bindings/build files, build/package
+intermediates, Go test binaries, coverage files, Go build cache and temporary
+Guide review captures. It preserves `build/bin`, the installed Go/Wails tools,
+downloaded dependencies, local simulation evidence and reusable comparison
+baselines. Development can continue without another setup.
+
+`dev clean-repo --hard` also removes `build/bin`, `.runtime/` and `.tools/`,
+resetting installed tooling and generated files to a fresh-clone state. Local
+captures and baselines inside `.runtime/` are included; move any you want to
+retain outside that directory first. Run `dev setup` before the next build or
+test. Optional root/frontend `node_modules` are removed in both modes.
+
+Both modes preserve Git-tracked or staged files, maintained build icons, Git
+metadata/hooks and models/settings outside the named generated locations. They
+refuse cleanup through symbolic links or junctions. Use `dev clean-repo -WhatIf`
+or `dev clean-repo --hard -WhatIf` to preview the complete plan without deleting
+anything. Cleanup works without the repo-local Go/Wails runtime.
 
 ## CLI
 

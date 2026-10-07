@@ -284,6 +284,11 @@
           "tier": "fast"
         },
         {
+          "files": ["tools_clean_repo_test.go"],
+          "areas": ["tooling"],
+          "tier": "regression"
+        },
+        {
           "files": ["topology_*_test.go"],
           "areas": ["topology"],
           "tier": "fast"

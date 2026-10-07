@@ -27,7 +27,7 @@
     {"paths": ["cmd/semantic-idf/settings_app.go"], "packages": ["./cmd/semantic-idf", "./cmd/semantic-idf/internal/frontendchecks"], "areas": ["settings"], "description": "settings persistence and UI"},
     {"paths": ["cmd/semantic-idf/batch*.go"], "areas": ["batch", "export"], "description": "batch processing and exporters"},
     {"paths": ["cmd/semantic-idf/energy_path*.go"], "areas": ["energy-path", "export"], "description": "Energy Path adapters and report export"},
-    {"paths": ["scripts/release.ps1", "scripts/package.ps1", "scripts/run.ps1", "scripts/check-env.ps1", "scripts/frontend-*.ps1", ".github/workflows/*", "dev.bat"], "packages": ["./cmd/semantic-idf/internal/frontendchecks"], "areas": ["tooling"], "description": "build and release contracts"},
+    {"paths": ["scripts/release.ps1", "scripts/package.ps1", "scripts/run.ps1", "scripts/check-env.ps1", "scripts/clean-repo.ps1", "scripts/frontend-*.ps1", ".github/workflows/*", "dev.bat"], "packages": ["./cmd/semantic-idf/internal/frontendchecks"], "areas": ["tooling"], "description": "build, cleanup and release contracts"},
     {"paths": ["docs/agent.md", "docs/testing.md", "docs/README.md", "docs/release-notes/*", "README.md", "CHANGELOG.md", ".gitignore"], "ignore": true},
     {"paths": ["docs/*"], "full": true}
   ]

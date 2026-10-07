@@ -10,13 +10,16 @@ shift /1
 set "SCRIPT_ARGS="
 :collect_args
 if "%~1"=="" goto args_done
-set "SCRIPT_ARGS=!SCRIPT_ARGS! %~1"
+set "ARG=%~1"
+if /I "%COMMAND%"=="clean-repo" if /I "!ARG!"=="--hard" set "ARG=-Hard"
+set "SCRIPT_ARGS=!SCRIPT_ARGS! !ARG!"
 shift /1
 goto collect_args
 
 :args_done
 if /I "%COMMAND%"=="setup" goto setup
 if /I "%COMMAND%"=="check" goto check
+if /I "%COMMAND%"=="clean-repo" goto clean_repo
 if /I "%COMMAND%"=="test" goto test
 if /I "%COMMAND%"=="run" goto run
 if /I "%COMMAND%"=="build" goto build
@@ -35,6 +38,10 @@ exit /b %ERRORLEVEL%
 
 :check
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\check-env.ps1" !SCRIPT_ARGS!
+exit /b %ERRORLEVEL%
+
+:clean_repo
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\clean-repo.ps1" !SCRIPT_ARGS!
 exit /b %ERRORLEVEL%
 
 :test
@@ -84,6 +91,9 @@ echo SemanticIDF developer commands
 echo.
 echo   dev setup             Install repo-local Go/Wails runtime and git hook
 echo   dev check             Check repo-local runtime
+echo   dev clean-repo        Remove generated files; preserve build/bin and tools
+echo   dev clean-repo --hard Reset generated files and tools; rerun dev setup
+echo   dev clean-repo -WhatIf Preview cleanup without deleting files
 echo   dev test              Run fast tests and all tiers for changed features
 echo   dev test -Area NAME   Run every test tier for a feature
 echo   dev test -Quick       Run the fast baseline
