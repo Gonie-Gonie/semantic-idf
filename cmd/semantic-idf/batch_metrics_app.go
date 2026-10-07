@@ -103,6 +103,11 @@ func (a *App) AnalyzeBatchMetrics(request BatchMetricsRequest) (*BatchMetricsRes
 	if a.ctx == nil {
 		return nil, fmt.Errorf("desktop runtime is not ready")
 	}
+	if err := a.ensureStorageInstance(); err != nil {
+		return nil, err
+	}
+	a.storageMu.RLock()
+	defer a.storageMu.RUnlock()
 	paths, err := wailsruntime.OpenMultipleFilesDialog(a.ctx, wailsruntime.OpenDialogOptions{
 		Title:   "Open EnergyPlus inputs for Batch Metrics",
 		Filters: inputFileFilters(),
@@ -112,6 +117,9 @@ func (a *App) AnalyzeBatchMetrics(request BatchMetricsRequest) (*BatchMetricsRes
 	}
 	if len(paths) == 0 {
 		return &BatchMetricsResult{Canceled: true, RunID: request.RunID, AreaBasis: normalizeBatchMetricsAreaBasis(request.AreaBasis)}, nil
+	}
+	if err := a.setStorageBatchInputPaths(paths); err != nil {
+		return nil, err
 	}
 
 	return analyzeBatchMetricsPaths(paths, request, throttleBatchMetricsProgress(func(progress BatchMetricsProgress) {

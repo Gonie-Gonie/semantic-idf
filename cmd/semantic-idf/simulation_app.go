@@ -82,6 +82,11 @@ func (a *App) SelectSimulationInputFiles() (*simulation.SimulationFileSelectionR
 	if a.ctx == nil {
 		return nil, fmt.Errorf("desktop runtime is not ready")
 	}
+	if err := a.ensureStorageInstance(); err != nil {
+		return nil, err
+	}
+	a.storageMu.RLock()
+	defer a.storageMu.RUnlock()
 	paths, err := wailsruntime.OpenMultipleFilesDialog(a.ctx, wailsruntime.OpenDialogOptions{
 		Title:   "Select EnergyPlus inputs",
 		Filters: inputFileFilters(),
@@ -93,6 +98,9 @@ func (a *App) SelectSimulationInputFiles() (*simulation.SimulationFileSelectionR
 		return &simulation.SimulationFileSelectionResult{Canceled: true}, nil
 	}
 	sort.Strings(paths)
+	if err := a.setStorageBatchInputPaths(paths); err != nil {
+		return nil, err
+	}
 	return &simulation.SimulationFileSelectionResult{Paths: paths}, nil
 }
 
@@ -100,6 +108,11 @@ func (a *App) SelectSimulationInputFolder(recursive bool) (*simulation.Simulatio
 	if a.ctx == nil {
 		return nil, fmt.Errorf("desktop runtime is not ready")
 	}
+	if err := a.ensureStorageInstance(); err != nil {
+		return nil, err
+	}
+	a.storageMu.RLock()
+	defer a.storageMu.RUnlock()
 	root, err := wailsruntime.OpenDirectoryDialog(a.ctx, wailsruntime.OpenDialogOptions{
 		Title:                "Select folder containing EnergyPlus inputs",
 		CanCreateDirectories: false,
@@ -114,6 +127,9 @@ func (a *App) SelectSimulationInputFolder(recursive bool) (*simulation.Simulatio
 	if err != nil {
 		return nil, err
 	}
+	if err := a.setStorageBatchInputPaths(paths); err != nil {
+		return nil, err
+	}
 	return &simulation.SimulationFileSelectionResult{Paths: paths, RootDirectory: root}, nil
 }
 
@@ -123,8 +139,17 @@ func (a *App) RunSimulationText(request simulation.SimulationRunRequest) (*simul
 }
 
 func (a *App) runSimulationTextWithSnapshot(request simulation.SimulationRunRequest, compact bool) (*simulation.SimulationRunResult, []byte, error) {
+	if err := a.ensureStorageInstance(); err != nil {
+		return nil, nil, err
+	}
+	defer a.applyStoredStorageCleanupPolicy()
+	a.storageMu.RLock()
+	defer a.storageMu.RUnlock()
 	// Capture the user's input before purpose outputs are injected into the run
 	// copy. Workspace restoration must match the original document exactly.
+	if err := a.setStorageSingleSourcePath(request.InputPath); err != nil {
+		return nil, nil, err
+	}
 	workspaceText := request.Text
 	workspaceRequest := a.beginSimulationResultRequest()
 	_, settings, err := loadAppSettings()
@@ -163,6 +188,16 @@ func (a *App) runSimulationTextWithSnapshot(request simulation.SimulationRunRequ
 	var payload []byte
 	if err == nil {
 		payload = a.rememberSimulationResultForTransport(workspaceRequest, workspaceText, result, compact)
+		if result != nil && result.OutputDirectory != "" {
+			a.storageReferencesMu.Lock()
+			a.storageSingleDirectory = result.OutputDirectory
+			if result.InputPath != "" {
+				a.storageSingleInputDirectory = filepath.Dir(result.InputPath)
+			} else {
+				a.storageSingleInputDirectory = ""
+			}
+			a.storageReferencesMu.Unlock()
+		}
 	}
 	return result, payload, err
 }
@@ -176,6 +211,14 @@ func (a *App) RunPurposeSimulationText(request simulation.SimulationRunRequest) 
 }
 
 func (a *App) BuildSimulationRunPlan(request simulation.SimulationRunRequest) (*simulation.PurposeRunPlan, error) {
+	if err := a.ensureStorageInstance(); err != nil {
+		return nil, err
+	}
+	a.storageMu.RLock()
+	defer a.storageMu.RUnlock()
+	if err := a.setStorageSingleSourcePath(request.InputPath); err != nil {
+		return nil, err
+	}
 	model, doc, err := simulationRequestModelAndDocument(request)
 	if err != nil {
 		return nil, err
@@ -187,6 +230,11 @@ func (a *App) BuildSimulationRunPlan(request simulation.SimulationRunRequest) (*
 }
 
 func (a *App) DiscoverAvailableOutputs(request simulation.OutputDiscoveryRequest) (*simulation.OutputDiscoveryResult, error) {
+	if err := a.ensureStorageInstance(); err != nil {
+		return nil, err
+	}
+	a.storageMu.RLock()
+	defer a.storageMu.RUnlock()
 	result, err := simulation.DiscoverAvailableOutputs(request)
 	if err != nil {
 		return nil, err
@@ -343,6 +391,41 @@ func prepareStandardOutputSimulationRequest(request simulation.SimulationRunRequ
 }
 
 func (a *App) RunMultipleSimulations(request simulation.MultiSimulationRequest) (*simulation.MultiSimulationResult, error) {
+	if err := a.ensureStorageInstance(); err != nil {
+		return nil, err
+	}
+	defer a.applyStoredStorageCleanupPolicy()
+	a.storageMu.RLock()
+	defer a.storageMu.RUnlock()
+	inputPaths := make([]string, 0, len(request.InputPaths))
+	seen := make(map[string]bool, len(request.InputPaths))
+	for _, path := range request.InputPaths {
+		if path = strings.TrimSpace(path); path == "" {
+			continue
+		}
+		path = filepath.Clean(path)
+		key := strings.ToLower(path)
+		if !seen[key] {
+			seen[key] = true
+			inputPaths = append(inputPaths, path)
+		}
+	}
+	request.InputPaths = inputPaths
+	if len(request.InputPaths) == 0 && strings.TrimSpace(request.RootDirectory) != "" {
+		paths, err := simulation.FindInputFiles(request.RootDirectory, request.Recursive)
+		if err != nil {
+			return nil, err
+		}
+		request.InputPaths = paths
+		if len(paths) == 0 {
+			// Prevent a second scan from discovering unprotected inputs after this
+			// empty selection. Nonempty selections retain the root for weather lookup.
+			request.RootDirectory = ""
+		}
+	}
+	if err := a.setStorageBatchInputPaths(request.InputPaths); err != nil {
+		return nil, err
+	}
 	_, settings, err := loadAppSettings()
 	if err != nil {
 		return nil, err
@@ -353,5 +436,20 @@ func (a *App) RunMultipleSimulations(request simulation.MultiSimulationRequest) 
 			wailsruntime.EventsEmit(a.ctx, "idfAnalyzer:batchProgress", item)
 		}
 	}
-	return simulation.RunMultipleSimulations(request, progress, settings.Simulation)
+	result, err := simulation.RunMultipleSimulations(request, progress, settings.Simulation)
+	if err == nil && result != nil && !result.Canceled {
+		directories := make([]string, 0, len(result.Results))
+		for _, run := range result.Results {
+			if run.OutputDirectory != "" {
+				directories = append(directories, run.OutputDirectory)
+			}
+			if run.InputPath != "" {
+				directories = append(directories, filepath.Dir(run.InputPath))
+			}
+		}
+		a.storageReferencesMu.Lock()
+		a.storageBatchDirectories = directories
+		a.storageReferencesMu.Unlock()
+	}
+	return result, err
 }

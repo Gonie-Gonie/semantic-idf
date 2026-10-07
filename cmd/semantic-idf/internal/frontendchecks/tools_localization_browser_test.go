@@ -14,7 +14,7 @@ import (
 
 func TestLocalizationLanguageSettingsAndDynamicMessagesBrowser(t *testing.T) {
 	_ = readTranslationSource(t)
-	for _, path := range []string{"frontend/src/js/settings-client.js", "frontend/src/js/state.js", "frontend/src/js/localized-text.js"} {
+	for _, path := range []string{"frontend/src/js/settings-client.js", "frontend/src/js/settings.js", "frontend/src/js/settings-storage.js", "frontend/src/styles/settings.css", "frontend/src/js/state.js", "frontend/src/js/localized-text.js"} {
 		readTestFile(t, path)
 	}
 	if testing.Short() {
@@ -197,7 +197,7 @@ try {
   switchSettingsLanguage("en");
   submitSettings(); await until(() => saves.length === 1, "first actual Settings save must start");
   switchSettingsLanguage("ko");
-  assert(saveStatus().classList.contains("status-loading") && settingsDocument.documentElement.lang === "ko", "language change keeps the active saving indicator on the replacement Settings form");
+  assert(saveStatus().classList.contains("status-loading") && settingsDocument.documentElement.lang === "ko", "language change keeps the active saving indicator on the replacement Settings form: " + saveStatus().outerHTML + "; lang=" + settingsDocument.documentElement.lang);
   saves[0].resolve({ settings: saves[0].settings });
   await until(() => saveStatus().dataset.i18n === "status.settingsSavedEarlier", "stale save must show the saved earlier request guidance");
   assert(settingsDocument.querySelector("#languageSelect").value === "ko" && !saveStatus().classList.contains("status-loading"), "stale save retains the newer preview and never reports that it was saved");

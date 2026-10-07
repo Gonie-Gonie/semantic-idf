@@ -44,6 +44,8 @@ func init() {
 }
 
 func TestEPATH181StoredSQLMatchesGUIAppHTTPCLIAndPython(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Setenv("APPDATA", t.TempDir())
 	runDirectory, sqlPath, inputPath := epath181CreateStoredRun(t)
 	before := epath181FileSnapshot(t, runDirectory)
 	file, err := os.Stat(sqlPath)

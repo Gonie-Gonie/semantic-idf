@@ -163,6 +163,7 @@ type PurposeMetric struct {
 }
 
 type SimulationRunManifest struct {
+	StorageManaged           *bool                 `json:"storageManaged,omitempty"`
 	RunID                    string                `json:"runId"`
 	CreatedAt                string                `json:"createdAt"`
 	StartedAt                string                `json:"startedAt,omitempty"`
@@ -738,9 +739,15 @@ func RunSimulation(request SimulationRunRequest, progress func(SimulationProgres
 		return nil, err
 	}
 	result.OutputDirectory = outputDir
-	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+	inputCopyName := ""
+	if strings.TrimSpace(request.Text) != "" {
+		inputCopyName = simulationInputFilename(result.Filename, result.InputPath)
+	}
+	finishStorage, err := beginRunStorage(outputDir, settings.RunDirectory, request.RunID, inputCopyName, strings.TrimSpace(request.OutputDirectory) == "")
+	if err != nil {
 		return nil, err
 	}
+	defer finishStorage()
 	writePurposeRunArtifacts(outputDir, request)
 	if request.PurposeRunPlan != nil {
 		emitSimulationProgress(progress, request.RunID, "discovery", "running", "Checking purpose output discovery", 1, simulationProgressTotal, result.InputPath)
@@ -978,6 +985,10 @@ func writeSimulationRunManifest(result *SimulationRunResult, request SimulationR
 		ResultSources:            append([]string(nil), result.ResultSources...),
 		ResultFiles:              append([]SimulationFileInfo(nil), result.Files...),
 	}
+	if strings.TrimSpace(request.OutputDirectory) != "" {
+		managed := false
+		manifest.StorageManaged = &managed
+	}
 	if request.PurposeRequest != nil {
 		manifest.Purposes = append([]SimulationPurposeID(nil), request.PurposeRequest.Purposes...)
 	}
@@ -1133,7 +1144,7 @@ func collectSimulationFiles(outputDirectory string) []SimulationFileInfo {
 	files, _ := os.ReadDir(outputDirectory)
 	out := []SimulationFileInfo{}
 	for _, entry := range files {
-		if entry.IsDir() {
+		if entry.IsDir() || entry.Name() == runStorageMarkerName {
 			continue
 		}
 		path := filepath.Join(outputDirectory, entry.Name())
@@ -1557,6 +1568,12 @@ func FindInputFiles(root string, recursive bool) ([]string, error) {
 }
 
 func isSimulationInputFile(path string) bool {
+	// A managed run folder can also be selected as an input folder. Its JSON
+	// bookkeeping files are not epJSON models and must not become batch jobs.
+	switch strings.ToLower(filepath.Base(path)) {
+	case runStorageMarkerName, "semantic-idf-run.json", "semantic-idf-run-plan.json":
+		return false
+	}
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".idf", ".imf", ".epjson", ".json":
 		return true

@@ -2,9 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
+	"syscall"
+	"time"
 
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/idf"
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/simulation"
@@ -16,11 +21,17 @@ type AppSettings struct {
 	Interaction InteractionSettings         `json:"interaction"`
 	Profile     idf.ProfileAnalysisSettings `json:"profile"`
 	Simulation  SimulationSettings          `json:"simulation"`
+	Storage     StorageSettings             `json:"storage"`
+}
+
+type StorageSettings struct {
+	AutoClean bool `json:"autoClean"`
 }
 
 type AppearanceSettings struct {
 	Theme            string                     `json:"theme"`
 	Language         string                     `json:"language"`
+	DefaultInputView string                     `json:"defaultInputView"`
 	GraphFontSize    int                        `json:"graphFontSize"`
 	AnalysisTabOrder []string                   `json:"analysisTabOrder"`
 	Geometry         GeometryAppearanceSettings `json:"geometry"`
@@ -47,6 +58,8 @@ type SettingsResult struct {
 	Settings AppSettings `json:"settings"`
 }
 
+var settingsFileMu sync.Mutex
+
 func (a *App) GetSettings() (*SettingsResult, error) {
 	path, settings, err := loadAppSettings()
 	if err != nil {
@@ -56,6 +69,16 @@ func (a *App) GetSettings() (*SettingsResult, error) {
 }
 
 func (a *App) SaveSettings(settings AppSettings) (*SettingsResult, error) {
+	result, err := saveAppSettings(settings)
+	if err == nil && result.Settings.Storage.AutoClean {
+		a.applyStorageCleanupPolicy(result.Settings)
+	}
+	return result, err
+}
+
+func saveAppSettings(settings AppSettings) (*SettingsResult, error) {
+	settingsFileMu.Lock()
+	defer settingsFileMu.Unlock()
 	settings = normalizeAppSettings(settings)
 	path, err := appSettingsPath()
 	if err != nil {
@@ -65,7 +88,7 @@ func (a *App) SaveSettings(settings AppSettings) (*SettingsResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(path, append(payload, '\n'), 0o644); err != nil {
+	if err := writeSettingsFile(path, append(payload, '\n')); err != nil {
 		return nil, err
 	}
 	return &SettingsResult{Path: path, Settings: settings}, nil
@@ -77,6 +100,7 @@ func defaultAppSettings() AppSettings {
 		Appearance: AppearanceSettings{
 			Theme:            "system",
 			Language:         "en",
+			DefaultInputView: "text",
 			GraphFontSize:    11,
 			AnalysisTabOrder: []string{"metrics", "topology", "profile", "hvac", "simulation"},
 			Geometry: GeometryAppearanceSettings{
@@ -139,6 +163,12 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		settings.Appearance.Theme = defaults.Appearance.Theme
 	}
 	settings.Appearance.Language = normalizeAppLanguage(settings.Appearance.Language, defaults.Appearance.Language)
+	switch strings.ToLower(strings.TrimSpace(settings.Appearance.DefaultInputView)) {
+	case "text", "semantic", "json", "table":
+		settings.Appearance.DefaultInputView = strings.ToLower(strings.TrimSpace(settings.Appearance.DefaultInputView))
+	default:
+		settings.Appearance.DefaultInputView = defaults.Appearance.DefaultInputView
+	}
 	if settings.Appearance.GraphFontSize == 0 {
 		settings.Appearance.GraphFontSize = defaults.Appearance.GraphFontSize
 	}
@@ -361,19 +391,21 @@ func isHexColor(value string) bool {
 }
 
 func loadAppSettings() (string, AppSettings, error) {
+	settingsFileMu.Lock()
+	defer settingsFileMu.Unlock()
 	path, err := appSettingsPath()
 	if err != nil {
 		return "", AppSettings{}, err
 	}
 	settings := defaultAppSettings()
-	content, err := os.ReadFile(path)
+	content, err := readSettingsFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			payload, marshalErr := json.MarshalIndent(settings, "", "  ")
 			if marshalErr != nil {
 				return "", AppSettings{}, marshalErr
 			}
-			if writeErr := os.WriteFile(path, append(payload, '\n'), 0o644); writeErr != nil {
+			if writeErr := writeSettingsFile(path, append(payload, '\n')); writeErr != nil {
 				return "", AppSettings{}, writeErr
 			}
 			return path, settings, nil
@@ -388,6 +420,54 @@ func loadAppSettings() (string, AppSettings, error) {
 	}
 	settings = normalizeAppSettings(settings)
 	return path, settings, nil
+}
+
+// Replace the complete file only after it has been written successfully. Other
+// app instances and settings readers never observe an in-progress JSON write.
+func writeSettingsFile(path string, payload []byte) error {
+	file, err := os.CreateTemp(filepath.Dir(path), ".settings-*.tmp")
+	if err != nil {
+		return err
+	}
+	temporaryPath := file.Name()
+	defer os.Remove(temporaryPath)
+	if err = file.Chmod(0o644); err == nil {
+		_, err = file.Write(payload)
+	}
+	if err == nil {
+		err = file.Sync()
+	}
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	return retrySettingsFileAccess(func() error { return os.Rename(temporaryPath, path) })
+}
+
+func readSettingsFile(path string) ([]byte, error) {
+	var payload []byte
+	err := retrySettingsFileAccess(func() error {
+		var readErr error
+		payload, readErr = os.ReadFile(path)
+		return readErr
+	})
+	return payload, err
+}
+
+func retrySettingsFileAccess(operation func() error) error {
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for {
+		err := operation()
+		// Windows briefly denies access during replacement or while another
+		// process holds a file handle. Permanent failures remain visible.
+		transient := runtime.GOOS == "windows" && (errors.Is(err, syscall.Errno(5)) || errors.Is(err, syscall.Errno(32)) || errors.Is(err, syscall.Errno(33)))
+		if !transient || !time.Now().Before(deadline) {
+			return err
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func appSettingsPath() (string, error) {

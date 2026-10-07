@@ -259,6 +259,50 @@ Annual Summary, and link-delta detail is opt-in trace. Missing rows are
 `Missing`; real zero remains zero; zero-baseline percent deltas are unavailable
 in UI/CSV/XLSX. Baseline and target retain separate source evidence and case IDs.
 
+## Generated storage ownership and cleanup
+
+`storage_app.go` exposes `GetStorageUsage` and `CleanStorage`, also available as
+`GET /api/storage` and `POST /api/storage/clean`. Settings shows logical file
+lengths and completed-run counts in the default, configured and previously managed
+run roots. `storage_roots.go` maintains a bounded discovery index independently
+of the ownership checks.
+Browser/WebView data is measured separately and never removed by this API.
+RAM caches, models, settings, exports and engine/weather installations are not
+generated-run cleanup targets.
+
+`internal/simulation/storage.go` owns path validation, bounded inspection and
+cleanup. New automatically created child directories carry a versioned ownership
+marker with completion, generated-file inventory and size/mtime fingerprints.
+Files modified after completion protect the whole bundle. Explicit output paths and
+pre-existing directories remain unmanaged. Legacy completion metadata is trusted
+only in the exact default root and after identity, path and timestamp validation.
+Unknown files, nested directories, linked/reparse paths, live process ownership,
+active runs and current single/batch/loaded result references prevent removal.
+`storage_instances*.go` registers live desktop and filesystem-reading CLI consumers
+under an OS gate. Another live consumer postpones cleanup; registration and
+deletion use the same gate to prevent a startup race.
+`SetStorageInputPath` (also `POST /api/storage/input`) protects the current model
+and promotes an explicitly opened managed run copy to retained user data.
+Simulation file/folder selection, path-based execution and run plans, and Batch
+Metrics apply the same promotion before reading or preparing an input copy.
+CLI filesystem inputs also promote managed run copies and retain process presence
+through export completion; stdin/help do not create storage registration records.
+
+The app holds a read lock for execution and result reads; cleanup uses `TryLock`
+to return a busy error immediately. Domain execution/cleanup also share a registry
+lock. Revalidate ownership immediately before removal, keep ownership metadata
+until other files are gone, and report actual removed bytes and partial failures.
+Never infer disposability from a filename or an ignored Git path.
+
+The manual age filter removes all eligible runs or runs older than 7/30/90 days.
+The opt-in `storage.autoClean` policy cleans unused completed runs after startup
+workspace initialization, after result replacement and when the app closes.
+Current result references
+remain protected until shutdown; user model paths remain protected, and active
+operations prevent shutdown cleanup. Settings must keep form edits and
+in-flight storage status independent through rerenders and language changes.
+Tests use isolated temporary fixtures; verification never cleans real user runs.
+
 ## Development checks
 
 Use [testing.md](testing.md) to inspect plans and select affected areas.

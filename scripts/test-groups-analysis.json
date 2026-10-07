@@ -54,6 +54,7 @@
       "defaultTier": "fast",
       "rules": [
         {"files": ["*_test.go"], "areas": ["tooling"]},
+        {"files": ["storage_input_test.go"], "areas": ["storage", "input", "tooling"], "tier": "fast"},
         {"files": ["cli_test.go"], "areas": ["analysis", "export"], "tests": ["TestCLIMetrics*"]},
         {"files": ["cli_test.go"], "areas": ["input", "navigation", "export"], "tests": ["TestCLIConvertYAML"]},
         {"files": ["cli_test.go"], "areas": ["input", "tooling"], "tests": ["TestCLIClean*"]},

@@ -30,7 +30,7 @@ func TestTopologySyncLocateIsAlwaysOnWithoutUserStateOrUI(t *testing.T) {
 	index := readTestFile(t, "frontend/src/index.html")
 	state := readTestFile(t, "frontend/src/js/state.js")
 	settings := readTestFile(t, "frontend/src/js/settings-client.js")
-	settingsPage := readTestFile(t, "frontend/src/settings.html")
+	settingsPage := readSettingsSource(t)
 	main := readTestFile(t, "frontend/src/js/main.js")
 	loader := readTestFile(t, "frontend/src/js/topology-loader.js")
 	view := readTestFile(t, "frontend/src/js/views/topology-view.js")

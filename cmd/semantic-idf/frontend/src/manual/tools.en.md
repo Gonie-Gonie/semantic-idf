@@ -89,7 +89,9 @@ Semantic duplicate-name repair in CLI Clean is a separate opt-in operation. It i
 
 ## Appearance and interaction {#appearance}
 
-Appearance settings include system/light/dark theme, app language, graph font size, analysis-tab priority, and Topology colors for background, Zones, walls, roofs, openings and selected objects. Colors change presentation, not material properties or boundary classification.
+Appearance settings include system/light/dark theme, app language, default Input View, graph font size, analysis-tab priority, and Topology colors for background, Zones, walls, roofs, openings and selected objects. Colors change presentation, not material properties or boundary classification.
+
+Default Input View applies when starting a new workspace. A restored workspace and an input view you have already selected take precedence. Changing this preference does not switch the current editor. Profile also has a default time view: representative day/week, monthly average, annual heatmap or load-duration curve.
 
 Keyboard settings replace the default accelerators. If a shortcut seems inactive, check focus and context before changing it: single-key Topology actions apply within that feature, and normal editing should retain ordinary typing. See [Getting started](./getting-started.en.md#keyboard).
 
@@ -103,9 +105,24 @@ Profile Apply settings control clone/edit behavior, whether ZoneList editing or 
 
 Read [Metrics and Profile](./metrics.en.md) for load weights, schedule resolution, unsupported cases and the distinction between a display normalization and the underlying input.
 
+## Generated files and disk usage {#generated-storage}
+
+Open **Settings → Storage** to inspect simulation-run file sizes, refresh the inventory and clean eligible runs. The cards distinguish the total measured size, the amount available to reclaim and protected files. Run counts and storage paths help identify which location is growing. Sizes are logical file lengths, so they can differ from Windows' allocated size on disk. Warnings indicate unreadable paths or an incomplete scan; unmeasured files are not treated as empty.
+
+By default, generated runs live under `%LOCALAPPDATA%/SemanticIDF/simulations` on Windows. Configured run directories are recorded in a bounded management index, so files remain visible after the output location changes. Each bundle contains the executed input copy and EnergyPlus results, including SQL, ERR and run metadata. Cleaning removes the whole eligible bundle; retain important evidence outside the managed run directories before cleaning.
+
+1. Refresh the inventory after long simulations or external file changes.
+2. Choose all eligible completed runs, or runs completed more than 7, 30 or 90 days ago.
+3. Review the cleanup confirmation, then confirm the action.
+4. Inspect the removed run count, reclaimed size and any failures. The inventory refreshes after cleanup.
+
+Automatic cleanup is optional. Enable **Always clean** and save Settings to remove unused completed runs at startup and after results are replaced. Current results remain available while the app is open and are cleaned when the app closes if no simulation or result operation is still running. Disable this option to keep runs until you clean them manually. Cleanup is deferred while another app instance or filesystem-reading CLI command is active. Running simulations, results currently retained by the app, another live app instance's runs, explicit output directories, unknown directories, linked paths and bundles with added user files are protected. Newly generated runs carry ownership metadata. Older runs are eligible only when their metadata verifies ownership under the default app directory; incomplete or unverifiable runs stay protected. A cleanup failure leaves remaining files visible for review rather than reporting them as removed.
+
+Browser/runtime data is measured separately. It includes browser caches, settings and workspace restoration data; this cleanup does not delete it while the app is using it. Settings files, user models, saved exports and engine/weather installations are retained. A run copy explicitly opened, saved or selected as an input for Simulation, Batch Metrics or a CLI command is retained as user data, including after the app closes.
+
 ## Persistent settings and recovery {#settings-storage}
 
-The backend saves normalized settings in the local application configuration area. Browser storage also caches UI state. Saving settings does not package engines or weather into the model.
+The backend saves normalized settings in the local application configuration area, replacing the complete configuration after a successful write. Browser storage also caches UI state. Saving settings does not package engines or weather into the model. The save bar indicates whether the current form has changes; disk cleanup is an independent action and does not save or discard form edits.
 
 If engine discovery fails, inspect installation and additional weather paths in Simulation settings. If a preference behaves unexpectedly, compare the displayed normalized value with the supplied value; invalid or outdated fields can be repaired during loading.
 

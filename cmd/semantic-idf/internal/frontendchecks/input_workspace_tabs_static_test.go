@@ -113,7 +113,7 @@ func TestInputWorkspaceUsesTheResultTabVisualAndAccessibilityContract(t *testing
 	if !strings.Contains(shortcuts, `inputSemantic: SHOW_SEMANTIC_STRUCTURE ?`) {
 		t.Fatal("the dormant Semantic shortcut is not gated by the rollback switch")
 	}
-	settings := readTestFile(t, "frontend/src/settings.html")
+	settings := readSettingsSource(t)
 	if !strings.Contains(settings, `...(SHOW_SEMANTIC_STRUCTURE ? [["inputSemantic", "shortcut.inputSemantic"]] : [])`) {
 		t.Fatal("Settings still exposes the dormant Semantic shortcut without the rollback switch")
 	}
@@ -176,7 +176,7 @@ func TestInputWorkspaceHeadingLineCountAndExplicitSemanticRevealAreRemoved(t *te
 		"panel actions":     readTestFile(t, "frontend/src/js/panel-navigation-actions.js"),
 		"shortcuts":         readTestFile(t, "frontend/src/js/shortcuts.js"),
 		"settings client":   readTestFile(t, "frontend/src/js/settings-client.js"),
-		"settings markup":   readTestFile(t, "frontend/src/settings.html"),
+		"settings markup":   readSettingsSource(t),
 		"workspace styles":  readTestFile(t, "frontend/src/styles/base.css"),
 	}
 	removedEverywhere := []string{

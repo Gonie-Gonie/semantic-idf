@@ -1,0 +1,1096 @@
+import {
+  applyAppSettings,
+  defaultAppSettings,
+  loadAndApplyAppSettings,
+  mergeSettings,
+  saveAppSettings,
+} from "./settings-client.js";
+import { formatAppVersion, loadAppInfo, renderAppInfo } from "./app-info.js";
+import { SHOW_SEMANTIC_STRUCTURE } from "./ui-features.js";
+import {
+  analysisTabLabel,
+  getLanguage,
+  normalizeAnalyzeTabOrder,
+  profileDimensionLabel,
+  profileMetricLabel,
+  supportedLanguages,
+  t,
+  translatePage,
+} from "./i18n.js";
+
+import { setLocalizedText } from "./localized-text.js";
+import { createSettingsStorage } from "./settings-storage.js";
+
+const container = document.querySelector("#settingsStatus");
+const colorControls = [
+  ["background", "settings.color.background"],
+  ["zone", "settings.color.zone"],
+  ["wall", "settings.color.wall"],
+  ["roof", "settings.color.roof"],
+  ["window", "settings.color.window"],
+  ["selected", "settings.color.selected"],
+];
+const profileDimensions = ["occupancy", "lighting", "equipment", "infiltration", "ventilation", "outdoor_air"];
+const shortcutControls = [
+  ["save", "shortcut.save"],
+  ["open", "shortcut.open"],
+  ["undoView", "shortcut.undoView"],
+  ["redoView", "shortcut.redoView"],
+  ["jumpDefinition", "shortcut.jumpDefinition"],
+  ["jumpReferences", "shortcut.jumpReferences"],
+  ["commandPalette", "shortcut.commandPalette"],
+  ["revealSource", "shortcut.revealSource"],
+  ["paneFocus", "shortcut.paneFocus"],
+  ["currentSearch", "shortcut.currentSearch"],
+  ["primaryOpen", "shortcut.primaryOpen"],
+  ["availableViews", "shortcut.availableViews"],
+  ["clearSelection", "shortcut.clearSelection"],
+  ...(SHOW_SEMANTIC_STRUCTURE ? [["inputSemantic", "shortcut.inputSemantic"]] : []),
+  ["inputText", "shortcut.inputText"],
+  ["inputJson", "shortcut.inputJson"],
+  ["inputTable", "shortcut.inputTable"],
+  ["tabMetrics", "shortcut.tabMetrics"],
+  ["tabProfile", "shortcut.tabProfile"],
+  ["tabHVAC", "shortcut.tabHVAC"],
+  ["tabSimulation", "shortcut.tabSimulation"],
+  ["tabTopology", "shortcut.tabTopology"],
+  ["topology3D", "shortcut.topology3D"],
+  ["topologyPlan", "shortcut.topologyPlan"],
+  ["topologyNetwork", "shortcut.topologyNetwork"],
+  ["topologyFit", "shortcut.topologyFit"],
+  ["topologyConnectivity", "shortcut.topologyConnectivity"],
+  ["topologyArea", "shortcut.topologyArea"],
+  ["topologyUA", "shortcut.topologyUA"],
+  ["topologyQA", "shortcut.topologyQA"],
+];
+const profileMetricOptions = {
+  occupancy: [
+    ["count", "People", "people"],
+    ["people_per_area", "People density", "people/m2"],
+    ["area_per_person", "Area per person", "m2/person"],
+  ],
+  lighting: [
+    ["total_power", "Total power", "W"],
+    ["power_per_area", "Power density", "W/m2"],
+    ["power_per_person", "Power per person", "W/person"],
+  ],
+  equipment: [
+    ["total_power", "Total power", "W"],
+    ["power_per_area", "Power density", "W/m2"],
+    ["power_per_person", "Power per person", "W/person"],
+  ],
+  infiltration: [
+    ["flow", "Flow", "m3/s"],
+    ["flow_per_area", "Flow per floor area", "m3/s-m2"],
+    ["flow_per_exterior_area", "Flow per exterior area", "m3/s-m2"],
+    ["ach", "Air changes", "ACH"],
+  ],
+  ventilation: [
+    ["flow", "Flow", "m3/s"],
+    ["flow_per_area", "Flow per floor area", "m3/s-m2"],
+    ["flow_per_person", "Flow per person", "m3/s-person"],
+    ["ach", "Air changes", "ACH"],
+  ],
+  outdoor_air: [
+    ["flow", "Flow", "m3/s"],
+    ["flow_per_area", "Flow per floor area", "m3/s-m2"],
+    ["flow_per_person", "Flow per person", "m3/s-person"],
+    ["ach", "Air changes", "ACH"],
+  ],
+};
+
+let loadedPath = "";
+let activeSettings = mergeSettings();
+let activeAppInfo = null;
+let activeSimulationEnvironment = null;
+let settingsSaveSequence = 0;
+let savedSettings = null;
+let sectionObserver = null;
+const storage = createSettingsStorage({
+  getAppAPI: appAPI,
+  getAutoClean: () => Boolean(activeSettings.storage?.autoClean),
+  getSavedAutoClean: () => Boolean(savedSettings?.storage?.autoClean),
+});
+
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function optionHTML(value, label, selected) {
+  return `<option value="${escapeHTML(value)}" ${String(selected) === String(value) ? "selected" : ""}>${escapeHTML(label)}</option>`;
+}
+
+function appAPI() {
+  return window.go && window.go.main && window.go.main.App;
+}
+
+async function waitForAppAPI(methodName) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const api = appAPI();
+    if (api && typeof api[methodName] === "function") {
+      return api;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return null;
+}
+
+async function loadSimulationEnvironment() {
+  try {
+    const api = await waitForAppAPI("GetSimulationEnvironment");
+    activeSimulationEnvironment = api
+      ? await api.GetSimulationEnvironment()
+      : await fetch("/api/simulation-environment").then((response) => (response.ok ? response.json() : null));
+  } catch {
+    activeSimulationEnvironment = null;
+  }
+  return activeSimulationEnvironment;
+}
+
+function profileMetricField(prefix, dimension, label, selected) {
+  const choices = profileMetricOptions[dimension] || [];
+  return `
+    <label class="settings-profile-field" for="${escapeHTML(prefix)}-${escapeHTML(dimension)}">
+      <span>${escapeHTML(label)}</span>
+      <select id="${escapeHTML(prefix)}-${escapeHTML(dimension)}" data-profile-metric="${escapeHTML(prefix)}" data-profile-dimension="${escapeHTML(dimension)}">
+        ${choices.map(([value, metricLabel, unit]) => optionHTML(value, `${profileMetricLabel(dimension, value, metricLabel)}${unit ? ` (${unit})` : ""}`, selected)).join("")}
+      </select>
+    </label>`;
+}
+
+function analysisTabOrderFields(selectedOrder) {
+  const order = normalizeAnalyzeTabOrder(selectedOrder);
+  return `
+    <div id="analysisTabOrderList" class="settings-tab-order" role="list" aria-label="${escapeHTML(t("appearance.analysisTabOrder"))}">
+      ${order
+        .map(
+          (tab, index) => `
+            <div class="settings-tab-order-item ${index === 0 ? "main-tab" : ""}" role="listitem" draggable="true" tabindex="0" data-analysis-tab-id="${escapeHTML(tab)}">
+              <span class="settings-tab-order-handle" aria-hidden="true">::</span>
+              <span class="settings-tab-order-rank">${escapeHTML(t("appearance.tabPosition", { count: index + 1 }))}</span>
+              <span class="settings-tab-order-label">
+                <strong>${escapeHTML(analysisTabLabel(tab))}</strong>
+                ${index === 0 ? `<em>${escapeHTML(t("appearance.mainTab"))}</em>` : ""}
+              </span>
+              <span class="settings-tab-order-actions">
+                <button type="button" data-analysis-tab-move="up" aria-label="${escapeHTML(t("appearance.moveUp"))}" title="${escapeHTML(t("appearance.moveUp"))}" ${index === 0 ? "disabled" : ""}>&uarr;</button>
+                <button type="button" data-analysis-tab-move="down" aria-label="${escapeHTML(t("appearance.moveDown"))}" title="${escapeHTML(t("appearance.moveDown"))}" ${index === order.length - 1 ? "disabled" : ""}>&darr;</button>
+              </span>
+            </div>`,
+        )
+          .join("")}
+    </div>`;
+}
+
+function simulationInstallationFields(registered, environmentInstallations) {
+  const registeredItems = Array.isArray(registered) ? registered : [];
+  const registeredKeys = new Set(registeredItems.map((item) => String(item.executablePath || item.rootPath || "").toLowerCase()));
+  const autoItems = (environmentInstallations || []).filter(
+    (item) => item.autoDetected && !registeredKeys.has(String(item.executablePath || item.rootPath || "").toLowerCase()),
+  );
+  const registeredHTML = registeredItems
+    .map((item, index) => simulationInstallationCard(item, index, true))
+    .join("");
+  const autoHTML = autoItems.map((item, index) => simulationInstallationCard(item, index, false)).join("");
+  return (
+    registeredHTML +
+    autoHTML +
+    (!registeredHTML && !autoHTML
+      ? `<div class="empty">${escapeHTML(t("simulation.noEnergyPlus", {}, "No EnergyPlus installation"))}</div>`
+      : "")
+  );
+}
+
+function simulationInstallationCard(item, index, registered) {
+  const prefix = registered ? `simulationInstall-${index}` : `simulationDetected-${index}`;
+  const disabled = registered ? "" : "disabled";
+  return `
+    <div class="settings-path-card" ${registered ? "data-ep-registered" : "data-ep-detected"} data-ep-index="${escapeHTML(index)}" data-ep-id="${escapeHTML(item.id || "")}">
+      <div class="settings-path-card-head">
+        <strong>${escapeHTML(item.name || item.version || "EnergyPlus")}</strong>
+        <span>${escapeHTML(registered ? t("simulation.registered", {}, "Registered") : t("simulation.autoDetected", {}, "Auto detected"))}</span>
+      </div>
+      <label>
+        <span>${escapeHTML(t("common.name"))}</span>
+        <input id="${escapeHTML(prefix)}-name" data-ep-field="name" type="text" value="${escapeHTML(item.name || "")}" ${disabled} />
+      </label>
+      <label>
+        <span>${escapeHTML(t("common.version", {}, "Version"))}</span>
+        <input id="${escapeHTML(prefix)}-version" data-ep-field="version" type="text" value="${escapeHTML(item.version || "")}" ${disabled} />
+      </label>
+      <label>
+        <span>${escapeHTML(t("simulation.executablePath", {}, "Executable path"))}</span>
+        <input id="${escapeHTML(prefix)}-exe" data-ep-field="executablePath" type="text" value="${escapeHTML(item.executablePath || "")}" ${disabled} />
+      </label>
+      <label>
+        <span>${escapeHTML(t("simulation.rootPath", {}, "Root path"))}</span>
+        <input id="${escapeHTML(prefix)}-root" data-ep-field="rootPath" type="text" value="${escapeHTML(item.rootPath || "")}" ${disabled} />
+      </label>
+      <label>
+        <span>${escapeHTML(t("simulation.weatherDataPath", {}, "WeatherData path"))}</span>
+        <input id="${escapeHTML(prefix)}-weather" data-ep-field="weatherDataPath" type="text" value="${escapeHTML(item.weatherDataPath || "")}" ${disabled} />
+      </label>
+      ${
+        registered
+          ? `<button type="button" data-remove-ep-index="${escapeHTML(index)}">${escapeHTML(t("action.remove", {}, "Remove"))}</button>`
+          : ""
+      }
+    </div>`;
+}
+
+function simulationWeatherPathFields(paths) {
+  const values = Array.isArray(paths) ? paths : [];
+  if (!values.length) {
+    return `<div class="empty">${escapeHTML(t("simulation.noExtraWeatherFolders", {}, "No extra weather folders registered."))}</div>`;
+  }
+  return values
+    .map(
+      (path, index) => `
+        <div class="settings-path-row">
+          <input data-weather-path-index="${escapeHTML(index)}" type="text" value="${escapeHTML(path)}" />
+          <button type="button" data-remove-weather-path="${escapeHTML(index)}">${escapeHTML(t("action.remove", {}, "Remove"))}</button>
+        </div>`,
+    )
+    .join("");
+}
+
+function weatherFolderSummary(environment) {
+  const folders = environment?.weatherFolders || [];
+  const weatherCount = folders.reduce((sum, folder) => sum + (folder.files?.length || 0), 0);
+  if (!weatherCount) {
+    return t("simulation.noWeatherDetected", {}, "No EPW files detected from registered folders yet.");
+  }
+  return t(
+    "simulation.weatherDetected",
+    { folders: folders.length, files: weatherCount },
+    `${folders.length} folders, ${weatherCount} weather files detected`,
+  );
+}
+
+function renderSettings(result) {
+  const view = captureFormView();
+  activeSettings = mergeSettings(result.settings);
+  loadedPath = result.path || loadedPath;
+  const geometry = activeSettings.appearance.geometry;
+  const profile = activeSettings.profile;
+  const simulation = activeSettings.simulation;
+  container.innerHTML = `
+    <form id="settingsForm" class="settings-form">
+      ${result.warning ? `<div class="settings-message warning">${escapeHTML(result.warning)}</div>` : ""}
+      <section id="appearance" class="guide-section">
+        <div class="settings-section-head">
+          <div>
+            <h2>${escapeHTML(t("settings.appearance"))}</h2>
+            <p>${escapeHTML(t("appearance.description"))}</p>
+          </div>
+        </div>
+        <label class="settings-field" for="themeSelect">
+          <span>${escapeHTML(t("appearance.theme"))}</span>
+          <select id="themeSelect" name="theme">
+            ${optionHTML("system", t("theme.system"), activeSettings.appearance.theme)}
+            ${optionHTML("light", t("theme.light"), activeSettings.appearance.theme)}
+            ${optionHTML("dark", t("theme.dark"), activeSettings.appearance.theme)}
+          </select>
+        </label>
+        <label class="settings-field" for="languageSelect">
+          <span>${escapeHTML(t("appearance.language"))}</span>
+          <select id="languageSelect" name="language">
+            ${supportedLanguages.map(([code, label]) => optionHTML(code, label, activeSettings.appearance.language)).join("")}
+          </select>
+        </label>
+      <label class="settings-field" for="defaultInputView">
+        <span>${escapeHTML(t("settings.defaultInputView", {}, "Default input view"))}</span>
+        <select id="defaultInputView">
+          ${optionHTML("text", "Text", activeSettings.appearance.defaultInputView)}
+          ${SHOW_SEMANTIC_STRUCTURE ? optionHTML("semantic", t("input.semantic"), activeSettings.appearance.defaultInputView) : ""}
+          ${optionHTML("json", "JSON", activeSettings.appearance.defaultInputView)}
+          ${optionHTML("table", "Table", activeSettings.appearance.defaultInputView)}
+        </select>
+      </label>
+      <p class="settings-storage-hint">${escapeHTML(t("settings.defaultInputViewHelp", {}, "Used when starting a new workspace. Restored work keeps its last input view."))}</p>
+        <label class="settings-field" for="graphFontSize">
+          <span>${escapeHTML(t("appearance.graphFontSize", {}, "Graph label font size"))}</span>
+          <span class="settings-inline-control">
+            <input id="graphFontSize" type="number" min="9" max="18" step="1" value="${escapeHTML(activeSettings.appearance.graphFontSize)}" />
+            <em>px</em>
+          </span>
+        </label>
+        <div class="settings-subsection">
+          <h3>${escapeHTML(t("appearance.analysisTabOrder"))}</h3>
+          <p>${escapeHTML(t("appearance.analysisTabOrderHelp"))}</p>
+          ${analysisTabOrderFields(activeSettings.appearance.analysisTabOrder)}
+        </div>
+      </section>
+
+      <section id="geometry-colors" class="guide-section">
+        <div class="settings-section-head">
+          <div>
+            <h2>${escapeHTML(t("settings.geometryColors"))}</h2>
+            <p>${escapeHTML(t("settings.geometryDescription"))}</p>
+          </div>
+        </div>
+        <div class="settings-color-grid">
+          ${colorControls
+            .map(([key, label]) => `
+              <label class="settings-color-field" for="geometryColor-${key}">
+                <span>${escapeHTML(t(label))}</span>
+                <input id="geometryColor-${key}" data-geometry-color="${escapeHTML(key)}" type="color" value="${escapeHTML(geometry[key])}" />
+              </label>`)
+            .join("")}
+        </div>
+      </section>
+
+      <section id="simulation-settings" class="guide-section">
+        <div class="settings-section-head">
+          <div>
+            <h2>${escapeHTML(t("settings.simulation"))}</h2>
+            <p>${escapeHTML(t("simulation.settingsDescription", {}, "Register external EnergyPlus engines, weather folders, and simulation defaults."))}</p>
+          </div>
+        </div>
+        <div class="settings-subsection">
+          <div class="settings-subsection-head">
+            <h3>${escapeHTML(t("simulation.energyPlusInstallations", {}, "EnergyPlus installations"))}</h3>
+            <button id="simulationAddEnergyPlus" type="button">${escapeHTML(t("simulation.addEnergyPlus", {}, "Add executable"))}</button>
+          </div>
+          <div class="settings-path-list">
+            ${simulationInstallationFields(simulation.energyPlusInstallations, activeSimulationEnvironment?.installations || [])}
+          </div>
+        </div>
+        <div class="settings-subsection">
+          <div class="settings-subsection-head">
+            <h3>${escapeHTML(t("simulation.weatherFolders", {}, "Weather folders"))}</h3>
+            <button id="simulationAddWeatherPath" type="button">${escapeHTML(t("simulation.addWeatherFolder", {}, "Add folder"))}</button>
+          </div>
+          <div class="settings-path-list">
+            ${simulationWeatherPathFields(simulation.extraWeatherDataPaths)}
+          </div>
+          <div class="settings-detected-note">
+            ${escapeHTML(weatherFolderSummary(activeSimulationEnvironment))}
+          </div>
+        </div>
+        <div class="settings-subsection">
+          <h3>${escapeHTML(t("simulation.runDefaults", {}, "Run defaults"))}</h3>
+          <label class="settings-field" for="simulationRunDirectory">
+            <span>${escapeHTML(t("simulation.runDirectory", {}, "Simulation run directory"))}</span>
+            <span class="settings-path-row">
+              <input id="simulationRunDirectory" type="text" value="${escapeHTML(simulation.runDirectory)}" />
+              <button id="simulationBrowseRunDirectory" type="button">${escapeHTML(t("settings.browseRunDirectory", {}, "Browse"))}</button>
+            </span>
+          </label>
+          <label class="settings-field" for="simulationWorkerFraction">
+            <span>${escapeHTML(t("simulation.workerFraction", {}, "Default parallel workers"))}</span>
+            <span class="settings-inline-control">
+              <input id="simulationWorkerFractionRange" type="range" min="0.1" max="1" step="0.05" value="${escapeHTML(simulation.workerFraction)}" />
+              <input id="simulationWorkerFraction" type="number" min="0.1" max="1" step="0.05" value="${escapeHTML(simulation.workerFraction)}" />
+              <em>${escapeHTML(t("simulation.workerFractionUnit", {}, "CPU fraction"))}</em>
+            </span>
+          </label>
+          <label class="settings-field" for="simulationMaxWorkers">
+            <span>${escapeHTML(t("simulation.maxWorkers", {}, "Max workers"))}</span>
+            <input id="simulationMaxWorkers" type="number" min="0" max="512" step="1" value="${escapeHTML(simulation.maxWorkers)}" />
+          </label>
+          <label class="settings-check">
+            <input id="simulationAutoRunOnOpenDefault" type="checkbox" ${simulation.autoRunOnOpen ? "checked" : ""} />
+            <span>${escapeHTML(t("simulation.autoRunOnOpen"))}</span>
+          </label>
+        </div>
+      </section>
+
+      <section id="keyboard-shortcuts" class="guide-section">
+        <div class="settings-section-head">
+          <div>
+            <h2>${escapeHTML(t("settings.keyboardShortcuts"))}</h2>
+            <p>${escapeHTML(t("shortcut.description"))}</p>
+          </div>
+        </div>
+        <div class="settings-shortcut-grid">
+          ${shortcutControls
+            .map(
+              ([key, label]) => `
+                <label class="settings-shortcut-field" for="shortcut-${escapeHTML(key)}">
+                  <span>${escapeHTML(t(label))}</span>
+                  <input id="shortcut-${escapeHTML(key)}" data-shortcut-id="${escapeHTML(key)}" type="text" value="${escapeHTML(activeSettings.interaction.shortcuts[key] || "")}" />
+                </label>`,
+            )
+            .join("")}
+        </div>
+      </section>
+
+      <section id="profile-analysis" class="guide-section">
+        <div class="settings-section-head">
+          <div>
+            <h2>${escapeHTML(t("settings.profileAnalysis"))}</h2>
+            <p>${escapeHTML(t("profile.defaultDescription"))}</p>
+          </div>
+        </div>
+        <div class="settings-subsection">
+          <h3>${escapeHTML(t("profile.displayMetrics"))}</h3>
+          <div class="settings-profile-grid">
+            ${profileDimensions.map((dimension) => profileMetricField("profileDisplayMetric", dimension, profileDimensionLabel(dimension), profile.displayMetrics[dimension])).join("")}
+          </div>
+        </div>
+        <div class="settings-subsection">
+          <h3>${escapeHTML(t("profile.groupingMetrics"))}</h3>
+          <div class="settings-profile-grid">
+            ${profileDimensions.map((dimension) => profileMetricField("profileGroupingMetric", dimension, profileDimensionLabel(dimension), profile.groupingMetrics[dimension])).join("")}
+          </div>
+        </div>
+        <label class="settings-field" for="profileNumericTolerance">
+          <span>${escapeHTML(t("profile.numericTolerance"))}</span>
+          <input id="profileNumericTolerance" type="number" min="0.000001" step="0.001" value="${escapeHTML(profile.numericTolerance)}" />
+        </label>
+        <label class="settings-field" for="profileScheduleCompare">
+          <span>${escapeHTML(t("profile.scheduleCompare"))}</span>
+          <select id="profileScheduleCompare">
+            ${optionHTML("none", t("profile.scheduleIgnore"), profile.scheduleCompareMode)}
+            ${optionHTML("name", t("profile.scheduleName"), profile.scheduleCompareMode)}
+            ${optionHTML("resolved", t("profile.scheduleResolved"), profile.scheduleCompareMode)}
+          </select>
+        </label>
+        <label class="settings-field" for="profileScaleMode">
+          <span>${escapeHTML(t("common.scale"))}</span>
+          <select id="profileScaleMode">
+            ${optionHTML("auto", t("common.auto"), profile.scaleMode)}
+            ${optionHTML("shared", t("common.shared", {}, "Shared"), profile.scaleMode)}
+            ${optionHTML("design_peak", t("graph.designPeak"), profile.scaleMode)}
+            ${optionHTML("multiplier_0_1", t("graph.multiplier01"), profile.scaleMode)}
+            ${optionHTML("percentile", t("common.percentile", {}, "Percentile"), profile.scaleMode)}
+          </select>
+        </label>
+        <label class="settings-field" for="profileTimeView">
+          <span>${escapeHTML(t("settings.profileTimeView", {}, "Default Profile time view"))}</span>
+          <select id="profileTimeView">
+            ${optionHTML("day", t("graph.representativeDay"), profile.timeView)}
+            ${optionHTML("week", t("graph.representativeWeek"), profile.timeView)}
+            ${optionHTML("month", t("graph.monthlyAverage"), profile.timeView)}
+            ${optionHTML("year", t("graph.annualHeatmap"), profile.timeView)}
+            ${optionHTML("duration", t("graph.loadDuration"), profile.timeView)}
+          </select>
+        </label>
+        <div class="settings-subsection">
+          <h3>${escapeHTML(t("profile.applyDefaults"))}</h3>
+          <label class="settings-field" for="profileDefaultApplyMode">
+            <span>${escapeHTML(t("common.applyMode"))}</span>
+            <select id="profileDefaultApplyMode">
+              ${optionHTML("clone", t("profile.applyClone"), profile.applyBehavior.defaultMode)}
+              ${optionHTML("shared", t("profile.applyShared"), profile.applyBehavior.defaultMode)}
+            </select>
+          </label>
+          <label class="settings-field" for="profileReplaceExistingPolicy">
+            <span>${escapeHTML(t("common.existingTarget"))}</span>
+            <select id="profileReplaceExistingPolicy">
+              ${optionHTML("replace", t("profile.existingReplace"), profile.applyBehavior.replaceExistingPolicy)}
+              ${optionHTML("keep", t("profile.existingKeep"), profile.applyBehavior.replaceExistingPolicy)}
+              ${optionHTML("duplicate", t("profile.existingDuplicate"), profile.applyBehavior.replaceExistingPolicy)}
+            </select>
+          </label>
+          <label class="settings-field" for="profileNameSuffix">
+            <span>${escapeHTML(t("profile.nameSuffix"))}</span>
+            <input id="profileNameSuffix" type="text" value="${escapeHTML(profile.applyBehavior.nameSuffix)}" />
+          </label>
+          <label class="settings-check">
+            <input id="profileAllowZoneListEdit" type="checkbox" ${profile.applyBehavior.allowZoneListEdit ? "checked" : ""} />
+            <span>${escapeHTML(t("profile.allowZoneListEdit"))}</span>
+          </label>
+          <label class="settings-check">
+            <input id="profileCreateMissingZoneList" type="checkbox" ${profile.applyBehavior.createMissingZoneList ? "checked" : ""} />
+            <span>${escapeHTML(t("profile.createMissingZoneList"))}</span>
+          </label>
+        </div>
+      </section>
+
+      <section id="storage" class="guide-section">
+        <div class="settings-section-head">
+          <div>
+            <h2>${escapeHTML(t("settings.storage"))}</h2>
+            <p>${escapeHTML(t("settings.storageDescription", {}, "Review the files generated by this app and remove completed simulation runs when you no longer need them."))}</p>
+          </div>
+        </div>
+        <label class="settings-check" for="storageAutoClean">
+          <input id="storageAutoClean" type="checkbox" ${activeSettings.storage?.autoClean ? "checked" : ""} />
+          <span>${escapeHTML(t("settings.storageAutoClean", {}, "Always clean unused completed runs"))}</span>
+        </label>
+        <p class="settings-storage-hint">${escapeHTML(t("settings.storageAutoCleanHelp", {}, "After saving, unused completed app runs are removed automatically, including when the app closes. Active runs and current results are kept while in use. User files are always kept."))}</p>
+        <div id="settingsStorage">${storage.markup()}</div>
+        <details id="settingsAppDetails" class="settings-app-details">
+          <summary>${escapeHTML(t("settings.appDetails", {}, "Application and settings details"))}</summary>
+        <dl class="settings-list">
+          <div>
+            <dt>${escapeHTML(t("settings.storagePath"))}</dt>
+            <dd>${escapeHTML(loadedPath || t("settings.storageCache"))}</dd>
+          </div>
+          <div>
+            <dt>${escapeHTML(t("settings.storageSchema"))}</dt>
+            <dd>${escapeHTML(activeSettings.version)}</dd>
+          </div>
+          <div>
+            <dt>${escapeHTML(t("settings.storageAppVersion"))}</dt>
+            <dd>${escapeHTML(formatAppVersion(activeAppInfo))}</dd>
+          </div>
+        </dl>
+        </details>
+      </section>
+
+      <div class="settings-actions">
+        <span id="settingsSaveStatus" class="settings-save-status" role="status" aria-live="polite" aria-atomic="true"></span>
+        <button id="settingsReset" type="button">${escapeHTML(t("action.resetDefaults"))}</button>
+        <button id="settingsSave" class="primary" type="submit">${escapeHTML(t("action.saveSettings"))}</button>
+      </div>
+    </form>`;
+  bindSettingsForm();
+  storage.bind();
+  translatePage(container);
+  updateDirtyState();
+  if (view.saving && view.statusKey) {
+    const status = document.querySelector("#settingsSaveStatus");
+    setLocalizedText(status, view.statusKey, view.statusParams);
+    status.classList.add("status-loading");
+    updateDirtyState(false);
+  }
+  observeSettingsSections();
+  restoreFormView(view);
+}
+
+function bindSettingsForm() {
+  const form = document.querySelector("#settingsForm");
+  const workerFractionRange = document.querySelector("#simulationWorkerFractionRange");
+  const workerFractionInput = document.querySelector("#simulationWorkerFraction");
+  const updatePreview = () => {
+    activeSettings = readFormSettings();
+    applyAppSettings(activeSettings);
+    storage.render();
+    const liveStatus = document.querySelector("#settingsSaveStatus");
+    updateDirtyState(!liveStatus?.classList.contains("status-loading"));
+  };
+  bindAnalysisTabOrderControls(updatePreview);
+  bindShortcutCapture();
+  validateShortcutConflicts();
+  form.addEventListener("input", (event) => {
+    if (event.target.closest("#settingsStorage")) return;
+    if (event.target === workerFractionRange) {
+      workerFractionInput.value = workerFractionRange.value;
+    }
+    if (event.target === workerFractionInput) {
+      workerFractionRange.value = workerFractionInput.value;
+    }
+    validateShortcutConflicts();
+    updatePreview(event);
+  });
+  form.addEventListener("change", (event) => {
+    if (!event.target.closest("#settingsStorage")) updatePreview();
+  });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const sequence = ++settingsSaveSequence;
+    const requestedSettings = readFormSettings();
+    const previousSimulation = savedSettings?.simulation;
+    const liveSaveStatus = () => document.querySelector("#settingsSaveStatus");
+    setLocalizedText(liveSaveStatus(), "status.savingSettings");
+    liveSaveStatus()?.classList.add("status-loading");
+    updateDirtyState(false);
+    try {
+      const result = await saveAppSettings(requestedSettings);
+      if (sequence !== settingsSaveSequence) return;
+      const normalizedSavedSettings = mergeSettings(result.savedSettings || result.settings || requestedSettings);
+      if (JSON.stringify(previousSimulation) !== JSON.stringify(normalizedSavedSettings.simulation)) {
+        await loadSimulationEnvironment();
+        if (sequence !== settingsSaveSequence) return;
+      }
+      savedSettings = normalizedSavedSettings;
+      storage.refresh();
+      if (result.stale || JSON.stringify(readFormSettings()) !== JSON.stringify(requestedSettings)) {
+        setLocalizedText(liveSaveStatus(), "status.settingsSavedEarlier");
+        return;
+      }
+      renderSettings(result);
+      setLocalizedText(liveSaveStatus(), "status.savedSettings");
+    } catch (error) {
+      if (sequence === settingsSaveSequence) {
+        setLocalizedText(liveSaveStatus(), "shell.operationFailed", { message: error?.message || String(error) });
+      }
+    } finally {
+      if (sequence === settingsSaveSequence) {
+        liveSaveStatus()?.classList.remove("status-loading");
+        updateDirtyState(false);
+      }
+    }
+  });
+  document.querySelector("#settingsReset").addEventListener("click", () => {
+    activeSettings = mergeSettings(defaultAppSettings);
+    applyAppSettings(activeSettings);
+    renderSettings({ path: loadedPath, settings: activeSettings });
+  });
+  document.querySelector("#simulationBrowseRunDirectory")?.addEventListener("click", async () => {
+    try {
+      const api = await waitForAppAPI("SelectSimulationRunDirectory");
+      const path = api
+        ? await api.SelectSimulationRunDirectory()
+        : window.prompt(t("simulation.runDirectory"), document.querySelector("#simulationRunDirectory").value);
+      if (!path) return;
+      document.querySelector("#simulationRunDirectory").value = path;
+      updatePreview();
+    } catch (error) {
+      setLocalizedText(document.querySelector("#settingsSaveStatus"), "shell.operationFailed", { message: error?.message || String(error) });
+    }
+  });
+  document.querySelector("#simulationAddEnergyPlus")?.addEventListener("click", async () => {
+    activeSettings = readFormSettings();
+    let install = {
+      id: "",
+      version: "",
+      name: "EnergyPlus",
+      executablePath: "",
+      rootPath: "",
+      weatherDataPath: "",
+      autoDetected: false,
+    };
+    try {
+      const api = await waitForAppAPI("SelectEnergyPlusExecutable");
+      if (api) {
+        const selected = await api.SelectEnergyPlusExecutable();
+        if (selected?.executablePath) {
+          install = { ...install, ...selected, autoDetected: false };
+        }
+      }
+    } catch {
+      // Keep the blank manual entry.
+    }
+    if (!install.executablePath) {
+      const manualPath = window.prompt(t("simulation.executablePath", {}, "Executable path"), "");
+      if (!manualPath) {
+        return;
+      }
+      install.executablePath = manualPath;
+      install.name = "EnergyPlus";
+    }
+    activeSettings.simulation.energyPlusInstallations = [...activeSettings.simulation.energyPlusInstallations, install];
+    renderSettings({ path: loadedPath, settings: activeSettings });
+  });
+  document.querySelector("#simulationAddWeatherPath")?.addEventListener("click", async () => {
+    activeSettings = readFormSettings();
+    let path = "";
+    try {
+      const api = await waitForAppAPI("SelectWeatherDirectory");
+      if (api) {
+        path = await api.SelectWeatherDirectory();
+      }
+    } catch {
+      path = "";
+    }
+    if (!path) {
+      path = window.prompt(t("simulation.weatherDataPath", {}, "WeatherData path"), "") || "";
+    }
+    if (!path) {
+      return;
+    }
+    activeSettings.simulation.extraWeatherDataPaths = [...activeSettings.simulation.extraWeatherDataPaths, path || ""];
+    renderSettings({ path: loadedPath, settings: activeSettings });
+  });
+  document.querySelectorAll("[data-remove-ep-index]").forEach((button) => {
+    button.addEventListener("click", () => {
+      activeSettings = readFormSettings();
+      const index = Number(button.dataset.removeEpIndex);
+      activeSettings.simulation.energyPlusInstallations.splice(index, 1);
+      renderSettings({ path: loadedPath, settings: activeSettings });
+    });
+  });
+  document.querySelectorAll("[data-remove-weather-path]").forEach((button) => {
+    button.addEventListener("click", () => {
+      activeSettings = readFormSettings();
+      const index = Number(button.dataset.removeWeatherPath);
+      activeSettings.simulation.extraWeatherDataPaths.splice(index, 1);
+      renderSettings({ path: loadedPath, settings: activeSettings });
+    });
+  });
+}
+
+function bindShortcutCapture() {
+  document.querySelectorAll("[data-shortcut-id]").forEach((input) => {
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Tab") {
+        return;
+      }
+      const isFunctionKey = /^f\d{1,2}$/i.test(event.key || "");
+      const isModified = event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || isFunctionKey;
+      const allowsBareKey = /^topology/.test(input.dataset.shortcutId || "");
+      if (!isModified && !allowsBareKey) {
+        return;
+      }
+      event.preventDefault();
+      if (event.key === "Backspace" || event.key === "Delete") {
+        input.value = "";
+      } else {
+        const accelerator = acceleratorForEvent(event);
+        if (!accelerator) {
+          return;
+        }
+        input.value = accelerator;
+      }
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  });
+}
+
+function validateShortcutConflicts() {
+  const owners = new Map();
+  document.querySelectorAll("[data-shortcut-id]").forEach((input) => {
+    input.setCustomValidity("");
+    input.removeAttribute("aria-invalid");
+    String(input.value || "").split(",").map((item) => item.trim().toUpperCase()).filter(Boolean).forEach((accelerator) => {
+      const group = owners.get(accelerator) || [];
+      group.push(input);
+      owners.set(accelerator, group);
+    });
+  });
+  owners.forEach((inputs, accelerator) => {
+    if (inputs.length < 2) return;
+    inputs.forEach((input) => {
+      input.setCustomValidity(t("shortcut.alreadyAssigned", { accelerator }));
+      input.setAttribute("aria-invalid", "true");
+    });
+  });
+}
+
+function acceleratorForEvent(event) {
+  const key = normalizedShortcutKey(event.key);
+  if (!key) {
+    return "";
+  }
+  const parts = [];
+  if (event.ctrlKey || event.metaKey) parts.push("Ctrl");
+  if (event.altKey) parts.push("Alt");
+  if (event.shiftKey) parts.push("Shift");
+  parts.push(key);
+  return parts.join("+");
+}
+
+function normalizedShortcutKey(value) {
+  const key = String(value || "").trim();
+  if (!key || key === "Control" || key === "Alt" || key === "Shift" || key === "Meta") {
+    return "";
+  }
+  if (/^f\d{1,2}$/i.test(key)) {
+    return key.toUpperCase();
+  }
+  if (key === " ") {
+    return "Space";
+  }
+  if (key.length === 1) {
+    return key.toUpperCase();
+  }
+  return key[0].toUpperCase() + key.slice(1);
+}
+
+function readFormSettings() {
+  const geometry = {};
+  document.querySelectorAll("[data-geometry-color]").forEach((input) => {
+    geometry[input.dataset.geometryColor] = input.value;
+  });
+  const profile = {
+    ...activeSettings.profile,
+    displayMetrics: readProfileMetricMap("profileDisplayMetric"),
+    groupingMetrics: readProfileMetricMap("profileGroupingMetric"),
+    timeView: document.querySelector("#profileTimeView").value,
+    numericTolerance: document.querySelector("#profileNumericTolerance").value,
+    scheduleCompareMode: document.querySelector("#profileScheduleCompare").value,
+    scaleMode: document.querySelector("#profileScaleMode").value,
+    applyBehavior: {
+      ...activeSettings.profile.applyBehavior,
+      defaultMode: document.querySelector("#profileDefaultApplyMode").value,
+      replaceExistingPolicy: document.querySelector("#profileReplaceExistingPolicy").value,
+      nameSuffix: document.querySelector("#profileNameSuffix").value,
+      allowZoneListEdit: document.querySelector("#profileAllowZoneListEdit").checked,
+      createMissingZoneList: document.querySelector("#profileCreateMissingZoneList").checked,
+    },
+  };
+  return mergeSettings({
+    version: activeSettings.version,
+    profile,
+    simulation: readSimulationSettings(),
+    storage: { autoClean: document.querySelector("#storageAutoClean").checked },
+    appearance: {
+      theme: document.querySelector("#themeSelect").value,
+      language: document.querySelector("#languageSelect").value,
+      defaultInputView: document.querySelector("#defaultInputView").value,
+      graphFontSize: document.querySelector("#graphFontSize").value,
+      analysisTabOrder: readAnalysisTabOrder(),
+      geometry,
+    },
+    interaction: {
+      shortcuts: readShortcutSettings(),
+    },
+  });
+}
+
+function readSimulationSettings() {
+  return {
+    energyPlusInstallations: readEnergyPlusInstallations(),
+    extraWeatherDataPaths: readWeatherPaths(),
+    runDirectory: document.querySelector("#simulationRunDirectory")?.value || "",
+    workerFraction: document.querySelector("#simulationWorkerFraction")?.value || 0.5,
+    maxWorkers: document.querySelector("#simulationMaxWorkers")?.value || 0,
+    autoRunOnOpen: document.querySelector("#simulationAutoRunOnOpenDefault")?.checked ?? false,
+  };
+}
+
+function readEnergyPlusInstallations() {
+  return [...document.querySelectorAll("[data-ep-registered]")].map((card) => {
+    const install = { id: card.dataset.epId || "", autoDetected: false };
+    card.querySelectorAll("[data-ep-field]").forEach((input) => {
+      install[input.dataset.epField] = input.value;
+    });
+    return install;
+  });
+}
+
+function readWeatherPaths() {
+  return [...document.querySelectorAll("[data-weather-path-index]")]
+    .map((input) => input.value)
+    .filter((value) => String(value || "").trim());
+}
+
+function readShortcutSettings() {
+  const shortcuts = {};
+  document.querySelectorAll("[data-shortcut-id]").forEach((input) => {
+    shortcuts[input.dataset.shortcutId] = input.value;
+  });
+  return shortcuts;
+}
+
+function readAnalysisTabOrder() {
+  return normalizeAnalyzeTabOrder([...document.querySelectorAll("[data-analysis-tab-id]")].map((item) => item.dataset.analysisTabId));
+}
+
+function bindAnalysisTabOrderControls(updatePreview) {
+  const list = document.querySelector("#analysisTabOrderList");
+  if (!list) {
+    return;
+  }
+  let draggedTab = "";
+  let insertionIndex = -1;
+  const getItems = () => [...list.querySelectorAll("[data-analysis-tab-id]")];
+  const clearInsertionMarkers = () => {
+    list.classList.remove("drag-active");
+    getItems().forEach((item) => item.classList.remove("insertion-before", "insertion-after"));
+    insertionIndex = -1;
+  };
+  const markInsertionIndex = (index) => {
+    const items = getItems();
+    if (!items.length) {
+      return;
+    }
+    insertionIndex = Math.max(0, Math.min(items.length, index));
+    list.classList.add("drag-active");
+    items.forEach((item) => item.classList.remove("insertion-before", "insertion-after"));
+    if (insertionIndex >= items.length) {
+      items[items.length - 1].classList.add("insertion-after");
+      return;
+    }
+    items[insertionIndex].classList.add("insertion-before");
+  };
+  const insertionIndexForPointer = (clientY) => {
+    const items = getItems();
+    const index = items.findIndex((item) => {
+      const rect = item.getBoundingClientRect();
+      return clientY < rect.top + rect.height / 2;
+    });
+    return index === -1 ? items.length : index;
+  };
+  list.addEventListener("dragover", (event) => {
+    if (!draggedTab && !event.dataTransfer?.types?.includes("text/plain")) {
+      return;
+    }
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "move";
+    }
+    markInsertionIndex(insertionIndexForPointer(event.clientY));
+  });
+  list.addEventListener("dragleave", (event) => {
+    if (!list.contains(event.relatedTarget)) {
+      clearInsertionMarkers();
+    }
+  });
+  list.addEventListener("drop", (event) => {
+    event.preventDefault();
+    const sourceTab = event.dataTransfer?.getData("text/plain") || draggedTab;
+    const targetIndex = insertionIndex >= 0 ? insertionIndex : insertionIndexForPointer(event.clientY);
+    clearInsertionMarkers();
+    moveAnalysisTabToInsertionIndex(sourceTab, targetIndex, updatePreview);
+  });
+  list.querySelectorAll("[data-analysis-tab-id]").forEach((item) => {
+    item.addEventListener("dragstart", (event) => {
+      draggedTab = item.dataset.analysisTabId || "";
+      item.classList.add("dragging");
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", draggedTab);
+      }
+    });
+    item.addEventListener("dragend", () => {
+      draggedTab = "";
+      item.classList.remove("dragging");
+      clearInsertionMarkers();
+    });
+  });
+  list.querySelectorAll("[data-analysis-tab-move]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = button.closest("[data-analysis-tab-id]");
+      moveAnalysisTabByStep(item?.dataset.analysisTabId || "", button.dataset.analysisTabMove === "up" ? -1 : 1, updatePreview);
+    });
+  });
+}
+
+function moveAnalysisTabByStep(tab, step, updatePreview) {
+  const order = readAnalysisTabOrder();
+  const from = order.indexOf(tab);
+  if (from < 0) {
+    return;
+  }
+  moveAnalysisTabToIndex(tab, from + step, updatePreview);
+}
+
+function moveAnalysisTabToInsertionIndex(tab, insertionIndex, updatePreview) {
+  const order = readAnalysisTabOrder();
+  const from = order.indexOf(tab);
+  if (from < 0) {
+    return;
+  }
+  let to = Math.max(0, Math.min(order.length, insertionIndex));
+  if (from < to) {
+    to -= 1;
+  }
+  moveAnalysisTabToIndex(tab, to, updatePreview);
+}
+
+function moveAnalysisTabToIndex(tab, index, updatePreview) {
+  const order = readAnalysisTabOrder();
+  const from = order.indexOf(tab);
+  if (from < 0) {
+    return;
+  }
+  const to = Math.max(0, Math.min(order.length - 1, index));
+  if (from === to) {
+    return;
+  }
+  order.splice(from, 1);
+  order.splice(to, 0, tab);
+  renderAnalysisTabOrder(order, updatePreview);
+  updatePreview?.();
+}
+
+function renderAnalysisTabOrder(order, updatePreview) {
+  const list = document.querySelector("#analysisTabOrderList");
+  if (!list) {
+    return;
+  }
+  list.outerHTML = analysisTabOrderFields(order);
+  bindAnalysisTabOrderControls(updatePreview);
+}
+
+function readProfileMetricMap(prefix) {
+  const values = {};
+  document.querySelectorAll(`[data-profile-metric="${prefix}"]`).forEach((select) => {
+    values[select.dataset.profileDimension] = select.value;
+  });
+  return values;
+}
+
+function refreshSettingsForm(settings) {
+  if (!document.querySelector("#settingsForm")) return;
+  const focusedID = document.activeElement?.id;
+  const previousStatus = document.querySelector("#settingsSaveStatus");
+  const statusKey = previousStatus?.dataset.i18n;
+  const statusParams = previousStatus?.dataset.i18nParams || "{}";
+  const saving = previousStatus?.classList.contains("status-loading");
+  renderSettings({ path: loadedPath, settings });
+  if (statusKey) setLocalizedText(document.querySelector("#settingsSaveStatus"), statusKey, JSON.parse(statusParams));
+  if (saving) document.querySelector("#settingsSaveStatus")?.classList.add("status-loading");
+  updateDirtyState(false);
+  if (focusedID) document.getElementById(focusedID)?.focus({ preventScroll: true });
+}
+
+function updateDirtyState(updateStatus = true) {
+  const form = document.querySelector("#settingsForm");
+  if (!form) return;
+  const dirty = !savedSettings || JSON.stringify(readFormSettings()) !== JSON.stringify(savedSettings);
+  form.dataset.dirty = String(dirty);
+  const status = document.querySelector("#settingsSaveStatus");
+  document.querySelector("#settingsSave").disabled = !dirty || status.classList.contains("status-loading");
+  if (updateStatus) setLocalizedText(status, !savedSettings ? "status.settingsSaveUnverified" : dirty ? "status.unsavedPreview" : "status.savedSettings");
+}
+
+function captureFormView() {
+  const element = document.activeElement;
+  const inForm = container.contains(element);
+  const status = document.querySelector("#settingsSaveStatus");
+  return {
+    id: inForm ? element.id : "",
+    selectionStart: inForm ? element.selectionStart : null,
+    selectionEnd: inForm ? element.selectionEnd : null,
+    top: window.scrollY,
+    left: window.scrollX,
+    details: [...container.querySelectorAll("details[id]")].filter((item) => item.open).map((item) => item.id),
+    saving: status?.classList.contains("status-loading"),
+    statusKey: status?.dataset.i18n,
+    statusParams: JSON.parse(status?.dataset.i18nParams || "{}"),
+  };
+}
+
+function restoreFormView(view) {
+  const element = view.id ? document.getElementById(view.id) : null;
+  element?.focus({ preventScroll: true });
+  if (element && typeof element.setSelectionRange === "function" && view.selectionStart != null) {
+    try { element.setSelectionRange(view.selectionStart, view.selectionEnd); } catch { /* Color/number controls have no text cursor. */ }
+  }
+  window.scrollTo(view.left, view.top);
+  view.details.forEach((id) => { const item = document.getElementById(id); if (item) item.open = true; });
+}
+
+function observeSettingsSections() {
+  sectionObserver?.disconnect();
+  if (!window.IntersectionObserver) return;
+  const links = [...document.querySelectorAll("#settingsNavigation a")];
+  const setActive = (id) => links.forEach((link) => {
+    const active = link.hash === `#${id}`;
+    link.classList.toggle("active", active);
+    if (active) link.setAttribute("aria-current", "location");
+    else link.removeAttribute("aria-current");
+  });
+  const sections = [...container.querySelectorAll(".guide-section[id]")];
+  const initial = sections.find((section) => section.id === location.hash.slice(1)) || sections[0];
+  if (initial) setActive(initial.id);
+  sectionObserver = new IntersectionObserver((entries) => {
+    const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+    if (visible[0]) setActive(visible[0].target.id);
+  }, { rootMargin: "-12% 0px -65% 0px", threshold: 0 });
+  sections.forEach((section) => sectionObserver.observe(section));
+}
+
+window.addEventListener("idfAnalyzer:languageChanged", () => {
+  if (!document.querySelector("#settingsForm")) return;
+  const settings = readFormSettings();
+  settings.appearance.language = getLanguage();
+  refreshSettingsForm(settings);
+});
+
+window.addEventListener("idfAnalyzer:settingsChanged", (event) => {
+  if (event.detail?.external) {
+    savedSettings = mergeSettings(event.detail.settings);
+    refreshSettingsForm(event.detail.settings);
+    updateDirtyState();
+  }
+});
+
+Promise.all([loadAndApplyAppSettings(), loadAppInfo(), loadSimulationEnvironment()]).then(([settingsResult, appInfo]) => {
+  activeAppInfo = appInfo;
+  savedSettings = settingsResult.warning ? null : mergeSettings(settingsResult.settings);
+  renderAppInfo(appInfo);
+  renderSettings(settingsResult);
+  storage.refresh();
+});

@@ -11,15 +11,32 @@ import (
 
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/epinput"
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/idf"
+	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/simulation"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
-	ctx                           context.Context
-	analysisCache                 *AnalysisCache
-	analysisCacheOnce             sync.Once
-	simulationWorkspaceCache      simulationWorkspaceCache
-	simulationResultHTTPAvailable atomic.Bool
+	ctx                            context.Context
+	analysisCache                  *AnalysisCache
+	analysisCacheOnce              sync.Once
+	simulationWorkspaceCache       simulationWorkspaceCache
+	storageMu                      sync.RWMutex
+	storageReferencesMu            sync.Mutex
+	storageBatchDirectories        []string
+	storageBatchInputDirectories   []string
+	storageLoadedDirectory         string
+	storageLoadedDirectories       []string
+	storageSingleDirectory         string
+	storageLoadedInputDirectory    string
+	storageSingleInputDirectory    string
+	storageSingleSourceDirectory   string
+	storageSingleSourceDirectories []string
+	storageInputDirectory          string
+	storageInputDirectories        []string
+	storageInputInitialized        bool
+	storageLastCleanup             *StorageCleanupSummary
+	storageInstanceError           error
+	simulationResultHTTPAvailable  atomic.Bool
 }
 
 type TextEditResult struct {
@@ -121,6 +138,7 @@ func (a *App) GetAppInfo() AppInfo {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.storageInstanceError = simulation.RegisterStorageInstance()
 }
 
 func (a *App) PatchModelValueText(text string, objectIndex int, fieldIndex int, jsonPath []string, rawValue string) (*ModelPatchResult, error) {
@@ -169,14 +187,27 @@ func (a *App) PatchModelValueText(text string, objectIndex int, fieldIndex int, 
 }
 
 func (a *App) OpenIDF(path string) (*idf.Report, error) {
+	if err := a.ensureStorageInstance(); err != nil {
+		return nil, err
+	}
+	a.storageMu.RLock()
+	defer a.storageMu.RUnlock()
 	content, err := os.ReadFile(path)
 	if err != nil {
+		return nil, err
+	}
+	if err := a.setStorageInputPath(path); err != nil {
 		return nil, err
 	}
 	return a.AnalyzeIDFText(string(content))
 }
 
 func (a *App) OpenInputFile() (*InputFileResult, error) {
+	if err := a.ensureStorageInstance(); err != nil {
+		return nil, err
+	}
+	a.storageMu.RLock()
+	defer a.storageMu.RUnlock()
 	path, err := wailsruntime.OpenFileDialog(a.ctx, wailsruntime.OpenDialogOptions{
 		Title:   "Open EnergyPlus input",
 		Filters: inputFileFilters(),
@@ -191,6 +222,9 @@ func (a *App) OpenInputFile() (*InputFileResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := a.setStorageInputPath(path); err != nil {
+		return nil, err
+	}
 	return &InputFileResult{
 		Path:     path,
 		Filename: filepath.Base(path),
@@ -199,7 +233,15 @@ func (a *App) OpenInputFile() (*InputFileResult, error) {
 }
 
 func (a *App) SaveIDF(path string, text string) error {
-	return os.WriteFile(path, []byte(text), 0o644)
+	if err := a.ensureStorageInstance(); err != nil {
+		return err
+	}
+	a.storageMu.RLock()
+	defer a.storageMu.RUnlock()
+	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+		return err
+	}
+	return a.setStorageInputPath(path)
 }
 
 func (a *App) SaveInputFile(path string, text string) (*SaveFileResult, error) {
@@ -207,13 +249,26 @@ func (a *App) SaveInputFile(path string, text string) (*SaveFileResult, error) {
 	if path == "" {
 		return a.SaveInputFileAs(text, "")
 	}
+	if err := a.ensureStorageInstance(); err != nil {
+		return nil, err
+	}
+	a.storageMu.RLock()
+	defer a.storageMu.RUnlock()
 	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+		return nil, err
+	}
+	if err := a.setStorageInputPath(path); err != nil {
 		return nil, err
 	}
 	return &SaveFileResult{Path: path, Filename: filepath.Base(path)}, nil
 }
 
 func (a *App) SaveInputFileAs(text string, suggestedFilename string) (*SaveFileResult, error) {
+	if err := a.ensureStorageInstance(); err != nil {
+		return nil, err
+	}
+	a.storageMu.RLock()
+	defer a.storageMu.RUnlock()
 	suggestedFilename = strings.TrimSpace(suggestedFilename)
 	if suggestedFilename == "" {
 		suggestedFilename = "model.idf"
@@ -230,6 +285,9 @@ func (a *App) SaveInputFileAs(text string, suggestedFilename string) (*SaveFileR
 		return &SaveFileResult{Canceled: true}, nil
 	}
 	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+		return nil, err
+	}
+	if err := a.setStorageInputPath(path); err != nil {
 		return nil, err
 	}
 	return &SaveFileResult{Path: path, Filename: filepath.Base(path)}, nil
@@ -358,6 +416,11 @@ func (a *App) SaveCleanupAs(text string, suggestedFilename string, ruleIDs []str
 	if a.ctx == nil {
 		return nil, fmt.Errorf("desktop runtime is not ready")
 	}
+	if err := a.ensureStorageInstance(); err != nil {
+		return nil, err
+	}
+	a.storageMu.RLock()
+	defer a.storageMu.RUnlock()
 	preview, err := previewCleanupText(text, ruleIDs, excludedCandidateKeys)
 	if err != nil {
 		return nil, err
@@ -379,6 +442,9 @@ func (a *App) SaveCleanupAs(text string, suggestedFilename string, ruleIDs []str
 	if err := os.WriteFile(path, []byte(preview.Text), 0o644); err != nil {
 		return nil, err
 	}
+	if err := a.setStorageInputPath(path); err != nil {
+		return nil, err
+	}
 	return &CleanupApplyResult{Path: path, Filename: filepath.Base(path), Text: preview.Text, RemovedCount: preview.RemovedCount}, nil
 }
 
@@ -387,11 +453,19 @@ func (a *App) SaveCleanupToFile(path string, text string, ruleIDs []string, excl
 	if path == "" {
 		return nil, fmt.Errorf("cleanup save requires an original file path")
 	}
+	if err := a.ensureStorageInstance(); err != nil {
+		return nil, err
+	}
+	a.storageMu.RLock()
+	defer a.storageMu.RUnlock()
 	preview, err := previewCleanupText(text, ruleIDs, excludedCandidateKeys)
 	if err != nil {
 		return nil, err
 	}
 	if err := os.WriteFile(path, []byte(preview.Text), 0o644); err != nil {
+		return nil, err
+	}
+	if err := a.setStorageInputPath(path); err != nil {
 		return nil, err
 	}
 	return &CleanupApplyResult{Path: path, Filename: filepath.Base(path), Text: preview.Text, RemovedCount: preview.RemovedCount}, nil

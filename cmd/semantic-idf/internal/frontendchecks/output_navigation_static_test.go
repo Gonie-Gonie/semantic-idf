@@ -47,6 +47,10 @@ func TestStandaloneOutputTabAndNavigationAreRemoved(t *testing.T) {
 			"tabOutput",
 			"shortcut.tabOutput",
 		},
+		"frontend/src/js/settings.js": {
+			"tabOutput",
+			"shortcut.tabOutput",
+		},
 		"../../scripts/frontend-build.ps1": {
 			`"views/output-views.js"`,
 		},

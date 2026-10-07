@@ -1,0 +1,431 @@
+.settings-page .guide-header {
+  padding-inline: max(22px, calc((100vw - 1120px) / 2));
+}
+
+.settings-page .settings-layout {
+  align-items: start;
+  margin-bottom: 100px;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 24px;
+}
+
+.settings-page .settings-nav {
+  position: sticky;
+  top: 18px;
+  padding: 8px;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.settings-page .settings-nav a {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.settings-page .settings-nav a:hover,
+.settings-page .settings-nav a.active {
+  background: var(--teal-soft);
+  color: var(--teal-dark);
+}
+
+.settings-page .settings-nav a.active {
+  font-weight: 700;
+}
+
+.settings-page .settings-content {
+  min-width: 0;
+  display: block;
+}
+
+.settings-page .guide-section {
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  scroll-margin-top: 18px;
+}
+
+.settings-page .settings-section-head {
+  margin-bottom: 16px;
+}
+
+.settings-page .settings-section-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.settings-page .settings-section-head p {
+  margin: 5px 0 0;
+  max-width: 70ch;
+  color: var(--muted);
+}
+
+.settings-page .settings-subsection {
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+.settings-page .settings-subsection-head,
+.settings-storage-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-page .settings-path-list {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-page .settings-path-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.settings-page .settings-path-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-page .settings-path-card-head span,
+.settings-page .settings-detected-note,
+.settings-storage-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.settings-page .settings-path-card label {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-page .settings-path-card input,
+.settings-page .settings-path-row input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--control);
+  color: var(--ink);
+}
+
+.settings-page .settings-path-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-page .settings-inline-control:has(#graphFontSize) {
+  grid-template-columns: minmax(90px, 1fr) auto;
+}
+
+.settings-page .settings-actions {
+  position: fixed;
+  inset: auto max(14px, calc((100vw - 1120px) / 2)) 14px auto;
+  width: min(906px, calc(100vw - 28px));
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 6px 22px rgb(0 0 0 / 10%);
+  z-index: 20;
+}
+
+.settings-page .settings-save-status {
+  min-width: 0;
+}
+
+.settings-storage-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.settings-storage-heading h3,
+.settings-browser-storage h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.settings-storage-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.settings-storage-summary > div {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-3);
+}
+
+.settings-storage-summary span,
+.settings-storage-summary small {
+  color: var(--muted);
+}
+
+.settings-storage-summary strong {
+  font-size: 22px;
+  color: var(--ink-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-page .settings-storage-hint {
+  margin: 10px 0;
+  line-height: 1.6;
+  font-size: 12px;
+}
+
+.settings-storage-clean-controls {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.settings-storage-clean-controls label {
+  display: grid;
+  gap: 7px;
+  flex: 1 1 260px;
+}
+
+.settings-storage-clean-controls select {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--control);
+  color: var(--ink);
+}
+
+.settings-storage-confirmation {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--amber);
+  border-radius: 8px;
+  background: var(--warn-bg);
+}
+
+.settings-storage-confirmation h4 {
+  margin: 0;
+}
+
+.settings-storage-confirmation p {
+  margin: 8px 0 12px;
+}
+
+.settings-storage-confirmation > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-storage-confirmation .danger {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.settings-storage-status {
+  padding-block: 12px;
+  color: var(--muted);
+}
+
+.settings-storage-status.error {
+  color: var(--red);
+}
+
+.settings-storage-last-cleanup {
+  margin-top: 6px;
+  padding: 12px;
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.settings-storage-last-cleanup h4 {
+  margin: 0 0 5px;
+}
+
+.settings-storage-last-cleanup span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.settings-storage-last-cleanup p {
+  margin: 7px 0 0;
+}
+
+.settings-storage-folders,
+.settings-storage-warnings {
+  margin: 12px 0;
+}
+
+.settings-storage-folders ul,
+.settings-storage-warnings ul {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-storage-folders li,
+.settings-storage-warnings li {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-storage-folders span,
+.settings-storage-warnings span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.settings-page #storage code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+  font-size: 12px;
+}
+
+.settings-browser-storage {
+  display: grid;
+  gap: 8px;
+  padding-top: 16px;
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.settings-app-details {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.settings-page summary {
+  cursor: pointer;
+}
+
+.settings-page input:focus-visible,
+.settings-page select:focus-visible,
+.settings-page a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+@media (max-width: 900px) {
+  .settings-page .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .settings-page .settings-nav {
+    position: static;
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .settings-page .settings-nav a {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .settings-page .settings-actions {
+    width: calc(100vw - 28px);
+    right: 14px;
+  }
+}
+
+@media (max-width: 560px) {
+  .settings-page .guide-header {
+    padding: 16px;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .settings-page .settings-layout {
+    margin-bottom: 136px;
+  }
+
+  .settings-page .guide-section {
+    padding: 16px;
+  }
+
+  .settings-page .settings-field,
+  .settings-page .settings-path-card label {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+  }
+
+  .settings-page .settings-inline-control {
+    grid-template-columns: minmax(0, 1fr) 78px;
+  }
+
+  .settings-page .settings-inline-control em {
+    grid-column: 1 / -1;
+  }
+
+  .settings-page .settings-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .settings-page .settings-save-status {
+    grid-column: 1 / -1;
+    margin: 0;
+  }
+
+  .settings-page .settings-actions button {
+    white-space: normal;
+  }
+
+  .settings-storage-heading {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .settings-storage-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-storage-summary > div {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .settings-storage-summary strong {
+    font-size: 19px;
+  }
+
+  .settings-storage-summary small {
+    grid-column: 1 / -1;
+  }
+
+  .settings-storage-confirmation > div {
+    flex-wrap: wrap;
+  }
+}

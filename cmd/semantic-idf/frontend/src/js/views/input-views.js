@@ -2267,8 +2267,18 @@ async function applyTableValue(input) {
   await applyFieldValue(input, localizedMessage("input.fieldUpdated"));
 }
 
+// A default is only an initial preference. Explicit navigation or opening another
+// document wins even when the backend settings response arrives afterwards.
+export function applyInitialInputView(viewName) {
+  if (state.initialInputViewSettled) return;
+  state.initialInputViewSettled = true;
+  const preferredView = ["text", "semantic", "json", "table"].includes(viewName) ? viewName : "text";
+  return switchInputView(preferredView, { initial: true, recordHistory: false, revealSelection: false });
+}
+
 export async function switchInputView(viewName, options = {}) {
   viewName = exposedInputView(viewName);
+  if (!options.initial) state.initialInputViewSettled = true;
   if (options.recordHistory !== false && state.activeInputView !== viewName) {
     recordViewHistory();
   }

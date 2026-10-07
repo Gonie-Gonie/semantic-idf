@@ -15,6 +15,8 @@ type simulationWorkspaceCache struct {
 	mu              sync.RWMutex
 	textHash        string
 	runID           string
+	outputDirectory string
+	inputPath       string
 	payload         []byte
 	requestSequence uint64
 }
@@ -70,6 +72,8 @@ func (a *App) rememberSimulationResultForTransport(sequence uint64, text string,
 	}
 	cache.textHash = analysisTextHash(text)
 	cache.runID = result.RunID
+	cache.outputDirectory = result.OutputDirectory
+	cache.inputPath = result.InputPath
 	cache.payload = payload
 	return payload
 }

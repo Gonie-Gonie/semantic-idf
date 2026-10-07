@@ -34,6 +34,7 @@ import { markAnalysisDirty, renderEmpty, renderReport } from "./views/analysis-v
 import { fitTopologyView, renderTopology, resizeTopology, setTopologyMode, setTopologyStory } from "./topology-loader.js";
 import { initializeHVACControls } from "./views/hvac-views.js";
 import {
+  applyInitialInputView,
   configureInputViews,
   setInputFilter,
   setTableOrientation,
@@ -94,7 +95,10 @@ if (semanticInputTab) {
   semanticInputTab.hidden = !SHOW_SEMANTIC_STRUCTURE;
 }
 
-loadAndApplyAppSettings().then((result) => applyRuntimeSettings(result.settings, { preserveCurrentView: Boolean(result.stale) }));
+loadAndApplyAppSettings().then((result) => {
+  applyRuntimeSettings(result.settings, { preserveCurrentView: Boolean(result.stale) });
+  applyInitialInputView(result.settings?.appearance?.defaultInputView);
+});
 
 function clearAuxiliaryNavigationMarker() {
   try {
@@ -756,10 +760,12 @@ renderEmpty();
 updateDocumentActions();
 const restoredDocument = restoreCurrentDocument();
 if (restoredDocument) {
+  state.initialInputViewSettled = true;
   setDocumentText(restoredDocument.text || "");
   registerLoadedDocument(getDocumentText(), {
     path: restoredDocument.path || "",
     filename: restoredDocument.filename || "",
+    initialWorkspace: true,
   });
   state.loadedText = typeof restoredDocument.loadedText === "string" ? restoredDocument.loadedText : state.loadedText;
   state.savedText = typeof restoredDocument.savedText === "string" ? restoredDocument.savedText : state.savedText;
@@ -781,7 +787,7 @@ if (restoredDocument) {
     const bundledSample = sampleText.includes("RefBldgLargeOfficeNew2004_Chicago");
     const sourceLabel = bundledSample ? defaultSample.name : localizedMessage("shell.fallbackSample");
     const sourceFilename = bundledSample ? "RefBldgLargeOfficeNew2004_Chicago.idf" : "fallback-sample.idf";
-    registerLoadedDocument(loadedText, { filename: sourceFilename });
+    registerLoadedDocument(loadedText, { filename: sourceFilename, initialWorkspace: true });
     if (bundledSample) {
       elements.runtimeStatus.title = defaultSample.source;
     }

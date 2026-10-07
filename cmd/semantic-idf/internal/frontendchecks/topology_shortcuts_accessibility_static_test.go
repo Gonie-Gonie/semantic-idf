@@ -7,7 +7,7 @@ import (
 
 func TestThermalTopologyShortcutsAreConfigurableAndContextGuarded(t *testing.T) {
 	settings := readTestFile(t, "frontend/src/js/settings-client.js")
-	settingsPage := readTestFile(t, "frontend/src/settings.html")
+	settingsPage := readSettingsSource(t)
 	shortcuts := readTestFile(t, "frontend/src/js/shortcuts.js")
 	main := readTestFile(t, "frontend/src/js/main.js")
 	for _, required := range []string{

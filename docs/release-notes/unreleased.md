@@ -14,6 +14,13 @@ The release script infers bump size from these sections:
 
 ## Added
 
+- Show simulation-run disk usage in Settings and clean verified completed runs
+  with all/7/30/90-day filters, while protecting active results, user files and
+  linked paths. Show browser/runtime storage separately without clearing it.
+- Offer opt-in Always clean for unused completed runs at startup, after result
+  replacement and at app shutdown, retaining current results while in use.
+- Add a default Input View preference and expose the existing Profile time-view
+  default in Settings.
 - Add `dev clean-repo` to remove regenerable development files while preserving
   `build/bin` and installed tools, and `--hard` to reset generated files and the
   repo-local toolchain before another `dev setup`. Include `-WhatIf` previews,
@@ -25,6 +32,8 @@ The release script infers bump size from these sections:
 
 ## Changed
 
+- Organize Settings into focused sections with responsive cards, current-section
+  navigation, a persistent save bar and accurate unsaved-change status.
 - Separate the six app translation catalogs from the language engine, with
   per-key English fallback, complete Korean interface text and retained
   industry terminology. Guide follows Settings, with Korean metric descriptions
@@ -40,6 +49,8 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
+- Preserve Profile time-view settings during form edits and replace settings
+  files atomically so concurrent readers receive complete configuration JSON.
 - Refresh dynamic labels, status messages, accessible text and open detail
   views after language changes, preserving selection and technical source data.
 - Synchronize language settings across app pages and ignore stale settings loads.

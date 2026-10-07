@@ -6,6 +6,8 @@
       "defaultAreas": ["app"],
       "defaultTier": "fast",
       "rules": [
+        {"files": ["settings_app_test.go"], "areas": ["settings", "storage"], "tier": "fast"},
+        {"files": ["storage_app_test.go"], "areas": ["settings", "storage", "simulation", "input", "batch"], "tier": "fast"},
         {
           "files": ["manual_assets_test.go", "manual_localization_test.go"],
           "areas": ["tooling", "guide", "i18n"],
@@ -288,6 +290,8 @@
           "areas": ["i18n", "settings"],
           "tier": "fast"
         },
+        {"files": ["tools_settings_*_test.go"], "areas": ["settings", "storage"], "tier": "fast"},
+        {"files": ["tools_settings_*_browser_test.go"], "areas": ["settings", "storage"], "tier": "browser"},
         {
           "files": ["navigation_selection_ux_browser_test.go", "topology_integrated_browser_test.go", "energy_path_layout_epath142_browser_test.go"],
           "areas": ["i18n"],

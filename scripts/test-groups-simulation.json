@@ -6,6 +6,7 @@
       "defaultAreas": ["simulation"],
       "defaultTier": "fast",
       "rules": [
+        {"files": ["storage*_test.go"], "areas": ["settings", "storage", "simulation-run"], "tier": "fast"},
         {"files":["energy*_test.go"],"areas":["energy-path"]},
         {"files":["simulation_test.go"],"areas":["simulation-results"],"tier":"fast"},
         {

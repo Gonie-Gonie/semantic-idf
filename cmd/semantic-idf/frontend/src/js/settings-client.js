@@ -12,9 +12,11 @@ export const settingsStorageKey = "idfAnalyzer.appSettings";
 
 export const defaultAppSettings = {
   version: 1,
+  storage: { autoClean: false },
   appearance: {
     theme: "system",
     language: "en",
+    defaultInputView: "text",
     graphFontSize: 11,
     analysisTabOrder: [...defaultAnalyzeTabOrder],
     geometry: {
@@ -224,7 +226,8 @@ window.addEventListener("storage", (event) => {
   } catch { /* Preserve the active settings if another window writes invalid JSON. */ }
 });
 
-window.addEventListener("pageshow", () => {
+window.addEventListener("pageshow", (event) => {
+  if (!event.persisted) return;
   const cached = readCachedAppSettings();
   if (JSON.stringify(cached) !== JSON.stringify(currentSettings)) applyExternalSettings(cached);
 });
@@ -242,9 +245,11 @@ export function mergeSettings(settingsInput = {}) {
   const defaultSimulation = defaultAppSettings.simulation;
   return {
     version: Number(settings.version) || defaultAppSettings.version,
+    storage: { autoClean: settings.storage?.autoClean === true },
     appearance: {
       theme: normalizeTheme(appearance.theme),
       language: normalizeLanguage(appearance.language),
+      defaultInputView: normalizeChoice(appearance.defaultInputView, ["text", "semantic", "json", "table"], defaultAppSettings.appearance.defaultInputView),
       graphFontSize: clampNumber(appearance.graphFontSize, 9, 18, defaultAppSettings.appearance.graphFontSize),
       analysisTabOrder: normalizeAnalyzeTabOrder(appearance.analysisTabOrder),
       geometry: {

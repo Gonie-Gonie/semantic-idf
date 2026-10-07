@@ -107,6 +107,7 @@ export const state = {
   activeResultTab: "metrics",
   resultTabManuallySelected: false,
   activeInputView: "text",
+  initialInputViewSettled: false,
   activeProfileView: "profile",
   activeProfileGroupId: "",
   activeProfileZoneName: "",

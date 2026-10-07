@@ -20,6 +20,7 @@ Paths below are relative to `cmd/semantic-idf/` unless specified otherwise.
 | Energy Path desktop adapters, reports and batch exports | `energy_path_app.go`, `energy_path_report_export.go`, `batch_energy_path_export.go` | [Energy Path wire contract](energy-path.md#wire-contract) |
 | CLI and Python consumers | `internal/cli/`, repository `clients/python/` | [CLI/Python contract](energy-path.md#cli-and-python) |
 | Settings persistence and migration | `settings_app.go` | Normalize through the backend settings API |
+| Generated run storage and cleanup | `storage_app.go`, `internal/simulation/storage.go` | Verify ownership and preserve active/retained results before removing files |
 | Frontend state, actions and views | `frontend/src/js/`, `frontend/src/styles/` | Feature contracts linked above |
 | Language registry, catalogs and runtime translation | `frontend/src/js/i18n.js`, `frontend/src/js/locales/`, `frontend/src/js/localized-text.js` | [frontend language policy](../cmd/semantic-idf/frontend/README.md) |
 | Frontend acceptance harnesses | `internal/frontendchecks/` | [testing workflow](testing.md) |
@@ -100,6 +101,11 @@ Detailed accounting and ownership rules belong in the
 Settings persist through the backend API in the local app data/config directory.
 Keep defaults and migration in `settings_app.go`, rather than duplicating them
 across frontend views.
+Configuration writes replace a completed sibling temporary file under a shared
+settings mutex; failed writes leave the previous configuration intact. Settings
+presentation and form state belong to `js/settings.js` and `styles/settings.css`.
+The default Input View is a startup preference; restored or explicitly selected
+views take precedence.
 
 The app retains six languages. English is the authoritative interface catalog;
 Korean covers its keys, while Japanese/Hindi/Spanish/French supply translations

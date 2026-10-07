@@ -4,6 +4,9 @@
 
 - `src/app.js`: tiny browser entrypoint.
 - `src/js`: feature modules for state, actions, views, navigation, settings, and analysis.
+- `src/js/settings.js` and `src/styles/settings.css`: Settings form, dirty state,
+  section navigation and generated-run storage controls. `settings-client.js`
+  owns defaults, normalization, persistence and cross-window synchronization.
 - `src/js/i18n.js`: locale normalization, per-key English fallback, DOM translation
   and language-change events. `src/js/locales/` holds the registry and separate
   English, Korean, Japanese, Hindi, Spanish and French catalogs. English owns

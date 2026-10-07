@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/simulation"
@@ -13,7 +14,25 @@ import (
 // LoadEnergyPath reads an existing result. It does not run EnergyPlus, alter the
 // active document, or replace the desktop's current simulation result cache.
 func (a *App) LoadEnergyPath(request simulation.EnergyPathProjectionRequest) (simulation.EnergyPathProjection, error) {
-	return simulation.LoadEnergyPathProjection(request)
+	if err := a.ensureStorageInstance(); err != nil {
+		return simulation.EnergyPathProjection{}, err
+	}
+	defer a.applyStoredStorageCleanupPolicy()
+	a.storageMu.RLock()
+	defer a.storageMu.RUnlock()
+	projection, err := simulation.LoadEnergyPathProjection(request)
+	if err == nil && projection.Provenance != nil {
+		directories, err := simulation.ResolveStorageSourceDirectories([]string{projection.Provenance.SQLPath, projection.Provenance.InputPath})
+		if err != nil {
+			return simulation.EnergyPathProjection{}, err
+		}
+		a.storageReferencesMu.Lock()
+		a.storageLoadedDirectories = directories
+		a.storageLoadedDirectory = filepath.Dir(projection.Provenance.SQLPath)
+		a.storageLoadedInputDirectory = filepath.Dir(projection.Provenance.InputPath)
+		a.storageReferencesMu.Unlock()
+	}
+	return projection, err
 }
 
 func serveEnergyPathProjection(w http.ResponseWriter, r *http.Request, app *App) {

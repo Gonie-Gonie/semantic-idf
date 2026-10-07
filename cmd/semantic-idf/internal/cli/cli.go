@@ -10,9 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/epinput"
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/idf"
+	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/simulation"
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/tabular"
 )
 
@@ -21,6 +23,87 @@ type cliInput struct {
 	Content []byte
 	Model   *epinput.Model
 	Doc     idf.Document
+}
+
+// One lazy lifetime covers all filesystem inputs and the final export. Carry it
+// through the existing Reader parameter so stdin-only commands remain free of
+// storage registration, without changing every command handler's signature.
+type cliCommandInput struct {
+	io.Reader
+	mu      sync.Mutex
+	release func()
+}
+
+var cliStorageInstances = struct {
+	sync.Mutex
+	users int
+}{}
+
+func acquireCLIStorageInstance() (func(), error) {
+	cliStorageInstances.Lock()
+	defer cliStorageInstances.Unlock()
+	if cliStorageInstances.users == 0 {
+		if err := simulation.RegisterStorageInstance(); err != nil {
+			return nil, err
+		}
+	}
+	cliStorageInstances.users++
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			cliStorageInstances.Lock()
+			defer cliStorageInstances.Unlock()
+			cliStorageInstances.users--
+			if cliStorageInstances.users == 0 {
+				// A failed unregister leaves a conservative live-PID record until
+				// process exit; the next app registration can prune it safely.
+				_ = simulation.UnregisterStorageInstance()
+			}
+		})
+	}, nil
+}
+
+func (input *cliCommandInput) protectStorageInput(path string) (string, error) {
+	input.mu.Lock()
+	defer input.mu.Unlock()
+	if input.release == nil {
+		release, err := acquireCLIStorageInstance()
+		if err != nil {
+			return "", fmt.Errorf("protect CLI input while reading: %w", err)
+		}
+		input.release = release
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(absolute)
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("CLI input must be a regular file: %s", path)
+	}
+	// A source may be addressed through a directory junction or a file symlink.
+	// Protect and read its actual target so retargeting the alias cannot switch
+	// this command to a different, unprotected model after registration.
+	resolved, err := simulation.ResolveStorageSourcePath(absolute)
+	if err != nil {
+		return "", err
+	}
+	if err := simulation.PreserveRunStorageDirectory(filepath.Dir(resolved)); err != nil {
+		return "", fmt.Errorf("preserve CLI input: %w", err)
+	}
+	return resolved, nil
+}
+
+func (input *cliCommandInput) close() {
+	input.mu.Lock()
+	defer input.mu.Unlock()
+	if input.release != nil {
+		input.release()
+		input.release = nil
+	}
 }
 
 func MaybeRun(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer, version string) (bool, int) {
@@ -57,6 +140,9 @@ func runCLI(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer, 
 		fmt.Fprintln(stdout, version)
 		return 0
 	}
+	input := &cliCommandInput{Reader: stdin}
+	defer input.close()
+	stdin = input
 
 	var err error
 	switch strings.ToLower(args[0]) {
@@ -394,7 +480,14 @@ func readCLIInput(path string, stdin io.Reader) (cliInput, error) {
 		content, err = io.ReadAll(stdin)
 		parseName = ""
 	} else {
-		content, err = os.ReadFile(path)
+		readPath := path
+		if lifetime, ok := stdin.(*cliCommandInput); ok {
+			readPath, err = lifetime.protectStorageInput(path)
+			if err != nil {
+				return cliInput{}, err
+			}
+		}
+		content, err = os.ReadFile(readPath)
 	}
 	if err != nil {
 		return cliInput{}, err

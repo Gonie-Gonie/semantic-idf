@@ -276,6 +276,7 @@ func TestEPATH181CLIProtectsSQLModelsAndRunMetadata(t *testing.T) {
 }
 
 func energyPathCLIFixture181(t *testing.T) (string, string, []string) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
 	t.Helper()
 	directory := t.TempDir()
 	inputs := []string{filepath.Join(directory, "Office model.idf"), filepath.Join(directory, "Office model.epJSON")}

@@ -59,6 +59,8 @@ $modules = @(
     "selection-controller.js",
     "semantic-navigation-cache.js",
     "settings-client.js",
+    "settings.js",
+    "settings-storage.js",
     "shortcuts.js",
     "state.js",
     "thermal-topology-targets.js",
@@ -113,6 +115,7 @@ $styles = @(
     "styles/simulation.css",
     "styles/comfort-inspection.css",
     "styles/guide-manual.css",
+    "styles/settings.css",
     "styles/workspace.css"
 )
 

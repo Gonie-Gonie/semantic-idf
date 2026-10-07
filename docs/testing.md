@@ -37,7 +37,7 @@ you explicitly need the complete regression suite.
 
 Features describe product behavior rather than historical implementation phases.
 Common areas include `input`, `analysis`, `topology`, `profile`, `hvac`,
-`simulation`, `energy-path`, `batch`, `export`, `settings`, `navigation` and
+`simulation`, `energy-path`, `batch`, `export`, `settings`, `storage`, `navigation` and
 `tooling`, `guide` and `i18n`. The `i18n` area covers catalog completeness and
 placeholders, dynamic language changes, settings synchronization and the
 English/Korean manual. Shared locale sources select all frontend features and
@@ -56,6 +56,11 @@ selects each test once. Long selections use several package commands to stay
 within the Windows command-line limit. Area names in old filenames
 or acceptance identifiers are retained; the catalog defines their current
 functional ownership.
+
+`dev test -Area storage` focuses on generated-run ownership, protected inputs,
+partial deletion, age filters, cross-process locking and Settings cleanup flows.
+It uses isolated temporary files and browser API fixtures rather than real user
+run directories. `-Area settings` adds preference persistence and presentation.
 
 Use a layer when investigating one side of a feature:
 

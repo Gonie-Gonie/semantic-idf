@@ -335,7 +335,7 @@ func TestFrontendProfileZoneSeriesAndScheduleContributionGroupingContracts(t *te
 
 func TestProfileGraphLabelFontSizeIsConfigurable(t *testing.T) {
 	settings := readTestFile(t, "frontend/src/js/settings-client.js")
-	markup := readTestFile(t, "frontend/src/settings.html")
+	markup := readSettingsSource(t)
 	styles := readTestFile(t, "frontend/src/styles/profile.css")
 	for _, required := range []string{`graphFontSize: 11`, `--graph-label-font-size`, `clampNumber(appearance.graphFontSize, 9, 18`} {
 		if !strings.Contains(settings, required) {
@@ -827,7 +827,7 @@ func TestFrontendProfileGraphControlsUseFixedTimeProfileAndDirectViewButtons(t *
 	state := readTestFile(t, "frontend/src/js/state.js")
 	views := readTestFile(t, "frontend/src/js/views/profile-views.js")
 	analysis := readTestFile(t, "frontend/src/js/views/analysis-views.js")
-	settingsPage := readTestFile(t, "frontend/src/settings.html")
+	settingsPage := readSettingsSource(t)
 	settingsClient := readTestFile(t, "frontend/src/js/settings-client.js")
 	styles := readTestFile(t, "frontend/src/styles/profile.css")
 	responsive := readTestFile(t, "frontend/src/styles/responsive.css")

@@ -17,7 +17,45 @@ func TestMain(m *testing.M) {
 	if os.Getenv("SEMANTIC_IDF_TEST_PURPOSE_ENGINE") == "1" && len(os.Args) > 2 && os.Args[1] == "-d" {
 		os.Exit(0)
 	}
-	os.Exit(m.Run())
+	// Cross-process storage tests deliberately share the parent's isolated app
+	// data root. All other tests, including older runner fixtures, must keep new
+	// ownership/session/root-index metadata away from the user's real profile.
+	if os.Getenv("SEMANTIC_IDF_STORAGE_INSTANCE_CHILD") != "" {
+		os.Exit(m.Run())
+	}
+	os.Exit(runSimulationTestsWithIsolatedAppData(m))
+}
+
+func runSimulationTestsWithIsolatedAppData(m *testing.M) int {
+	root, err := os.MkdirTemp("", "semantic-idf-simulation-tests-")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	root, err = filepath.Abs(root)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	temporaryRoot, err := filepath.Abs(os.TempDir())
+	if err != nil || storagePathKey(filepath.Dir(root)) != storagePathKey(temporaryRoot) {
+		fmt.Fprintln(os.Stderr, "test app-data path is outside the temporary root", err)
+		return 1
+	}
+	exitCode := 1
+	defer func() {
+		// root was created atomically above and its absolute parent was verified.
+		if err := os.RemoveAll(root); err != nil {
+			fmt.Fprintln(os.Stderr, "remove synthetic test app data:", err)
+		}
+	}()
+	for key, directory := range map[string]string{"LOCALAPPDATA": "local", "APPDATA": "roaming"} {
+		if err := os.Setenv(key, filepath.Join(root, directory)); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return exitCode
+		}
+	}
+	return m.Run()
 }
 
 type purposeSeriesFixtureColumn struct {

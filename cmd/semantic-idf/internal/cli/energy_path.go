@@ -25,6 +25,11 @@ func cliEnergyPath(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	release, err := acquireCLIStorageInstance()
+	if err != nil {
+		return fmt.Errorf("protect Energy Path result files during reading: %w", err)
+	}
+	defer release()
 	projection, err := simulation.LoadEnergyPathProjection(options.request)
 	if err != nil {
 		return err

@@ -27,6 +27,8 @@ let activeAnalysisText = "";
 const maxFrontendStageConcurrency = 2;
 let idlePreRenderTimer = 0;
 let activeStageQueue = null;
+let storageInputRegistrationQueue = Promise.resolve();
+let storageInputRegistrationSequence = 0;
 
 export async function analyze(options = {}) {
   const api = backend();
@@ -358,7 +360,8 @@ export function scheduleAnalyzeAfterPaint(options = {}) {
   }, delay);
 }
 
-export function registerLoadedDocument(text, { path = "", filename = "" } = {}) {
+export function registerLoadedDocument(text, { path = "", filename = "", initialWorkspace = false } = {}) {
+  if (!initialWorkspace) state.initialInputViewSettled = true;
   const documentText = setDocumentText(text);
   // A newly opened document is not the previous run, even if its text matches.
   // Ignore any old in-flight response and require an exact workspace restore
@@ -373,6 +376,7 @@ export function registerLoadedDocument(text, { path = "", filename = "" } = {}) 
   clearSemanticSelection({ resetMemory: true });
   state.currentFilePath = path;
   state.currentFilename = filename;
+  registerStorageInputPath(path);
   state.loadedText = documentText;
   state.savedText = documentText;
   state.lastAnalyzedText = "";
@@ -403,6 +407,32 @@ export function registerLoadedDocument(text, { path = "", filename = "" } = {}) 
   state.geometryReady = false;
   renderEmpty();
   updateDocumentActions();
+}
+
+function registerStorageInputPath(path) {
+  const inputPath = String(path || "").trim();
+  const sequence = ++storageInputRegistrationSequence;
+  storageInputRegistrationQueue = storageInputRegistrationQueue.catch(() => {}).then(async () => {
+    let api = null;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      if (sequence !== storageInputRegistrationSequence) return;
+      api = backend();
+      if (typeof api?.SetStorageInputPath === "function") break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    if (sequence !== storageInputRegistrationSequence || inputPath !== String(state.currentFilePath || "").trim()) return;
+    if (typeof api?.SetStorageInputPath === "function") {
+      await api.SetStorageInputPath(inputPath);
+      return;
+    }
+    const response = await fetch("/api/storage/input", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: inputPath }),
+    });
+    if (!response.ok) throw new Error(`Input storage registration failed: ${response.status}`);
+  }).catch(() => {
+    // Opening and analysis remain usable in browser previews without the storage
+    // API. Settings also sends its saved source directory as cleanup protection.
+  });
 }
 
 export function markDocumentChanged() {
