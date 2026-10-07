@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -76,7 +77,9 @@ func TestPhaseHNavigationBrowserHarness(t *testing.T) {
 	}
 }
 
-func phaseHChromeExecutable() string {
+// Repeated PATH/PATHEXT searches create thousands of duplicate test-cache
+// inputs on Windows. Keep one browser selection for this test process.
+var phaseHChromeExecutable = sync.OnceValue(func() string {
 	for _, name := range []string{"google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "msedge"} {
 		if path, err := exec.LookPath(name); err == nil {
 			return path
@@ -98,7 +101,7 @@ func phaseHChromeExecutable() string {
 		}
 	}
 	return ""
-}
+})
 
 const phaseHBrowserHarnessHTML = `<!doctype html>
 <html lang="en">

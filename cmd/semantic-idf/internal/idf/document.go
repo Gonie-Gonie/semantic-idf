@@ -1,9 +1,6 @@
 package idf
 
-import (
-	"fmt"
-	"strings"
-)
+import "strings"
 
 type Document struct {
 	Objects []Object
@@ -22,26 +19,32 @@ type Field struct {
 
 func (d Document) String() string {
 	var b strings.Builder
+	b.Grow(d.serializedSize())
+	const padding = "                                "
 	for objectIndex, obj := range d.Objects {
+		b.WriteString(obj.Type)
 		if len(obj.Fields) == 0 {
-			fmt.Fprintf(&b, "%s;\n", obj.Type)
+			b.WriteString(";\n")
 		} else {
-			fmt.Fprintf(&b, "%s,\n", obj.Type)
+			b.WriteString(",\n")
 			for i, field := range obj.Fields {
-				terminator := ","
+				b.WriteString("  ")
+				b.WriteString(field.Value)
 				if i == len(obj.Fields)-1 {
-					terminator = ";"
+					b.WriteByte(';')
+				} else {
+					b.WriteByte(',')
 				}
-				line := fmt.Sprintf("  %s%s", field.Value, terminator)
 				if field.Comment != "" {
-					if len(line) < 32 {
-						line += strings.Repeat(" ", 32-len(line))
+					lineLength := len(field.Value) + 3
+					if lineLength < len(padding) {
+						b.WriteString(padding[:len(padding)-lineLength])
 					} else {
-						line += "  "
+						b.WriteString("  ")
 					}
-					line += "!- " + field.Comment
+					b.WriteString("!- ")
+					b.WriteString(field.Comment)
 				}
-				b.WriteString(line)
 				b.WriteByte('\n')
 			}
 		}
@@ -51,6 +54,29 @@ func (d Document) String() string {
 		}
 	}
 	return b.String()
+}
+
+func (d Document) serializedSize() int {
+	size := 0
+	for objectIndex, object := range d.Objects {
+		size += len(object.Type) + 2
+		if objectIndex > 0 {
+			size++
+		}
+		for _, field := range object.Fields {
+			lineLength := len(field.Value) + 3
+			if field.Comment != "" {
+				if lineLength < 32 {
+					lineLength = 32
+				} else {
+					lineLength += 2
+				}
+				lineLength += 3 + len(field.Comment)
+			}
+			size += lineLength + 1
+		}
+	}
+	return size
 }
 
 func (d Document) clone() Document {

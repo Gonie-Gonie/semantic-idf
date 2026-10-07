@@ -5,11 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -237,25 +234,7 @@ func TestSemanticNavigationCacheRuntimeAndLookupBudget(t *testing.T) {
 }
 
 func findHeadlessChrome() string {
-	for _, name := range []string{"google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome"} {
-		if path, err := exec.LookPath(name); err == nil {
-			return path
-		}
-	}
-	if runtime.GOOS != "windows" {
-		return ""
-	}
-	for _, path := range []string{
-		filepath.Join(os.Getenv("ProgramFiles"), "Google", "Chrome", "Application", "chrome.exe"),
-		filepath.Join(os.Getenv("ProgramFiles(x86)"), "Google", "Chrome", "Application", "chrome.exe"),
-		filepath.Join(os.Getenv("LocalAppData"), "Google", "Chrome", "Application", "chrome.exe"),
-		filepath.Join(os.Getenv("ProgramFiles"), "Microsoft", "Edge", "Application", "msedge.exe"),
-	} {
-		if info, err := os.Stat(path); err == nil && !info.IsDir() {
-			return path
-		}
-	}
-	return ""
+	return phaseHChromeExecutable()
 }
 
 const navigationCacheRuntimePage = `<!doctype html>

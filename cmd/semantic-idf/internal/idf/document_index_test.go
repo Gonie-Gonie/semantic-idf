@@ -1,6 +1,10 @@
 package idf
 
-import "testing"
+import (
+	"encoding/json"
+	"sync"
+	"testing"
+)
 
 func TestDocumentIndexProvidesTypeAndNameLookups(t *testing.T) {
 	doc, err := Parse(`
@@ -64,5 +68,49 @@ Output:Variable,
 	}
 	if got := len(AnalyzeDiagnosticsFromIndex(index)); got != len(AnalyzeDiagnostics(doc)) {
 		t.Fatalf("diagnostics adapter count = %d, want direct result", got)
+	}
+}
+
+func TestDocumentIndexHVACAnalysisPreservesSharedLookups(t *testing.T) {
+	doc, err := Parse(sampleIDF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Last duplicate wins for type/name lookup; source order remains intact for
+	// type/name lists even when spelling and surrounding whitespace differ.
+	duplicate := doc.Objects[len(doc.Objects)-1]
+	duplicate.Index = len(doc.Objects)
+	duplicate.Type = " FAN:CONSTANTVOLUME "
+	duplicate.Fields = append([]Field(nil), duplicate.Fields...)
+	duplicate.Fields[0].Value = " SUPPLY FAN "
+	duplicate.Fields[len(duplicate.Fields)-1].Value = "Changed Outlet"
+	doc.Objects = append(doc.Objects, duplicate)
+	index := NewDocumentIndex(doc)
+	before, err := json.Marshal(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := json.Marshal(AnalyzeHVAC(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workers sync.WaitGroup
+	for range 8 {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			got, err := json.Marshal(AnalyzeHVACFromIndex(index))
+			if err != nil || string(got) != string(want) {
+				t.Errorf("indexed HVAC report differs from direct analysis (error %v)", err)
+			}
+		}()
+	}
+	workers.Wait()
+	after, err := json.Marshal(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("HVAC analysis mutated the shared document index")
 	}
 }

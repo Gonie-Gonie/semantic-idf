@@ -13,6 +13,7 @@ import { clearSemanticHover, clearSemanticSelection } from "./selection-controll
 import { captureViewSnapshot } from "./view-history.js";
 import { captureWorkspaceLayout } from "./layout.js";
 import { restoreSimulationEnergyWorkspaceContext } from "./views/simulation-views.js";
+import { createAnalysisStageQueue } from "./analysis-stage-queue.js";
 
 export const currentDocumentStorageKey = "idfAnalyzer.currentDocument";
 const auxiliaryNavigationStorageKey = "idfAnalyzer.auxiliaryNavigation";
@@ -94,7 +95,7 @@ async function runQueuedStageAnalysis(api, text, analysisKey, runID, options) {
     }
     applyStageResult(stage, result);
     return result;
-  }, { analysisKey });
+  }, { analysisKey, shouldContinue: () => isCurrentAnalysis(runID, text, analysisKey) });
   if (!isCurrentAnalysis(runID, text, analysisKey)) {
     return null;
   }
@@ -107,42 +108,10 @@ async function runQueuedStageAnalysis(api, text, analysisKey, runID, options) {
 }
 
 async function runStageQueue(stages, worker, context = {}) {
-  const results = [];
-  const queue = {
-    analysisKey: context.analysisKey || state.analysisKey || "",
-    pending: stages.map((stage, index) => ({ stage, index })),
-    running: new Set(),
-    completed: new Set(),
-    prioritize(stage) {
-      const index = this.pending.findIndex((task) => task.stage === stage);
-      if (index <= 0) {
-        return false;
-      }
-      const [task] = this.pending.splice(index, 1);
-      this.pending.unshift(task);
-      return true;
-    },
-  };
+  const queue = createAnalysisStageQueue(stages, { ...context, analysisKey: context.analysisKey || state.analysisKey || "" });
   activeStageQueue = queue;
-  async function runNext() {
-    for (;;) {
-      const task = queue.pending.shift();
-      if (!task) {
-        return;
-      }
-      queue.running.add(task.stage);
-      try {
-        results[task.index] = await worker(task.stage);
-      } finally {
-        queue.running.delete(task.stage);
-        queue.completed.add(task.stage);
-      }
-    }
-  }
   try {
-    const workers = Array.from({ length: Math.min(maxFrontendStageConcurrency, stages.length) }, runNext);
-    await Promise.all(workers);
-    return results;
+    return await queue.run(worker, maxFrontendStageConcurrency);
   } finally {
     if (activeStageQueue === queue) {
       activeStageQueue = null;

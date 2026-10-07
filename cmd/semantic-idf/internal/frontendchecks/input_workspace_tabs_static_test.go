@@ -165,7 +165,7 @@ func TestInputToolbarKeepsTabsAndSearchHorizontallyReachable(t *testing.T) {
 
 func TestInputWorkspaceHeadingLineCountAndExplicitSemanticRevealAreRemoved(t *testing.T) {
 	files := map[string]string{
-		"app settings":      readTestFile(t, "app.go"),
+		"app settings":      readTestFile(t, "settings_app.go"),
 		"input markup":      readTestFile(t, "frontend/src/index.html"),
 		"translations":      readTestFile(t, "frontend/src/js/i18n.js"),
 		"main runtime":      readTestFile(t, "frontend/src/js/main.js"),

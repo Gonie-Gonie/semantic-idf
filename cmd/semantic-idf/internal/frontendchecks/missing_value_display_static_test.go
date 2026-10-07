@@ -11,7 +11,7 @@ import (
 func TestRuntimeMissingValuesUseEmDash(t *testing.T) {
 	root := repoPath(".")
 	allowedCompatibilityParsers := map[string][]string{
-		"app.go": {`strings.EqualFold(buildingName, "N/A")`},
+		"batch_metrics_app.go":           {`strings.EqualFold(buildingName, "N/A")`},
 		"internal/simulation/purpose.go": {`"n/a"`},
 	}
 

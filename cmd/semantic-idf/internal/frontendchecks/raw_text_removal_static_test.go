@@ -71,7 +71,7 @@ func TestRawTextSurfaceStateHistoryLayoutAndSettingsAreRemoved(t *testing.T) {
 
 	settingsPage := readTestFile(t, "frontend/src/settings.html")
 	settingsClient := runtimeFiles["settings"]
-	app := readTestFile(t, "app.go")
+	app := readTestFile(t, "settings_app.go")
 	for name, content := range map[string]string{
 		"settings page":    settingsPage,
 		"settings client":  settingsClient,

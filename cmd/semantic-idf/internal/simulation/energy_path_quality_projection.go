@@ -12,10 +12,11 @@ func refreshEnergyPathQuality(result *EnergyExplanationResult) bool {
 	if result == nil {
 		return false
 	}
-	changed := replaceEnergyPathQuality(&result.Quality, BuildEnergyPathQuality(*result, ""))
+	context := prepareEnergyPathQuality(*result)
+	changed := replaceEnergyPathQuality(&result.Quality, buildEnergyPathPeriodQuality(*result, "", context))
 	for index := range result.Periods {
 		period := &result.Periods[index]
-		quality := BuildEnergyPathQuality(*result, period.ID)
+		quality := buildEnergyPathPeriodQuality(*result, period.ID, context)
 		if replaceEnergyPathQuality(&period.Quality, quality) {
 			changed = true
 		}
@@ -44,7 +45,8 @@ func refreshEnergyPathQuality(result *EnergyExplanationResult) bool {
 			Periods: zone.Periods, Sources: result.Sources,
 			Completeness: zone.Completeness, Reconciliation: zone.Reconciliation,
 		}
-		quality := BuildEnergyPathQuality(selected, "")
+		context := prepareEnergyPathQuality(selected)
+		quality := buildEnergyPathPeriodQuality(selected, "", context)
 		if result.Scope.Kind == "building" {
 			period := strings.ToLower(energyPathQualityGraphPeriod(zone.Nodes, zone.Reconciliation))
 			if period == "" {
@@ -60,7 +62,7 @@ func refreshEnergyPathQuality(result *EnergyExplanationResult) bool {
 		}
 		for periodIndex := range zone.Periods {
 			period := &zone.Periods[periodIndex]
-			quality := BuildEnergyPathQuality(selected, period.ID)
+			quality := buildEnergyPathPeriodQuality(selected, period.ID, context)
 			if result.Scope.Kind == "building" {
 				copyEnergyPathBuildingAllocationQuality(quality, buildingAllocation[strings.ToLower(strings.TrimSpace(period.ID))])
 			}

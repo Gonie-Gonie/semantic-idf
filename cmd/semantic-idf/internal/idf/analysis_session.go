@@ -7,11 +7,15 @@ type analysisSession struct {
 	cacheKey           string
 	geometryOnce       sync.Once
 	hvacOnce           sync.Once
+	outputOnce         sync.Once
+	metricsOnce        sync.Once
 	diagnosticsOnce    sync.Once
 	profileOnce        sync.Once
 	geometry           GeometryReport
 	geometryTiming     GeometryAnalysisTiming
 	hvac               HVACReport
+	output             OutputReport
+	metrics            MetricsReport
 	diagnostics        []Diagnostic
 	profile            ProfileReport
 	geometryBuildCount int
@@ -45,6 +49,20 @@ func (session *analysisSession) HVAC() HVACReport {
 		session.hvac = AnalyzeHVACFromIndex(session.index)
 	})
 	return session.hvac
+}
+
+func (session *analysisSession) Output() OutputReport {
+	session.outputOnce.Do(func() {
+		session.output = AnalyzeOutputFromIndex(session.index)
+	})
+	return session.output
+}
+
+func (session *analysisSession) Metrics() MetricsReport {
+	session.metricsOnce.Do(func() {
+		session.metrics = analyzeMetricsWithSession(session.index.Doc, MetricsAnalysisOptions{IncludeHeavyReadiness: true}, session)
+	})
+	return session.metrics
 }
 
 func (session *analysisSession) Diagnostics() []Diagnostic {

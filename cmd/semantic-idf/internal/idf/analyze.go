@@ -113,10 +113,10 @@ func AnalyzeOverviewTimed(doc Document, timer StageTimer) Report {
 		report = analyzeCore(doc)
 	})
 	timeAnalysisStage(timer, "metrics", func() {
-		report.Metrics = AnalyzeMetrics(doc)
+		report.Metrics = session.Metrics()
 	})
 	timeAnalysisStage(timer, "output", func() {
-		report.Output = AnalyzeOutputFromIndex(index)
+		report.Output = session.Output()
 	})
 	timeAnalysisStage(timer, "profile", func() {
 		report.Profile = session.Profile()
@@ -169,12 +169,12 @@ func AnalyzeTimed(doc Document, timer StageTimer) Report {
 	})
 	run(func() {
 		timeAnalysisStage(timer, "metrics", func() {
-			metrics = AnalyzeMetrics(doc)
+			metrics = session.Metrics()
 		})
 	})
 	run(func() {
 		timeAnalysisStage(timer, "output", func() {
-			output = AnalyzeOutputFromIndex(index)
+			output = session.Output()
 		})
 	})
 	run(func() {

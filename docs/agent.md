@@ -2,6 +2,8 @@
 
 - Primary stack: Go plus Wails v2 with static HTML/CSS/JS.
 - Keep the committed project lightweight: repo-local runtime downloads live in ignored `.runtime/`.
+- Use `docs/README.md` to find maintained contracts and distinguish them from historical acceptance ledgers.
+- Keep original simulation captures, reusable comparison baselines, build outputs and toolchain caches during cleanup; remove only identified temporary replay/profile/search/screenshot artifacts after recording useful findings.
 - Use `scripts/setup.ps1` to prepare `.runtime/go`, `.runtime/bin/wails.exe`, and local Go caches per clone.
 - Prefer the top-level `dev.bat` wrapper for Windows developer commands; it applies the PowerShell bypass flags.
 - Prefer static frontend assets until a build chain becomes clearly valuable.
@@ -10,6 +12,7 @@
 - Keep `cmd/semantic-idf/frontend/src/guide.html` focused on end-user workflows. Developer commands and repo maintenance notes belong in README/docs, not in the in-app guide.
 - Protect user work in the git tree. Do not revert unrelated changes.
 - Favor small IDF-domain functions that can be tested without launching the desktop shell.
+- Keep desktop lifecycle/input-file operations in `app.go` and group Wails feature methods in their corresponding `analysis_app.go`, `batch_metrics_app.go`, `settings_app.go`, simulation and Energy Path modules.
 - Keep Go tests next to the package they exercise; do not centralize `_test.go` files just to reduce directory spread.
 - Keep EnergyPlus input parsing/conversion in `cmd/semantic-idf/internal/epinput`; reserve `cmd/semantic-idf/internal/idf` for low-level IDF parsing and analysis helpers.
 - Support EnergyPlus 22+ as the default compatibility range and keep version-specific IDD/schema integration pluggable.

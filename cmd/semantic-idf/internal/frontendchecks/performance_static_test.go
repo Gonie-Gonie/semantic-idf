@@ -6,7 +6,7 @@ import (
 )
 
 func TestFrontendPerformanceStageQueueContracts(t *testing.T) {
-	content := readTestFile(t, "frontend/src/js/actions.js")
+	content := readTestFile(t, "frontend/src/js/actions.js") + readTestFile(t, "frontend/src/js/analysis-stage-queue.js")
 	for _, term := range []string{
 		"let activeStageQueue = null",
 		"pending: stages.map((stage, index) => ({ stage, index }))",
@@ -321,7 +321,7 @@ func TestFrontendContextualNavigationShortcutContracts(t *testing.T) {
 }
 
 func TestFrontendHVACDebugRuleGraphLoadsExplicitly(t *testing.T) {
-	app := readTestFile(t, "app.go")
+	app := readTestFile(t, "analysis_app.go")
 	if !strings.Contains(app, `"hvac-debug"`) || !strings.Contains(app, "slimReportForMode") {
 		t.Fatalf("stage normalization should expose explicit hvac-debug mode")
 	}

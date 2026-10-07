@@ -1,5 +1,13 @@
 # Saved-run post-processing stall investigation (2026-09-08)
 
+This document records historical measurements. During repository cleanup on
+2026-10-07, redundant corrected replay JSON files and CPU profiles under
+`.runtime/` were removed. Their paths below identify the original measurements,
+not artifacts guaranteed to exist in a clone. Original simulation captures and
+the bundle/SQL comparison baselines were preserved; opt-in replay tests can
+produce fresh outputs and profiles. See the [documentation index](README.md)
+for current architecture and performance notes.
+
 The reported screen remained at `Building purpose result bundle` / 89% for a
 Large Office run with Basic Energy and Surface Zone Heat Flow, all zones and
 the full year. The user had already closed the desktop application. There was

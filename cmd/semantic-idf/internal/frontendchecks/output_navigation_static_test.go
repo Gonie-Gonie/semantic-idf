@@ -60,7 +60,7 @@ func TestStandaloneOutputTabAndNavigationAreRemoved(t *testing.T) {
 		}
 	}
 
-	app := readTestFile(t, "app.go")
+	app := readTestFile(t, "analysis_app.go")
 	if strings.Contains(app, `requiredStages := []string{"profile", "hvac", "output"`) {
 		t.Fatal("completed staged analysis still requires the removed Output-tab stage")
 	}
@@ -71,7 +71,7 @@ func TestStandaloneOutputTabAndNavigationAreRemoved(t *testing.T) {
 }
 
 func TestCoreOutputAnalysisAndHVACAddMonitorRemain(t *testing.T) {
-	app := readTestFile(t, "app.go")
+	app := readTestFile(t, "analysis_app.go")
 	for _, required := range []string{"func (a *App) AnalyzeInputOutputText", "idf.AnalyzeOutput(doc)"} {
 		if !strings.Contains(app, required) {
 			t.Fatalf("core Output analysis contract is missing %q", required)

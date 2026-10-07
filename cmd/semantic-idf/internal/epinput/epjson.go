@@ -168,16 +168,13 @@ func writeEPJSONFields(b *strings.Builder, object InputObject) {
 	}
 
 	metadata := object.Metadata
-	if metadata == nil {
-		metadata = map[string]any{}
-	}
-	if _, ok := metadata["idf_order"]; !ok {
-		metadata["idf_order"] = object.SourceIndex + 1
-	}
-
-	keys := make([]string, 0, len(metadata))
+	_, hasOrder := metadata["idf_order"]
+	keys := make([]string, 0, len(metadata)+1)
 	for key := range metadata {
 		keys = append(keys, key)
+	}
+	if !hasOrder {
+		keys = append(keys, "idf_order")
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
@@ -187,7 +184,11 @@ func writeEPJSONFields(b *strings.Builder, object InputObject) {
 		b.WriteString("      ")
 		writeJSONString(b, key)
 		b.WriteString(": ")
-		writeJSONValue(b, metadata[key])
+		if key == "idf_order" && !hasOrder {
+			writeJSONValue(b, object.SourceIndex+1)
+		} else {
+			writeJSONValue(b, metadata[key])
+		}
 		wrote = true
 	}
 }

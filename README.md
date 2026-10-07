@@ -170,7 +170,11 @@ The app toolbar includes top-level Tools, Guide, and Settings navigation buttons
 
 ## Project Layout
 
+See the [documentation index](docs/README.md) for architecture, contracts,
+acceptance evidence and performance notes.
+
 - `cmd/semantic-idf`: complete desktop/CLI application subtree, including its frontend and internal packages.
+- `cmd/semantic-idf/app.go`: desktop lifecycle and input/file operations; feature-specific Wails methods live in `analysis_app.go`, `batch_metrics_app.go`, `settings_app.go` and the existing simulation/Energy Path modules.
 - `cmd/semantic-idf/wails.json`: Wails project and release metadata.
 - `cmd/semantic-idf/internal/idf`: IDF parsing, analysis, and editing core.
 - `cmd/semantic-idf/internal/epinput`: EnergyPlus input format detection, version detection, common model, and IDF/epJSON conversion.

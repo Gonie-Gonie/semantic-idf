@@ -70,7 +70,7 @@ func AnalyzeHVACFromIndex(index *DocumentIndex) HVACReport {
 	if index == nil {
 		return HVACReport{}
 	}
-	return AnalyzeHVAC(index.Doc)
+	return analyzeHVACWithContext(newHVACContextWithIndex(index.Doc, index))
 }
 
 func AnalyzeOutputFromIndex(index *DocumentIndex) OutputReport {

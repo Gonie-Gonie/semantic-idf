@@ -25,9 +25,13 @@ func TestApplicationCommandLivesOutsideRepositoryRoot(t *testing.T) {
 	for _, path := range []string{
 		"main.go",
 		"app.go",
+		"analysis_app.go",
 		"analysis_cache.go",
+		"analysis_input_cache.go",
 		"batch_app.go",
+		"batch_metrics_app.go",
 		"batch_cache.go",
+		"settings_app.go",
 		"simulation_app.go",
 		"app_test.go",
 		"batch_cache_test.go",

@@ -309,6 +309,8 @@ func TestAnalysisSessionBuildsThermalTopologyOnce(t *testing.T) {
 		func() { _ = session.Profile() },
 		func() { _ = session.Diagnostics() },
 		func() { _ = session.HVAC() },
+		func() { _ = session.Metrics() },
+		func() { _ = session.Output() },
 		func() { _ = session.Geometry() },
 	} {
 		waitGroup.Add(1)

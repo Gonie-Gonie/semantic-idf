@@ -461,11 +461,10 @@ func (builder *thermalTopologyBuilder) buildZoneEnclosures(tolerance float64) {
 	for _, zone := range builder.geometry.Zones {
 		edgeCount := map[string]int{}
 		edgeDetails := map[string]ThermalOpenEdge{}
-		var zoneSurfaces []GeometrySurface
-		for _, surface := range builder.geometry.Surfaces {
-			if surface.IsShading || !strings.EqualFold(surface.ZoneName, zone.Name) {
-				continue
-			}
+		positions := builder.geometryOwnership.surfacesByZone[thermalOwnerNameKey(zone.Name)]
+		zoneSurfaces := make([]GeometrySurface, 0, len(positions))
+		for _, position := range positions {
+			surface := builder.geometry.Surfaces[position]
 			zoneSurfaces = append(zoneSurfaces, surface)
 			for index, start := range surface.WorldVertices {
 				end := surface.WorldVertices[(index+1)%len(surface.WorldVertices)]

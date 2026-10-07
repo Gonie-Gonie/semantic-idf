@@ -351,7 +351,10 @@ type hvacContext struct {
 }
 
 func AnalyzeHVAC(doc Document) HVACReport {
-	ctx := newHVACContext(doc)
+	return analyzeHVACWithContext(newHVACContext(doc))
+}
+
+func analyzeHVACWithContext(ctx *hvacContext) HVACReport {
 	for _, branchObj := range ctx.objectsByType[normalizeFieldCatalogKey("Branch")] {
 		branch := parseHVACBranch(ctx, branchObj)
 		if branch.Name != "" {
@@ -388,7 +391,7 @@ func AnalyzeHVAC(doc Document) HVACReport {
 		ZoneRelations:       relations,
 		NodeUsages:          append([]HVACNodeUsage(nil), ctx.nodeUsages...),
 		NodeOutputVariables: HVACNodeOutputVariables(),
-		NodeOutputMonitors:  hvacNodeOutputMonitors(doc),
+		NodeOutputMonitors:  hvacNodeOutputMonitors(ctx.doc),
 		NodeEdges:           buildHVACNodeEdges(loops),
 		ComponentReferences: append([]HVACComponentReference(nil), ctx.componentReferences...),
 		RuleGraph:           ruleGraph,
@@ -413,6 +416,10 @@ func AnalyzeHVAC(doc Document) HVACReport {
 }
 
 func newHVACContext(doc Document) *hvacContext {
+	return newHVACContextWithIndex(doc, nil)
+}
+
+func newHVACContextWithIndex(doc Document, index *DocumentIndex) *hvacContext {
 	ctx := &hvacContext{
 		nativeCentralHeatPumpBindings: ResolveNativeCentralHeatPumpBindings(doc),
 		doc:                           doc,
@@ -426,12 +433,22 @@ func newHVACContext(doc Document) *hvacContext {
 		componentLoopTypes:            map[string]map[string]string{},
 		componentReferencesByFromKey:  map[string][]HVACComponentReference{},
 	}
+	// DocumentIndex and the context use the same normalized type/name keys.
+	// These shared maps are read-only; derived node/branch maps remain local.
+	if index != nil {
+		ctx.objectsByType = index.ObjectsByType
+		ctx.objectsByName = index.ObjectsByName
+	}
 	for _, obj := range doc.Objects {
-		typeKey := normalizeFieldCatalogKey(obj.Type)
-		ctx.objectsByType[typeKey] = append(ctx.objectsByType[typeKey], obj)
+		if index == nil {
+			typeKey := normalizeFieldCatalogKey(obj.Type)
+			ctx.objectsByType[typeKey] = append(ctx.objectsByType[typeKey], obj)
+		}
 		if name := objectName(obj); name != "" {
 			ctx.objectsByTypeName[hvacObjectKey(obj.Type, name)] = obj
-			ctx.objectsByName[normalizeName(name)] = append(ctx.objectsByName[normalizeName(name)], obj)
+			if index == nil {
+				ctx.objectsByName[normalizeName(name)] = append(ctx.objectsByName[normalizeName(name)], obj)
+			}
 		}
 	}
 	for _, obj := range ctx.objectsByType[normalizeFieldCatalogKey("NodeList")] {

@@ -273,6 +273,7 @@ type ThermalTopologyStats struct {
 type thermalTopologyBuilder struct {
 	doc                      Document
 	geometry                 GeometryReport
+	geometryOwnership        thermalGeometryOwnershipIndex
 	documentIndex            *DocumentIndex
 	registry                 semanticSourceRegistry
 	boundaryAdapter          thermalOutsideBoundaryAdapter
@@ -296,6 +297,7 @@ func BuildThermalTopology(doc Document, geometry GeometryReport, documentIndex *
 	builder := thermalTopologyBuilder{
 		doc:                      doc,
 		geometry:                 geometry,
+		geometryOwnership:        newThermalGeometryOwnershipIndex(geometry),
 		documentIndex:            documentIndex,
 		registry:                 newSemanticSourceRegistry(doc),
 		boundaryAdapter:          newThermalOutsideBoundaryAdapter(doc),
@@ -357,7 +359,7 @@ func (builder *thermalTopologyBuilder) addOwnedNodes() {
 			ObjectIndex:   intPtr(object.Index),
 			FloorArea:     zone.FloorArea,
 			Volume:        zone.Volume,
-			Centroid:      thermalZoneCentroid(zone, builder.geometry),
+			Centroid:      thermalIndexedCentroid(builder.geometry.Surfaces, builder.geometryOwnership.surfacesByZone[thermalOwnerNameKey(zone.Name)]),
 			SourceAnchors: []SemanticSourceAnchor{builder.sourceAnchor(object, nil, "")},
 		}
 		builder.addNode(node)
@@ -379,7 +381,7 @@ func (builder *thermalTopologyBuilder) addOwnedNodes() {
 			ObjectType:    object.Type,
 			ObjectName:    objectName(object),
 			ObjectIndex:   intPtr(object.Index),
-			Centroid:      thermalSpaceCentroid(space, builder.geometry),
+			Centroid:      thermalIndexedCentroid(builder.geometry.Surfaces, builder.geometryOwnership.surfacesBySpace[thermalOwnerNameKey(space.Name)]),
 			SourceAnchors: []SemanticSourceAnchor{builder.sourceAnchor(object, nil, "")},
 		}
 		builder.addNode(node)
@@ -1137,39 +1139,23 @@ func thermalOwnedTarget(boundary ThermalBoundaryRecord) (string, string) {
 	return "zone", boundary.OwnerZoneID
 }
 
-func thermalZoneCentroid(zone GeometryZone, geometry GeometryReport) GeometryPoint {
-	points := make([]GeometryPoint, 0)
-	for _, surface := range geometry.Surfaces {
-		if !surface.IsShading && strings.EqualFold(surface.ZoneName, zone.Name) {
-			points = append(points, surface.WorldVertices...)
-		}
-	}
-	return thermalCentroid(points)
-}
-
-func thermalSpaceCentroid(space GeometrySpace, geometry GeometryReport) GeometryPoint {
-	points := make([]GeometryPoint, 0)
-	for _, surface := range geometry.Surfaces {
-		if !surface.IsShading && strings.EqualFold(surface.SpaceName, space.Name) {
-			points = append(points, surface.WorldVertices...)
-		}
-	}
-	return thermalCentroid(points)
-}
-
 func thermalCentroid(points []GeometryPoint) GeometryPoint {
-	if len(points) == 0 {
-		return GeometryPoint{}
-	}
 	var centroid GeometryPoint
 	for _, point := range points {
 		centroid.X += point.X
 		centroid.Y += point.Y
 		centroid.Z += point.Z
 	}
-	centroid.X = roundedNumber(centroid.X/float64(len(points)), 4)
-	centroid.Y = roundedNumber(centroid.Y/float64(len(points)), 4)
-	centroid.Z = roundedNumber(centroid.Z/float64(len(points)), 4)
+	return thermalRoundedCentroid(centroid, len(points))
+}
+
+func thermalRoundedCentroid(centroid GeometryPoint, count int) GeometryPoint {
+	if count == 0 {
+		return GeometryPoint{}
+	}
+	centroid.X = roundedNumber(centroid.X/float64(count), 4)
+	centroid.Y = roundedNumber(centroid.Y/float64(count), 4)
+	centroid.Z = roundedNumber(centroid.Z/float64(count), 4)
 	return centroid
 }
 

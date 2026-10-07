@@ -211,7 +211,15 @@ func AnalyzeMetricsQuick(doc Document) MetricsReport {
 }
 
 func AnalyzeMetricsWithOptions(doc Document, options MetricsAnalysisOptions) MetricsReport {
-	facts := collectMetricFactsWithOptions(doc, options)
+	var session *analysisSession
+	if options.IncludeHeavyReadiness {
+		session = newAnalysisSession(NewDocumentIndex(doc))
+	}
+	return analyzeMetricsWithSession(doc, options, session)
+}
+
+func analyzeMetricsWithSession(doc Document, options MetricsAnalysisOptions, session *analysisSession) MetricsReport {
+	facts := collectMetricFactsWithSession(doc, options, session)
 	values := facts.metricValues()
 	categories := make([]MetricCategory, 0, len(metricCategories))
 	categoryIndexes := map[string]int{}
@@ -621,7 +629,7 @@ type surfaceInfo struct {
 	ground        bool
 }
 
-func collectMetricFactsWithOptions(doc Document, options MetricsAnalysisOptions) metricFacts {
+func collectMetricFactsWithSession(doc Document, options MetricsAnalysisOptions, session *analysisSession) metricFacts {
 	facts := metricFacts{
 		objectCount:                len(doc.Objects),
 		geometryCoordinateSystem:   "relative",
@@ -716,7 +724,7 @@ func collectMetricFactsWithOptions(doc Document, options MetricsAnalysisOptions)
 	}
 
 	facts.finalizeVolumeAndHeights()
-	facts.captureReadiness(doc, options.IncludeHeavyReadiness)
+	facts.captureReadiness(doc, options.IncludeHeavyReadiness, session)
 	return facts
 }
 
@@ -729,7 +737,7 @@ func isInternalGainEquipmentType(objectType string) bool {
 	}
 }
 
-func (facts *metricFacts) captureReadiness(doc Document, includeHeavy bool) {
+func (facts *metricFacts) captureReadiness(doc Document, includeHeavy bool, session *analysisSession) {
 	for _, obj := range doc.Objects {
 		if isBuildingSurfaceType(obj.Type) || isFenestrationType(obj.Type) {
 			facts.geometryObjectCount++
@@ -753,11 +761,16 @@ func (facts *metricFacts) captureReadiness(doc Document, includeHeavy bool) {
 		return
 	}
 	facts.heavyReadinessCaptured = true
-	hvacReport := AnalyzeHVAC(doc)
+	// Readiness depends on the same reports as the full analysis. Reuse them
+	// through the session even when Metrics is requested on its own.
+	if session == nil {
+		session = newAnalysisSession(NewDocumentIndex(doc))
+	}
+	hvacReport := session.HVAC()
 	facts.hvacRuleEdgeCount = len(hvacReport.RuleGraph.Edges)
 	facts.hvacNodeConnectionCount = metricHVACTypedNodeConnectionCount(hvacReport)
 
-	for _, diagnostic := range AnalyzeDiagnostics(doc) {
+	for _, diagnostic := range session.Diagnostics() {
 		source := strings.TrimSpace(diagnostic.Source)
 		if source == "" {
 			source = "unspecified"
@@ -765,7 +778,7 @@ func (facts *metricFacts) captureReadiness(doc Document, includeHeavy bool) {
 		facts.diagnosticSourceCounts[source]++
 	}
 
-	outputReport := AnalyzeOutput(doc)
+	outputReport := session.Output()
 	facts.outputRequestCount = len(outputReport.Recommendations)
 	for _, recommendation := range outputReport.Recommendations {
 		if recommendation.Exists {

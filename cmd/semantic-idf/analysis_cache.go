@@ -39,12 +39,6 @@ type analysisTextModeKey struct {
 	Mode     string
 }
 
-type analysisCacheEntry struct {
-	key       analysisCacheKey
-	result    *InputAnalysisResult
-	touchedAt time.Time
-}
-
 type analysisFlight struct {
 	done   chan struct{}
 	result *InputAnalysisResult
@@ -53,8 +47,9 @@ type analysisFlight struct {
 
 type AnalysisCache struct {
 	mu            sync.Mutex
+	inputs        analysisInputCache
 	maxEntries    int
-	entries       map[analysisCacheKey]*analysisCacheEntry
+	entries       map[analysisCacheKey]*InputAnalysisResult
 	textModeIndex map[analysisTextModeKey]analysisCacheKey
 	inFlight      map[analysisCacheKey]*analysisFlight
 	order         []analysisCacheKey
@@ -66,7 +61,7 @@ func NewAnalysisCache(maxEntries int) *AnalysisCache {
 	}
 	return &AnalysisCache{
 		maxEntries:    maxEntries,
-		entries:       map[analysisCacheKey]*analysisCacheEntry{},
+		entries:       map[analysisCacheKey]*InputAnalysisResult{},
 		textModeIndex: map[analysisTextModeKey]analysisCacheKey{},
 		inFlight:      map[analysisCacheKey]*analysisFlight{},
 	}
@@ -84,13 +79,13 @@ func (c *AnalysisCache) LookupTextMode(textHash, mode string) (*InputAnalysisRes
 	if !ok {
 		return nil, false
 	}
-	entry, ok := c.entries[key]
+	result, ok := c.entries[key]
 	if !ok {
 		delete(c.textModeIndex, indexKey)
 		return nil, false
 	}
-	c.touchLocked(key, entry)
-	return entry.result, true
+	c.rememberLocked(key)
+	return result, true
 }
 
 func (c *AnalysisCache) GetOrCompute(key analysisCacheKey, compute func() (*InputAnalysisResult, error)) (*InputAnalysisResult, bool, time.Duration, error) {
@@ -101,10 +96,10 @@ func (c *AnalysisCache) GetOrCompute(key analysisCacheKey, compute func() (*Inpu
 
 	waitStart := time.Now()
 	c.mu.Lock()
-	if entry, ok := c.entries[key]; ok {
-		c.touchLocked(key, entry)
+	if result, ok := c.entries[key]; ok {
+		c.rememberLocked(key)
 		c.mu.Unlock()
-		return entry.result, true, 0, nil
+		return result, true, 0, nil
 	}
 	if flight, ok := c.inFlight[key]; ok {
 		c.mu.Unlock()
@@ -140,17 +135,8 @@ func (c *AnalysisCache) Store(key analysisCacheKey, result *InputAnalysisResult)
 }
 
 func (c *AnalysisCache) storeLocked(key analysisCacheKey, result *InputAnalysisResult) {
-	c.entries[key] = &analysisCacheEntry{
-		key:       key,
-		result:    result,
-		touchedAt: time.Now(),
-	}
+	c.entries[key] = result
 	c.textModeIndex[analysisTextModeKey{TextHash: key.TextHash, Mode: key.Mode}] = key
-	c.rememberLocked(key)
-}
-
-func (c *AnalysisCache) touchLocked(key analysisCacheKey, entry *analysisCacheEntry) {
-	entry.touchedAt = time.Now()
 	c.rememberLocked(key)
 }
 

@@ -285,22 +285,34 @@ func (builder *thermalTopologyBuilder) buildZoneSignatures(areaBasis string) {
 	for _, enclosure := range builder.report.ZoneEnclosures {
 		enclosureByZoneID[enclosure.ZoneID] = enclosure
 	}
+	boundariesByZoneID := map[string][]int{}
+	for position, boundary := range builder.report.Boundaries {
+		boundariesByZoneID[boundary.OwnerZoneID] = append(boundariesByZoneID[boundary.OwnerZoneID], position)
+	}
+	airCoupledZonesByZoneID := map[string][]string{}
+	for _, coupling := range builder.report.AirCouplings {
+		fromNodeID := builder.compactThermalNodeID(coupling.FromNodeID)
+		toNodeID := builder.compactThermalNodeID(coupling.ToNodeID)
+		if strings.HasPrefix(toNodeID, "zone:") {
+			airCoupledZonesByZoneID[fromNodeID] = appendUniqueString(airCoupledZonesByZoneID[fromNodeID], toNodeID)
+		}
+		if strings.HasPrefix(fromNodeID, "zone:") {
+			airCoupledZonesByZoneID[toNodeID] = appendUniqueString(airCoupledZonesByZoneID[toNodeID], fromNodeID)
+		}
+	}
 	for _, zone := range builder.geometry.Zones {
 		zoneID := builder.zoneNodeIDByName[normalizeName(zone.Name)]
 		signature := ZoneThermalSignature{ZoneID: zoneID, ZoneName: zone.Name, AreaBasis: areaBasis}
-		for _, space := range builder.geometry.Spaces {
-			if strings.EqualFold(space.ZoneName, zone.Name) {
-				signature.SpaceIDs = appendUniqueString(signature.SpaceIDs, builder.spaceNodeIDByName[normalizeName(space.Name)])
-			}
+		for _, position := range builder.geometryOwnership.spacesByZone[thermalOwnerNameKey(zone.Name)] {
+			space := builder.geometry.Spaces[position]
+			signature.SpaceIDs = appendUniqueString(signature.SpaceIDs, builder.spaceNodeIDByName[normalizeName(space.Name)])
 		}
 		totalArea, coveredArea, completeTotalUA := 0.0, 0.0, 0.0
 		exteriorComplete, groundComplete, interzoneComplete := true, true, true
 		exteriorSeen, groundSeen, interzoneSeen := false, false, false
 		exteriorWallGrossArea, exteriorWallOpeningArea := 0.0, 0.0
-		for _, boundary := range builder.report.Boundaries {
-			if boundary.OwnerZoneID != zoneID {
-				continue
-			}
+		for _, position := range boundariesByZoneID[zoneID] {
+			boundary := builder.report.Boundaries[position]
 			grossArea := boundary.EffectiveGrossArea
 			openingArea := boundary.EffectiveOpeningArea
 			if strings.EqualFold(areaBasis, "physical") {
@@ -373,16 +385,7 @@ func (builder *thermalTopologyBuilder) buildZoneSignatures(areaBasis string) {
 		if exteriorWallGrossArea > 0 {
 			signature.ExteriorWWR = roundedNumber(exteriorWallOpeningArea/exteriorWallGrossArea, 4)
 		}
-		for _, coupling := range builder.report.AirCouplings {
-			fromNodeID := builder.compactThermalNodeID(coupling.FromNodeID)
-			toNodeID := builder.compactThermalNodeID(coupling.ToNodeID)
-			if fromNodeID == zoneID && strings.HasPrefix(toNodeID, "zone:") {
-				signature.AirCoupledZoneIDs = appendUniqueString(signature.AirCoupledZoneIDs, toNodeID)
-			}
-			if toNodeID == zoneID && strings.HasPrefix(fromNodeID, "zone:") {
-				signature.AirCoupledZoneIDs = appendUniqueString(signature.AirCoupledZoneIDs, fromNodeID)
-			}
-		}
+		signature.AirCoupledZoneIDs = append([]string(nil), airCoupledZonesByZoneID[zoneID]...)
 		if enclosure, ok := enclosureByZoneID[zoneID]; ok {
 			signature.ClosedShell = enclosure.ClosedShell
 			signature.OpenEdgeCount = enclosure.OpenEdgeCount

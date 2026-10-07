@@ -10,6 +10,35 @@ import (
 // selected-period graph accounting. Sources do not contain period availability;
 // finding one must never claim that every month contains that observation.
 func BuildEnergyPathQuality(result EnergyExplanationResult, period string) *EnergyPathQuality {
+	return buildEnergyPathPeriodQuality(result, period, prepareEnergyPathQuality(result))
+}
+
+// Requested-output availability and source identity are run-level evidence.
+// Prepare them once for a graph scope, then reuse them for its selected periods.
+// This state belongs to one refresh; later source/plan changes cannot reuse it.
+type energyPathQualityContext struct {
+	drivers, loads, endUses, carriers EnergyCompletenessLevel
+	knownSources                      map[string]bool
+}
+
+func prepareEnergyPathQuality(result EnergyExplanationResult) energyPathQualityContext {
+	context := energyPathQualityContext{
+		drivers:  energyPathQualityThermalLevel(result.Completeness.HeatDrivers, "driver", "Drivers", result.Nodes),
+		loads:    energyPathQualityThermalLevel(result.Completeness.DeliveredLoad, "load", "Loads", result.Nodes),
+		endUses:  energyPathQualitySiteLevel(result, "end_use", "End uses"),
+		carriers: energyPathQualitySiteLevel(result, "carrier", "Carriers"),
+	}
+	if context.loads.Status == "not_requested" || context.loads.Status == "not_applicable" {
+		return context
+	}
+	context.knownSources = make(map[string]bool, len(result.Sources))
+	for _, source := range result.Sources {
+		context.knownSources[source.ID] = source.ID != ""
+	}
+	return context
+}
+
+func buildEnergyPathPeriodQuality(result EnergyExplanationResult, period string, context energyPathQualityContext) *EnergyPathQuality {
 	period = strings.TrimSpace(period)
 	nodes, links, rows := result.Nodes, result.Links, result.Reconciliation
 	selected := period == ""
@@ -31,14 +60,14 @@ func BuildEnergyPathQuality(result EnergyExplanationResult, period string) *Ener
 		period = graphPeriod
 	}
 	quality := &EnergyPathQuality{
-		Drivers: energyPathQualityThermalLevel(result.Completeness.HeatDrivers, "driver", "Drivers", result.Nodes),
-		Loads:   energyPathQualityThermalLevel(result.Completeness.DeliveredLoad, "load", "Loads", result.Nodes),
+		Drivers:  context.drivers,
+		Loads:    context.loads,
+		EndUses:  context.endUses,
+		Carriers: context.carriers,
 	}
-	quality.EndUses = energyPathQualitySiteLevel(result, "end_use", "End uses")
-	quality.Carriers = energyPathQualitySiteLevel(result, "carrier", "Carriers")
 	quality.DriverToLoadClosedPct, quality.DriverToLoadStatus = energyPathQualityClosure(nodes, links, "load", quality.Loads.Status)
 	quality.EndUseToCarrierClosedPct, quality.EndUseToCarrierStatus = energyPathQualityClosure(nodes, links, "carrier", quality.Carriers.Status)
-	quality.Ratios = energyPathQualityRatios(nodes, links, result.Sources, quality.Loads.Status)
+	quality.Ratios = energyPathQualityRatios(nodes, links, context.knownSources, quality.Loads.Status)
 	quality.ZoneAllocatedPct, quality.UnassignedPct, quality.ZoneAllocationStatus = energyPathQualityZoneAllocation(rows, period)
 	if !selected {
 		quality.DriverToLoadStatus, quality.EndUseToCarrierStatus = "unavailable", "unavailable"
@@ -295,15 +324,12 @@ func energyPathQualityEnergyValue(value float64, unit string) (float64, bool) {
 	return value * factor, ok && base != ""
 }
 
-func energyPathQualityRatios(nodes []EnergyExplanationNode, links []EnergyPathLink, sources []EnergyDataSource, loadStatus string) EnergyCompletenessLevel {
+func energyPathQualityRatios(nodes []EnergyExplanationNode, links []EnergyPathLink, knownSources map[string]bool, loadStatus string) EnergyCompletenessLevel {
 	if loadStatus == "not_requested" || loadStatus == "not_applicable" {
 		return EnergyCompletenessLevel{Level: "ratio", Status: loadStatus, Message: "Load-to-end-use ratios were not requested by this output plan."}
 	}
 	byID := map[string]EnergyExplanationNode{}
-	candidates, found, knownSources, carrierTrace := map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
-	for _, source := range sources {
-		knownSources[source.ID] = source.ID != ""
-	}
+	candidates, found, carrierTrace := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	hasTrace := func(ids []string) bool {
 		for _, id := range ids {
 			if knownSources[id] {
