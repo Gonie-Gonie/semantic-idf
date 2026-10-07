@@ -1,42 +1,49 @@
-# Agent Working Notes
+# Agent working notes
 
-- Primary stack: Go plus Wails v2 with static HTML/CSS/JS.
-- Keep the committed project lightweight: repo-local runtime downloads live in ignored `.runtime/`.
-- Use `docs/README.md` to find maintained contracts and distinguish them from historical acceptance ledgers.
-- Keep original simulation captures, reusable comparison baselines, build outputs and toolchain caches during cleanup; remove only identified temporary replay/profile/search/screenshot artifacts after recording useful findings.
-- Use `scripts/setup.ps1` to prepare `.runtime/go`, `.runtime/bin/wails.exe`, and local Go caches per clone.
-- Prefer the top-level `dev.bat` wrapper for Windows developer commands; it applies the PowerShell bypass flags.
-- Prefer static frontend assets until a build chain becomes clearly valuable.
-- Use `scripts/test.ps1 -Plan` to inspect changed-file selection, then run the affected tests during implementation. `-Area <feature>` runs every tier for that feature; `-Quick` runs the fast baseline and `-Full` runs all regressions. See `docs/testing.md`.
-- Before committing, use the repo-local runtime and include a successful Wails build. Setup installs a pre-commit hook that runs `scripts/verify.ps1 -Staged`; its successful selected tests and build satisfy the commit check. Do not require an additional full verification for every implementation pass or repeat an unchanged successful verification just for reporting.
-- Release packaging must call `scripts/verify.ps1 -Full`. Shared core, toolchain and unclassified source changes also select full verification automatically.
-- Keep `cmd/semantic-idf/frontend/src/guide.html` focused on end-user workflows. Developer commands and repo maintenance notes belong in README/docs, not in the in-app guide.
-- Protect user work in the git tree. Do not revert unrelated changes.
-- Favor small IDF-domain functions that can be tested without launching the desktop shell.
-- Keep desktop lifecycle/input-file operations in `app.go` and group Wails feature methods in their corresponding `analysis_app.go`, `batch_metrics_app.go`, `settings_app.go`, simulation and Energy Path modules.
-- Preserve the existing test locations. Group execution through `scripts/test-groups-*.json`; keep white-box Go tests and their shared fixtures beside the package they exercise.
-- Register new behavior tests in the feature/tier catalog and update changed-source impact rules when adding a feature module. The runner must include newly discovered tests and fall back to full tests for unclassified source changes.
-- Keep EnergyPlus input parsing/conversion in `cmd/semantic-idf/internal/epinput`; reserve `cmd/semantic-idf/internal/idf` for low-level IDF parsing and analysis helpers.
-- Support EnergyPlus 22+ as the default compatibility range and keep version-specific IDD/schema integration pluggable.
-- Input viewing should keep Text, JSON, and Table modes in sync from one parsed/cached EnergyPlus model; Table mode should be organized by IDF object type and support row/column orientation changes.
-- Keep the startup sample tied to the vendored official EnergyPlus large office reference IDF unless a better real-world evaluation file is intentionally chosen.
-- JSON structured view should stay epJSON-shaped with quoted keys, braces, colons, literal values, semantic grouping, and compact indentation.
-- JSON view is a structured editor: syntax tokens are read-only UI, while value tokens edit inline and call backend model patch APIs for the shared source document.
-- Text view object and field summaries should remain fully editable and act as the complete text-oriented replacement for a raw source editor.
-- Keep the left-panel input filter shared across Text, JSON, and Table views; it should filter by object type, name/index, field label, and value text.
-- Do not synthesize Name-oriented UI when an object has no real name. Use real names when present; otherwise identify objects by type and index.
-- epJSON conversion should follow the official schema shape where known. Detailed surface and shading coordinate extensibles should appear as a `vertices` array, not as flat `vertex_1_*` keys.
-- Keep Text and Table groups open by default, and maintain stable table row headers.
-- Keep the app window itself from scrolling; use explicit scroll containers inside the input and analysis panels.
-- Keep the Topology details splitter persistent via localStorage.
-- Splitter dragging should update layout through requestAnimationFrame and persist localStorage only when dragging ends.
-- Keep the five right-panel result tabs purposeful: Metrics, Topology, Profile, HVAC, and Simulation. Single-file diagnostics and fixes live in Tools / Diagnose.
-- Metric definitions, calculated values, exports, and guide entries should stay tied to the same backend catalog.
-- Keep the Metrics export contract stable: categorized JSON and two-column `name,value` CSV, with CSV names based on variable IDs and units appended in brackets instead of values. Unitless CSV metrics use `[-]`.
-- Topology should keep parsed zone/surface/window geometry data in the backend report and render from that shared structure in 3D and Plan views. Level is shared across 3D, Plan, and Network: All shows the full model and a specific level applies the former story filter. The compact toolbar shows only Zones/Surfaces/Openings in 3D and Plan, or Metric/Layout in Network. A selected zone, boundary, or other topology object should automatically link to its input object, emphasize its one-hop related objects, and strongly fade unrelated objects; selected-object details should show metrics plus related objects instead of duplicating IDF fields.
-- Run analysis in visible-first stages: build Metrics/Text/JSON/Table data first, then preload Topology data and its renderer before the user opens the Topology tab when practical. Avoid building the full Three.js scene while the tab is hidden.
-- Keep toolbar semantics split: top-level file actions for Open/Save/Revert and top-level Tools/Guide/Settings page navigation. Multi-file workflows and single-file repair utilities belong in Tools.
-- Tools workflows are full-page task surfaces selected from the left selector, with only the active panel shown. Batch Metrics selects multiple inputs through the desktop dialog, analyzes them with a bounded worker pool, emits progress events, shows a transposable comparison table, supports two-column delta comparison, and exports CSV plus raw/delta XLSX workbooks. Batch Simulation uses the fixed purpose defaults documented in `simulation-runner.md`. Single-file diagnostics and cleanup/fix review belong in Tools / Diagnose.
-- Structured input edits should analyze immediately after backend patches rather than requiring a manual Analyze button.
-- App settings should persist through the backend settings API under the local app data/config directory, with `cmd/semantic-idf/frontend/src/settings.html` as the settings page frame.
-- Frontend code organization: keep `cmd/semantic-idf/frontend/src/app.js` as a tiny entrypoint and place feature modules under `cmd/semantic-idf/frontend/src/js/`; reserve `cmd/semantic-idf/frontend/dist` for future generated build output.
+Start with the [documentation index](README.md) and [architecture map](architecture.md).
+Feature contracts, fixture evidence and performance baselines have separate owners;
+read the relevant contract before changing a shared model or consumer.
+
+## Development workflow
+
+- Use the repo-local Go/Wails runtime installed by `dev setup` under ignored
+  `.runtime/`. Prefer `dev.bat` on Windows for the PowerShell bypass flags.
+- Use `dev test -Plan` to inspect impact, `-Area <feature>` for all tiers of a
+  feature, and `-Quick` for the common baseline. See [testing.md](testing.md).
+- Keep Go tests and shared fixtures in their existing packages. Register new
+  tests in `scripts/test-groups-*.json` and maintain changed-source impact rules.
+- The installed pre-commit hook runs `verify -Staged`: selected tests, frontend
+  validation and a Wails build. Its successful result is the commit check; do
+  not repeat an unchanged full suite just for reporting.
+- Release packaging uses `verify -Full`. Shared core, toolchain and unclassified
+  changes also select the full suite. Stage the complete related change because
+  execution uses the working tree. Commit and push completed work.
+- Preserve unrelated user changes. Do not weaken fixture expectations, source
+  identity, precision or tolerances to make a regression pass.
+
+## Implementation boundaries
+
+- Keep lifecycle and file operations in `app.go`; group Wails feature methods in
+  analysis, batch, settings, simulation and Energy Path app modules.
+- Format/version/conversion belongs in `internal/epinput`; low-level IDF analysis
+  belongs in `internal/idf`. Prefer domain functions that do not launch Wails.
+- Shared parsed inputs and indexes are read-only. Keep editing and derived
+  mutable state owned; bound caches and worker pools. Follow [architecture.md](architecture.md).
+- Use the existing result builder for App, HTTP, CLI and Python. Preserve wire
+  compatibility and missing/null/known-zero distinctions across every consumer.
+- Keep frontend entrypoints small and feature logic in the existing JS modules.
+  End-user help belongs in the bundled Guide; developer instructions belong here
+  and in the project README.
+
+## Documentation and artifacts
+
+- Maintain current behavior, invariants, source ownership, reproducible checks
+  and known limits. Update the owning contract when implementation changes.
+- Keep release notes as published history. Avoid new phase-by-phase progress
+  ledgers, repeated test timings, session transcripts or stale pending counts.
+- Preserve original simulation inputs/results, approved expected manifests,
+  reusable comparison baselines, build outputs and toolchain caches. An ignored
+  path alone is not proof that its contents are disposable.
+- Remove identified temporary replay/profile/search/screenshot artifacts after
+  recording useful findings. Reproduction commands must distinguish local
+  optional captures from files guaranteed to exist in a fresh clone.

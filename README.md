@@ -122,7 +122,7 @@ color and table cells carry borders so the export is easier to scan and filter i
 read stdin and `-o -` to write command output to stdout.
 
 `energy-path` requires existing SQL and model paths, not stdin model text. See
-[Energy Path CLI and Python](docs/energy-path-cli.md) for scope/month/service
+[Energy Path CLI and Python](docs/energy-path.md#cli-and-python) for scope/month/service
 selection, input provenance, summary/trace CSV and the identical local API result.
 
 ## Release Process
@@ -209,8 +209,7 @@ acceptance evidence and performance notes.
 - `cmd/semantic-idf/frontend/src/samples`: bundled sample inputs used by the app and tests.
 - `cmd/semantic-idf/frontend/dist`: ignored future build output location.
 - `docs/agent.md`: consolidated working notes and implementation principles.
-- [Energy Path schema](docs/energy-path-schema.md): simulation graph domains, allocation, quality, migration and executable Python reconstruction.
-- [Energy Path CLI and Python](docs/energy-path-cli.md): read existing results through the shared CLI, desktop and local API builder.
+- [Energy Path handbook](docs/energy-path.md): graph and consumer contracts, equipment boundaries, independent native fixtures and regression coverage.
 - `scripts`: repo-local runtime setup, checks, and repeatable commands.
 - `.runtime`: ignored local Go/Wails runtime and caches created by setup.
 

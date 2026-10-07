@@ -1,221 +1,144 @@
-# Semantic Navigation Contract
+# Semantic navigation contract
 
-This document defines the product and implementation contract for bidirectional
-navigation between Semantic Text and participating analysis panels. New panels and new
-semantic projections must follow this contract instead of introducing a
-panel-specific click or jump model.
+Metrics, Profile, and Topology share model identity and selection with visible
+Text, JSON, and Table input views. Use this contract when adding selection,
+source reveal, panel adapters, or view history.
 
-> **v0.5.0 visibility:** the Semantic structure view is feature-gated and is
-> not exposed as an input tab, shortcut, setting, or restored saved view. This
-> document remains the internal identity/navigation contract used by analysis
-> panels. User-visible source reveals resolve through Text, JSON, or Table; the
-> projection, occurrence index, and renderer remain available for rollback.
+The Semantic structure view is feature-gated by `SHOW_SEMANTIC_STRUCTURE = false`.
+It is not an input tab, shortcut, setting, or restored saved view. Its internal
+projection and occurrence index still provide navigation identity. User-visible
+source reveal resolves through Text, JSON, or Table.
 
-## Product model
+HVAC and Simulation have local selection. They do not reveal input objects,
+follow global selection, or appear in semantic destination menus. Simulation
+observations do not become canonical model entities.
 
-### Internal Semantic projection and visible input views
+## Identity and shared state
 
-- The internal projection preserves IDF objects and fields as source anchors
-  and indexes relationships between model entities and analysis views.
-- Visible Text, JSON, and Table views reveal and edit the original shared
-  source document without exposing the Semantic structure surface.
-- Every available source anchor continues to map to the original IDF.
+| Term | Contract |
+| --- | --- |
+| Entity | Stable model identity: zone, surface, schedule, component, output, diagnostic, etc. |
+| Occurrence | A contextual presentation of an entity, such as the same coil in zone service and plant-loop contexts. |
+| Source anchor | Stable source object identity plus optional field and object-index fallback. |
+| Selection | One committed global entity, chosen occurrence, source anchor, and origin context. |
+| Hover | Transient highlighting only. |
+| Reveal | Make a target visible within the active view. |
+| Open | Move to the preferred view and reveal as one operation. |
+| Definition / references | Canonical source definition / contextual uses of an object. |
 
-### Right Analysis Panels
+Semantic identity uses stable source information whenever available;
+`objectIndex` is a last-resort identity input and source fallback. A participating
+panel can retain filters/scope/layout, but selected model entities go through
+the common controller. Navigation changes no model text and starts no analysis.
 
-- Metrics, Profile, and Topology are
-  specialized lenses over the same semantic entities.
-- A target selected in a panel must retain its most appropriate internal
-  semantic occurrence and reveal the corresponding visible input source.
-- HVAC and Simulation retain local selections. Their items do not open the
-  semantic reveal chooser, follow selections into another view, or appear as
-  semantic navigation destinations. Their top-level tabs remain available.
-- Simulation results remain observations about the analyzed model and do not
-  become canonical Semantic Text entities themselves.
+## Actions and gestures
 
-The two sides share one primary selection. A panel may retain local display
-context such as a graph scope, active story, or filter, but it must derive its
-selected model entity from the global selection or synchronize it through the
-common controller.
+Action names are shared vocabulary for controller APIs, adapters, markup, and
+tests. Compatibility wrappers such as `focusInputObject` route through the
+common controller and suppress nested history. `selectHVACGraphKey` and
+`navigateHVAC` affect local HVAC context only.
 
-## Vocabulary
+| Action | Effect | View change | History |
+| --- | --- | --- | --- |
+| `hover` | Highlight entity/related occurrences, without scrolling. | None | Never |
+| `select` | Commit selection; reveal a compatible visible counterpart. | None | Once if entity changes |
+| `reveal` | Make the target visible in the current view. | None | Never alone |
+| `open` | Select, switch to preferred view, and reveal. | Allowed | One atomic entry |
+| `reveal_source` | Reveal source object/field. | Input only | One entry |
+| `definition` | Reveal referenced definition. | Input only | One entry |
+| `references` | Cycle referring occurrences. | Input only | One entry |
+| `clear_selection` | Clear primary selection, retaining local filters/scope/tabs. | None | Never |
+| `edit` | Explicit document edit; remap selection afterward. | None | Document history |
 
-- **entity**: A stable, model-level identity such as a zone, surface, schedule,
-  HVAC component, output request, or diagnostic. An entity can be presented in
-  more than one place and view.
-- **occurrence**: One contextual presentation of an entity in Semantic Text,
-  such as a coil in a zone service path and the same coil in a plant loop.
-- **source anchor**: The best available stable source-object identity plus an
-  optional field identity and object-index fallback that locates original IDF
-  text without defining semantic identity.
-- **selection**: The single committed global semantic entity, its chosen
-  occurrence and source anchor, and the view context from which it originated.
-- **hover**: A transient indication of an entity and related occurrences. It
-  never scrolls, changes tabs, or enters history.
-- **reveal**: Making a target visible inside an already active view without
-  changing views. Reveal alone does not enter history.
-- **open**: Moving to a target's appropriate view and revealing it as one
-  atomic navigation operation.
-- **history**: Lightweight snapshots of user-initiated context moves. History
-  restores both semantic and panel context, never reports, graph data, caches,
-  rendered HTML, or other large derived values.
-- **definition**: The canonical source definition of a referenced object.
-- **references**: Contextual occurrences that refer to the selected object.
-- **edit**: An explicit source or semantic operation that changes the document;
-  selection is remapped after the new projection is available.
+| Gesture | Operation |
+| --- | --- |
+| Hover | Weak highlight, no scroll/tab/history. |
+| Single click | Select without switching result tabs. |
+| Double click / Enter | Open preferred occurrence/view atomically. |
+| Alt+Enter | Available-view target menu. |
+| F12 / Shift+F12 | Definition / reference cycling. |
+| Alt+Left / Alt+Right | Back / Forward. |
+| Escape | Close a transient popover first; otherwise clear selection. |
 
-Semantic identity must be stable whenever source information permits it.
-`objectIndex` is only a last-resort identity input and a source-jump fallback.
-Navigation never changes model text and never starts analysis merely to move
-between already-current views.
+These gestures apply to selectable navigation targets. Editable values require
+an explicit edit affordance or Enter/F2 while the value control has edit focus;
+double-click navigation does not begin direct text editing. Accessible
+keyboard actions must provide equivalent operations.
 
-## Navigation actions
+Link and follow are always enabled for participating views, without a persisted
+user toggle. Committed selection reveals a compatible occurrence/input source
+or active-panel counterpart. Following selection never switches result tabs.
+Restore/remap transactions can suppress redundant follow work.
 
-Action names are part of the public implementation vocabulary. Function names,
-data attributes, adapter operations, telemetry, and tests use these terms.
+## Canonical targets and ambiguity
 
-| Action | Meaning | May change tab | May scroll | History |
-|---|---|---:|---:|---:|
-| `hover` | Temporarily highlight the entity and related occurrences | No | No | Never |
-| `select` | Set the global primary selection | No | Only reveal a compatible visible counterpart | Once when the entity changes |
-| `reveal` | Make a target visible in the current view | No | Yes | Never by itself |
-| `open` | Move to the appropriate view and reveal the target | Yes | Yes | One atomic entry |
-| `reveal_source` | Show the original IDF object or field | Input view only | Yes | One entry |
-| `definition` | Move to a referenced object's definition | Input view only | Yes | One entry |
-| `references` | Cycle occurrences that reference the object | Input view only | Yes | One entry |
-| `clear_selection` | Clear the global selection | No | No | Never |
-| `edit` | Explicitly change a field or apply a semantic operation | No | Restore after apply | Document history only |
+Backend projection metadata supplies applicable targets and chooses a preferred
+target from occurrence context. Frontend adapters consume it instead of
+duplicating object-type dispatch rules.
 
-Existing entry points such as `focusInputObject` and participating panel-specific
-focus functions remain compatibility
-wrappers while migration is in progress. Their navigation effects must route
-through the common selection controller, and one user action must not create
-duplicate history entries.
+| Context | Preferred destination |
+| --- | --- |
+| Building/site metric | Metrics section |
+| Zone/space geometry, surface, opening | Topology stable entity |
+| Zone profile dimension, profile group, schedule | Profile target |
+| Output request, simulation-purpose source | Visible input source anchor |
+| Diagnostic | Tools / Diagnose diagnostic ID |
+| Raw/source-only occurrence | Visible input source anchor |
 
-`selectHVACGraphKey` and `navigateHVAC` only change local HVAC context.
+Zones can advertise both Topology and Profile. Occurrences under
+`zones/<zone>/profiles` prefer Profile; `zones/<zone>/geometry` prefer Topology.
+Several valid targets/occurrences require a chooser rather than an invented
+relationship. Diagnose resolves its current snapshot independently.
 
-## Pointer and keyboard contract
+Backend metadata may retain HVAC/Simulation targets for identity compatibility;
+frontend policy excludes them from reveal/open/follow/destination menus.
+Profile and Topology also exclude each other as direct result-panel destinations;
+both are independently reachable through input navigation and top-level tabs.
+Topology's local projection and emphasis are defined in
+[Views and interaction](topology.md#views-and-interaction).
 
-Every semantic line and selectable panel item follows the same interaction
-model unless an explicitly documented accessibility constraint requires a
-different physical gesture.
+## Filtering and analysis lifecycle
 
-| Input | Result |
-|---|---|
-| Hover | Weakly highlight the same entity and related occurrences on both sides; do not scroll, switch tabs, or record history. |
-| Single click | Commit the global selection. Reveal only if the currently visible counterpart can represent it; never switch to another result tab. |
-| Double click or `Enter` | Open the occurrence's preferred view and reveal both sides as one atomic history operation. |
-| `Alt+Enter` | Open the available-view target menu. |
-| `F12` | Go to definition. |
-| `Shift+F12` | Cycle references. |
-| `Alt+Left` / `Alt+Right` | Navigate view history backward / forward. |
-| `Esc` | Close a transient popover first; otherwise clear global selection while retaining filters, graph scope, and active tabs. |
+Selection preserves mode, facet, search/panel filters, graph scope, and active
+tabs. A hidden target is temporarily materialized within its section and
+exempted from filtering; clearing temporary reveal restores the unchanged
+user filters.
 
-Single-clicking an editable value only selects it. Editing begins through an
-explicit edit affordance or `Enter`/`F2` while the value control has edit
-focus. A semantic line click and its edit-button click are distinct actions,
-and double-click never begins direct text editing.
+When text hash matches the report analysis key, navigation uses cached reports
+and indexes with zero analyzer calls. Stale navigation queues a pending target
+and signals pending analysis; it does not launch analysis itself. After normal
+analysis produces the current projection, the pending target is applied once
+without another history entry. Document edits remap stable entity/occurrence
+and panel context against the new projection.
 
-Mouse and keyboard paths must expose equivalent operations. Panel-specific
-exceptions are not permitted unless they are documented here together with an
-equivalent accessible operation.
+## History
 
-## Linked and followed selection
+History records user context moves: entity changes, opens, explicit tab changes,
+definition/reference jumps, source reveals, and graph focus-scope changes.
+Hover, scrolling, popovers, filter typing, resize/pan/zoom, rendering, and
+selection restoration do not create entries.
 
-Selection and highlights are shared between Semantic Text and participating
-panels. HVAC and Simulation do not participate. A committed panel selection scrolls Semantic Text to a compatible
-occurrence, and a Semantic Text selection scrolls or focuses a compatible
-target in the active panel. Following a selection never switches result tabs
-automatically. Internal restore and remap transactions may suppress a redundant
-follow operation, but there is no user-facing mode or persisted toggle.
+One `open` creates one snapshot even when it changes selection, tab, and both
+panes. Back/Forward restore global selection, occurrence/filter context,
+active result tab, and compact panel context. Snapshots must not contain
+reports, graphs, caches, rendered HTML, or other large derived values.
 
-## Canonical panel targets
+## Implementation and regression references
 
-The backend projection supplies all applicable view targets and chooses a
-preferred target from occurrence context. The frontend consumes those targets;
-it must not duplicate this table as a large object-type switch.
+- [semantic_navigation.go](../cmd/semantic-idf/internal/idf/semantic_navigation.go): canonical entities, occurrences, source anchors, and target metadata.
+- [selection-controller.js](../cmd/semantic-idf/frontend/src/js/selection-controller.js): shared state and atomic actions.
+- [panel-navigation-registry.js](../cmd/semantic-idf/frontend/src/js/panel-navigation-registry.js) and [panel-navigation-policy.js](../cmd/semantic-idf/frontend/src/js/panel-navigation-policy.js): adapter registration and participation rules.
+- [semantic-navigation-cache.js](../cmd/semantic-idf/frontend/src/js/semantic-navigation-cache.js): snapshot-keyed lookup maps.
+- [view-history.js](../cmd/semantic-idf/frontend/src/js/view-history.js): compact history capture/restore.
 
-| Semantic context | Preferred view | Canonical target |
-|---|---|---|
-| Building or site metrics | Metrics | Metric section |
-| Zone or space geometry | Topology | Zone or space ID |
-| Surface or fenestration | Topology | Geometry object ID |
-| Zone profile dimension | Profile | Zone plus dimension |
-| Profile group | Profile | Group ID |
-| Schedule definition or use | Profile | Schedule identity |
-| Output request | Input source | Source object or field anchor |
-| Simulation-purpose output source | Input source | Source anchor |
-| Diagnostic occurrence | Tools / Diagnose | Diagnostic ID |
-| Raw or source-only occurrence | Input source | Source anchor |
+Use `dev.bat test -Area navigation`; see [testing.md](testing.md) for plan/full
+commands. Focused invariants include `TestSemanticNavigationDoesNotTriggerAnalysis`,
+`TestTextJSONAndTableClicksCommitTheSameSemanticSelection`,
+`TestSemanticLineClickAndPrimaryOpenHaveSingleHistoryBoundary`,
+`TestSemanticTemporaryRevealPreservesUserFiltersAndMode`,
+`TestSemanticEditReanalysisRestoresIdentityOccurrenceAndPanelContext`, and
+`TestNavigationSelectionUXBrowserHarness`.
 
-A zone name is not forced to one main result panel: it advertises every
-supported Topology and Profile target. Tools / Diagnose resolves
-diagnostics independently from its current document snapshot. Occurrences beneath
-`zones/<zone>/profiles` and `zones/<zone>/geometry` prefer Profile and Topology
-respectively. When
-multiple valid targets or occurrences remain, the UI offers a chooser rather
-than inventing a relationship or silently choosing an unrelated context.
-
-Backend projection metadata can retain HVAC and Simulation targets for model
-identity and compatibility. The frontend excludes them from reveal, open,
-follow, and destination menus. Local HVAC navigation remains organized around
-zone relationships and AirLoopHVAC, PlantLoop, and Other loop diagrams.
-
-Profile and Topology do not advertise each other as direct related
-destinations in result-panel menus. Both remain independently reachable from
-Semantic Text and their own top-level tabs.
-
-## Reveal, filtering, and analysis lifecycle
-
-Selection never destroys a semantic mode, facet, search filter, panel filter,
-graph scope, or active tab. If a selected occurrence is hidden, reveal
-temporarily materializes the containing section and exempts only the target.
-Clearing the temporary reveal restores the user's unchanged filters.
-
-If the current text hash matches the report analysis key, navigation uses the
-existing report and navigation index and makes zero analyzer calls. If the
-document analysis is stale, Semantic or panel open records a pending target
-and reports that analysis is pending; the navigation action itself does not
-start a full analysis. After the normal analysis lifecycle produces a current
-projection, the pending target is applied once without adding history.
-
-## History contract
-
-History records user context moves: entity changes, preferred-view opens,
-explicit tab changes, definition/reference jumps, input-context changes caused
-by source reveal, and graph focus-scope changes. It does not record hover,
-temporary highlight, scrolling, tooltip/popover state, filter typing,
-resize/pan/zoom, render refreshes, or selection restoration.
-
-An `open` operation records exactly one snapshot even though it may update
-selection, switch a tab, and reveal both panes. Back and Forward restore the
-global selection, semantic occurrence and filters, active result tab, and the
-compact local context of each panel.
-
-## Baseline regression gaps
-
-The migration is complete only when automated acceptance coverage prevents all
-of these baseline problems from returning:
-
-1. `SemanticYAMLLine` previously exposed object/field indexes and edit metadata
-   but no stable semantic entity ID or panel target.
-2. Semantic line selection previously updated only its input-view object index
-   but not right-panel selection.
-3. Generic right-panel input jumps previously relied on
-   `data-jump-object-index` and could not choose a contextual semantic
-   occurrence.
-4. View history previously stored input/result tabs and source object/scroll
-   but not Profile, HVAC, Topology, the former Output panel, or Simulation
-   context.
-5. HVAC, Profile, Topology, and Simulation previously held rich independent
-   selection state without a common global entity selection.
-6. Basic Semantic Text previously hard-truncated at 250 lines, so later
-   occurrences could be absent from the DOM and unreachable.
-7. A target hidden by mode, facet, or filter previously could not be revealed
-   reliably without disturbing the user's view state.
-
-Each gap has an acceptance test at the backend, controller, adapter, or end-to-
-end layer appropriate to the behavior. Adding a new panel requires only a
-registered navigation adapter, canonical target metadata, standard selectable
-markup/actions, compact context capture/restore, and the same shared tests; it
-must not add an independent selection model or navigation event protocol.
+New participating panels require registered adapters, canonical targets,
+standard selectable actions/markup, compact context capture/restore, and
+coverage of these same invariants.

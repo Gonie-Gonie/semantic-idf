@@ -1,59 +1,43 @@
 # Documentation
 
-Start with the [project README](../README.md) for setup, developer commands and
-CLI examples. The application's bundled Guide covers end-user workflows.
+Start with the [project README](../README.md) for setup and commands. The bundled
+Guide covers application workflows. These references describe current behavior,
+implementation boundaries and verification needed for further development.
 
-## Architecture and contracts
+## Development
 
-| Document | Purpose |
+| Reference | Use it for |
 | --- | --- |
-| [Agent working notes](agent.md) | Repository conventions and implementation boundaries |
-| [Testing workflow](testing.md) | Feature/layer test selection, commit checks and full release verification |
-| [Refactoring and performance](refactoring-performance.md) | Current cleanup, code structure and performance measurements |
-| [Semantic navigation](semantic-navigation.md) | Shared identity, selection and cross-view navigation |
-| [Topology view](topology-view.md) | Geometry views, interaction and exports |
-| [Thermal topology schema](thermal-topology-schema.md) | Surface heat-flow result and presentation contracts |
-| [Simulation runner](simulation-runner.md) | Run plans, output requests, result reading and batch execution |
-| [Energy Path schema](energy-path-schema.md) | Graph domains, allocations, provenance and serialization |
-| [Energy Path CLI and Python](energy-path-cli.md) | Read existing results through CLI and the local API |
+| [Architecture](architecture.md) | Finding code ownership and shared input, analysis, result and export invariants |
+| [Working conventions](agent.md) | Repository workflow, fixture preservation and documentation maintenance |
+| [Testing](testing.md) | Choosing feature/layer checks, commit verification and the full release suite |
+| [Performance](performance.md) | Current optimizations, measured limits, benchmarks and optional saved-run replay |
 
-## Acceptance and regression evidence
+## Feature contracts
 
-- [Thermal topology acceptance](thermal-topology-acceptance.md)
-- [Energy Path acceptance](energy-path-acceptance.md)
-- [Actual-model acceptance and capture provenance](energy-path-real-models.md)
-- Equipment and model families:
-  [district](energy-path-district-acceptance.md),
-  [fan coil](energy-path-fan-coil-acceptance.md),
-  [mixed heating](energy-path-mixed-heating-acceptance.md),
-  [pool](energy-path-pool-acceptance.md),
-  [PTHP](energy-path-pthp-acceptance.md),
-  [PV/storage](energy-path-pv-acceptance.md),
-  [radiant](energy-path-radiant-acceptance.md),
-  [VRF](energy-path-vrf-acceptance.md), and
-  [zone groups](energy-path-zone-group-acceptance.md).
+| Reference | Use it for |
+| --- | --- |
+| [Energy Path](energy-path.md) | [Wire data](energy-path.md#wire-contract), [CLI/Python](energy-path.md#cli-and-python), [regressions](energy-path.md#regression-map), [native fixtures](energy-path.md#native-fixtures) and [equipment boundaries](energy-path.md#equipment-boundaries) |
+| [Topology](topology.md) | [Views](topology.md#views-and-interaction), [data contracts](topology.md#data-contracts) and [regressions](topology.md#regression-coverage) |
+| [Simulation runner](simulation-runner.md) | Run plans, output requests, result reading, purpose-specific views and batch execution |
+| [Semantic navigation](semantic-navigation.md) | Source identity, selection and navigation between participating views |
 
-The [Energy Path progress ledger](energy-path-progress.md) records historical
-implementation checkpoints. Read its latest completion entries and the current
-schema before using earlier checkpoint descriptions as current requirements.
-The [saved-run performance investigation](simulation-postprocessing-performance.md)
-retains historical measurements, equivalence checks and opt-in replay commands.
+Keep contracts and their regression references together. Historical implementation
+checkpoints are available in Git history; dated measurements and native acceptance
+baselines in current references describe the evidence actually retained.
 
-## Releases
+## Releases and local artifacts
 
 [Unreleased notes](release-notes/unreleased.md) describe pending changes.
-[CHANGELOG](../CHANGELOG.md) and the versioned files in `release-notes/` retain
+[CHANGELOG](../CHANGELOG.md) and versioned files in `release-notes/` retain
 published release history.
 
-## Local artifacts
-
-Tracked fixtures and their expected manifests remain beside their tests.
-`.runtime/` holds the repo-local toolchain, dependency/build caches and optional
-local captures. Keep original simulation inputs/results and reusable comparison
-baselines. Ad hoc search dumps, completed replay outputs, CPU profiles, screenshot
-reviews and their disposable browser profiles can be removed after recording
-their useful findings. They are not required by the ordinary test suite.
+Tracked fixtures and expected manifests stay beside their tests. `.runtime/`
+holds the repo-local toolchain, dependency/build caches and optional local captures.
+Preserve original simulation inputs/results and reusable comparison baselines.
+Completed search dumps, replay outputs, profiles and screenshot review artifacts
+may be removed after their useful findings are recorded.
 
 Preserve `build/`, frontend `dist/`, generated binaries and the Go/Wails runtime
-when cleaning temporary investigation files. Never treat an ignored path alone
-as proof that its contents are disposable.
+when cleaning investigation files. An ignored path alone does not establish that
+its contents are disposable.

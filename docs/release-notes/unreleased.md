@@ -24,6 +24,8 @@ The release script infers bump size from these sections:
 - Classify existing tests by feature, frontend/backend layer and test tier without
   moving test files. Use one runner for development, staged commit checks and
   mandatory full release verification.
+- Consolidate Energy Path, Topology and performance references, retain current
+  development contracts and evidence, and remove superseded progress logs.
 
 ## Fixed
 
@@ -41,7 +43,7 @@ The release script infers bump size from these sections:
   Windows PATH/PATHEXT probes and Go test-cache processing.
 - Prepare Energy Path quality availability once per scope and reuse it for
   annual/monthly periods. Local fixture measurements and their limits are in
-  `docs/refactoring-performance.md`.
+  `docs/performance.md`.
 - Run the fast test baseline plus affected feature regressions during development
   and commits, with full-suite fallback for shared or unclassified code changes.
   Avoid requiring duplicate full-suite runs for every implementation pass.

@@ -6,7 +6,7 @@ import (
 )
 
 func TestTopologyViewDocumentationFixesCanonicalRolesAndTerms(t *testing.T) {
-	doc := readTestFile(t, "../../docs/topology-view.md")
+	doc := readTestFile(t, "../../docs/topology.md")
 	for _, required := range []string{
 		"### 3D",
 		"### Plan",
@@ -28,7 +28,7 @@ func TestTopologyViewDocumentationFixesCanonicalRolesAndTerms(t *testing.T) {
 }
 
 func TestThermalTopologySchemaDocumentsStableContracts(t *testing.T) {
-	doc := readTestFile(t, "../../docs/thermal-topology-schema.md")
+	doc := readTestFile(t, "../../docs/topology.md")
 	for _, required := range []string{
 		"semantic-idf.thermal-topology/v1",
 		"semantic-idf.thermal-topology-simulation/v1",
@@ -66,7 +66,7 @@ func TestThermalTopologyReleaseNotesExplainCompatibilityMigration(t *testing.T) 
 }
 
 func TestThermalTopologyAcceptanceRecordMapsFinalFlows(t *testing.T) {
-	doc := readTestFile(t, "../../docs/thermal-topology-acceptance.md")
+	doc := readTestFile(t, "../../docs/topology.md")
 	for _, required := range []string{
 		"TOPO-280 Exterior zone",
 		"TOPO-281 Interzone pair",

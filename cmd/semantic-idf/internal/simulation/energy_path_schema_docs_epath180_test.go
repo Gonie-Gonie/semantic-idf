@@ -330,7 +330,7 @@ func epath180Object(t *testing.T, data []byte) map[string]any {
 
 func epath180ReadSchemaDocumentation(t *testing.T) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "docs", "energy-path-schema.md"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "docs", "energy-path.md"))
 	if err != nil {
 		t.Fatal(err)
 	}

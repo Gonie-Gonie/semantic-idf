@@ -1,735 +1,271 @@
-# Simulation Runner
+# Simulation runner contract
 
-This document tracks the current runner contract and the purpose-driven
-simulation flow. The runner is intentionally split into a run-copy workflow:
-temporary output requests are applied to the text that EnergyPlus executes, not
-to the source IDF, unless a backend or automation caller explicitly applies
-those outputs through the retained Output apply APIs.
+Use this document when changing purpose planning, EnergyPlus execution, saved
+results, or Simulation and Batch Simulation views. Detailed accounting and
+payload rules live in [Energy Path wire contract](energy-path.md#wire-contract);
+CLI processing lives in [CLI and Python](energy-path.md#cli-and-python).
 
-## Current Request
+## Execution and API boundary
 
-The Energy UI uses Scope and Period controls and shows heating and cooling
-together. Selecting a component opens a Monthly / Hourly chart in kWh/m².
-Monthly uses the selected scope's computed component totals; Hourly plots the
-component's actual reported source energy, which can differ from allocated
-monthly contributions. Missing hourly output is shown as unavailable.
-Source traces retain every observed hour independently of the Series preview.
-The Basic Energy output plan keeps Monthly requests and also requests Hourly
-energy inputs for subsequent runs. Summary cards and descriptive component
-inspectors are no longer displayed in the Energy UI.
+Purpose runs parse input, normalize the request, build a `PurposeRunPlan`,
+apply missing outputs to a run copy, execute EnergyPlus, read results, and build
+a `PurposeResultBundle`. The source document changes only through an explicit
+permanent Output apply API call.
 
-`SimulationRunRequest` contains:
+| API | Role |
+| --- | --- |
+| `BuildSimulationRunPlan` | Preview the backend plan without executing EnergyPlus. |
+| `RunSimulationText` | Run text or an input path; use purpose flow when `purposeRequest` exists. |
+| `RunPurposeSimulationText` | Purpose wrapper, defaulting to Basic Energy and Zone Heat Flow. |
+| `ApplyPurposeOutputsText` | Permanently apply a plan through the Output preview/apply pipeline. |
 
-- `runId`: caller-provided or generated run id.
-- `text`: input text to run. When present, the runner writes this to the run
-  output directory.
-- `inputPath`: existing IDF/IMF/JSON/epJSON path used when `text` is empty.
-- `filename`: display and run-copy filename.
-- `energyPlusExecutablePath`: explicit EnergyPlus executable path.
-- `weatherPath`: optional EPW file.
-- `outputDirectory`: optional explicit output directory.
-- `standardOutput`: legacy compatibility flag for the previous standard output
-  preset.
-- `standardOutputMode`: legacy merge/replace mode for the standard preset.
-- `purposeRequest`: purpose-driven output and result request.
-- `purposeRunPlan`: backend-built plan attached after preparation.
-- `resultMode`: result strategy, currently `sql_first` or legacy CSV fallback.
-- `useReadVarsESO`: controls EnergyPlus `-r`/ReadVarsESO CSV generation when
-  `resultMode` is SQL-first.
-- `silent`: suppresses UI-facing status messages.
-- `auto`: marks auto-runs started by the app.
+`SimulationRunRequest` is defined in
+[simulation.go](../cmd/semantic-idf/internal/simulation/simulation.go):
 
-## Purpose Flow
+| Fields | Meaning |
+| --- | --- |
+| `runId` | Caller-provided or generated run identity. |
+| `text`, `inputPath`, `filename` | Text takes precedence; otherwise read the IDF/IMF/JSON/epJSON path. Filename names the run copy. |
+| `energyPlusExecutablePath`, `weatherPath`, `outputDirectory` | Explicit executable, optional EPW, and optional run directory. |
+| `purposeRequest`, `purposeRunPlan` | Requested purposes and backend plan attached after preparation. |
+| `resultMode`, `useReadVarsESO` | SQL-first or legacy CSV strategy; ReadVarsESO controls EnergyPlus `-r` in SQL-first mode. |
+| `silent`, `auto` | Suppress UI status or identify app-started automatic runs. |
+| `standardOutput`, `standardOutputMode` | Compatibility options for the earlier standard preset. |
 
-The purpose flow is:
+## Current desktop defaults
 
-1. Parse current text or `inputPath`.
-2. Normalize `SimulationPurposeRequest`.
-3. Build a `PurposeRunPlan`.
-4. Apply missing purpose outputs to the run copy only.
-5. Run EnergyPlus.
-6. Read SQL first, then CSV, then ESO fallbacks.
-7. Build `PurposeResultBundle` while preserving legacy `Series` and
-   `HeatFlow` fields.
+The single-file view offers Basic Energy, Zone Heat Flow, HVAC Loop Check, and
+Comfort. **Run & Inspect** sits beside Weather. Batch Simulation offers the
+first three purposes, weather mapping, recursive file search, and worker count.
+Run-plan preview, Custom Outputs, Integrity, and advanced output policy remain
+backend capabilities.
 
-`BuildSimulationRunPlan` exposes the planning step to backend clients and
-automation. The main single-file Simulation view no longer renders that plan.
-`RunSimulationText` uses the purpose flow when `purposeRequest` is present.
-`RunPurposeSimulationText` is a convenience wrapper that defaults to Basic
-Energy + Zone Heat Flow.
+Both views send these fixed purpose options:
 
-An omitted `SimulationPurposeRequest.allocationPolicy` defaults to
-`by_service_path_load_share` for Basic Energy Energy Path requests. Other
-request modes, explicit policies, and stored v1 payloads retain the
-`direct_only` compatibility behavior. Basic Energy also accepts
-`by_zone_load_share`, which replaces direct Energy Use ->
-Delivered Load links with `basis=allocated` zone-load-share edges when
-zone-scoped delivered-load variables are available. It also accepts
-`by_service_path_load_share`, which keeps exact zone/component HVAC energy
-first, allocates the remaining central Cooling and Heating energy over matching
-HVAC service paths, falls back to the matching zone-service load share, and
-reports any remainder as unassigned Building HVAC energy. Direct
-backend callers can select any supported allocation or frequency policy. The
-main and Batch Simulation views both use fixed `by_service_path_load_share`
-allocation and `purpose_default` frequency.
+| Option | Value |
+| --- | --- |
+| `allocationPolicy` | `by_service_path_load_share` |
+| `basicEnergyDetail` | `energy_path` |
+| `zoneHeatFlowDetail` | `surface` |
+| `outputApplyMode` | `add_missing_only` |
+| `frequencyPolicy` | `purpose_default` |
+| `sqlMode` | `sql_first` |
+| `persistOutputs` | `false` |
+| `discoveryAllowed` | UI sends `false`; normalized Energy Path enables post-run dictionaries. |
+| `scope.zoneMode`, `scope.loopMode`, `scope.periodMode` | `all`, `all`, `full` |
 
-The same automatic policy allocates fan energy over related AirLoop service
-paths, using an already available supply-air volume series only when one is
-present. Pumps and heat-rejection energy use related PlantLoop or CondenserLoop
-service paths; shared plant energy without a clear cooling/heating relationship
-remains unassigned. This allocation does not add new EnergyPlus output requests
-or a toolbar selector. In Zone scope, the quality detail shows the Building-wide
-direct, allocated, and unassigned auxiliary-energy shares for the selected
-period. Unassigned Building auxiliary energy remains quality context and is
-never inserted into the selected Zone graph or value.
+Period endpoints and zone filters are empty. HVAC Loop Check requests all loops
+independently of HVAC tab selection. Result display scope is separate: choosing
+a Zone or month does not rerun the model or change the output plan.
 
-### Main Simulation Defaults
+Single-file runs detect the IDF/epJSON version and choose a compatible registered
+installation. Running is unavailable without a usable installation, a match for
+the known model version, or installation version metadata to verify it. Direct
+callers may provide an executable.
 
-The main single-file Simulation view deliberately uses a compact purpose
-selection. It does not expose Advanced run options, an EnergyPlus version
-selector, a Run Plan display, or selectors for allocation, output application, frequency,
-detail, period, or zone scope. It also omits Integrity and Custom Outputs from
-the purpose list. The backend purpose model continues to support those
-purposes and options. Batch Simulation follows the separate fixed contract
-below.
+Batch leaves the executable empty. The runner merges configured/auto-detected
+installations and matches each input's major/minor version independently. A
+known version without a match yields `missing_energyplus` for that file while
+others continue; an unreadable version uses the first available installation.
+An explicit backend executable applies to the whole batch.
 
-The view places **Run & Inspect** beside the Weather selector. It does not show
-a separate header status, a concatenated selected-purpose summary, or
-detail/weight tier badges on the purpose cards.
+## Purpose planning
 
-The main view sends these fixed values:
+[purpose.go](../cmd/semantic-idf/internal/simulation/purpose.go) defines
+normalization, planning, and bundle construction. Purpose IDs are
+`basic_energy`, `zone_heat_flow`, `hvac_loop_check`, `integrity_check`,
+`comfort_check`, and `custom_outputs`.
 
-- `allocationPolicy`: `by_service_path_load_share`
-- `outputApplyMode`: `add_missing_only`
-- `frequencyPolicy`: `purpose_default`
-- `basicEnergyDetail`: `energy_path`
-- `zoneHeatFlowDetail`: `surface`
-- `scope.periodMode`: `full`
-- `scope.zoneMode`: `all`
-- `scope.loopMode`: `all`
+Backend scope supports all/selected/visible/filtered zones, selected
+air/plant/condenser loops, components, output signatures, custom output objects,
+and custom period. Zone Heat Flow and Comfort use scoped zones. HVAC Loop Check
+resolves selected nodes/components from analyzed HVAC; broad or unresolved
+scope falls back to wildcard keys.
 
-Period start/end values and zone-name filters are therefore empty. HVAC Loop
-Check includes all air, plant and condenser loops, independently of the active
-HVAC tab selection.
+Plans retain output signatures, purpose tags, state, estimated series/frame
+counts and weight, SQL/discovery requirements, and wildcard/frequency warnings.
 
-The main view detects the model version from either IDF or epJSON input and
-automatically selects a compatible registered EnergyPlus installation when
-possible. A manual executable/version choice is not shown there. Simulation is
-unavailable when no usable EnergyPlus installation exists, when the detected
-model version has no compatible installation, or when the registered
-installation has no version metadata to verify. Direct backend requests may
-still supply an explicit executable path.
+| Output state | Meaning |
+| --- | --- |
+| `existing` | Present in the source input. |
+| `temporary` | Added to the run copy. |
+| `will_be_persisted` | Planned for explicit permanent apply. |
+| `conflict` | Same target with a different frequency or field set. |
 
-### Batch Simulation Defaults
+### Basic Energy options
 
-Batch Simulation keeps the Basic Energy, Zone Heat Flow, and HVAC Loop Check
-purpose toggles, plus weather mapping, recursive folder search, and worker-count
-controls. It no longer exposes an EnergyPlus selector, Integrity purpose,
-run-plan preview, advanced-series view selector, or allocation, frequency, and
-detail selectors.
+Omitted `basicEnergyDetail` normalizes to `energy_path`. Its model-aware plan
+keeps Monthly accounting observations and adds native Hourly observations for
+component charts. Existing output frequencies remain; shared requests are
+deduplicated. Normalization enables lightweight post-run RDD/MDD dictionaries
+even when the UI sends `discoveryAllowed: false`.
 
-The Batch Simulation tool sends these fixed purpose values:
+Explicit compatibility tiers remain: `light` requests SQL and monthly facility/
+end-use meters; `explain` adds delivered-load and zone energy variables;
+`heat_drivers` adds fan heat, internal gains, solar/window, air-exchange, and
+heat-balance drivers. Detail is Monthly or Hourly with `highest_resolution`;
+hourly Zone Heat Flow requests can be reused. Unrequested groups are
+`not_applicable`, distinct from missing requested data.
 
-- `allocationPolicy`: `by_service_path_load_share`
-- `outputApplyMode`: `add_missing_only`
-- `frequencyPolicy`: `purpose_default`
-- `basicEnergyDetail`: `energy_path`
-- `zoneHeatFlowDetail`: `surface`
-- `sqlMode`: `sql_first`
-- `persistOutputs`: `false`
-- `discoveryAllowed`: `false`
-- `scope.zoneMode`: `all`
-- `scope.periodMode`: `full`
-- `scope.loopMode`: `all`
+Omitted allocation defaults to `by_service_path_load_share` for Basic Energy
+Energy Path. Non-Energy-Path modes and explicit `direct_only` retain direct-only
+behavior. `by_zone_load_share` and `by_service_path_load_share` allocate supported
+remaining consumption, preserving exact direct observations and an unassigned
+Building remainder. Service-path allocation uses matching paths, then matching
+zone/service load share.
 
-The Batch UI leaves `energyPlusExecutablePath` empty. The runner merges
-configured and auto-detected installations, parses each input independently,
-and selects an installation whose major/minor version matches that file's
-declared EnergyPlus version. A file with a known version and no compatible
-installation is reported as `missing_energyplus` without preventing compatible
-files from running. If an input has no readable version, the first available
-installation is used. Direct backend callers can still provide one explicit
-executable path for the request.
+Auxiliary allocation uses AirLoop paths for fans and PlantLoop/CondenserLoop
+paths for pumps and heat rejection. It uses a
+supply-air volume series only when one is
+present and does not add new EnergyPlus output requests. Shared plant energy
+without a clear cooling/heating relationship remains unassigned. Zone quality
+retains Building-wide direct, allocated, and unassigned auxiliary-energy shares;
+unassigned Building energy is never inserted into the selected Zone graph or value.
 
-## Purpose Model
+### Permanent application and discovery
 
-Supported purpose ids:
-
-- `basic_energy`
-- `zone_heat_flow`
-- `hvac_loop_check`
-- `integrity_check`
-- `comfort_check`
-- `custom_outputs`
-
-`SimulationPurposeScope` can express all, selected, visible, or filtered zones;
-selected air/plant/condenser loops; selected components; output signatures; and
-custom output objects. Zone Heat Flow and Comfort use scoped zone names when
-provided. HVAC Loop Check uses selected loop node names when they can be resolved
-from the current HVAC analysis, requests component operation variables for
-resolved loop components, and falls back to wildcard node/component keys when
-scope is broad or unresolved. The main Simulation view always requests all
-zones and loops, without inheriting HVAC tab loop or component selections.
-
-The general Series preview is limited to the first 256 SQL columns or 16 CSV
-columns. HVAC Loop Check and Comfort also read every matching requested series
-beyond those preview limits, using the run plan's variable names and keys.
-Existing reporting frequencies remain available. The run plan is attached
-before results are parsed so these selections apply to Run & Inspect as well
-as saved-result processing.
-
-`PurposeRunPlan` reports:
-
-- output objects with purpose tags, signatures, state, and estimated weight
-- overall estimated series count, frame count, and weight
-- SQL and discovery requirements
-- warnings for wildcard scope, frequency conflicts, and Heavy/Very Heavy output
-  estimates based on series count times frame count
-
-Basic Energy detail is tiered by the `basicEnergyDetail` request option. `light`
-requests SQL plus monthly top-level/end-use meters. `explain` adds
-delivered-load variables across zone air system, ideal loads, radiant HVAC,
-coil, plant demand, plant unmet/residual demand, Ideal Loads latent
-humidification/dehumidification, and outdoor-air ventilation-conditioning
-aliases plus zone reported-energy
-variables.
-`heat_drivers` adds object-level fan heat-to-air variables, detailed
-internal-gain, window solar, window heat gain/loss, and air-exchange
-heat-driver variables, plus zone heat-balance driver variables. Those
-explanation/detail variables are monthly by default and become hourly when the
-frequency policy is `highest_resolution`. The backend default remains `light`,
-and callers that omit the option use that tier unless they explicitly request
-`explain` or `heat_drivers`. The main and Batch Simulation views explicitly
-request `heat_drivers`.
-When Zone Heat Flow is also selected, its hourly
-heat-balance outputs are reused instead of adding a duplicate Basic Energy zone
-heat-driver request. Detail levels not requested by the active tier are reported
-as `not_applicable` in explanation completeness instead of as missing source
-outputs, and the source availability list includes a `not requested by current
-output plan` placeholder row for those levels so exports can distinguish
-unrequested detail from missing requested outputs.
-End-use meter aliases cover cooling, heating, lighting, equipment, fans, pumps,
-heat rejection, heat recovery, water systems, exterior lighting, refrigeration,
-onsite generation, district cooling/heating end uses, natural-gas
-heating/equipment/water-system use, and facility fuel oil/propane/steam/other
-fuel totals where the model exposes those meters.
-Energy Path carrier branches use the fixed canonical set `electricity`,
-`natural_gas`, `district_cooling`, `district_heating`, `steam`, `propane`,
-`fuel_oil_1`, `fuel_oil_2`, `coal`, `diesel`, `gasoline`, `other_fuel_1`, and
-`other_fuel_2`, all normalized to site-energy `kWh`. `water` remains a
-recognized utility carrier, but native volume is shown separately as `m3`
-context and is excluded from Sankey totals, reconciliation, mapped percent,
-and Energy Use completeness. It enters the energy flow only when a
-`derived_ratio` node cites a source with the original non-energy unit, a
-normalized site-energy unit, and an explicit conversion formula.
-When an `ElectricLoadCenter:Storage:*` object is present, Basic Energy also
-requests electric storage charge and discharge energy variables. Charge is
-treated as a measured energy-variable end use, while discharge is shown as a
-separate support flow so it does not inflate mapped facility consumption.
-Purchased, produced, sold, and storage-discharge electricity are supply context,
-not consumption end uses. The v2 graph retains one Electricity carrier and
-exact-source `support_supply` traces; the carrier inspector shows the scoped
-period's Supply breakdown. The compact support strip appears only for nonzero
-generation or storage activity, never for purchases or sales alone. Storage
-charge remains part of consumption and has a separate context observation so
-its value is not inferred from the merged Other end use or counted twice.
-Each carrier is reconciled as facility consumption minus its incoming end-use
-carrier splits. Signed residuals are recomputed after monthly-to-annual
-aggregation and when stored results are read. Residuals appear in carrier
-badges and the inspector; a positive gap exceeding either 2% of facility use or
-0.01 kWh additionally produces an `Unclassified energy` branch. Negative gaps
-remain inspector-only because adding a positive branch would inflate the
-overmapped flow. Supply sources never enter consumption closure provenance.
-Driver-to-load links stay entirely in the thermal domain. Both ribbon endpoints
-use the allocated contribution, not the raw signed heat pressure. Raw and
-multiplier-adjusted pressure remain separate inspector evidence alongside the
-heat-balance-share formula. Explicit zero allocation is not a missing value:
-reading a stored result must not restore a raw-only driver as a nonzero ribbon.
-Likewise an Other/storage contribution may have zero raw pressure and a nonzero
-allocated contribution; these are distinct quantities, including after reload.
-Only matching cooling/heating loads and equipment uses form conversion links.
-The thermal and site endpoints keep their separate values and units; this is
-not a conservation boundary. On reload, COP/efficiency/load-to-site labels are
-recomputed from those values and the retained carrier splits. Partial-period
-conversion values and their exact source IDs remain unchanged; the adapter
-never substitutes a full annual endpoint or adds unobserved months to a trace.
-Carrier splits use the same period-local reported energy at both site-domain
-endpoints. Distinct legacy contributors that merge into Other are added once,
-including when some legacy edges are absent. If an invalid carrier branch must
-be removed on reload, the end-use graph total is rebuilt from surviving splits
-with a partial-data note; original raw/effective values and source records stay
-inspectable. The original mixed-carrier conversion is then unavailable rather
-than being reinterpreted as a ratio for the surviving fuel alone.
-Automatic Other grouping is presentation-only and uses a strict less-than-1%
-threshold. End-use percentages use the selected scope/period's whole site-energy
-stage, including HVAC, while group membership remains service/scope/domain-local.
-Essential envelope/air drivers, loads, cooling/heating equipment, named carriers,
-auxiliary lanes and source-correspondence endpoints are not collapsed into Other.
-Grouped nodes retain original IDs and member snapshots; an inspector-only Expand
-list reveals the original contributions without increasing graph node count.
-Canonical nodes, carrier-local sources and actual CSV export rows stay unchanged
-by rendering. Count-driven backend compaction is not used to erase a contributor
-before that projection.
-Energy Path quality separates Drivers, Loads, End uses and Carriers instead of
-using legacy `mappedPercent` as an overall score. Stage availability describes
-the run's requested output groups; it does not imply that each selected month
-contains every observation. Selected-period driver/load and end-use/carrier
-closure use endpoint-weighted absolute discrepancies, so overmapping and missing
-energy cannot cancel. Load-to-end-use quality is valid source-traced ratio
-availability, not conservation between thermal and site energy. Direct and
-allocated zone coverage uses building-wide allocation rows (also when viewing
-one Zone), with explicit unassigned quantities preserved. Missing denominators,
-unknown stored coverage, not-requested outputs and non-applicable outputs have
-distinct statuses. Quality is rebuilt after allocation accounting and on stored
-result reload, and is included in v2 results, periods, zones and summaries without
-adding fields to the frozen v1 compatibility payload.
-The Energy Path graph has a compact four-stage quality line. Selecting a stage
-opens its source-availability details in a normally closed Data details drawer;
-full reconciliation, warnings and allocation diagnostics are not primary
-navigation views. The drawer's internal Output tab shows this run's output
-requests, not a restored standalone analysis tab. Source jumps validate request
-type, variable/meter identity, key and reporting frequency before selecting a
-row; stored object indices alone cannot establish a match. Ambiguous, derived,
-tabular and incomplete source identities remain explicit rather than selecting
-an unrelated request. The tabs support arrow/Home/End keys, and Escape closes
-the drawer and restores focus to its opener.
-When both energy and rate outputs are present for the same delivered-load or
-heat-driver target, the explanation parser uses the reported energy series and
-keeps the rate series only as traceable fallback source metadata. Completeness
-uses the canonical target count for these fallback groups while source
-availability still lists each requested output name.
-Delivered-load nodes keep zone loads in `zoneName`, plant demand in `loopName`,
-and aggregate coil/system loads at the system layer; heat-driver reconciliation
-uses zone loads when they are available so plant and system layers are not
-double-counted against zone heat-balance drivers.
-When the source IDF or epJSON can be read for the run, load/heat nodes and
-related edges also include `relatedPathIds` from the HVAC service model. The
-Sankey inspector and Systems view use those IDs before falling back to
-zone/service-kind matching. SQL source metadata also records the matching output
-request `objectIndex` when the run plan references an existing output object, so
-source tables, Sankey inspectors, and batch source CSV rows can jump back to the
-original request before falling back to output-name matching. SQL source
-metadata also records an `aggregationMethod` such as `sum_report_data` or
-`integrate_rate_by_time_interval`, and source tables, inspectors, and batch CSV
-exports show that method beside frequency and unit. `ReportData` sources fill
-`rowName` from the dictionary key/name and `columnName` from the value column
-unit, for example `ZONE ONE / Zone Air System Sensible Cooling Energy` and
-`Value [J]`. Source availability rows also use the energy meter alias catalog
-when matching planned meter names such as `Cooling:Electricity` to SQL/MDD
-source names such as `Electricity:Cooling`; the same meter alias rule is used
-by source tables and Sankey inspectors when no exact `objectIndex` link is
-available. SQL source metadata also attaches output request `objectIndex` values
-through delivered-load aliases and same-sign heat-driver aliases, keeping gain
-and loss heat requests distinct.
-Found rows preserve matching `sourceIds`, so HTML and batch exports can connect
-availability status back to the exact SQL source and output request object.
-
-Output states:
-
-- `existing`: already present in the source IDF.
-- `temporary`: added to the run copy only.
-- `will_be_persisted`: planned for permanent apply.
-- `conflict`: same output target exists with a different frequency or field set.
-
-Basic Energy output requests use tiered reasons in backend plans and Output
-apply previews: top-level SQL/meters form the light energy basis, monthly
-delivered-load and zone energy variables are labeled as `Basic Energy Explain`,
-and monthly heat-balance, fan heat, internal-gain, and air-exchange variables
-are labeled as `Basic Energy Heat Drivers`. Backend plans and exported run-plan
-artifacts retain output-set tier and state counts even though the main
-Simulation view no longer displays a Run Plan panel.
-
-## Result Reading
-
-`readSimulationOutputs` is split into:
-
-- `collectSimulationFiles`
-- `parseERR`
-- `parseSQLResults`
-- `parseCSVResults`
-- `parseHeatFlowFallback`
-
-The result source priority is SQL, then CSV, then ESO. The run result and
-`semantic-idf-run.json` manifest expose both `resultSourcePriority` and the
-actual `resultSources` used by the parsers. SQL parsing uses a shared
-`QueryReportData` layer that joins `ReportDataDictionary`, `ReportData`, and
-`Time` while preserving dictionary metadata, meter status, reporting frequency,
-index group, and time interval fields; it feeds legacy `Series`, Energy dashboard,
-`HeatFlow`, and Basic Energy explanation rows so older viewers continue to work
-while purpose result viewers are added. Basic Energy SQL rows are converted to
-display units
-(`J`/`kJ`/`MJ`/`GJ`/`Wh` to `kWh`, `W` to `kW`) and grouped into monthly chart
-points when `Time.Month` is available, so hourly or timestep energy rows can
-still feed monthly dashboards. Basic Energy also builds an
-  `energyExplanation` payload with `semantic-idf.energy-explanation/v1` schema,
-  source IDs derived from `ReportDataDictionary`, accounting-basis edges, and
-  residual reconciliation between facility carrier totals and mapped end-use
-meters. The legacy Basic Energy dashboard classifier uses the same meter alias
-catalog as the explanation graph, so both `Electricity:Cooling` and
-`Cooling:Electricity` style end-use meter names are retained in Overview tables.
-If detailed `ReportData` rows are unavailable, Basic Energy can fall
-back to annual `TabularDataWithStrings` end-use rows and marks those sources as
-`sql_tabular` with `tabular_annual_value` aggregation. Energy sources preserve
-both the raw source unit and the normalized graph unit so `J` meters and `W`
-rate variables remain traceable after conversion to `kWh`. Daily, hourly,
-timestep, or detailed SQL sources emit daily `D<n>` periods from `Time.Month`
-and `Time.Day`; Hourly, Timestep, or Detailed sources also emit hourly `H<n>`
-periods from `Time.Hour`. Monthly/RunPeriod sources stay annual/monthly only to
-avoid treating monthly rows as high-resolution data. When a custom period scope
-is selected, SQL row values whose `Time` month/day falls inside the scope are
-also emitted as a `selected_range` period alongside annual and monthly periods.
-The Sankey, Zones, Systems, and Reconciliation controls split periods by kind
-and use a range slider for large daily/hourly sets so high-resolution drilldown
-does not flood a single dropdown.
-The payload includes the Basic Energy relationship rule catalog, and
-explanation edges carry a relationship `ruleId` from that catalog so the UI and
-exports can distinguish measured end-use, measured load, heat-balance, and
-residual links. When matching end-use and zone heat-gain sources are both
-available, internal-gain edges such as interior lighting energy to lighting
-heat use `basis=measured_meter_plus_zone_gain_variable` to show the measured
-meter/variable pairing without treating it as a conservation equation. The companion
-`energyExplanationSummary` payload keeps the annual
-carrier, end-use, delivered-load, heat-driver, residual, and top-zone rollups in
-a compact shape for batch comparisons and exports. Energy nodes expose
-`meterHierarchyLevel` values such as `facility_total` and `broad_end_use` so the
-Sankey inspector can show which meter hierarchy tier is being reconciled. Both
-payloads expose
-`allocationPolicy` so exported results make clear whether allocated edges were
-allowed. Carrier-qualified meters that are not in the explicit end-use alias
-catalog are split by known EnergyPlus end-use tokens such as heating, water
-systems/DHW, fans, pumps, exterior equipment, humidifier, cogeneration, and
-refrigeration before falling back to `other`, while preserving the original
-meter name in source metadata. The Sankey UI maps
-canonical end-use IDs such as fans, pumps, water systems, refrigeration, onsite
-generation, and other energy use to stable labels and node colors. With
-`by_zone_load_share`, cooling/heating end-use
-energy is allocated to zone load nodes by measured delivered-load share and the
-edge uses `relation=allocation`, `basis=allocated`, and the
-`allocation.by_zone_load_share` rule. With `by_service_path_load_share`, the
-allocated edge also carries the matched service path IDs and the
-`allocation.by_service_path_load_share` rule. When heat-balance rate
-variables are present, the same payload
-integrates them to `kWh` by timestep and links Delivered Load to Heat Drivers
-with signed driver values and residual reconciliation. Explicit sensible heat
-gain/loss outputs are kept as separate positive/negative heat-driver nodes even
-when EnergyPlus reports both source series as positive energy values. Summary
-rows and batch/HTML exports preserve each heat-driver row's `heatCategory` and
-`sign` so gain/loss direction remains machine-readable outside the Sankey graph.
-Large
-reported heat-balance deviation terms emit period warnings so unresolved zone
-balance checks are visible next to the reconciliation rows. When matching Zone
-Heat Flow data exists, heat/load selections in the Sankey inspector can jump
-directly to the zone heat-flow ledger.
-Delivered-load nodes carry both `serviceKind` and `pathType` metadata, using the
-load alias scope (`zone`, `system`, or `plant`) so HVAC service links and batch
-exports can distinguish zone loads from broader system or plant demand. Their
-node `basis` also distinguishes reported energy variables from rate variables
-integrated over the SQL time interval, and the Sankey inspector/legend labels
-those source-basis values directly.
-When electric end-use energy and delivered thermal load are both present, Basic
-Energy also reports derived COP KPIs separately from the Sankey graph rather
-than creating synthetic COP conversion edges. Batch purpose metrics expose those
-derived KPIs so COP can be selected directly in the Batch Simulation chart and
-table. The Energy Overview uses the summary `derivedKpis` payload as the KPI
-source of truth and only uses the annual graph to fill in display details such
-as the matching electric energy and delivered load values. Derived KPI summary
-items carry the formula plus numerator and denominator labels, values, and
-units so CSV/XLSX/HTML exports can audit the COP calculation without adding a
-synthetic Sankey conversion edge. Batch delta views also keep that detail next
-to derived KPI rows so a COP change can be traced back to delivered-load and
-electric-energy changes.
-
-Generic SQL and CSV series keep original values for compatibility and also
-expose display metadata (`displayColumn`, `displayUnit`, `displayMin`,
-`displayMax`, `displayAverage`, and converted `displayPoints` when values
-change). Result charts and purpose summary tables use these display fields so
-energy, power/rate, temperature, mass-flow, and humidity-ratio units stay
-consistent across viewers.
-
-Energy explanation periods include their own reconciliation rows and warnings,
-so the Reconciliation subview can switch the accounting-gap table between
-annual and monthly periods instead of showing only the annual graph.
-
-Batch purpose simulations also summarize the annual explanation graph into
-compact purpose metrics for Energy Use, Delivered Load, Heat Drivers, residual,
-mapped percent, derived COP KPIs, and the largest heat-driver groups. When two
-Basic Energy purpose rows with explanation summaries are selected, the batch
-chart also lets the user pin an explicit baseline and target case, then shows
-the largest explanation changes plus end-use, delivered-load, and heat-driver
-delta tables, including residual rows, beside the selected metric. It flags completeness
-differences between the two selected cases, including mapped percent, missing
-category changes, and missing/not-applicable source availability changes.
-Comparison rows include compact baseline/target source IDs, source output
-object numbers, SQL table/row/column references, and source/normalized units
-when available.
-Explicit gain/loss heat-driver summary rows stay separate so
-opposite air-exchange directions can be compared. It also ranks annual Sankey
-edge deltas by relation, basis, edge label, rule ID, delta, percent, and
-missing-row status. A compact bar view renders the largest selected-case edge
-deltas before the table so the two-case Sankey change is visible without
-reading every row.
-Missing summary and edge rows are labeled separately from matched rows, real
-zero values are labeled as `zero baseline` or `zero comparison` when only one
-side is zero, and the comparison value cell renders `Missing` instead of
-numeric `0` so an absent output is not silently treated as a normal zero.
-Percent deltas render as an em dash (`—`) when the baseline value is zero in the app, CSV,
-and XLSX exports. Batch Simulation can export purpose metrics, compact
-`energyExplanationSummary` rows, `energyExplanation` source metadata rows,
-source availability rows, node metadata rows, reconciliation rows, and Sankey
-edge metadata rows with period, level/kind, relation, basis, `ruleId`, formula,
-endpoint, service, zone, source IDs, related source output object indexes, SQL
-tabular table/row/column names, source/normalized units, load path type, and
-related HVAC service path IDs as CSV for spreadsheet comparison. The batch CSV
-keeps annual,
-monthly, and selected-range explanation periods by default; daily and hourly
-periods remain available in the embedded purpose result payload without
-expanding the default spreadsheet export. Compact summary rows also carry their
-source IDs, matching source output object indexes, source table/row/column
-labels, and source/normalized units when available. Batch
-Simulation can also export the same core purpose metrics, compact energy
-summary, node metadata, source metadata, source availability, edge, and
-reconciliation sheets as XLSX. XLSX summary, node, edge, reconciliation, and
-source availability rows preserve `source_ids`, matching output object indexes,
-source table/row/column labels, and source/normalized units when the source
-metadata is available. When a baseline and
-target case are selected, the XLSX workbook also includes
-comparison context, summary delta, and annual Sankey edge delta sheets. The
-delta sheets preserve baseline/target source IDs and matching source object
-indexes separately, with edge related path IDs split by side. Summary and edge
-delta rows also carry baseline/target source table, row, column, source unit,
-and normalized unit fields directly. The
-workbook also includes a Run Context sheet with the selected paths, purpose
-request, frequency/allocation policy, weather mode/path, worker count, and
-batch view settings used for the export. It can
-export the full batch result as
-`semantic-idf.batch-simulation/v1` JSON, preserving embedded purpose result
-payloads such as high-resolution daily/hourly explanation periods that are
-intentionally omitted from the default CSV. The export context also preserves
-the selected baseline and target row IDs used by the two-case explanation delta
-view, along with the purpose request, frequency/allocation policy, weather
-mode/path, worker count, and selected batch view mode.
-
-`parseSimulationSQL` is the combined SQLite entrypoint. It gathers generic
-time-series rows, Basic Energy dashboard data, SQL heat-flow data, Integrity
-diagnostics/tabular reports, and Comfort unmet-hours rows into one parse result,
-while keeping partial results when one SQL feature is absent or malformed. The
-entrypoint uses a timeout-aware context wrapper and checks cancellation between
-parser phases.
-
-The runner's initial output read handles Series and Heat Flow independently,
-without that combined parser's elapsed-time cutoff. A large selected-purpose
-dataset can finish reading without a later parser stage causing its results to
-be discarded. Energy, Integrity, and Comfort unmet-hours data are read by their
-purpose builders; the initial read does not duplicate those computations.
-CSV/ESO fallback fills sections that are missing or failed to parse.
-
-Energy displays energy quantities in kWh/m² with two decimal places. Building
-scope uses the executed model's total floor area; Zone scope uses that zone's
-floor area. The area snapshot includes the same zone and list multipliers as
-the model totals, and excludes zones marked outside the total floor area from
-the building denominator. The display uses no area from later editor changes.
-An unavailable area produces an unavailable intensity. Conversion ratios,
-percentages, non-energy quantities, and stored/exported energy totals retain
-their original meaning and units.
-
-The following retained backend/export and legacy viewer contracts document
-compatibility and trace semantics; they do not describe the streamlined v0.5.0
-Energy UI summarized under **Current Request** above:
-
-- Basic Energy facility/end-use monthly charts, zone matrix, zone reported
-  energy table, and `Overview` / `Sankey` / `Monthly` / `Zones` / `Sources` /
-  `Reconciliation` subviews for tracing Energy Use to Delivered Load and Heat
-  Drivers with source metadata. The Sankey inspector shows edge relation, basis,
-  rule, formula, sources, SQL tabular table/row/column metadata, and related
-  service paths, connected HVAC loops, and supporting coupling assets, and the
-  selected edge plus its endpoint nodes are highlighted in the graph while the
-  inspector is open.
-  The Overview subview also includes an annual Energy Use breakdown by carrier
-  and end use so fuel-qualified uses remain distinct in comparison.
-  The completeness panel
-  shows mapped percent, allocation policy, source availability counts by level
-  and status, missing categories, and missing source availability rows.
-  Source availability uses `found` and `missing` status values so missing rows
-  are not confused with present SQL dictionary sources. Source output cells link
-  back to the matching existing output request object when the run plan can
-  identify one. The Monthly subview includes an Energy Use / Delivered Load /
-  Heat Drivers / Residual level chart, and monthly charts and ledger rows link
-  directly to the same period in the Sankey subview so month-level explanation
-  changes can be inspected without manually changing views. The Reconciliation
-  subview expands row `sourceIds`
-  into compact source/output links so residual checks remain traceable to their
-  meter or variable requests. Energy residual rows include both the expected facility
-  total source and the mapped consumption end-use sources referenced by the
-  residual formula. Heat-driver reconciliation includes service-level rows and,
-  where zone load and heat-driver data exist, zone/service rows for the selected
-  annual or monthly period. Each reconciliation row carries a `balanced`,
-  `residual`, or `overmapped` status, and the subview ranks the largest
-  non-balanced zone/service heat residuals for the active period below the full
-  reconciliation table. Non-balanced zone/service heat residuals also emit
-  period warnings so exported HTML and the Reconciliation warning strip identify
-  the affected zone and service.
-  The `Zones` subview summarizes each zone/service period as Delivered Load,
-  Cooling Pressure, Heating Pressure, signed heat, and residual values, with
-  direct jumps to the matching Sankey zone focus, Heat-Flow Ledger zone, and
-  related HVAC service paths.
-  The `Systems` subview and node inspector match load/heat services to the
-  current HVAC service model by zone and service kind, then link directly to the
-  related HVAC service path, connected loops, and supporting coupling assets.
-  The Systems table now shows source energy,
-  delivered load, heat-driver totals, connected plant/air/source systems, and
-  supporting assets on the same service-path row, and each row can open the
-  matching Sankey service-path focus. Sankey and Systems can focus the graph by all
-  results, a selected zone, or a selected HVAC service path without changing the
-  stored explanation payload. The Sankey view can switch heat-driver rendering
-  between display magnitude, signed balance, cooling-pressure, and
-  heating-pressure modes. Its sign note states that positive heat drivers add
-  cooling pressure, negative heat drivers add heating pressure, and signed mode
-  preserves the original heat-balance sign. The view uses carrier/service-specific
-  node colors for common energy and load classes. In the all-results focus it
-  first folds heat-driver detail into heat-category/sign nodes, then can cap
-  remaining visible heat-driver nodes with omitted drivers grouped as `Other
-  heat drivers`. The default grouping also keeps the rendered Sankey graph
-  within a 100-node budget where heat-driver grouping can achieve it. When
-  grouping occurs, the view shows how many heat drivers were folded, preserves
-  related HVAC service-path IDs and signed/display heat values for the grouped
-  inspector row, and offers an `All` action to expand them.
-- Zone Heat Flow SQL or CSV/ESO ledger with frame sampling metadata and
-  time-range controls.
-- HVAC Loop Check shows one selected loop's topology from the executed input.
-  It reuses the HVAC tab's supply/demand loop schematic and equipment symbols.
-  The result diagram uses wider pipe runs to leave room for measurements while
-  preserving text and equipment sizes. Narrow result panes scroll horizontally.
-  Frame measurements occupy whitespace above and below the flow paths, with
-  leader lines to the corresponding node points; dense labels add vertical
-  space instead of shrinking the text or replacing the schematic with cards.
-  Node annotations show values with compact labels such as T, RH, w, and ṁ;
-  node names remain in tooltips and accessibility labels. Equipment names stay
-  visible. HVAC and result selections stay in the current view without
-  opening a reveal-location chooser or switching between those tabs.
-  Frame snapshots emphasize measured node points and show flow, temperature,
-  humidity and available setpoints; equipment shows available operating state,
-  power, load and reported COP. Zero remains a measured value; unavailable
-  values never acquire a previous frame's reading. The former summary, source
-  and operation tables are removed from this view.
-  A requested setpoint output alone does not establish a defined setpoint.
-  The EnergyPlus unset flag (-999, including hourly floating-point roundoff
-  within 0.000001 C) is excluded from snapshots, graph properties, summary
-  availability and temperature-deviation calculations. Properties with no
-  defined observations are omitted; valid zero and negative setpoints remain.
-  A node without a setpoint does not by itself generate a control alert.
-  Three default time-series graphs show node flow, temperature and humidity,
-  with per-node checkboxes and vertically aligned legends containing node names
-  only. Each graph has a two-handle Y-range control and an Auto reset; ranges
-  remain independent for different measurement units. Custom graph selects
-  equipment/node first and its property second. Line graphs support at most
-  two units on separate Y axes;
-  Scatter compares exactly two properties at matching observation times.
-  Humidity uses reported relative humidity when available, otherwise humidity
-  ratio in g/kg. HVAC Hourly observations are retained beyond the Series preview
-  sample limit. Old results without executed topology show an unavailable state
-  alongside their retained observations.
-- Comfort shows graphs and indicators for the selected zone or the building.
-  Zone graphs contain T, available operative/radiant temperatures, Tset,h/c,
-  PMV, PPD, humidity and reported setpoint-unmet time. Indicators show actual
-  period averages/ranges or reported unmet hours. Energy and heating/cooling
-  power, source-object details, completeness badges and the old tables are
-  excluded, including the Comfort section of HTML reports.
-  PMV/PPD People keys are mapped through the executed model to their actual
-  zones, with separate traces for different People groups. Building metrics
-  use reported facility observations; zone PMV and unmet hours are never
-  averaged or summed into invented building totals. Hourly Comfort observations
-  retain the complete weather-run series beyond the general preview limit.
-  Backend callers can optionally scope trend data to a custom `MM-DD` period;
-  full-run tabular unmet hours are omitted for custom periods. The main
-  Simulation view uses the full period.
-- Integrity ERR, SQL error table, tabular report previews, and SQL/static
-  cross-checks for zone, surface, construction, and nominal-load tabular rows.
-  Cross-check statuses distinguish exact names, normalized matches, compact
-  aliases, static-only names, and SQL-only names.
-
-Where a row can be matched back to the run plan, result tables show the source
-output state and signature so the user can distinguish existing, temporary, and
-will-be-persisted output requests.
-
-## Permanent Outputs
-
-`ApplyPurposeOutputsText` converts a purpose plan into the retained Output apply
-pipeline and keeps permanent edits behind the same preview/apply contract. The
-main Output tab and Batch Output QA workflow are no longer exposed, but
 `AnalyzeInputOutputText`, `PreviewOutputApplyText`, `ApplyOutputText`, and
-`ApplyPurposeOutputsText` remain available to backend clients and automation.
-The Output analysis report continues to annotate existing and recommended
-requests with purpose tags.
+`ApplyPurposeOutputsText` remain backend/automation APIs. Permanent modes add
+missing requests, replace conflicting frequencies, preserve existing requests
+while adding purpose duplicates, or remove matching purpose requests. Output
+analysis retains purpose tags. Desktop runs use temporary additions and
+`add_missing_only`.
 
-The backend permanent purpose-output application supports four modes: add
-missing outputs only, replace conflicting frequencies, keep existing outputs
-and add purpose-specific duplicates, or remove existing outputs that match the
-selected purpose plan. The main and Batch Simulation views fix this mode to add
-missing outputs only. The EnergyPlus run-copy path still keeps existing outputs
-and adds temporary purpose outputs so result parsing can use the requested
-series without editing the source IDF.
+`DiscoverAvailableOutputs` reads SQL `ReportDataDictionary`, RDD, and MDD and
+merges purpose-plan entries: `available` means exact/wildcard/dictionary-class
+match; `alias` means an alternate output satisfies the request; `fallback`
+means the preset can request it but this catalog did not discover it. Items
+retain type, key, name, units, source, alias, and purpose tags. Reads are cached
+by path and invalidated on size or modification time.
 
-Basic Energy completeness panels distinguish source output shortage from
-accounting/model coverage gaps. When missing source requests are reported, the
-backend plan identifies the missing purpose outputs and the permanent output
-application flow can add them before a rerun. Light-tier results produced by
-direct backend callers remain distinguishable in exported plan and
-completeness metadata, while the main view does not present a tier label. The
-main and Batch Simulation views always request Heat Drivers. If the active
-model-aware purpose plan did not request any Basic Energy meter outputs, Energy
-Use source availability is reported as `not_applicable` instead of falling back
-to a broad missing-meter catalog. Delivered-load source availability also
-treats variables in the same alias group as found, and heat-driver availability
-does the same for same-sign aliases while keeping gain and loss requests
-distinct.
+## Result reading and provenance
 
-## Output Discovery
+Source priority is SQL, CSV, then ESO. `readSimulationOutputs` collects files
+and ERR, then reads Series and Heat Flow independently. Failure in one section
+does not discard the other; CSV/ESO fill missing or failed sections. Energy,
+Integrity, and Comfort builders read their own purpose data without repeating
+those computations in the initial read.
 
-`DiscoverAvailableOutputs` builds a searchable output catalog from available run
-artifacts. It reads SQL `ReportDataDictionary`, `.rdd`, and `.mdd` files when
-present, then merges selected purpose-plan outputs as `available`, `alias`, or
-`fallback` entries:
+`parseSimulationSQL` is a combined context-aware entrypoint for series, energy,
+heat flow, integrity, and comfort unmet hours. It retains partial data, checks
+cancellation between phases, and has an elapsed-time cutoff. The runner's
+independent initial read does not use that combined cutoff.
 
-- `available`: the exact requested output, wildcard equivalent, or dictionary
-  class equivalent was discovered.
-- `alias`: an alternate discovered variable can satisfy the purpose request
-  (for example, `Zone Air Temperature` for `Zone Mean Air Temperature`, or
-  `Gas:Facility` for `NaturalGas:Facility`).
-- `fallback`: the purpose preset can still request the output, but it was not
-  discovered in the current SQL/RDD/MDD catalog.
+`QueryReportData` joins `ReportDataDictionary`, `ReportData`, and `Time`, retaining
+dictionary identity, meter flag, index group, frequency, and interval. Results
+and `semantic-idf-run.json` expose intended `resultSourcePriority` and actual
+`resultSources`. Source records retain IDs, raw/normalized units, aggregation
+method, SQL table/row/column, and matching requests. Request matching validates
+type, name/alias, key, frequency, and sign rather than trusting object index.
 
-Catalog reads are cached per SQL/RDD/MDD path and invalidated when file size or
-modification time changes. Each catalog item reports its object type, key,
-variable or meter name, units, source, status, alias target when applicable, and
-purpose tags. Backend clients can use catalog entries to construct Custom
-Outputs requests; the main Simulation view no longer provides manual Custom
-Outputs entry or discovery controls.
+Generic preview is capped at 256 SQL or 16 CSV columns and samples points.
+Requested HVAC/Comfort series and Energy Path source traces retain full
+matching observations beyond preview limits. The plan is attached before
+parsing for new runs and saved results.
 
-## Run Artifacts and Export
+Energy normalizes `J`/`kJ`/`MJ`/`GJ`/`Wh` to `kWh`; rate-only sources integrate
+over reporting intervals. Reported energy takes precedence over a same-target
+rate fallback. Tabular end-use fallback is annual `sql_tabular` with
+`tabular_annual_value` aggregation. Monthly/RunPeriod rows cannot establish
+daily/hourly observations. Finer SQL rows preserve observed periods; custom
+backend scope can add `selected_range`.
+
+Generic Series retain raw values plus display column/unit/statistics and
+converted points. Missing output, denominator, unknown coverage, and measured
+zero remain distinct through UI, reload, and export. Detailed carrier closure,
+thermal/site links, allocation, and frozen v1 compatibility live in
+[Energy Path wire contract](energy-path.md#wire-contract).
+
+## Current result views
+
+### Energy Path
+
+Energy uses Scope and Period and shows cooling/heating together. Component
+Monthly/Hourly charts use `kWh/m²`: Monthly shows computed contributions;
+Hourly shows actual reported source energy, which can differ from allocated
+Monthly values. Missing Hourly data is unavailable.
+
+Intensity uses the executed model's area snapshot, including applicable
+zone/list multipliers and building floor-area eligibility. Later editor changes
+cannot alter it. Zone uses its own floor area; missing area means unavailable
+intensity. Ratios, non-energy values, and stored/exported totals retain units.
+
+The quality line separates Drivers, Loads, End uses, and Carriers. Stages open
+source availability in a normally closed Data details drawer; Output shows this
+run's requests. Tabs support arrow/Home/End; Escape restores opener focus.
+Old Overview/Sankey/Zones/Systems/Reconciliation data may remain for compatibility;
+these are not desktop navigation surfaces to extend.
+
+### Heat Flow and HVAC
+
+Zone Heat Flow retains SQL or CSV/ESO signed-flow ledgers, frame sampling, and
+time-range controls. Static Topology remains separate; see
+[Topology data contracts](topology.md#data-contracts).
+
+HVAC Loop Check uses executed-input topology and the shared supply/demand
+schematic. Nodes show flow, temperature, humidity, and available setpoints;
+equipment retains operation, power, load, and reported COP. Missing readings
+cannot borrow an earlier frame. Unset setpoint `-999`, including roundoff
+within `0.000001 °C`, is excluded from snapshots, availability, and deviation
+checks; valid zero/negative setpoints remain. Missing setpoints alone create
+no control alert. Older results without executed topology show unavailable
+topology alongside retained observations.
+
+Flow, temperature, and humidity graphs have per-node controls, independent
+Y ranges by unit, and Auto reset. Custom graphs choose object then property;
+lines use at most two unit axes, and scatter compares two properties at matching
+times. Humidity uses RH, otherwise humidity ratio in `g/kg`. HVAC and Simulation
+selection stays local.
+
+### Comfort and Integrity
+
+Comfort graphs show available zone, operative/radiant temperature, heating/
+cooling setpoints, PMV, PPD, humidity, and reported unmet time. People keys map
+through the executed model to their actual zones with separate People-group
+traces. Building values require facility observations, never invented averages/
+sums of zone PMV or unmet hours. Custom periods omit full-run tabular unmet
+hours. Comfort exports use the same graphs and indicators.
+
+Integrity remains a backend result with ERR/SQL diagnostics, tabular previews,
+and static/SQL cross-checks for zones, surfaces, constructions, and nominal
+loads. Match statuses distinguish exact, normalized, compact alias, static-only,
+and SQL-only names.
+
+## Artifacts and exports
 
 Purpose runs write `semantic-idf-run.json`, `semantic-idf-run-plan.json`, and
-`temporary_outputs.diff` in the output directory. In Energy Path, open **Data
-details → Data → Export** for HTML, XLSX or the full-run JSON snapshot.
+`temporary_outputs.diff`. Energy Path **Data details → Data → Export** provides
+HTML, XLSX, and captured full-run JSON.
 
-The first HTML section/XLSX sheet shows **Energy Path**: selected Scope/period,
-Drivers, Loads, End uses, Carriers, Ratios and Quality. These are the same
-all-service scope/period summaries used by the UI; a separate graph-selection
-label makes clear that Cooling/Heating emphasis does not filter the summary.
-The report names the saved simulation run and does not imply current editor
-changes have been simulated. Direct/reported, allocated and unassigned bases
-remain visible. Unknown values and unavailable denominators stay unknown, not 0.
+HTML/XLSX consume one immutable saved-result projection. Their first section/
+sheet includes Scope/period, Drivers, Loads, End uses, Carriers, Ratios, and
+Quality. Cooling/heating emphasis is labelled separately from the all-service
+summary. Reports identify the saved run and retain direct/allocated/unassigned,
+unknown, and unavailable meaning.
 
-HTML keeps raw source/link/JSON trace in closed details and retains Heat Flow,
-HVAC and Comfort sections when present. XLSX defaults to readable summary;
-**Include trace sheets** is unchecked initially and affects XLSX only. Trace
-retains original source units, normalized units, independent link endpoint
-quantities, source IDs and exact original JSON, including unknown/null fields.
-Full-run JSON exports the captured result unchanged rather than just the
-selected month. Exporting does not analyze the model, reload SQL or run EnergyPlus.
+HTML hides raw source/link/JSON trace in closed details and includes available
+Heat Flow, HVAC, and Comfort. XLSX defaults to summary; **Include trace sheets**
+affects XLSX only. Trace retains original units, source IDs, independent
+endpoint quantities, and exact original JSON including null/unknown fields.
+Exporting uses captured results without analysis, SQL reread, or another run.
 
-HTML and XLSX consume one immutable frontend report projection of the existing
-canonical builder output. The workbook validates raw snapshot/selection bindings
-without passing it through a normalizing result decoder or reaggregating it.
-Batch v2 workbooks also put Building/Annual context on their first Summary sheet;
-link-delta details remain opt-in trace. Genuine v1 compatibility output is retained
-until EPATH-222; newly generated Energy Path reports require v2.
+Batch CSV/XLSX carry purpose metrics, summaries, nodes, edges, sources/
+availability, and reconciliation. IDs, output indexes, SQL references, units,
+rule/formula, period, service, zone, and HVAC paths remain traceable. Default
+CSV omits daily/hourly expansion; full batch JSON
+(`semantic-idf.batch-simulation/v1`) retains embedded periods. XLSX includes Run
+Context and selected baseline/target comparisons; v2 starts with Building/
+Annual Summary, and link-delta detail is opt-in trace. Missing rows are
+`Missing`; real zero remains zero; zero-baseline percent deltas are unavailable
+in UI/CSV/XLSX. Baseline and target retain separate source evidence and case IDs.
+
+## Development checks
+
+Use [testing.md](testing.md) to inspect plans and select affected areas.
+`dev.bat test -Area simulation` runs every Simulation tier; `-Area energy-path`
+covers its accounting/output pipeline. Focused contracts include
+`TestBuildPurposeRunPlanBasicEnergyDefaultsToEnergyPath`,
+`TestPurposeSQLSeriesBypassPreviewLimitForSelectedPanels`,
+`TestInitialSQLReadKeepsSeriesWhenHeatFlowIsMalformed`,
+`TestComfortSQLGraphsKeepEveryWeatherHour`, and
+`TestPurposeBundleProgressCombinedParityAndImmutableInputs`.

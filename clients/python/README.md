@@ -18,7 +18,7 @@ print(result["view"]["summary"])
 Both transports return the shared GUI v2 `purposeResults` and selected `view`;
 neither starts a simulation or reparses results in Python. Use
 `output_format="csv"` for summary text and `include_trace=True` for source/link
-detail. See [Energy Path CLI and Python](../../docs/energy-path-cli.md) for
+detail. See [Energy Path CLI and Python](../../docs/energy-path.md#cli-and-python) for
 scope/service choices, verified run inputs, file paths and error handling.
 
 ## Topology
