@@ -509,6 +509,8 @@ func appAssetHandler(app *App) http.Handler {
 			if err := json.NewEncoder(w).Encode(result); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
+		case "/api/simulation/progress":
+			serveSimulationProgress(w, r, app)
 		case "/api/simulation-result-cache":
 			if r.Method != http.MethodPost {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

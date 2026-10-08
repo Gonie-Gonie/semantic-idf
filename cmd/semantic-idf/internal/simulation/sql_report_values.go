@@ -7,12 +7,44 @@ import (
 	"strings"
 )
 
+type sqlWorkProgress struct {
+	Completed, Total int64
+	Unit             string
+	Finished         bool
+}
+
+// Only every 4096th consumed row reaches the observer. The existing query is
+// streamed once; counting never issues a second full ReportData scan.
+type sqlRowProgress struct {
+	completed int64
+	progress  func(sqlWorkProgress)
+}
+
+func (p *sqlRowProgress) consumed() {
+	if p.progress == nil {
+		return
+	}
+	p.completed++
+	if p.completed%4096 == 0 {
+		p.progress(sqlWorkProgress{Completed: p.completed, Unit: "rows"})
+	}
+}
+func (p *sqlRowProgress) finish() {
+	if p.progress != nil {
+		p.progress(sqlWorkProgress{Completed: p.completed, Unit: "rows", Finished: true})
+	}
+}
+
 // walkReportDataCompact preserves the public walker's time/dictionary ordering,
 // filters and row semantics, but does not sort and decode dictionary strings
 // for every observation. Only the three ReportData values cross the large-row
 // SQL boundary; dictionary and Time metadata are loaded once per invocation.
 // It deliberately does not create indexes or otherwise modify the database.
 func walkReportDataCompact(db *sql.DB, query SQLSeriesQuery, visit func(SQLSeriesRow) error) error {
+	return walkReportDataCompactWithProgress(db, query, visit, nil)
+}
+
+func walkReportDataCompactWithProgress(db *sql.DB, query SQLSeriesQuery, visit func(SQLSeriesRow) error, progress func(sqlWorkProgress)) error {
 	rd, err := sqlTableColumns(db, "ReportData")
 	if err != nil {
 		return err
@@ -31,7 +63,7 @@ func walkReportDataCompact(db *sql.DB, query SQLSeriesQuery, visit func(SQLSerie
 	rdTime, rdDictionary, rdValue := column(rd, "TimeIndex"), column(rd, "ReportDataDictionaryIndex"), column(rd, "Value")
 	dictionaryID, timeID := column(rdd, "ReportDataDictionaryIndex"), column(times, "TimeIndex")
 	if rdTime == "" || rdDictionary == "" || rdValue == "" || dictionaryID == "" || timeID == "" {
-		return walkReportData(db, query, visit)
+		return walkReportDataWithProgress(db, query, visit, progress)
 	}
 	for table, keys := range map[string][]string{
 		"ReportData": {rdTime, rdDictionary}, "ReportDataDictionary": {dictionaryID}, "Time": {timeID},
@@ -39,7 +71,7 @@ func walkReportDataCompact(db *sql.DB, query SQLSeriesQuery, visit func(SQLSerie
 		if !compactReportDataIntegerKeyAffinity(db, table, keys) {
 			// TEXT '01' and INTEGER 1 have different SQLite equality semantics.
 			// Do not replace a nonstandard SQL join with integer map lookups.
-			return walkReportData(db, query, visit)
+			return walkReportDataWithProgress(db, query, visit, progress)
 		}
 	}
 	idExpr := "rdd." + quoteSQLiteIdentifier(dictionaryID)
@@ -63,20 +95,20 @@ FROM ReportDataDictionary rdd %s`, idExpr, keyExpr, nameExpr, unitExpr, meterExp
 		var meter, storage string
 		if err := rows.Scan(&id, &item.KeyValue, &item.Name, &item.Units, &meter, &item.ReportingFrequency, &item.IndexGroup, &storage); err != nil {
 			rows.Close()
-			return walkReportData(db, query, visit)
+			return walkReportDataWithProgress(db, query, visit, progress)
 		}
 		if !id.Valid {
 			continue // SQL NULL cannot participate in the original inner join.
 		}
 		if storage != "integer" {
 			rows.Close()
-			return walkReportData(db, query, visit)
+			return walkReportDataWithProgress(db, query, visit, progress)
 		}
 		item.DictionaryIndex, item.IsMeter = int(id.Int64), parseSQLBool(meter)
 		if _, duplicate := dictionaries[item.DictionaryIndex]; duplicate {
 			rows.Close()
 			// Nonstandard schemas can make a join one-to-many. Do not collapse it.
-			return walkReportData(db, query, visit)
+			return walkReportDataWithProgress(db, query, visit, progress)
 		}
 		dictionaries[item.DictionaryIndex] = item
 		ids = append(ids, strconv.FormatInt(id.Int64, 10))
@@ -106,18 +138,18 @@ FROM ReportDataDictionary rdd %s`, idExpr, keyExpr, nameExpr, unitExpr, meterExp
 		var storage string
 		if err := rows.Scan(&id, &frame.Month, &frame.Day, &frame.Hour, &frame.Minute, &frame.IntervalType, &storage); err != nil {
 			rows.Close()
-			return walkReportData(db, query, visit)
+			return walkReportDataWithProgress(db, query, visit, progress)
 		}
 		if !id.Valid {
 			continue
 		}
 		if storage != "integer" {
 			rows.Close()
-			return walkReportData(db, query, visit)
+			return walkReportDataWithProgress(db, query, visit, progress)
 		}
 		if _, duplicate := frames[id.Int64]; duplicate {
 			rows.Close()
-			return walkReportData(db, query, visit)
+			return walkReportDataWithProgress(db, query, visit, progress)
 		}
 		frames[id.Int64] = frame
 	}
@@ -126,6 +158,11 @@ FROM ReportDataDictionary rdd %s`, idExpr, keyExpr, nameExpr, unitExpr, meterExp
 		return err
 	}
 	rows.Close()
+	counter := sqlRowProgress{progress: progress}
+	defer counter.finish()
+	if progress != nil {
+		progress(sqlWorkProgress{Unit: "rows"})
+	}
 	rows, err = db.Query(fmt.Sprintf(`SELECT %s, %s, %s FROM ReportData
 WHERE %s IN (%s) ORDER BY %s, %s`, quoteSQLiteIdentifier(rdTime), quoteSQLiteIdentifier(rdDictionary), quoteSQLiteIdentifier(rdValue),
 		quoteSQLiteIdentifier(rdDictionary), strings.Join(ids, ","), quoteSQLiteIdentifier(rdTime), quoteSQLiteIdentifier(rdDictionary)))
@@ -134,6 +171,7 @@ WHERE %s IN (%s) ORDER BY %s, %s`, quoteSQLiteIdentifier(rdTime), quoteSQLiteIde
 	}
 	defer rows.Close()
 	for rows.Next() {
+		counter.consumed()
 		var rawTimeIndex any
 		var dictionaryIndex int
 		var value sql.NullFloat64

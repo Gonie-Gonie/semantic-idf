@@ -1,11 +1,20 @@
-import { setLocalizedText } from "../localized-text.js";
+import { setLiteralText, setLocalizedText } from "../localized-text.js";
 import { energyPathSummaryGroups, isEnergyPathSummaryV2 } from "../energy-path-summary.js";
 import { ENERGY_PATH_BATCH_STAGES, energyPathBatchSummary, energyPathBatchComparison } from "../energy-path-batch-comparison.js";
 import { energyPathBatchExport } from "../energy-path-batch-export.js";
 import { batchEnergyPathDetailAvailable, createBatchEnergyPathDetail } from "./batch-energy-path-detail.js";
+import { createSimulationProgressPoller, simulationProgressPresentation } from "../simulation-progress.js";
 
 export function initializeMultiSimulationTool(context) {
   const { state, elements, waitForAppAPI, waitForProgressRuntime, escapeHTML, postJSON, t, downloadCSV } = context;
+  let progressSequence = null;
+  let lastProgress = null;
+  const itemProgress = new Map();
+  const progressPoller = createSimulationProgressPoller({
+    isCurrent: (runID) => state.multiSimulation.running && state.multiSimulation.activeRunID === runID,
+    onProgress: handleProgress,
+  });
+  window.addEventListener("pagehide", () => progressPoller.stop());
   const detailHost = elements.multiSimulationEnergyPathDetail;
   const energyDetail = detailHost ? createBatchEnergyPathDetail({ host: detailHost, resolveRun: (id) => {
     const matches = (state.multiSimulation.result?.results || []).filter((item) => rowID(item) === id);
@@ -119,7 +128,7 @@ export function initializeMultiSimulationTool(context) {
       .slice(0, 80)
       .map(
         (path) => `
-          <div class="tool-file-item">
+          <div class="tool-file-item" data-simulation-file-path="${escapeHTML(path)}">
             <strong>${escapeHTML(fileName(path))}</strong>
             <span title="${escapeHTML(path)}">${escapeHTML(path)}</span>
           </div>`,
@@ -140,6 +149,10 @@ export function initializeMultiSimulationTool(context) {
     }
     await loadEnvironment();
     state.multiSimulation.activeRunID = `multi-sim-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    progressSequence = null;
+    lastProgress = null;
+    itemProgress.clear();
+    for (const status of elements.multiSimulationFiles.querySelectorAll("[data-simulation-item-progress]")) status.remove();
     state.multiSimulation.running = true;
     elements.multiSimulationRun.disabled = true;
     elements.multiSimulationTable.innerHTML = `<div class="empty status-loading" data-i18n="tools.simulationRunning">${escapeHTML(t("tools.simulationRunning", {}, "EnergyPlus batch is running"))}</div>`;
@@ -168,6 +181,7 @@ export function initializeMultiSimulationTool(context) {
       setLocalizedText(elements.multiSimulationStatus, "shell.operationFailed", { message: error?.message || String(error) });
       elements.multiSimulationTable.innerHTML = `<div class="empty">${escapeHTML(error?.message || String(error))}</div>`;
     } finally {
+      progressPoller.stop();
       state.multiSimulation.running = false;
       elements.multiSimulationRun.disabled = !state.multiSimulation.selectedPaths.length;
     }
@@ -178,22 +192,45 @@ export function initializeMultiSimulationTool(context) {
     if (api) {
       return api.RunMultipleSimulations(request);
     }
-    try {
-      return await postJSON("/api/batch-simulation-run", request);
-    } catch {
-      return postJSON("/api/multi-simulation-run", request);
-    }
+    progressPoller.start(request.runId);
+    // A failed response may follow successful execution. An explicit rerun is
+    // the only safe way to run again; never automatically send a second POST.
+    return postJSON("/api/batch-simulation-run", request);
   }
 
   function handleProgress(payload) {
     const progress = Array.isArray(payload) ? payload[0] : payload;
-    if (!progress || progress.runId !== state.multiSimulation.activeRunID) {
+    if (!progress || !state.multiSimulation.running || progress.runId !== state.multiSimulation.activeRunID) {
       return;
     }
-    updateProgress(progress.completed || 0, progress.total || 0, progress.message || "", progress.status || "running");
+    if (typeof progress.sequence === "number") {
+      if (progressSequence !== null && progress.sequence <= progressSequence) return;
+      progressSequence = progress.sequence;
+    } else if (progressSequence !== null) return;
+    lastProgress = progress;
+    if (progress.itemPath) {
+      itemProgress.set(progress.itemPath, progress);
+      if (itemProgress.size > 128) itemProgress.delete(itemProgress.keys().next().value);
+    }
+    renderProgressEvent(progress);
   }
 
-  function updateProgress(completed, total, message = "", status = "running") {
+  function renderProgressEvent(progress) {
+    const detail = progress.itemRunId ? simulationProgressPresentation({ ...progress, phase: progress.itemPhase, overallPercent: undefined,
+      remainingMs: undefined, remainingLowMs: undefined, remainingHighMs: undefined }, { elapsedMs: progress.phaseElapsedMs }) : null;
+    const message = detail ? `${fileName(progress.itemPath)} · ${detail.statusText}${detail.mode === "work" ? ` · ${detail.percentText}` : ""}` : progress.message || "";
+    updateProgress(progress.completed || 0, progress.total || 0, message, progress.phase === "complete" ? "running" : progress.status || "running", progress);
+    if (detail && progress.itemPath) {
+      const row = [...elements.multiSimulationFiles.querySelectorAll("[data-simulation-file-path]")].find((item) => item.dataset.simulationFilePath === progress.itemPath);
+      if (row) {
+        let label = row.querySelector("[data-simulation-item-progress]");
+        if (!label) { label = document.createElement("span"); label.dataset.simulationItemProgress = ""; row.append(label); }
+        label.textContent = detail.statusText + (detail.mode === "work" ? ` · ${detail.percentText}` : "");
+      }
+    }
+  }
+
+  function updateProgress(completed, total, message = "", status = "running", progress = {}) {
     const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
     if (elements.multiSimulationProgressBar) {
       elements.multiSimulationProgressBar.style.width = `${percent}%`;
@@ -203,13 +240,18 @@ export function initializeMultiSimulationTool(context) {
     }
     if (elements.multiSimulationStatus) {
       const params = { completed, total, message };
-      if (status === "complete") setLocalizedText(elements.multiSimulationStatus, "tools.simulationComplete");
+      if (progress.phase === "complete" && state.multiSimulation.running) {
+        setLocalizedText(elements.multiSimulationStatus, "tools.simulationReceivingResults", { completed, total });
+      } else if (progress.phase === "item_progress" || progress.workUnit === "files" || progress.active !== undefined || progress.queued !== undefined) {
+        setLiteralText(elements.multiSimulationStatus, [t("tools.simulationFilesComplete", { completed, total }, "{completed} / {total} files complete"),
+          t("tools.simulationWorkers", { active: progress.active || 0, queued: progress.queued || 0 }, "{active} active · {queued} queued"), message].filter(Boolean).join(" · "));
+      } else if (status === "complete") setLocalizedText(elements.multiSimulationStatus, "tools.simulationComplete");
       else if (status === "idle" && total) setLocalizedText(elements.multiSimulationStatus, "tools.readyToRun");
       else if (!total) setLocalizedText(elements.multiSimulationStatus, "tools.waitingFiles");
       else if (message && message !== t("tools.simulationRunning")) setLocalizedText(elements.multiSimulationStatus, "tools.batchProgressDetail", params);
       else setLocalizedText(elements.multiSimulationStatus, "tools.simulationRunningProgress", params);
     }
-    elements.multiSimulationStatus?.classList.toggle("status-loading", status === "running" && total > 0 && completed < total);
+    elements.multiSimulationStatus?.classList.toggle("status-loading", status !== "complete" && state.multiSimulation.running);
   }
 
   function renderResult({ resetDetail = true } = {}) {
@@ -1627,6 +1669,10 @@ export function initializeMultiSimulationTool(context) {
     loadEnvironment,
     refreshLanguage: () => {
       renderEnvironment();
+      if (state.multiSimulation.running && lastProgress) {
+        for (const progress of itemProgress.values()) renderProgressEvent(progress);
+        renderProgressEvent(lastProgress);
+      }
       if (!state.multiSimulation.running) {
         if (!state.multiSimulation.result) renderSelectedFiles();
         renderResult({ resetDetail: false });

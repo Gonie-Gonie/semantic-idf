@@ -54,7 +54,7 @@
           "tier": "browser"
         },
         {
-          "files": ["simulation_result_transport_test.go"],
+          "files": ["simulation_result_transport_test.go", "simulation_progress_transport_test.go"],
           "areas": ["simulation", "energy-path"],
           "tier": "fast"
         },
@@ -280,6 +280,7 @@
           "areas": ["simulation"],
           "tier": "fast"
         },
+        {"files": ["batch_simulation_progress_browser_test.go"], "areas": ["batch", "simulation", "i18n"], "tier": "browser"},
         {
           "files": ["tools_*_test.go"],
           "areas": ["tooling"],

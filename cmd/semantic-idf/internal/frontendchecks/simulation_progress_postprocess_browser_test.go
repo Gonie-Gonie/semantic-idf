@@ -13,6 +13,7 @@ import (
 )
 
 func TestSimulationPostprocessProgressPreservesResultDOMBrowser(t *testing.T) {
+	_ = readTestFile(t, "frontend/src/js/simulation-progress.js")
 	if testing.Short() {
 		t.Skip("actual simulation progress browser regression")
 	}
@@ -89,14 +90,15 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 try{
  for(let n=0;document.body.dataset.epath142Status!=="manual"&&n<200;n++)await new Promise(resolve=>setTimeout(resolve,10));
  if(document.body.dataset.epath142Status!=="manual")throw Error("actual fixture not ready: "+document.getElementById("epath142-result")?.textContent);
- const {state}=await import("/src/js/state.js"),simulation=await import("/src/js/views/simulation-views.js"),i18n=await import("/src/js/i18n.js");
+ const {state}=await import("/src/js/state.js"),simulation=await import("/src/js/views/simulation-views.js"),i18n=await import("/src/js/i18n.js"),{simulationProgressPresentation:model}=await import("/src/js/simulation-progress.js");
  const host=document.getElementById("simulationEnergyDashboard"),button=document.getElementById("simulationRunButton"),status=document.getElementById("simulationStatus"),percent=document.getElementById("simulationPercent");
  const original=state.simulationResult,originalJSON=JSON.stringify(original),pending=[];
  const activeTimers=new Set(),timerTicks=[],nativeSetInterval=window.setInterval,nativeClearInterval=window.clearInterval;
  window.setInterval=(callback,delay,...args)=>{const scheduledAt=performance.now();const id=nativeSetInterval((...values)=>{timerTicks.push({delay,scheduledAt,firedAt:performance.now()});return callback(...values);},delay,...args);activeTimers.add(id);return id;};
  window.clearInterval=id=>{activeTimers.delete(id);return nativeClearInterval(id);};
  window.go.main.App.RunPurposeSimulationText=request=>new Promise((resolve,reject)=>pending.push({request,resolve,reject}));
- const emit=(runId,phase,message="Actual backend "+phase,code="running",value=800/9)=>window.dispatchEvent(new CustomEvent("idfAnalyzer:simulationProgress",{detail:{runId,phase,message,status:code,percent:value,completed:phase==="complete"?9:8,total:9}}));
+ let sequence=0;
+ const emit=(runId,phase,message="Actual backend "+phase,code="running",value=800/9,fields={})=>window.dispatchEvent(new CustomEvent("idfAnalyzer:simulationProgress",{detail:{runId,phase,message,status:code,percent:value,completed:phase==="complete"?9:8,total:9,sequence:++sequence,...fields}}));
  const start=async()=>{const count=pending.length;button.click();for(let n=0;pending.length===count&&n<100;n++)await tick();if(pending.length!==count+1)throw Error("native Run did not reach backend once: "+status.textContent);return pending.at(-1);};
  const firstStartedAt=performance.now(),first=await start(),canvas=host.querySelector("[data-energy-path-canvas]"),node=host.querySelector("[data-energy-path-layout-node]");
  check(Boolean(canvas&&node),"previous result disappeared at run start");
@@ -106,11 +108,13 @@ try{
   emit(first.request.runId,phase);await tick();
   check(host.querySelector("[data-energy-path-canvas]")===canvas&&document.activeElement===node,"progress replaced/focused existing graph at "+phase);
   check(status.dataset.simulationProgressPhase===phase&&status.title==="Actual backend "+phase,"actual backend phase/message lost at "+phase);
-  check(percent.textContent==="89%"&&status.textContent.includes("not a time estimate"),"89% incorrectly treated as a time estimate at "+phase);
+  check(percent.textContent==="…"&&document.getElementById("simulationProgressBar").classList.contains("indeterminate")&&!status.textContent.includes("time estimate")&&!status.textContent.includes("remaining"),"legacy 89% produced measured/estimated work at "+phase);
   check(state.simulationResult===original&&state.simulationRunning&&button.disabled,"pending response changed result or enabled duplicate run");
  }
  check(mutations===0,"progress mutated previous result DOM "+mutations+" times");
  check(activeTimers.size===1,"progress did not own exactly one elapsed timer");
+ emit(first.request.runId,"energy_path","Estimate approaching its bound","running",99,{progressKind:"estimated",overallPercent:99,remainingMs:100,remainingLowMs:50,remainingHighMs:200,estimateSamples:1});
+ check(percent.textContent==="≈95%","estimated completion was not capped below complete");
  const elapsedBefore=Number(status.dataset.simulationProgressElapsed),tickCountBefore=timerTicks.length,unchangedPhase=state.simulationProgress,observationStarted=performance.now();
  await new Promise((resolve,reject)=>{
   const changed=()=>Number(status.dataset.simulationProgressElapsed)>elapsedBefore&&timerTicks.length>tickCountBefore;
@@ -120,11 +124,31 @@ try{
  });
  check(Number(status.dataset.simulationProgressElapsed)>elapsedBefore&&status.textContent.includes("Elapsed"),"elapsed clock did not advance while backend phase was unchanged");
  check(state.simulationProgress===unchangedPhase&&timerTicks.slice(tickCountBefore).some(tick=>tick.delay===1000)&&performance.now()-firstStartedAt>=1000,"elapsed display advanced without an actual one-second interval on the unchanged phase");
+ check(percent.textContent==="…"&&!status.textContent.includes("remaining"),"expired unchanged ETA remained at near-finished progress after real elapsed tick");
  evidence.push("native elapsed observation "+JSON.stringify({before:elapsedBefore,after:Number(status.dataset.simulationProgressElapsed),intervalCallbacks:timerTicks.length-tickCountBefore,waitMS:performance.now()-observationStarted,ticks:timerTicks}));
  check(host.querySelector("[data-energy-path-canvas]")===canvas&&document.activeElement===node&&mutations===0,"elapsed tick touched the previous result DOM/focus");
+ const elapsedBeforeTelemetry=Number(status.dataset.simulationProgressElapsed);
+ emit(first.request.runId,"sql_series","Reading actual rows","running",89,{progressKind:"work",workCompleted:250,workTotal:1000,workUnit:"rows",elapsedMs:0});await tick();
+ check(percent.textContent==="25% of this step"&&status.textContent.includes("250 / 1,000 rows")&&document.getElementById("simulationProgressBar").style.width==="25%","actual stage-local row progress did not replace fake stage percentage");
+ check(Number(status.dataset.simulationProgressElapsed)>=elapsedBeforeTelemetry,"backend elapsed reset decreased total request elapsed");
+ emit(first.request.runId,"sql_heat_flow","Reading rows without total","running",89,{progressKind:"work",workCompleted:2000,workTotal:0,workUnit:"rows"});await tick();
+ check(percent.textContent==="…"&&status.textContent.includes("2,000 rows processed")&&!document.getElementById("simulationProgressBar").hasAttribute("aria-valuenow"),"unknown row denominator became numeric percentage/zero work");
+ emit(first.request.runId,"energy_path","Session timing estimate","running",89,{progressKind:"estimated",overallPercent:55,remainingMs:45000,remainingLowMs:30000,remainingHighMs:60000,estimateSamples:2});await tick();
+ check(percent.textContent==="≈55%"&&status.textContent.includes("Estimated processing remaining")&&status.title.includes("2 completed runs")&&document.getElementById("simulationProgressBar").style.width==="55%","empirical overall estimate lost approximate marker/range/basis");
+ const estimated=state.simulationProgress;emit(first.request.runId,"execute","Stale same-run update","running",99,{sequence:estimated.sequence-1});await tick();
+ check(state.simulationProgress===estimated&&percent.textContent==="≈55%","out-of-order same-run event overwrote newer progress");
+ for(const fields of [{progressKind:"indeterminate"},{progressKind:"estimated",overallPercent:92,remainingMs:100,remainingLowMs:50,remainingHighMs:200,estimateSamples:1}]){
+  const expired=model({phase:"parse_sql",percent:89,...fields},{pending:true,ageMs:300,elapsedMs:1000});
+  check(expired.mode==="indeterminate"&&expired.percent===null&&!expired.eta,"cold/overrun sample produced a false near-complete bar or 0s countdown");
+ }
+ emit(first.request.runId,"execute","Warming up {1}","running",89,{progressKind:"indeterminate"});await tick();
+ check(status.textContent.includes("Warming up {1}")&&percent.textContent==="…","actual engine warmup activity was hidden or treated as engine percent");
+ check(mutations===0&&host.querySelector("[data-energy-path-canvas]")===canvas&&document.activeElement===node,"work/ETA telemetry repainted previous Energy graph/focus");
  const beforeStale=state.simulationProgress;emit("unrelated-run","energy_path");check(state.simulationProgress===beforeStale,"unrelated run progress accepted");
  i18n.setLanguage("ko");emit(first.request.runId,"energy_path");
- check(status.textContent.includes("Energy Path 구성 중")&&status.textContent.includes("시간 예측이 아닙니다"),"Korean phase or stage disclaimer missing");
+ check(status.textContent.includes("Energy Path 구성 중")&&percent.textContent==="…","Korean phase or unknown progress missing");
+ emit(first.request.runId,"sql_series","실제 행","running",89,{progressKind:"work",workCompleted:4,workTotal:10,workUnit:"rows"});await tick();
+ check(status.textContent.includes("4 / 10 행")&&percent.textContent==="현재 작업 40%","Korean actual work label missing");
  emit(first.request.runId,"complete","Simulation completed","succeeded",100);await tick();
  check(status.dataset.simulationProgressPhase==="receiving_results"&&status.textContent.includes("결과 수신 대기")&&!status.textContent.includes("Simulation completed"),"backend complete claimed displayed completion before response");
  check(percent.textContent==="…"&&state.simulationRunning&&button.disabled&&state.simulationResult===original,"pending complete lost response wait state");
@@ -149,7 +173,7 @@ try{
  check(activeTimers.size===0,"stale request failure leaked old elapsed timer");
  check(pending.length===3&&JSON.stringify(original)===originalJSON,"extra Run request or original result mutation");
  window.setInterval=nativeSetInterval;window.clearInterval=nativeClearInterval;
- evidence.push("8 real backend phases; stable previous graph/focus including 1s elapsed tick; exactly one timer with response/error cleanup; EN/KO stage note; complete-before-response wait; result/display failure separation; stale error and late event guards; 3 explicit Run requests");
+ evidence.push("8 backend phases ignore legacy stage percentages; measured rows and stage-local work; approximate session ETA and cold/overrun fallback; monotone elapsed; stale sequence guard; actual warmup activity; stable graph/focus including native 1s tick; one timer; EN/KO; response/display boundaries; 3 explicit requests");
 }catch(error){failures.push(error.stack||String(error));}
 document.body.dataset.progressPostprocessStatus=failures.length?"failed":"passed";
 document.getElementById("progress-postprocess-result").textContent=JSON.stringify({failures,evidence});

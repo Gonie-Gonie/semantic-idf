@@ -4,6 +4,9 @@
 
 - `src/app.js`: tiny browser entrypoint.
 - `src/js`: feature modules for state, actions, views, navigation, settings, and analysis.
+- `src/js/simulation-progress.js`: measured work, approximate remaining-time
+  presentation, HTTP progress polling and response-byte progress. Unknown totals
+  remain indeterminate; legacy stage-count percentages are not displayed as time.
 - `src/js/auxiliary-panel.js`: the in-app Settings/Guide/Tools panel. Main stays
   mounted with its analysis and simulation state. Up to three frames are loaded
   lazily and retained, including drafts, manual routes and running batch tools.

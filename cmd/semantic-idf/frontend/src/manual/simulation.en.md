@@ -287,8 +287,31 @@ indicator; it does not acquire a fabricated hourly chart.
 ## Execution, receiving, and errors {#run-status}
 
 The stages distinguish engine execution from reading, result construction,
-receiving, and display. A stage percentage counts completed stages; it is
-not a remaining-time estimate.
+receiving, and display. Progress shows actual work when its total is known.
+SQL reads report processed observations without rescanning the database just
+to count rows. An animated bar with no percentage means the total is unknown;
+elapsed time and the current activity still update.
+
+After a successful matching run in this app session, the app can show an
+approximate `≈` percentage and a remaining-time range. The estimate uses the
+same input, purpose/detail/scope, engine, weather and execution configuration.
+One measurement produces a wide initial range; later matching measurements
+refine it. It estimates backend processing, including reading and building
+results, and does not promise a response-transfer or display deadline.
+Changed inputs begin without an estimate. If a run exceeds the measured range,
+remaining time returns to unknown instead of showing zero while work continues.
+
+Engine Warmup, sizing and simulated dates identify actual engine activity.
+A simulated date is not a wall-time percentage: design days, multiple run
+periods and Warmup can have very different costs. Receiving progress uses actual
+bytes when the response size is known; result decoding/display is a separate
+step. Overall completion reaches 100% after the result is installed for display;
+an individual step can finish earlier and is explicitly labeled as that step.
+
+Timing measurements are bounded and kept only in memory. They create no
+additional run-history files and reset when the app restarts. Batch progress
+shows completed files, active/queued workers and an active file's current stage;
+different file sizes and concurrent workloads prevent a reliable file-count ETA.
 
 Engine completion does not mean every result is already displayed. A large
 run can take additional time to read SQL, build accounting, transfer data,

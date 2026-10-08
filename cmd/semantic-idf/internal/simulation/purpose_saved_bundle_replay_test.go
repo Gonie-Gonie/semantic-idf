@@ -47,10 +47,22 @@ func TestPurposeSavedBundleReplay(t *testing.T) {
 			PeriodMode: plan.PeriodMode, PeriodStart: plan.PeriodStart, PeriodEnd: plan.PeriodEnd},
 	}
 	result := SimulationRunResult{InputPath: input, OutputDirectory: directory, PurposeRunPlan: &plan}
+	var telemetry *purposeSavedProgressReplay
+	if os.Getenv("SEMANTIC_IDF_BUNDLE_REPLAY_PROGRESS") == "1" {
+		telemetry = newPurposeSavedProgressReplay(t, directory, input, content)
+	}
 	started := time.Now()
-	readSimulationOutputsWithProgress(&result, "saved-replay", func(progress SimulationProgress) {
+	readProgress := func(progress SimulationProgress) {
 		t.Logf("%s after %s", progress.Phase, time.Since(started))
-	}, input)
+		if telemetry != nil {
+			telemetry.observe(progress)
+		}
+	}
+	if telemetry != nil {
+		readSimulationOutputsWithWorkProgress(&result, "saved-replay", readProgress, input, telemetry.work)
+	} else {
+		readSimulationOutputsWithProgress(&result, "saved-replay", readProgress, input)
+	}
 	t.Logf("read outputs: %s; series=%d, heat-flow zones=%d", time.Since(started), len(result.Series), len(result.HeatFlow.Zones))
 	if !result.ERR.Completed || result.ERR.Severe != 0 || result.ERR.Fatal != 0 {
 		t.Fatalf("capture did not complete successfully: %+v", result.ERR)
@@ -71,6 +83,9 @@ func TestPurposeSavedBundleReplay(t *testing.T) {
 	started = time.Now()
 	bundle := buildPurposeResultBundleWithProgress(&result, request, func(phase, message string) {
 		t.Logf("%s after %s: %s", phase, time.Since(started), message)
+		if telemetry != nil {
+			emitSimulationProgress(telemetry.observe, "saved-replay", phase, "running", message, 8, simulationProgressTotal, input)
+		}
 	})
 	t.Logf("build complete bundle: %s", time.Since(started))
 	if purposeIDsContain(plan.Purposes, SimulationPurposeBasicEnergy) && len(bundle.EnergyExplanation.Nodes) == 0 {
@@ -78,6 +93,9 @@ func TestPurposeSavedBundleReplay(t *testing.T) {
 	}
 	if purposeIDsContain(plan.Purposes, SimulationPurposeZoneHeatFlow) && plan.ZoneHeatFlowDetail == PurposeZoneHeatFlowDetailSurface && !bundle.ThermalTopology.Available {
 		t.Fatalf("missing thermal topology: %s", bundle.ThermalTopology.UnavailableReason)
+	}
+	if telemetry != nil {
+		telemetry.finish(plan)
 	}
 	started = time.Now()
 	encoded, err := json.Marshal(bundle)

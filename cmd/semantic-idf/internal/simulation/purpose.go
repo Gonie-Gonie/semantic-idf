@@ -660,8 +660,8 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 	return buildPurposeResultBundleWithProgress(result, request, nil)
 }
 
-// Report real post-processing stages without pretending they predict elapsed
-// time. The public/saved-result builder keeps its existing side-effect-free API.
+// Report real post-processing stages. Per-run telemetry can use measurements
+// of these stages; the public/saved-result builder remains side-effect-free.
 func buildPurposeResultBundleWithProgress(result *SimulationRunResult, request SimulationPurposeRequest, progress func(string, string)) PurposeResultBundle {
 	report := func(phase, message string) {
 		if progress != nil {
@@ -735,6 +735,7 @@ func buildPurposeResultBundleWithProgress(result *SimulationRunResult, request S
 				bundle.Completeness = append(bundle.Completeness, bundle.ThermalTopology.Completeness...)
 			}
 		case SimulationPurposeHVACLoopCheck:
+			report("hvac_loops", "Building HVAC loop and component results")
 			if sharedDocument == nil {
 				if doc, err := simulationDocumentFromInput(result.InputPath); err == nil {
 					sharedDocument = &doc
@@ -759,6 +760,7 @@ func buildPurposeResultBundleWithProgress(result *SimulationRunResult, request S
 				hvacLoopResultSource(bundle.HVACLoops),
 			))
 		case SimulationPurposeComfort:
+			report("comfort", "Building comfort and unmet-hours results")
 			if sharedDocument == nil {
 				if doc, err := simulationDocumentFromInput(result.InputPath); err == nil {
 					sharedDocument = &doc
@@ -770,6 +772,7 @@ func buildPurposeResultBundleWithProgress(result *SimulationRunResult, request S
 			}
 			bundle.Completeness = append(bundle.Completeness, bundle.Comfort.Completeness...)
 		case SimulationPurposeIntegrity:
+			report("integrity", "Checking simulation diagnostics and tabular results")
 			sqlIntegrity := buildIntegritySQLResultFromFiles(result.Files)
 			bundle.Integrity = IntegrityResult{
 				Status:            result.Status,

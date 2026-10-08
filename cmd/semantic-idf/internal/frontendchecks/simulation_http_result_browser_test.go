@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -18,6 +19,7 @@ import (
 )
 
 func TestSimulationHTTPResultTransportBrowser(t *testing.T) {
+	_ = readTestFile(t, "frontend/src/js/simulation-progress.js")
 	if testing.Short() {
 		t.Skip("native Run & Inspect transport regression")
 	}
@@ -43,11 +45,16 @@ func TestSimulationHTTPResultTransportBrowser(t *testing.T) {
 	}
 	done := make(chan browserResult, 1)
 	release := make(chan struct{})
+	startBody, releasePoll := make(chan struct{}), make(chan struct{})
 	var releaseOnce sync.Once
+	var bodyOnce, pollOnce sync.Once
 	defer releaseOnce.Do(func() { close(release) })
+	defer bodyOnce.Do(func() { close(startBody) })
+	defer pollOnce.Do(func() { close(releasePoll) })
 	var mu sync.Mutex
 	var runID string
 	runCalls, cacheCalls := 0, 0
+	pollCalls, pollActive, pollMaxActive, bodyBytes, totalBodyBytes := 0, 0, 0, 0, 0
 	mux := http.NewServeMux()
 	mux.Handle("/src/", http.StripPrefix("/src/", http.FileServer(http.Dir(repoPath("frontend/src")))))
 	mux.HandleFunc("/src/http-result.html", func(w http.ResponseWriter, _ *http.Request) {
@@ -84,14 +91,60 @@ func TestSimulationHTTPResultTransportBrowser(t *testing.T) {
 		}
 		bundle := simulation.BuildPurposeResultBundle(&result, *request.PurposeRequest)
 		result.PurposeResults = &bundle
+		body, err := json.Marshal(simulation.CompactResultTransport(&result))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		mu.Lock()
+		totalBodyBytes = len(body)
+		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 		w.WriteHeader(http.StatusOK)
 		w.(http.Flusher).Flush()
 		select {
+		case <-startBody:
+			_, _ = w.Write(body[:len(body)/2])
+			w.(http.Flusher).Flush()
+			mu.Lock()
+			bodyBytes = len(body) / 2
+			mu.Unlock()
+		case <-r.Context().Done():
+			return
+		}
+		select {
 		case <-release:
-			_ = json.NewEncoder(w).Encode(simulation.CompactResultTransport(&result))
+			_, _ = w.Write(body[len(body)/2:])
 		case <-r.Context().Done():
 		}
+	})
+	mux.HandleFunc("/api/simulation/progress", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		pollCalls++
+		pollActive++
+		if pollActive > pollMaxActive {
+			pollMaxActive = pollActive
+		}
+		count, id := pollCalls, runID
+		mu.Unlock()
+		defer func() { mu.Lock(); pollActive--; mu.Unlock() }()
+		if r.Method != http.MethodGet || r.URL.Query().Get("runId") != id {
+			http.Error(w, "invalid progress request", http.StatusBadRequest)
+			return
+		}
+		if count > 2 {
+			http.NotFound(w, r)
+			return
+		}
+		if count == 2 {
+			select {
+			case <-releasePoll:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"runId": id, "sequence": 2, "phase": "parse_sql", "status": "running", "progressKind": "estimated", "percent": 89, "overallPercent": 70, "remainingMs": 30000, "remainingLowMs": 20000, "remainingHighMs": 40000, "estimateSamples": 1, "message": "HTTP SQL telemetry"})
 	})
 	mux.HandleFunc("/api/simulation-result-cache", func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
@@ -115,7 +168,15 @@ func TestSimulationHTTPResultTransportBrowser(t *testing.T) {
 	mux.HandleFunc("/http-result/status", func(w http.ResponseWriter, _ *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
-		_ = json.NewEncoder(w).Encode(map[string]any{"runId": runID, "runCalls": runCalls, "cacheCalls": cacheCalls})
+		_ = json.NewEncoder(w).Encode(map[string]any{"runId": runID, "runCalls": runCalls, "cacheCalls": cacheCalls, "pollCalls": pollCalls, "pollActive": pollActive, "pollMaxActive": pollMaxActive, "bodyBytes": bodyBytes, "totalBodyBytes": totalBodyBytes})
+	})
+	mux.HandleFunc("/http-result/start-body", func(w http.ResponseWriter, _ *http.Request) {
+		bodyOnce.Do(func() { close(startBody) })
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("/http-result/release-poll", func(w http.ResponseWriter, _ *http.Request) {
+		pollOnce.Do(func() { close(releasePoll) })
+		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("/http-result/release", func(w http.ResponseWriter, _ *http.Request) {
 		releaseOnce.Do(func() { close(release) })
@@ -162,6 +223,7 @@ const simulationHTTPResultHTML = `<script type="module">
 const failures=[],evidence={};
 const check=(condition,message)=>{if(!condition)failures.push(message);};
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
+const until=async(condition,label)=>{for(let n=0;n<1000;n++){if(await condition())return;await new Promise(resolve=>setTimeout(resolve,10));}throw Error("Timed out: "+label);};
 try{
  for(let n=0;document.body.dataset.epath142Status!=="manual"&&n<200;n++)await new Promise(resolve=>setTimeout(resolve,10));
  if(document.body.dataset.epath142Status!=="manual")throw Error("actual fixture not ready");
@@ -202,13 +264,36 @@ try{
  let serverState;
  for(let n=0;n<200;n++){serverState=await(await fetch("/http-result/status")).json();if(serverState.runCalls)break;await tick();}
  check(serverState.runCalls===1&&bridgeRuns===0,"capable desktop did not issue exactly one HTTP run");
- window.dispatchEvent(new CustomEvent("idfAnalyzer:simulationProgress",{detail:{runId:serverState.runId,phase:"complete",status:"succeeded",percent:100,message:"Backend complete"}}));
+ await until(()=>status.dataset.simulationProgressPhase==="parse_sql"&&document.getElementById("simulationPercent").textContent==="≈70%","HTTP-only telemetry before body bytes");
+ check(status.textContent.includes("Estimated processing remaining")&&state.simulationResult===original,"polled SQL progress did not preserve old result or empirical ETA");
+ await until(async()=>{serverState=await(await fetch("/http-result/status")).json();return serverState.pollCalls===2&&serverState.pollActive===1;},"delayed second progress query");
+ const blockedElapsed=Number(status.dataset.simulationProgressElapsed);
+ await until(()=>Number(status.dataset.simulationProgressElapsed)>=blockedElapsed+2,"two real elapsed ticks while query remains in flight");
+ serverState=await(await fetch("/http-result/status")).json();
+ check(serverState.pollCalls===2&&serverState.pollMaxActive===1,"HTTP polling overlapped or queried again while prior response was blocked");
+ window.dispatchEvent(new CustomEvent("idfAnalyzer:simulationProgress",{detail:{runId:serverState.runId,sequence:3,phase:"energy_path",status:"running",progressKind:"estimated",percent:89,overallPercent:60,remainingMs:120000,remainingLowMs:60000,remainingHighMs:180000,estimateSamples:2,message:"Newer native telemetry"}}));
+ const nativeProgress=state.simulationProgress;
+ await fetch("/http-result/release-poll");
+ await until(async()=>{serverState=await(await fetch("/http-result/status")).json();return serverState.pollActive===0;},"older query released");await tick();
+ check(state.simulationProgress===nativeProgress&&document.getElementById("simulationPercent").textContent==="≈60%","delayed poll overwrote newer native sequence");
+ await fetch("/http-result/start-body");
+ await until(()=>status.dataset.simulationProgressPhase==="receiving_results"&&status.dataset.simulationProgressMode==="work","first actual result bytes");
+ check(document.getElementById("simulationPercent").textContent.includes("of this step")&&Number(document.getElementById("simulationProgressBar").getAttribute("aria-valuenow"))>0&&Number(document.getElementById("simulationProgressBar").getAttribute("aria-valuenow"))<100,"HTTP bytes did not expose measured transfer progress");
+ check(!status.textContent.includes("remaining")&&!status.title.includes("completed runs"),"backend processing ETA leaked into HTTP transfer");
+ window.dispatchEvent(new CustomEvent("idfAnalyzer:simulationProgress",{detail:{runId:serverState.runId,sequence:4,phase:"complete",status:"succeeded",percent:100,message:"Backend complete"}}));
  await tick();
  check(status.dataset.simulationProgressPhase==="receiving_results"&&state.simulationRunning&&button.disabled&&state.simulationResult===original,"HTTP body pending lost progress/result boundary");
+ await until(async()=>{serverState=await(await fetch("/http-result/status")).json();return serverState.pollCalls>=3;},"old backend 404 capability stop");
+ const quietElapsed=Number(status.dataset.simulationProgressElapsed);
+ await until(()=>Number(status.dataset.simulationProgressElapsed)>=quietElapsed+2,"quiet 404 while response still pending");
+ serverState=await(await fetch("/http-result/status")).json();
+ check(serverState.pollCalls===3&&!status.textContent.includes("404"),"404 progress endpoint did not quietly stop further polling");
+ evidence.progress={pollCalls:serverState.pollCalls,maxInFlight:serverState.pollMaxActive,bytes:serverState.bodyBytes,total:serverState.totalBodyBytes,status:status.textContent};
  await fetch("/http-result/release");
  for(let n=0;state.simulationRunning&&n<1000;n++)await tick();
  const received=state.simulationResult;
  check(received!==original&&received.runId===serverState.runId&&state.simulationProgress.status==="succeeded","HTTP result was not installed successfully");
+ check(document.getElementById("simulationPercent").textContent==="100%"&&!document.getElementById("simulationProgressBar").classList.contains("indeterminate"),"installed HTTP result did not become overall complete");
  check(received.filename==='HTTP "quoted" \\ result </'+'script>.idf',"JSON text was changed during transfer");
  check(received.series[0].points.length===240&&received.series[0].points[2].value===18&&received.series[0].points[239].value===18,"original result points were truncated or altered");
  document.querySelector('[data-simulation-result-view-button="hvac_loops"]').click();await tick();
@@ -228,8 +313,9 @@ try{
  const legacy=await simulation.loadCachedSimulationResult("exact-hash","cached-bridge");
  serverState=await(await fetch("/http-result/status")).json();
  check(bridgeRuns===1&&bridgeCache===1&&legacy?.runId==="cached-bridge"&&serverState.runCalls===2,"backend-only capability fallback did not preserve typed calls");
+ check(serverState.pollCalls===3,"settled/failed/native-only runs leaked HTTP progress polling");
  evidence.httpRunCalls=serverState.runCalls;evidence.httpCacheCalls=serverState.cacheCalls;evidence.explicitLegacyBridgeRuns=bridgeRuns;evidence.explicitLegacyCacheReads=bridgeCache;
- evidence.checks="production compact encoder, lazy shared series decoder, native Run button, delayed response progress, HVAC render, full values/escaped text, exact cache hit/miss, no automatic run retry, backend-only compatibility";
+ evidence.checks="HTTP-only live telemetry; single-flight delayed query; newer native sequence wins; actual Content-Length byte progress clears backend ETA; quiet 404 and cleanup; production compact/lazy decoder; response/render boundary; full values/escaped text; cache hit/miss; no retry; native-only compatibility";
 }catch(error){failures.push(error.stack||String(error));}
 await fetch("/http-result/done",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({failures,evidence})});
 </script>`

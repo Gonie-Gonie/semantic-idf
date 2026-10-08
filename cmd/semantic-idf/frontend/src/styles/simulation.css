@@ -735,6 +735,25 @@
   stroke-linecap: round;
 }
 
+.simulation-progress-card .tool-progress-bar.indeterminate {
+  width: 30%;
+  animation: simulation-progress-pending 1.6s ease-in-out infinite alternate;
+  transition: none;
+}
+
+@keyframes simulation-progress-pending {
+  from { transform: translateX(0); }
+  to { transform: translateX(235%); }
+}
+
+.simulation-mini-progress[data-progress-mode="indeterminate"] .simulation-mini-line {
+  opacity: .6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .simulation-progress-card .tool-progress-bar.indeterminate { animation: none; }
+}
+
 .simulation-mini-node {
   fill: var(--surface);
   stroke: var(--line);

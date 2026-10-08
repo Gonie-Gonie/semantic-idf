@@ -2,8 +2,9 @@
 
 Start from the [architecture map](architecture.md) to locate a stage and use
 [testing.md](testing.md) for ordinary verification. Measure engine execution,
-output reading, graph construction, transport and rendering separately. A stage
-percentage reports completed stages; it is not a remaining-time estimate.
+output reading, graph construction, transport and rendering separately. Progress
+uses observed work and session measurements; a stage count alone cannot predict
+remaining time. See [progress and estimates](simulation-runner.md#progress-and-estimates).
 
 ## Current implementation boundaries
 
@@ -82,6 +83,47 @@ locally through HTTP receipt, JSON parsing, lazy binding and first display. It
 materialized 127 of 717 point sets initially. This excludes engine/SQL work and
 does not measure the native Wails WebView bridge.
 
+### Progress calibration across saved models
+
+Read-only replays on 2026-10-08 separated initial output reading from purpose
+construction. These are single, warm-cache measurements on a Ryzen 3900X with
+24 logical CPUs/GOMAXPROCS 24; capture hashing before each replay warms the SQL
+page cache. They are workload evidence, not universal first-run timing constants.
+Every replay verified that the original capture's contents and metadata stayed
+unchanged. The first four captures request Basic Energy/Energy Path; the last
+requests Energy, Zone Heat Flow, HVAC Loop and Comfort together.
+
+| Saved model | SQL size, decimal MB | ReportData rows | Initial read | Purpose build |
+| --- | ---: | ---: | ---: | ---: |
+| SmallOffice 25.1 | 9.02 | 425,292 | 0.543 s | 1.918 s |
+| LargeOffice 25.1 | 18.66 | 862,128 | 1.002 s | 8.613 s |
+| Radiant 25.1 | 93.55 | 4,574,884 | 10.735 s | 9.776 s |
+| Simultaneous 25.1 | 148.81 | 7,248,449 | 10.429 s | 22.986 s |
+| LargeOffice 24.2, four purposes, Busan weather | 621.96 | 28,543,868 | 80.443 s | 126.867 s |
+
+The four-purpose run spent 79.731 seconds in initial SQL reading alone. Its
+purpose build included 21.226 seconds for the dashboard and 81.394 seconds for
+Energy drivers. Input names or zone counts cannot predict these differences:
+requested outputs and frequencies change the scanned observation workload.
+Therefore the UI uses actual scan counters and matching configuration timings,
+and keeps cold-start or exceeded predictions unknown. SQL counters do not add
+a second full-table count scan. Parallel batch worker count is not a divisor
+for a single reader's time; contention can increase per-file time.
+
+The instrumented four-purpose replay verified 16,508,642 Series observations
+and 1,508,296 Heat Flow observations against independent test-only counts. It
+delivered 245 ordered events without inventing a cold-start ETA and preserved
+the captured files. A two-pass SmallOffice replay started with no estimate,
+then used its first successful session sample with a wide range. These checks
+validate telemetry and estimate behavior; ordinary regression tests make no
+machine-dependent wall-time promise. Enable them with
+`SEMANTIC_IDF_BUNDLE_REPLAY_PROGRESS=1` and run the saved-bundle test with
+`-count=2` to exercise same-process learning.
+
+The replay's legacy full-bundle JSON is a separate measurement: 11.215 seconds
+and 1,037,594,841 bytes for the four-purpose capture. This is not the negotiated
+compact HTTP payload and must not become its transfer-time denominator.
+
 ## Reproduce focused measurements
 
 From the repository root in PowerShell:
@@ -109,7 +151,7 @@ output beneath repository `.runtime/`. Use `-count=1` when measuring.
 
 | Test | Required environment | Optional diagnostic artifacts |
 | --- | --- | --- |
-| [TestPurposeSavedBundleReplay](../cmd/semantic-idf/internal/simulation/purpose_saved_bundle_replay_test.go) | `SEMANTIC_IDF_BUNDLE_REPLAY_DIR`, `_INPUT` | Same prefix plus `_PROFILE`, `_OUTPUT`, `_COMPARE` |
+| [TestPurposeSavedBundleReplay](../cmd/semantic-idf/internal/simulation/purpose_saved_bundle_replay_test.go) | `SEMANTIC_IDF_BUNDLE_REPLAY_DIR`, `_INPUT` | Same prefix plus `_PROFILE`, `_OUTPUT`, `_COMPARE`; `_PROGRESS=1` validates measured telemetry and session ETA |
 | [TestSQLSavedParseReplay](../cmd/semantic-idf/internal/simulation/sql_saved_parse_replay_test.go) | `SEMANTIC_IDF_SQL_REPLAY_DIR`, `_OUTPUT` | `_COMPARE` complete-result baseline |
 | [TestSQLSavedOutputSourcesReplay](../cmd/semantic-idf/internal/simulation/sql_saved_output_sources_replay_test.go) | `SEMANTIC_IDF_SQL_REPLAY_DIR`, `_COMPARE` | Uses the baseline capture sidecar |
 | [TestEnergyDriversSavedReplay](../cmd/semantic-idf/internal/simulation/energy_drivers_saved_replay_test.go) | `ENERGY_DRIVERS_REPLAY_DIR`, `_INPUT` | Same prefix plus `_PROFILE`, `_OUTPUT`, `_COMPARE` |

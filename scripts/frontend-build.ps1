@@ -58,6 +58,7 @@ $modules = @(
     "panel-navigation-policy.js",
     "sample.js",
     "simulation-result-transport.js",
+    "simulation-progress.js",
     "selection-controller.js",
     "semantic-navigation-cache.js",
     "settings-client.js",

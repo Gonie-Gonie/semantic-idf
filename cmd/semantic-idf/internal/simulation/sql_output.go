@@ -174,6 +174,10 @@ func parseSimulationSQLSeries(path string) ([]SimulationSeries, error) {
 }
 
 func parseSimulationSQLSeriesForPlan(path string, plan PurposeRunPlan) ([]SimulationSeries, error) {
+	return parseSimulationSQLSeriesForPlanWithProgress(path, plan, nil)
+}
+
+func parseSimulationSQLSeriesForPlanWithProgress(path string, plan PurposeRunPlan, progress func(sqlWorkProgress)) ([]SimulationSeries, error) {
 	db, err := openSimulationSQLiteReadOnly(path)
 	if err != nil {
 		return nil, err
@@ -215,7 +219,7 @@ func parseSimulationSQLSeriesForPlan(path string, plan PurposeRunPlan) ([]Simula
 	timeOrdinal := map[int64]int{}
 	timeLabels := map[int64]string{}
 	rowCount := 0
-	if err := walkReportDataCompact(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
+	if err := walkReportDataCompactWithProgress(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
 		timeIndex := row.TimeIndex
 		month := row.Month
 		day := row.Day
@@ -252,14 +256,17 @@ func parseSimulationSQLSeriesForPlan(path string, plan PurposeRunPlan) ([]Simula
 			Value: number,
 		})
 		return nil
-	}); err != nil {
+	}, progress); err != nil {
 		return nil, err
 	}
 
 	series := []SimulationSeries{}
-	for _, dictionary := range dictionaries {
+	for position, dictionary := range dictionaries {
 		acc := accumulators[dictionary.index]
 		if acc == nil || acc.numericCount == 0 {
+			if progress != nil {
+				progress(sqlWorkProgress{Completed: int64(position + 1), Total: int64(len(dictionaries)), Unit: "series", Finished: position+1 == len(dictionaries)})
+			}
 			continue
 		}
 		average := acc.sum / float64(acc.numericCount)
@@ -281,6 +288,9 @@ func parseSimulationSQLSeriesForPlan(path string, plan PurposeRunPlan) ([]Simula
 			Points:             points,
 			RowCount:           rowCount,
 		}))
+		if progress != nil {
+			progress(sqlWorkProgress{Completed: int64(position + 1), Total: int64(len(dictionaries)), Unit: "series", Finished: position+1 == len(dictionaries)})
+		}
 	}
 	return series, nil
 }
@@ -433,6 +443,10 @@ func (builder *energySeriesBuilder) sortedPoints() []SimulationPoint {
 }
 
 func parseSimulationHeatFlowSQL(path string) (HeatFlowDataset, error) {
+	return parseSimulationHeatFlowSQLWithProgress(path, nil)
+}
+
+func parseSimulationHeatFlowSQLWithProgress(path string, progress func(sqlWorkProgress)) (HeatFlowDataset, error) {
 	db, err := openSimulationSQLiteReadOnly(path)
 	if err != nil {
 		return HeatFlowDataset{}, err
@@ -520,7 +534,7 @@ func parseSimulationHeatFlowSQL(path string) (HeatFlowDataset, error) {
 	keptFrame := map[int64]int{}
 	frameIndex := -1
 
-	if err := walkReportDataCompact(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
+	if err := walkReportDataCompactWithProgress(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
 		timeIndex := row.TimeIndex
 		month := row.Month
 		day := row.Day
@@ -572,7 +586,7 @@ func parseSimulationHeatFlowSQL(path string) (HeatFlowDataset, error) {
 		builder.hasHeatFlowData = true
 		dataset.MaxAbs = math.Max(dataset.MaxAbs, math.Abs(number))
 		return nil
-	}); err != nil {
+	}, progress); err != nil {
 		return HeatFlowDataset{}, err
 	}
 	if rowCount > dataset.FrameCount {
@@ -1393,6 +1407,10 @@ func QueryReportData(db *sql.DB, seriesQuery SQLSeriesQuery) ([]SQLSeriesRow, er
 }
 
 func walkReportData(db *sql.DB, seriesQuery SQLSeriesQuery, visit func(SQLSeriesRow) error) error {
+	return walkReportDataWithProgress(db, seriesQuery, visit, nil)
+}
+
+func walkReportDataWithProgress(db *sql.DB, seriesQuery SQLSeriesQuery, visit func(SQLSeriesRow) error, progress func(sqlWorkProgress)) error {
 	reportDataColumns, err := sqlTableColumns(db, "ReportData")
 	if err != nil {
 		return err
@@ -1432,6 +1450,11 @@ func walkReportData(db *sql.DB, seriesQuery SQLSeriesQuery, visit func(SQLSeries
 	intervalTypeExpr := sqlAliasedTextColumnExpr(timeColumns, "t", "IntervalType", "''")
 
 	where, args := sqlSeriesQueryWhereClause(seriesQuery, rdDictionaryIndexExpr, nameExpr, keyValueExpr, isMeterExpr, frequencyExpr, unitsExpr, indexGroupExpr)
+	counter := sqlRowProgress{progress: progress}
+	defer counter.finish()
+	if progress != nil {
+		progress(sqlWorkProgress{Unit: "rows"})
+	}
 	rows, err := db.Query(fmt.Sprintf(`
 SELECT %s AS time_index,
        %s AS month,
@@ -1481,6 +1504,7 @@ ORDER BY %s, %s`,
 
 	for rows.Next() {
 		var row SQLSeriesRow
+		counter.consumed()
 		var isMeterText string
 		if err := rows.Scan(
 			&row.TimeIndex,

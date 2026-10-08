@@ -69,6 +69,49 @@ known version without a match yields `missing_energyplus` for that file while
 others continue; an unreadable version uses the first available installation.
 An explicit backend executable applies to the whole batch.
 
+## Progress and estimates
+
+Single-run progress reports engine activity, initial SQL Series and Heat Flow
+reads, fallback reads and the selected purpose builders separately. Engine
+stdout is drained while the process runs, including Warmup, sizing and simulated
+dates. A simulated date is activity evidence, not a promised fraction of total
+wall time. SQL observation counters reuse the existing read-only scans rather
+than adding a full-table `COUNT` solely for the progress bar.
+
+The optional `SimulationProgress` telemetry distinguishes observed work from
+estimates: `progressKind`, `workCompleted`, `workTotal`, `workUnit`, `elapsedMs`,
+`phaseElapsedMs`, `sequence`, `overallPercent`, `remainingMs`,
+`remainingLowMs`, `remainingHighMs`, `estimateBasis` and `estimateSamples`.
+A missing remaining-time field means unknown. A zero or missing work total has
+no measured denominator. Legacy `completed`, `total` and `percent` fields remain
+wire-compatible stage counts for single runs; the new UI never treats them as
+elapsed-time percentages.
+
+Successful runs teach a bounded, in-memory duration model for the same executed
+input, purpose/detail/scope, engine, weather and execution configuration. No new
+run-history files are written. The first completed measurement permits a wide
+initial estimate; additional matching samples improve the range. The displayed
+`≈` percentage and time range describe remaining backend processing, not an
+exact deadline. New or changed inputs start with unknown time. An exceeded
+prediction returns to unknown rather than counting down to zero during work.
+Restarting the app discards these session measurements.
+Overlapping unrelated runs or repeated phases that do not match the timing
+profile invalidate that run's estimate; they do not teach the serial profile.
+
+Wails receives ordered progress events. HTTP clients can poll
+`GET /api/simulation/progress?runId=...` for the latest event or `null`; only a
+bounded number of latest snapshots is retained, with no event log. Polling does
+not launch or repeat a run. The frontend polls without overlapping requests,
+rejects stale run/sequence events and stops when the request settles. Result
+receiving reports actual response bytes when a valid Content-Length is available;
+decoding and first display remain distinct. Backend completion does not make
+the displayed bar 100% while a response or display is pending.
+
+Batch Simulation retains completed-file counts as measured work, and also
+reports active/queued workers and the active child's phase. Child row counts
+describe that child's current scan, not an overall percentage or a sum of ETA
+values. Parallel file completion times vary with CPU, memory and disk contention.
+
 ## Purpose planning
 
 [purpose.go](../cmd/semantic-idf/internal/simulation/purpose.go) defines

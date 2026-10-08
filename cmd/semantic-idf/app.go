@@ -20,6 +20,7 @@ type App struct {
 	analysisCache                  *AnalysisCache
 	analysisCacheOnce              sync.Once
 	simulationWorkspaceCache       simulationWorkspaceCache
+	simulationProgressCache        simulationProgressCache
 	storageMu                      sync.RWMutex
 	storageReferencesMu            sync.Mutex
 	storageBatchDirectories        []string

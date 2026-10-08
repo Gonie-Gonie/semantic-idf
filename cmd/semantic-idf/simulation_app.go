@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/epinput"
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/idf"
@@ -138,7 +139,25 @@ func (a *App) RunSimulationText(request simulation.SimulationRunRequest) (*simul
 	return result, err
 }
 
-func (a *App) runSimulationTextWithSnapshot(request simulation.SimulationRunRequest, compact bool) (*simulation.SimulationRunResult, []byte, error) {
+func (a *App) runSimulationTextWithSnapshot(request simulation.SimulationRunRequest, compact bool) (runResult *simulation.SimulationRunResult, responsePayload []byte, runError error) {
+	if request.RunID == "" {
+		request.RunID = fmt.Sprintf("sim-%d", time.Now().UnixNano())
+	}
+	request.RunID = simulation.NormalizeSimulationRunID(request.RunID)
+	rememberProgress := a.beginSimulationProgress(request.RunID)
+	progress := func(item simulation.SimulationProgress) {
+		if rememberProgress(item) && a.ctx != nil {
+			wailsruntime.EventsEmit(a.ctx, "idfAnalyzer:simulationProgress", item)
+		}
+	}
+	progress(simulation.SimulationProgress{RunID: request.RunID, Phase: "prepare", Status: "running", Message: "Preparing simulation input"})
+	runnerStarted := false
+	defer func() {
+		if runError != nil && !runnerStarted {
+			// Preparation can fail before the runner starts its own telemetry.
+			progress(simulation.SimulationProgress{RunID: request.RunID, Phase: "request_failed", Status: "failed", Message: runError.Error()})
+		}
+	}()
 	if err := a.ensureStorageInstance(); err != nil {
 		return nil, nil, err
 	}
@@ -162,7 +181,9 @@ func (a *App) runSimulationTextWithSnapshot(request simulation.SimulationRunRequ
 			return nil, nil, err
 		}
 		if requiresWeather {
-			return blockedSimulationResult(request, "This IDF uses weather-file design days or weather run periods. Select an EPW weather file before running."), nil, nil
+			result := blockedSimulationResult(request, "This IDF uses weather-file design days or weather run periods. Select an EPW weather file before running.")
+			progress(simulation.SimulationProgress{RunID: request.RunID, Phase: "complete", Status: result.Status, Message: result.Error})
+			return result, nil, nil
 		}
 	}
 	if request.PurposeRequest != nil {
@@ -176,14 +197,10 @@ func (a *App) runSimulationTextWithSnapshot(request simulation.SimulationRunRequ
 			return nil, nil, err
 		}
 	}
-	progress := func(item simulation.SimulationProgress) {
-		if a.ctx != nil {
-			wailsruntime.EventsEmit(a.ctx, "idfAnalyzer:simulationProgress", item)
-		}
-	}
 	if request.Filename == "" && request.InputPath != "" {
 		request.Filename = filepath.Base(request.InputPath)
 	}
+	runnerStarted = true
 	result, err := simulation.RunSimulation(request, progress, settings.Simulation)
 	var payload []byte
 	if err == nil {
@@ -390,7 +407,25 @@ func prepareStandardOutputSimulationRequest(request simulation.SimulationRunRequ
 	return request, nil
 }
 
-func (a *App) RunMultipleSimulations(request simulation.MultiSimulationRequest) (*simulation.MultiSimulationResult, error) {
+func (a *App) RunMultipleSimulations(request simulation.MultiSimulationRequest) (runResult *simulation.MultiSimulationResult, runError error) {
+	if request.RunID == "" {
+		request.RunID = fmt.Sprintf("multi-sim-%d", time.Now().UnixNano())
+	}
+	request.RunID = simulation.NormalizeSimulationRunID(request.RunID)
+	rememberProgress := a.beginSimulationProgress(request.RunID)
+	progress := func(item simulation.SimulationProgress) {
+		if rememberProgress(item) && a.ctx != nil {
+			wailsruntime.EventsEmit(a.ctx, "idfAnalyzer:multiSimulationProgress", item)
+			wailsruntime.EventsEmit(a.ctx, "idfAnalyzer:batchProgress", item)
+		}
+	}
+	progress(simulation.SimulationProgress{RunID: request.RunID, Phase: "prepare", Status: "running", Message: "Preparing batch inputs"})
+	runnerStarted := false
+	defer func() {
+		if runError != nil && !runnerStarted {
+			progress(simulation.SimulationProgress{RunID: request.RunID, Phase: "request_failed", Status: "failed", Message: runError.Error()})
+		}
+	}()
 	if err := a.ensureStorageInstance(); err != nil {
 		return nil, err
 	}
@@ -430,13 +465,13 @@ func (a *App) RunMultipleSimulations(request simulation.MultiSimulationRequest) 
 	if err != nil {
 		return nil, err
 	}
-	progress := func(item simulation.SimulationProgress) {
-		if a.ctx != nil {
-			wailsruntime.EventsEmit(a.ctx, "idfAnalyzer:multiSimulationProgress", item)
-			wailsruntime.EventsEmit(a.ctx, "idfAnalyzer:batchProgress", item)
-		}
-	}
+	runnerStarted = true
 	result, err := simulation.RunMultipleSimulations(request, progress, settings.Simulation)
+	if err != nil {
+		progress(simulation.SimulationProgress{RunID: request.RunID, Phase: "request_failed", Status: "failed", Message: err.Error()})
+	} else if result != nil && result.Canceled {
+		progress(simulation.SimulationProgress{RunID: request.RunID, Phase: "complete", Status: "canceled", Message: "No simulation inputs selected"})
+	}
 	if err == nil && result != nil && !result.Canceled {
 		directories := make([]string, 0, len(result.Results))
 		for _, run := range result.Results {

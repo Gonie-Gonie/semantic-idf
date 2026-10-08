@@ -174,7 +174,9 @@ func TestPurposeBundleProgressOnlySelectedStagesAndGeometryFallback(t *testing.T
 	}{
 		{"surface_only", []SimulationPurposeID{SimulationPurposeZoneHeatFlow}, true, false, []string{"energy_geometry", "zone_heat_flow", "thermal_topology"}},
 		{"zone_only", []SimulationPurposeID{SimulationPurposeZoneHeatFlow}, false, false, []string{"zone_heat_flow"}},
-		{"comfort_only", []SimulationPurposeID{SimulationPurposeComfort}, false, false, []string{}},
+		{"comfort_only", []SimulationPurposeID{SimulationPurposeComfort}, false, false, []string{"comfort"}},
+		{"hvac_only", []SimulationPurposeID{SimulationPurposeHVACLoopCheck}, false, false, []string{"hvac_loops"}},
+		{"integrity_only", []SimulationPurposeID{SimulationPurposeIntegrity}, false, false, []string{"integrity"}},
 		{"geometry_failure", []SimulationPurposeID{SimulationPurposeBasicEnergy, SimulationPurposeZoneHeatFlow}, true, true, []string{"energy_geometry", "energy_dashboard", "energy_drivers", "energy_service_paths", "energy_path", "zone_heat_flow", "thermal_topology"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {

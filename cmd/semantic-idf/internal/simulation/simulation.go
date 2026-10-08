@@ -114,14 +114,32 @@ type SimulationFileSelectionResult struct {
 }
 
 type SimulationProgress struct {
-	RunID     string  `json:"runId"`
-	Phase     string  `json:"phase"`
-	Status    string  `json:"status"`
-	Message   string  `json:"message"`
-	Completed int     `json:"completed"`
-	Total     int     `json:"total"`
-	Percent   float64 `json:"percent"`
-	Path      string  `json:"path,omitempty"`
+	RunID           string   `json:"runId"`
+	Phase           string   `json:"phase"`
+	Status          string   `json:"status"`
+	Message         string   `json:"message"`
+	Completed       int      `json:"completed"`
+	Total           int      `json:"total"`
+	Percent         float64  `json:"percent"`
+	Path            string   `json:"path,omitempty"`
+	ProgressKind    string   `json:"progressKind,omitempty"`
+	WorkCompleted   *int64   `json:"workCompleted,omitempty"`
+	WorkTotal       *int64   `json:"workTotal,omitempty"`
+	WorkUnit        string   `json:"workUnit,omitempty"`
+	RemainingMS     *int64   `json:"remainingMs,omitempty"`
+	RemainingLowMS  *int64   `json:"remainingLowMs,omitempty"`
+	RemainingHighMS *int64   `json:"remainingHighMs,omitempty"`
+	EstimateBasis   string   `json:"estimateBasis,omitempty"`
+	EstimateSamples int      `json:"estimateSamples,omitempty"`
+	OverallPercent  *float64 `json:"overallPercent,omitempty"`
+	ElapsedMS       *int64   `json:"elapsedMs,omitempty"`
+	PhaseElapsedMS  *int64   `json:"phaseElapsedMs,omitempty"`
+	Sequence        uint64   `json:"sequence,omitempty"`
+	ItemRunID       string   `json:"itemRunId,omitempty"`
+	ItemPhase       string   `json:"itemPhase,omitempty"`
+	ItemPath        string   `json:"itemPath,omitempty"`
+	Active          int      `json:"active,omitempty"`
+	Queued          int      `json:"queued,omitempty"`
 }
 
 type SimulationRunResult struct {
@@ -693,6 +711,10 @@ func WeatherFileFromPath(path string, source string) WeatherFile {
 }
 
 func RunSimulation(request SimulationRunRequest, progress func(SimulationProgress), settings SimulationSettings) (*SimulationRunResult, error) {
+	return runSimulationWithConcurrency(request, progress, settings, 1)
+}
+
+func runSimulationWithConcurrency(request SimulationRunRequest, progress func(SimulationProgress), settings SimulationSettings, concurrency int) (runResult *SimulationRunResult, runError error) {
 	settings = NormalizeSettings(settings, DefaultSettings())
 	request.RunID = defaultRunID(request.RunID)
 	started := time.Now()
@@ -706,6 +728,15 @@ func RunSimulation(request SimulationRunRequest, progress func(SimulationProgres
 		StartedAt:                started.Format(time.RFC3339),
 		ExitCode:                 -1,
 	}
+	tracker := newSimulationProgressTracker(progress, nil, nil, true)
+	defer registerSimulationDurationConcurrency(tracker, concurrency)()
+	progress = tracker.observe
+	defer func() {
+		if runError != nil {
+			emitSimulationProgress(progress, request.RunID, "complete", "failed", runError.Error(), simulationProgressTotal, simulationProgressTotal, result.InputPath)
+		}
+		tracker.close(result.Status == "succeeded")
+	}()
 	emitSimulationProgress(progress, request.RunID, "prepare", "running", "Preparing EnergyPlus run", 0, simulationProgressTotal, result.InputPath)
 
 	installations := settings.EnergyPlusInstallations
@@ -719,6 +750,7 @@ func RunSimulation(request SimulationRunRequest, progress func(SimulationProgres
 	if result.EnergyPlusVersion == "" {
 		result.EnergyPlusVersion = energyPlusVersionForExecutable(result.EnergyPlusExecutablePath, installations)
 	}
+	tracker.setKey(simulationDurationKey(request, result, settings, concurrency))
 	if result.EnergyPlusExecutablePath == "" {
 		result.Status = "missing_energyplus"
 		result.Error = "EnergyPlus executable is not configured."
@@ -786,7 +818,7 @@ func RunSimulation(request SimulationRunRequest, progress func(SimulationProgres
 	args = append(args, inputPath)
 	command := exec.CommandContext(context.Background(), result.EnergyPlusExecutablePath, args...)
 	command.Dir = outputDir
-	stdout, stderr, exitCode, runErr := runCommandCaptured(command)
+	stdout, stderr, exitCode, runErr := runCommandCapturedWithProgress(command, tracker.engineLine)
 	result.Stdout = stdout
 	result.Stderr = stderr
 	result.ExitCode = exitCode
@@ -797,7 +829,9 @@ func RunSimulation(request SimulationRunRequest, progress func(SimulationProgres
 	if request.PurposeRunPlan != nil {
 		result.PurposeRunPlan = request.PurposeRunPlan
 	}
-	readSimulationOutputsWithProgress(result, request.RunID, progress, result.InputPath)
+	readSimulationOutputsWithWorkProgress(result, request.RunID, progress, result.InputPath, func(work sqlWorkProgress) {
+		tracker.work(work.Completed, work.Total, work.Unit, work.Finished)
+	})
 	if request.PurposeRequest != nil {
 		emitSimulationProgress(progress, request.RunID, "build_purpose_results", "running", "Building purpose result bundle", 8, simulationProgressTotal, result.InputPath)
 		bundle := buildPurposeResultBundleWithProgress(result, *request.PurposeRequest, func(phase, message string) {
@@ -845,6 +879,12 @@ func RunMultipleSimulations(request MultiSimulationRequest, progress func(Simula
 		batchEnergyPlusInstallations = mergeEnergyPlusInstallations(settings.EnergyPlusInstallations, AutoDetectEnergyPlusInstallations())
 	}
 	result := &MultiSimulationResult{RunID: request.RunID, Total: len(paths), Workers: workers}
+	tracker := newSimulationProgressTracker(progress, nil, nil, true)
+	defer tracker.close(false)
+	progress = tracker.observe
+	request.WorkerCount = workers
+	var batchMu sync.Mutex
+	active, queued := 0, len(paths)
 	emitSimulationProgress(progress, request.RunID, "prepare", "running", "Preparing batch simulation", 0, len(paths), "")
 
 	jobs := make(chan string, len(paths))
@@ -859,7 +899,30 @@ func RunMultipleSimulations(request MultiSimulationRequest, progress func(Simula
 		go func() {
 			defer wg.Done()
 			for path := range jobs {
-				results <- runBatchSimulationPath(path, request, batchEnergyPlusInstallations, settings)
+				batchMu.Lock()
+				active++
+				queued--
+				batchMu.Unlock()
+				item := runBatchSimulationPathWithProgress(path, request, batchEnergyPlusInstallations, settings, func(item SimulationProgress) {
+					batchMu.Lock()
+					defer batchMu.Unlock()
+					item.ItemRunID, item.ItemPhase, item.ItemPath = item.RunID, item.Phase, path
+					item.RunID, item.Phase = request.RunID, "item_progress"
+					item.Status = "running"
+					item.Completed, item.Total = result.Completed, result.Total
+					item.Percent = float64(result.Completed) / float64(result.Total) * 100
+					item.Active, item.Queued = active, queued
+					item.OverallPercent, item.RemainingMS, item.RemainingLowMS, item.RemainingHighMS = nil, nil, nil, nil
+					item.EstimateBasis, item.EstimateSamples = "", 0
+					if item.ProgressKind == "complete" || item.ProgressKind == "estimated" {
+						item.ProgressKind = "indeterminate"
+					}
+					progress(item)
+				})
+				batchMu.Lock()
+				active--
+				batchMu.Unlock()
+				results <- item
 			}
 		}()
 	}
@@ -869,6 +932,7 @@ func RunMultipleSimulations(request MultiSimulationRequest, progress func(Simula
 	}()
 
 	for item := range results {
+		batchMu.Lock()
 		result.Results = append(result.Results, item)
 		result.Completed++
 		if item.Status == "succeeded" {
@@ -876,7 +940,13 @@ func RunMultipleSimulations(request MultiSimulationRequest, progress func(Simula
 		} else {
 			result.Failed++
 		}
-		emitSimulationProgress(progress, request.RunID, "execute", item.Status, item.Filename, result.Completed, result.Total, item.InputPath)
+		emitSimulationProgress(func(event SimulationProgress) {
+			event.ProgressKind, event.WorkUnit = "work", "files"
+			event.WorkCompleted, event.WorkTotal = int64Pointer(int64(result.Completed)), int64Pointer(int64(result.Total))
+			event.Active, event.Queued = active, queued
+			progress(event)
+		}, request.RunID, "execute", item.Status, item.Filename, result.Completed, result.Total, item.InputPath)
+		batchMu.Unlock()
 	}
 	sort.Slice(result.Results, func(i, j int) bool {
 		return strings.ToLower(result.Results[i].Filename) < strings.ToLower(result.Results[j].Filename)
@@ -886,6 +956,10 @@ func RunMultipleSimulations(request MultiSimulationRequest, progress func(Simula
 }
 
 func runBatchSimulationPath(path string, request MultiSimulationRequest, installations []EnergyPlusInstallSetting, settings SimulationSettings) SimulationRunResult {
+	return runBatchSimulationPathWithProgress(path, request, installations, settings, nil)
+}
+
+func runBatchSimulationPathWithProgress(path string, request MultiSimulationRequest, installations []EnergyPlusInstallSetting, settings SimulationSettings, progress func(SimulationProgress)) SimulationRunResult {
 	weatherPath := resolveBatchWeather(path, request)
 	energyPlus := resolveBatchEnergyPlusExecutable(path, request.EnergyPlusExecutablePath, installations)
 	if energyPlus.Error != "" {
@@ -907,7 +981,7 @@ func runBatchSimulationPath(path string, request MultiSimulationRequest, install
 		}
 		runRequest = prepared
 	}
-	runResult, err := RunSimulation(runRequest, nil, settings)
+	runResult, err := runSimulationWithConcurrency(runRequest, progress, settings, max(1, request.WorkerCount))
 	if err != nil {
 		return failedBatchSimulationResult(request.RunID, path, "failed", err.Error())
 	}
@@ -1065,6 +1139,10 @@ func simulationCompletionMessage(result *SimulationRunResult) string {
 }
 
 func runCommandCaptured(command *exec.Cmd) (string, string, int, error) {
+	return runCommandCapturedWithProgress(command, nil)
+}
+
+func runCommandCapturedWithProgress(command *exec.Cmd, progress func(string)) (string, string, int, error) {
 	configureBackgroundCommand(command)
 	stdoutPipe, err := command.StdoutPipe()
 	if err != nil {
@@ -1082,14 +1160,14 @@ func runCommandCaptured(command *exec.Cmd) (string, string, int, error) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		copyLimited(&stdoutBuilder, stdoutPipe, maxCapturedOutputBytes)
+		copyLimitedWithProgress(&stdoutBuilder, stdoutPipe, maxCapturedOutputBytes, progress)
 	}()
 	go func() {
 		defer wg.Done()
 		copyLimited(&stderrBuilder, stderrPipe, maxCapturedOutputBytes)
 	}()
-	err = command.Wait()
 	wg.Wait()
+	err = command.Wait()
 	exitCode := 0
 	if command.ProcessState != nil {
 		exitCode = command.ProcessState.ExitCode()
@@ -1098,9 +1176,18 @@ func runCommandCaptured(command *exec.Cmd) (string, string, int, error) {
 }
 
 func copyLimited(builder *strings.Builder, reader io.Reader, limit int) {
+	copyLimitedWithProgress(builder, reader, limit, nil)
+}
+
+func copyLimitedWithProgress(builder *strings.Builder, reader io.Reader, limit int, progress func(string)) {
 	buffer := make([]byte, 4096)
+	lines := simulationEngineLineReader{observe: progress}
+	defer lines.finish()
 	for {
 		n, err := reader.Read(buffer)
+		if n > 0 && progress != nil {
+			lines.write(buffer[:n])
+		}
 		if n > 0 && builder.Len() < limit {
 			remaining := limit - builder.Len()
 			if n > remaining {
@@ -1119,6 +1206,10 @@ func readSimulationOutputs(result *SimulationRunResult) {
 }
 
 func readSimulationOutputsWithProgress(result *SimulationRunResult, runID string, progress func(SimulationProgress), path string) {
+	readSimulationOutputsWithWorkProgress(result, runID, progress, path, nil)
+}
+
+func readSimulationOutputsWithWorkProgress(result *SimulationRunResult, runID string, progress func(SimulationProgress), path string, work func(sqlWorkProgress)) {
 	result.ResultSourcePriority = defaultSimulationResultSourcePriority()
 	usedSources := map[string]bool{}
 	result.Files = collectSimulationFiles(result.OutputDirectory)
@@ -1127,7 +1218,7 @@ func readSimulationOutputsWithProgress(result *SimulationRunResult, runID string
 		return strings.ToLower(result.Files[i].Name) < strings.ToLower(result.Files[j].Name)
 	})
 	emitSimulationProgress(progress, runID, "parse_sql", "running", "Reading SQL results", 6, simulationProgressTotal, path)
-	if parseSQLResults(result) {
+	if parseSQLResultsWithProgress(result, runID, progress, path, work) {
 		usedSources["sql"] = true
 	}
 	emitSimulationProgress(progress, runID, "parse_fallback", "running", "Reading CSV and ESO fallback results", 7, simulationProgressTotal, path)
@@ -1173,6 +1264,10 @@ func parseERR(result *SimulationRunResult) {
 }
 
 func parseSQLResults(result *SimulationRunResult) bool {
+	return parseSQLResultsWithProgress(result, "", nil, "", nil)
+}
+
+func parseSQLResultsWithProgress(result *SimulationRunResult, runID string, progress func(SimulationProgress), path string, work func(sqlWorkProgress)) bool {
 	used := false
 	for _, file := range result.Files {
 		if file.Kind != "sqlite" {
@@ -1186,13 +1281,15 @@ func parseSQLResults(result *SimulationRunResult) bool {
 		// independently: a slow or unavailable section must not discard another
 		// completed section. Purpose builders read their own remaining SQL data.
 		if len(result.Series) == 0 {
-			if series, err := parseSimulationSQLSeriesForPlan(file.Path, plan); err == nil && len(series) > 0 {
+			emitSimulationProgress(progress, runID, "sql_series", "running", "Reading SQL time series", 6, simulationProgressTotal, path)
+			if series, err := parseSimulationSQLSeriesForPlanWithProgress(file.Path, plan, work); err == nil && len(series) > 0 {
 				result.Series = series
 				used = true
 			}
 		}
 		if len(result.HeatFlow.Zones) == 0 {
-			if heatFlow, err := parseSimulationHeatFlowSQL(file.Path); err == nil && len(heatFlow.Zones) > 0 {
+			emitSimulationProgress(progress, runID, "sql_heat_flow", "running", "Reading SQL heat-flow observations", 6, simulationProgressTotal, path)
+			if heatFlow, err := parseSimulationHeatFlowSQLWithProgress(file.Path, work); err == nil && len(heatFlow.Zones) > 0 {
 				result.HeatFlow = heatFlow
 				used = true
 			}
@@ -1643,6 +1740,12 @@ func simulationInputFilename(filename string, inputPath string) string {
 		name += ".idf"
 	}
 	return sanitizePathSegment(name)
+}
+
+// NormalizeSimulationRunID keeps progress transport and the runner on the same
+// identity. Callers that create an ID must normalize it before registering it.
+func NormalizeSimulationRunID(runID string) string {
+	return defaultRunID(runID)
 }
 
 func defaultRunID(runID string) string {

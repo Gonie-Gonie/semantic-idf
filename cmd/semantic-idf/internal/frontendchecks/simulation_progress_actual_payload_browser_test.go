@@ -23,6 +23,7 @@ import (
 // its original IDF. This measures browser transport/decode/display only; it
 // does not run EnergyPlus, rebuild a result, or accept numerical oracle values.
 func TestSimulationActualLargePayloadResponseAndViewsBrowser(t *testing.T) {
+	_ = readTestFile(t, "frontend/src/js/simulation-progress.js")
 	payloadPath := os.Getenv("SIMULATION_UI_BUNDLE_PATH")
 	if payloadPath == "" {
 		t.Skip("set SIMULATION_UI_BUNDLE_PATH and SIMULATION_UI_BUNDLE_INPUT for saved actual bundle display timing")

@@ -34,10 +34,19 @@ import { hvacInspectionLoopKey, hvacInspectionSharedFrame, rememberHVACInspectio
 import { renderHVACInspection, handleHVACInspectionEvent } from "./hvac-inspection-view.js";
 import { renderComfortInspection, handleComfortInspectionEvent, renderComfortInspectionReport } from "./comfort-inspection-view.js";
 import { decodeSimulationResultTransfer, simulationResultTransferMediaType } from "../simulation-result-transport.js";
+import { createSimulationProgress, readSimulationJSONResponse } from "../simulation-progress.js";
 
 let progressListenerRegistered = false;
 let simulationPendingResponseRunID = "";
-let simulationProgressClock = null;
+const simulationProgressUI = createSimulationProgress({
+  state, elements, getPendingRunID: () => simulationPendingResponseRunID,
+  getCompletionLabel: () => simulationDoneMessage(state.simulationResult), getStatusLabel: statusText,
+  onProgress: () => {
+    updateSimulationControls();
+    const mini = elements.simulationChart?.querySelector(".simulation-running-empty .simulation-mini-progress");
+    if (mini) mini.outerHTML = renderMiniProgressSVG();
+  },
+});
 let heatFlowPlayTimer = 0;
 let simulationEnvironmentSettingsKey = "";
 let simulationEnvironmentRequest = null;
@@ -5391,52 +5400,20 @@ function recommendedEnergyPlusInstallPath(installs, currentPath) {
 }
 
 function renderSimulationProgress() {
-  const progress = state.simulationProgress;
-  if (!progress || !elements.simulationProgressBar) {
+  if (!state.simulationProgress || !elements.simulationProgressBar) {
+    simulationProgressUI.stop();
     updateSimulationProgressClasses(false);
+    elements.simulationProgressBar?.classList.remove("indeterminate");
+    elements.simulationProgressBar?.removeAttribute("aria-valuenow");
+    elements.simulationProgressBar?.removeAttribute("aria-valuetext");
+    if (elements.simulationStatus) {
+      elements.simulationStatus.dataset.simulationProgressPhase = "";
+      elements.simulationStatus.dataset.simulationProgressElapsed = "";
+      elements.simulationStatus.dataset.simulationProgressMode = "";
+    }
     return;
   }
-  const percent = Math.max(0, Math.min(100, Number(progress.percent) || 0));
-  const receiving = progress.phase === "complete" && simulationPendingResponseRunID === progress.runId;
-  const phase = receiving ? "receiving_results" : String(progress.phase || "");
-  const phaseKeys = {
-    prepare: "simulation.preparing",
-    discovery: "simulation.phaseDiscovery",
-    plan: "simulation.phasePlan",
-    apply_temporary_outputs: "simulation.phaseApplyTemporaryOutputs",
-    execute: "simulation.running",
-    parse_sql: "simulation.phaseReadSQL",
-    parse_fallback: "simulation.phaseReadFallback",
-    render_results: "simulation.preparingResults",
-    build_purpose_results: "simulation.phasePurposeResults",
-    energy_geometry: "simulation.phaseEnergyGeometry",
-    energy_dashboard: "simulation.phaseEnergyDashboard",
-    energy_drivers: "simulation.phaseEnergyDrivers",
-    energy_service_paths: "simulation.phaseEnergyServicePaths",
-    energy_path: "simulation.phaseEnergyPath",
-    zone_heat_flow: "simulation.phaseZoneHeatFlow",
-    thermal_topology: "simulation.phaseThermalTopology",
-  };
-  const message = progress.message || statusText(progress.status);
-  const phaseLabel = phaseKeys[phase] ? t(phaseKeys[phase], {}, message) : "";
-  const completed = phase === "complete" && state.simulationResult?.runId === progress.runId
-    ? simulationDoneMessage(state.simulationResult) : "";
-  const displayFailed = phase === "display_failed" && progress.displayError
-    ? t("simulation.resultDisplayFailed", { message: progress.displayError }, "Results received, but display failed: {message}") : "";
-  const label = receiving ? t("simulation.receivingResults", {}, "Receiving simulation results")
-    : phaseLabel || completed || displayFailed || message;
-  const elapsed = simulationProgressClock && simulationProgressClock.runId === progress.runId
-    ? Math.max(0, Math.floor((performance.now() - simulationProgressClock.startedAt) / 1000)) : null;
-  const elapsedLabel = elapsed === null ? "" : t("simulation.progressElapsed", { seconds: elapsed }, `Elapsed ${elapsed}s`);
-  elements.simulationProgressBar.style.width = `${percent}%`;
-  elements.simulationPercent.textContent = receiving ? "…" : `${Math.round(percent)}%`;
-  elements.simulationStatus.textContent = [label, elapsedLabel,
-    state.simulationRunning && !receiving ? t("simulation.progressStageNote", {}, "Stage progress, not a time estimate") : "",
-  ].filter(Boolean).join(" · ");
-  elements.simulationStatus.dataset.simulationProgressPhase = phase;
-  elements.simulationStatus.dataset.simulationProgressElapsed = elapsed === null ? "" : String(elapsed);
-  elements.simulationStatus.title = message;
-  updateSimulationProgressClasses(state.simulationRunning || progress.status === "running");
+  simulationProgressUI.render();
 }
 
 function updateSimulationProgressUI() {
@@ -5447,37 +5424,16 @@ function updateSimulationProgressUI() {
 }
 
 function stopSimulationProgressClock(runID = "") {
-  if (runID && simulationProgressClock?.runId !== runID) return;
-  if (simulationProgressClock?.timer) window.clearInterval(simulationProgressClock.timer);
-  simulationProgressClock = null;
+  simulationProgressUI.stop(runID);
 }
 
 function refreshSimulationProgressClock() {
-  const clock = simulationProgressClock;
-  if (!clock) return;
-  if (clock.timer) window.clearInterval(clock.timer);
-  clock.timer = 0;
-  if (!state.simulationRunning || clock.runId !== state.simulationActiveRunID || clock.runId !== simulationPendingResponseRunID) {
-    stopSimulationProgressClock(clock.runId);
-    return;
-  }
-  if (document.hidden) return;
-  renderSimulationProgress();
-  clock.timer = window.setInterval(() => {
-    if (clock.runId !== state.simulationActiveRunID || clock.runId !== simulationPendingResponseRunID || !state.simulationRunning) {
-      stopSimulationProgressClock(clock.runId);
-      return;
-    }
-    // Time is elapsed wall time, never simulated completion or a remaining-time
-    // estimate. No graph, inspector, controls or input parsing runs per tick.
-    renderSimulationProgress();
-  }, 1000);
+  simulationProgressUI.refreshClock();
 }
 
 function startSimulationProgressClock(runID) {
-  stopSimulationProgressClock();
-  simulationProgressClock = { runId: runID, startedAt: performance.now(), timer: 0 };
-  refreshSimulationProgressClock();
+  const http = state.simulationEnvironment?.resultHTTPAvailable === true || typeof backend()?.RunPurposeSimulationText !== "function";
+  simulationProgressUI.start(runID, { http });
 }
 
 function updateSimulationControls(blockingIssue = simulationBlockingIssue()) {
@@ -5686,18 +5642,7 @@ function updateSimulationProgressClasses(running) {
 }
 
 function renderMiniProgressSVG() {
-  const progress = state.simulationProgress || {};
-  const percent = Math.max(0, Math.min(100, Number(progress.percent || 0)));
-  const width = 220;
-  const x = 18 + (width - 36) * (percent / 100);
-  return `
-    <svg class="simulation-mini-progress" viewBox="0 0 ${width} 72" role="img" aria-label="${escapeHTML(t("simulation.runningShort", {}, "Running"))}">
-      <line x1="18" y1="38" x2="${width - 18}" y2="38" class="simulation-mini-track" />
-      <line x1="18" y1="38" x2="${x}" y2="38" class="simulation-mini-line" />
-      <circle cx="18" cy="38" r="5" class="simulation-mini-node active" />
-      <circle cx="${width / 2}" cy="38" r="5" class="simulation-mini-node ${percent >= 50 ? "active" : ""}" />
-      <circle cx="${width - 18}" cy="38" r="5" class="simulation-mini-node ${percent >= 100 ? "active" : ""}" />
-    </svg>`;
+  return simulationProgressUI.miniSVG();
 }
 
 function simulationDiagnosticSourceLabel(source) {
@@ -8045,12 +7990,7 @@ async function maybeAutoRunSimulation() {
 }
 
 function handleSimulationProgress(payload) {
-  const progress = Array.isArray(payload) ? payload[0] : payload;
-  if (!progress || progress.runId !== state.simulationActiveRunID || progress.runId !== simulationPendingResponseRunID) {
-    return;
-  }
-  state.simulationProgress = progress;
-  updateSimulationProgressUI();
+  simulationProgressUI.accept(payload);
 }
 
 async function callSimulationAPI(methodName, endpoint, payload) {
@@ -8088,7 +8028,8 @@ async function fetchSimulationJSON(endpoint, payload) {
   if (!response.ok) {
     throw new Error(await response.text());
   }
-  const result = await response.json();
+  const result = await readSimulationJSONResponse(response, endpoint === "/api/simulation-run"
+    ? (progress) => simulationProgressUI.receive(payload.runId, progress) : undefined);
   return resultTransfer ? decodeSimulationResultTransfer(result) : result;
 }
 

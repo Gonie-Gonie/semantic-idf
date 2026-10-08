@@ -44,6 +44,12 @@ func TestSimulationHTTPResultUsesExactSnapshot(t *testing.T) {
 	if response.Header().Get("Content-Length") != strconv.Itoa(len(want)) || response.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("unexpected snapshot headers: %v", response.Header())
 	}
+	progressResponse := httptest.NewRecorder()
+	handler.ServeHTTP(progressResponse, httptest.NewRequest(http.MethodGet, "/api/simulation/progress?runId="+request.RunID, nil))
+	var progress simulation.SimulationProgress
+	if err := json.Unmarshal(progressResponse.Body.Bytes(), &progress); err != nil || progress.RunID != request.RunID || progress.Status != "missing_energyplus" || progress.Phase != "complete" {
+		t.Fatalf("HTTP-only run did not publish its final progress: %s, %v", progressResponse.Body, err)
+	}
 	cacheResponse := httptest.NewRecorder()
 	handler.ServeHTTP(cacheResponse, httptest.NewRequest(http.MethodPost, "/api/simulation-result-cache", strings.NewReader(`{"textHash":"`+analysisTextHash(request.Text)+`","runId":"`+request.RunID+`"}`)))
 	if cacheResponse.Code != http.StatusOK || !bytes.Equal(cacheResponse.Body.Bytes(), want) {
