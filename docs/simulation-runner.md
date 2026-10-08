@@ -247,7 +247,12 @@ time-range controls. Static Topology remains separate; see
 
 HVAC Loop Check uses executed-input topology and the shared supply/demand
 schematic. Nodes show flow, temperature, humidity, and available setpoints;
-equipment retains operation, power, load, and reported COP. Missing readings
+equipment retains operation, power, load, and reported COP. Observations
+are not added as disconnected diagram objects: annotations require a drawn
+circuit port/equipment anchor or a unique typed parent/zone-port relationship.
+Unplaced observations remain available to chart controls. Layout reserves
+local annotation space around icons and between branches, and keeps bus
+readings in the outer gutters. Missing readings
 cannot borrow an earlier frame. Unset setpoint `-999`, including roundoff
 within `0.000001 °C`, is excluded from snapshots, availability, and deviation
 checks; valid zero/negative setpoints remain. Missing setpoints alone create

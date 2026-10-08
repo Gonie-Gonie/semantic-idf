@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -84,6 +85,17 @@ func TestHVACInspectionExecutedCircuitBrowser(t *testing.T) {
 	add("CoolSys1 Chiller Water Outlet Node 1", 35, 2)
 	for _, loop := range report.Loops {
 		add(loop.SupplySide.InletNode, 22, 1)
+		if loop.Type == "AirLoopHVAC" {
+			for _, branch := range loop.SupplySide.Branches {
+				for _, component := range branch.Components {
+					add(component.InletNode, 22, 1)
+					add(component.OutletNode, 21, 1)
+				}
+			}
+			for _, node := range loop.DemandGraph.Nodes {
+				add(node.NodeName, 21, .5)
+			}
+		}
 		if loop.Name == "HeatSys1" {
 			for _, side := range []idf.HVACLoopSide{loop.SupplySide, loop.DemandSide} {
 				add(side.InletNode, 75.1, 2.62)
@@ -138,7 +150,11 @@ func TestHVACInspectionExecutedCircuitBrowser(t *testing.T) {
 		t.Fatalf("HVAC circuit/zone contract failed: %v\n%s", err, output)
 	}
 	if screenshot := os.Getenv("HVAC_INSPECTION_SCREENSHOT"); screenshot != "" {
-		output, err := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--virtual-time-budget=10000", "--window-size=1460,1800", "--force-device-scale-factor=1", "--user-data-dir="+t.TempDir(), "--screenshot="+screenshot, server.URL+"/circuit?review=HeatSys1").CombinedOutput()
+		loop := os.Getenv("HVAC_INSPECTION_SCREENSHOT_LOOP")
+		if loop == "" {
+			loop = "HeatSys1"
+		}
+		output, err := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--virtual-time-budget=10000", "--window-size=1640,6800", "--force-device-scale-factor=1", "--user-data-dir="+t.TempDir(), "--screenshot="+screenshot, server.URL+"/circuit?review="+url.QueryEscape(loop)).CombinedOutput()
 		if err != nil {
 			t.Fatalf("HVAC screenshot: %v\n%s", err, output)
 		}
@@ -152,6 +168,21 @@ try{
  const {prepareHVACInspection:prepare,hvacInspectionBasicProperties:basic,hvacInspectionTrace:trace}=await import('/src/js/hvac-inspection-data.js');
  const {buildHVACLoopDiagramLayout:layout}=await import('/src/js/views/hvac-views.js');
  const loops=await (await fetch('/fixture')).json(),original=JSON.stringify(loops),mount=document.getElementById('mount');
+ const overlap=(a,b)=>Math.min(a.right,b.right)-Math.max(a.left,b.left)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1;
+ const coordinates=rect=>[rect.left,rect.top,rect.right,rect.bottom].map(value=>Math.round(value*10)/10).join(',');
+ const topologyBounds=name=>{
+  const svg=mount.querySelector('svg.hvac-loop-svg'),bounds=svg.getBoundingClientRect();
+  const annotations=[...svg.querySelectorAll('.hvac-inspect-annotation')].map(item=>({name:item.parentElement.dataset.hvacInspectPointName,rect:item.getBoundingClientRect()}));
+  const obstacles=[...svg.querySelectorAll('.hvac-loop-icon,.hvac-inspect-node-ring,.hvac-loop-equipment .mini-label,.hvac-branch-badge,.hvac-loop-side-note,.hvac-loop-label,.hvac-loop-name')].map(item=>({name:item.closest('[data-hvac-inspect-point-name]')?.dataset.hvacInspectPointName||item.closest('.hvac-loop-equipment')?.getAttribute('aria-label')||item.textContent||item.getAttribute('class'),rect:item.getBoundingClientRect()})).filter(item=>item.rect.width&&item.rect.height);
+  for(let i=0;i<annotations.length;i++){
+   const a=annotations[i];
+   check(a.rect.left>=bounds.left-1&&a.rect.right<=bounds.right+1&&a.rect.top>=bounds.top-1&&a.rect.bottom<=bounds.bottom+1,name+' clips annotation '+a.name+' ['+coordinates(a.rect)+'] outside SVG ['+coordinates(bounds)+']');
+   for(let j=i+1;j<annotations.length;j++){const b=annotations[j];check(!overlap(a.rect,b.rect),name+' annotation overlap '+a.name+' ['+coordinates(a.rect)+'] / '+b.name+' ['+coordinates(b.rect)+']');}
+   for(const obstacle of obstacles)check(!overlap(a.rect,obstacle.rect),name+' annotation intersects schematic '+a.name+' ['+coordinates(a.rect)+'] / '+obstacle.name+' ['+coordinates(obstacle.rect)+']');
+  }
+  check(!svg.querySelector('.unanchored,.hvac-inspect-detached-label'),name+' retained detached observations');
+  return [...svg.querySelectorAll('.hvac-inspect-annotation')].map(item=>item.parentElement.dataset.hvacInspectPointName+':'+item.getAttribute('transform')).join('|');
+ };
  const find=name=>loops.find(loop=>loop.name===name);
  const point=name=>[...mount.querySelectorAll('.node[data-hvac-inspect-point-name]')].find(item=>item.dataset.hvacInspectPointName.toLowerCase()===name.toLowerCase());
  for(const name of ['CoolSys1','HeatSys1','TowerWaterSys','SWHSys1']){
@@ -174,6 +205,14 @@ try{
  const air=find('VAV_5');mount.innerHTML=render(air,{});
  check(mount.querySelector('[data-hvac-inspect-basic-chart="humidity"] svg')&&point('VAV_5_OA-VAV_5_CoolCNode')?.textContent.includes('27.14 >set 12.80 °C'),'air loop lost its temperature or RH');
  check(!point('VAV_5_CoolCDemand Inlet Node'),'air loop includes coil water points');
+ const contaminated={...air,series:[...air.series,{...air.series[0],keyValue:'UNRELATED OBSERVATION NODE',column:'UNRELATED OBSERVATION NODE:System Node Temperature [C](Hourly)',name:'System Node Temperature'}],components:[...air.components,{componentName:'Unrelated Boiler',componentType:'Boiler:HotWater',series:[{...air.series[0],keyValue:'Unrelated Boiler',column:'Unrelated Boiler:Boiler Heating Rate [W](Hourly)',name:'Boiler Heating Rate',displayUnit:'kW'}]}]};
+ mount.innerHTML=render(contaminated,{});
+ check(!point('UNRELATED OBSERVATION NODE')&&!mount.querySelector('[data-hvac-inspect-point-name="Unrelated Boiler"]'),'observation-only objects appeared on an executed loop diagram');
+ const contaminatedModel=prepare(contaminated);
+ check(contaminatedModel.entities.some(item=>item.name==='UNRELATED OBSERVATION NODE')&&contaminatedModel.entities.some(item=>item.name==='Unrelated Boiler')&&[...mount.querySelectorAll('[data-hvac-inspect-entity] option')].some(item=>item.textContent==='Unrelated Boiler'),'diagram membership filtering removed standalone Data access');
+ const denseAir=loops.filter(loop=>loop.loopType==='AirLoopHVAC').sort((a,b)=>b.topology.relatedZones.length-a.topology.relatedZones.length)[0];
+ mount.innerHTML=render(denseAir,{});check(mount.querySelectorAll('.node.anchored').length>10,'dense AirLoop fixture lacks actual branch/zone ports');
+ const airPositions=topologyBounds(denseAir.name);mount.innerHTML=render(denseAir,{frameIndex:1});check(topologyBounds(denseAir.name+' second frame')===airPositions,'AirLoop frame values moved topology annotation positions');
  const zoneLoop=loops.find(loop=>loop.loopType==='AirLoopHVAC'&&loop.topology.relatedZones.includes('Core_top'));mount.innerHTML=render(zoneLoop,{});
  const zoneNodes=zoneLoop.topology.demandGraph.nodes.filter(node=>node.zoneName==='Core_top'&&['zone_inlet','zone_return'].includes(node.role));
  check(zoneNodes.length===2,'Go result omitted Core_top inlet/return zone ownership');
@@ -185,22 +224,27 @@ try{
  }
  check(JSON.stringify(loops)===original,'render mutated executed results');
  const heat=find('HeatSys1');mount.innerHTML=render(heat,{});
- const annotations=[...mount.querySelectorAll('.hvac-inspect-annotation')].map(item=>({name:item.parentElement.dataset.hvacInspectPointName,rect:item.getBoundingClientRect()}));
- check(annotations.length>45,'dense heating-loop fixture lacks observed branch ports/equipment');
- for(let i=0;i<annotations.length;i++)for(let j=i+1;j<annotations.length;j++){
-  const a=annotations[i],b=annotations[j];check(Math.min(a.rect.right,b.rect.right)-Math.max(a.rect.left,b.rect.left)<=1||Math.min(a.rect.bottom,b.rect.bottom)-Math.max(a.rect.top,b.rect.top)<=1,'dense loop text overlaps: '+a.name+' / '+b.name);
- }
+ check(mount.querySelectorAll('.hvac-inspect-annotation').length>45,'dense heating-loop fixture lacks observed branch ports/equipment');
+ const heatPositions=topologyBounds('HeatSys1');
  const demandRows=[...mount.querySelectorAll('.node.anchored.demand .hvac-inspect-node-ring')].map(item=>Number(item.getAttribute('cy'))),rows=[...new Set(demandRows)].sort((a,b)=>a-b);
  check(rows.length>10&&rows.slice(1).every((y,index)=>y-rows[index]<=260),'parallel equipment lines retain excessive vertical spacing: '+JSON.stringify(rows));
  const setpointNodes=['HEATSYS1 SUPPLY EQUIPMENT OUTLET NODE','HEATSYS1 SUPPLY OUTLET NODE'];
  check(heat.nodeSummaries.filter(node=>node.hasSetpoint).length===2,'Go summary marked every requested setpoint output as a control point');
  for(const frameIndex of [0,1]){
   mount.innerHTML=render(heat,{frameIndex});
+  check(topologyBounds('HeatSys1 frame '+frameIndex)===heatPositions,'heating-loop frame/status changes moved topology annotation positions');
   const comparisons=[...mount.querySelectorAll('[data-hvac-setpoint-state]')];
   check(comparisons.length===2&&comparisons.every(item=>setpointNodes.includes(item.closest('[data-hvac-inspect-point-name]').dataset.hvacInspectPointName.toUpperCase())),'unset SQL flag or loop setpoint spread to other nodes');
   check(comparisons.every(item=>item.dataset.hvacSetpointState==='unmet'&&getComputedStyle(item).fill==='rgb(255, 123, 114)'),'unmet heating setpoints are not red');
  }
- if(!new URLSearchParams(location.search).has('review'))mount.innerHTML=render(zoneLoop,{});
+ const demandCoil=heat.topology.demandSide.branches.flatMap(branch=>branch.components).find(component=>component.objectType.startsWith('Coil:Heating'));
+ const sparseComponent=heat.components.find(component=>component.componentName.toLowerCase()===demandCoil.objectName.toLowerCase()&&component.componentType===demandCoil.objectType);
+ check(sparseComponent,'sparse fixture has no measured first demand coil');
+ mount.innerHTML=render({...heat,series:[],components:[sparseComponent]},{});
+ check(mount.querySelectorAll('.hvac-inspect-annotation').length===1&&mount.querySelectorAll('.hvac-loop-side-block.demand .hvac-loop-icon').length>10,'sparse frame does not retain unmeasured neighboring branch symbols');
+ topologyBounds('HeatSys1 sparse demand measurement');
+ const review=new URLSearchParams(location.search).get('review');
+ if(review){mount.style.width='1580px';mount.innerHTML=render(review==='dense-air'?denseAir:find(review)||heat,{});}else mount.innerHTML=render(zoneLoop,{});
  document.body.dataset.hvacCircuitStatus='passed';document.getElementById('result').textContent='passed';
 }catch(error){document.body.dataset.hvacCircuitStatus='failed';document.getElementById('result').textContent=error.stack;}
 </script>`

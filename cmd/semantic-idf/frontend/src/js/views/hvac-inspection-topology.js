@@ -90,14 +90,15 @@ export function buildHVACInspectionTopology(loop = {}, observations = {}) {
     let vertex = equipmentMatch(item, "name", "type", false);
     if (!vertex) {
       const parent = equipmentMatch(item, "parentComponentName", "parentComponentType");
+      // A reported SQL object is not proof of loop membership. Only an
+      // unambiguous typed parent in this circuit can introduce a child.
+      if (!parent) continue;
       const id = `observed:${item.id || `${normalized(item.type)}:${normalized(item.name)}`}`;
-      component({ objectName: item.name, objectType: item.type }, id, parent?.side || "");
+      component({ objectName: item.name, objectType: item.type }, id, parent.side);
       vertex = vertices.get(id);
       if (!vertex) continue;
-      if (parent) {
-        if (!expandedParents.has(parent.id)) expandedParents.set(parent.id, new Set());
-        expandedParents.get(parent.id).add(id);
-      }
+      if (!expandedParents.has(parent.id)) expandedParents.set(parent.id, new Set());
+      expandedParents.get(parent.id).add(id);
       // Port names and roles come from the executed, typed component. In
       // particular, adjacent observations do not establish any connection.
       const ports = item.nodePorts?.length ? item.nodePorts : [
@@ -111,7 +112,6 @@ export function buildHVACInspectionTopology(loop = {}, observations = {}) {
       }
     }
   }
-  for (const item of observations.nodes || []) node(item.name);
   for (const [parentID, children] of expandedParents) {
     const parent = vertices.get(parentID);
     const start = `node:${normalized(parent.inletNode)}`, finish = `node:${normalized(parent.outletNode)}`;
@@ -154,15 +154,9 @@ function renderMetricValue(metric) {
   return `<tspan class="hvac-inspect-setpoint ${metric.setpoint.state}" data-hvac-setpoint-state="${metric.setpoint.state}">${number(metric.value)} ${escapeHTML(metric.setpoint.operator)}<tspan baseline-shift="sub" font-size="75%">set</tspan> ${number(metric.setpoint.value)}</tspan> ${escapeHTML(metric.unit || "")}`;
 }
 
-function observationRecords(loop, graph, layout, nodes, components) {
+function observationRecords(loop, layout, nodes, components) {
   const componentAnchors = layout.anchors.filter((anchor) => anchor.kind === "component");
   const exactEquipment = (name, type) => componentAnchors.filter((anchor) => normalized(anchor.name) === normalized(name) && normalized(anchor.type) === normalized(type));
-  const sideForNode = (name) => {
-    const known = graph.vertices.find((vertex) => vertex.kind === "node" && normalized(vertex.name) === normalized(name) && vertex.side);
-    if (known) return known.side;
-    const owners = componentAnchors.filter(({ component }) => [component.waterInletNode, component.waterOutletNode, ...(component.nodeUsages || []).map((port) => port.nodeName)].some((port) => normalized(port) === normalized(name)));
-    return owners.length && owners.every((owner) => owner.side === owners[0].side) ? owners[0].side : "demand";
-  };
   return [...nodes.map((item) => ({ item, kind: "node" })), ...components.map((item) => ({ item, kind: "component" }))].map(({ item, kind }) => {
     let anchor = null, parent = "";
     if (kind === "node") {
@@ -186,18 +180,28 @@ function observationRecords(loop, graph, layout, nodes, components) {
         if (owners.length === 1) { anchor = owners[0]; parent = anchor.name; }
       }
     }
+    // The diagram represents its drawn circuit, not every observed port of a
+    // multi-circuit device. Unplaced readings remain available in the charts.
+    if (!anchor) return null;
     const setpoint = (item.metrics || []).find((metric) => metric.id === "setpoint");
     const metrics = (item.metrics || []).filter((metric) => kind !== "node" || metric.id !== "setpoint").slice(0, 4).map((metric) => metric.id === "temperature" && setpoint
       ? { ...metric, setpoint: hvacSetpointComparison(metric.value, setpoint.value, hvacSetpointMode(loop, item.name, components)) } : metric);
     if (kind === "node") metrics.sort((a, b) => ["temperature", "flow", "relativeHumidity", "humidity"].indexOf(a.id) - ["temperature", "flow", "relativeHumidity", "humidity"].indexOf(b.id));
     const nameLines = kind === "node" ? [] : [String(item.name || "").length > 24 ? `${String(item.name).slice(0, 23)}…` : String(item.name || "")];
-    const parentLines = [];
     const status = kind === "component" ? ["on", "off"].includes(item.status) ? item.status : "unknown" : "";
-    const side = anchor?.side || (kind === "node" ? sideForNode(item.name) : "demand");
-    const annotationRowY = anchor?.y ?? null;
-    return { item, kind, anchor, annotationRowY, parent, side, nameLines, parentLines, metrics, status,
-      height: (nameLines.length + parentLines.length) * 16 + metrics.length * metricRowHeight + (status ? 18 : 0) + 12 };
-  });
+    return { item, kind, anchor, parent, side: anchor.side, nameLines, metrics, status,
+      height: nameLines.length * 16 + metrics.length * metricRowHeight + (status ? 18 : 0) + 12 };
+  }).filter(Boolean);
+}
+
+function diagramObstacles(layout) {
+  const icons = layout.anchors.filter((anchor) => ["component", "zone"].includes(anchor.kind))
+    .map((anchor) => ({ x: anchor.x - 48, width: 96, y: anchor.y, height: 80, side: anchor.side }));
+  const badges = [layout.supplyLayout, layout.demandLayout].flatMap((source) => source.rows.map((row) => ({
+    x: (source.reverse ? source.branchEndX : source.branchStartX) + (row.index % 2 === 0 ? -24 : 24) - 10,
+    width: 20, y: row.y, height: 20, side: source.side,
+  })));
+  return [...icons, ...badges];
 }
 
 // Place values next to their own point. Prefer the upper right; the left port
@@ -205,34 +209,42 @@ function observationRecords(loop, graph, layout, nodes, components) {
 // Only colliding neighbors share a second local line, not a whole distant band.
 function placeAnchoredAnnotations(records, layout) {
   const groups = new Map();
-  for (const record of records.filter((entry) => entry.anchor)) {
-    const key = `${record.side}:${record.anchor.y}:${record.kind}`;
+  const obstacles = diagramObstacles(layout);
+  for (const record of records) {
+    const key = `${record.side}:${record.anchor.y}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(record);
   }
   for (const group of groups.values()) {
     group.sort((a, b) => a.anchor.x - b.anchor.x || a.item.name.localeCompare(b.item.name));
-    const placed = [], step = Math.max(...group.map((record) => record.height)) + 8;
+    const placed = obstacles.filter((item) => item.side === group[0].side && item.y === group[0].anchor.y)
+      .map((item) => ({ ...item, dy: -item.height / 2 }));
+    const step = Math.max(...group.map((record) => record.height)) + 8;
     for (const record of group) {
       const icon = layout.anchors.find((point) => ["component", "zone"].includes(point.kind) && point.side === record.side && point.y === record.anchor.y && Math.abs(Math.abs(point.x - record.anchor.x) - 42) < .01);
-      const left = record.anchor.x - annotationWidth - 10, right = record.anchor.x + 10;
+      const left = record.anchor.x - annotationWidth - 14, right = record.anchor.x + 14;
       const preferred = icon && record.anchor.x < icon.x ? [left, right] : [right, left];
       const sideLayout = record.side === "supply" ? layout.supplyLayout : layout.demandLayout;
-      if (record.kind === "node" && record.side === "supply" && record.anchor.x === layout.leftX) preferred.unshift(18);
-      if (record.kind === "node" && record.side === "supply" && sideLayout.hasParallel && record.anchor.y === sideLayout.busY && Math.abs(record.anchor.x - sideLayout.branchStartX) < annotationWidth / 2) preferred.unshift(sideLayout.branchStartX + 10);
-      const xs = record.kind === "node" ? preferred : [record.anchor.x - annotationWidth / 2];
+      if (record.kind === "node" && record.anchor.x === layout.leftX) preferred.unshift(18);
+      // Bus readings use the outer gutters rather than crowding the first
+      // branch or forcing extra space between every parallel branch.
+      let xs = record.kind === "node" ? preferred : [record.anchor.x - annotationWidth / 2];
+      if (record.kind === "node" && sideLayout.hasParallel && record.anchor.y === sideLayout.busY) {
+        if (record.anchor.x <= sideLayout.branchStartX) xs = [18];
+        if (record.anchor.x >= sideLayout.branchEndX) xs = [layout.width - annotationWidth - 18];
+      }
       let position;
       for (let level = 0; !position; level++) {
-        const dy = record.kind === "node" ? -record.height - 8 - level * step : 47 + level * step;
+        const dy = record.kind === "node" ? -record.height - 8 - level * step : 59 + level * step;
         for (const candidate of xs) {
           const x = Math.max(18, Math.min(layout.width - annotationWidth - 18, candidate));
-          const rect = { x, dy, height: record.height };
-          if (!placed.some((other) => x < other.x + annotationWidth + 6 && x + annotationWidth + 6 > other.x && dy < other.dy + other.height + 6 && dy + record.height + 6 > other.dy)) { position = rect; break; }
+          const rect = { x, width: annotationWidth, dy: dy - 12, height: record.height + 2 };
+          if (!placed.some((other) => x < other.x + other.width + 6 && x + annotationWidth + 6 > other.x && rect.dy < other.dy + other.height + 6 && rect.dy + rect.height + 6 > other.dy)) { position = { ...rect, offsetY: dy }; break; }
         }
       }
       record.x = position.x;
-      record.y = record.anchor.y + position.dy;
-      record.offsetY = position.dy;
+      record.y = record.anchor.y + position.offsetY;
+      record.offsetY = position.offsetY;
       placed.push(position);
     }
   }
@@ -241,47 +253,38 @@ function placeAnchoredAnnotations(records, layout) {
 function reservedBands(records, layout) {
   placeAnchoredAnnotations(records, layout);
   const result = {};
+  const obstacles = diagramObstacles(layout);
   for (const side of ["supply", "demand"]) {
     const selected = records.filter((record) => record.side === side);
-    const detached = selected.filter((record) => !record.anchor);
-    const detachedRowHeight = Math.max(0, ...detached.map((record) => record.height)) + 14;
-    const above = Math.max(0, ...selected.filter((record) => record.anchor && record.kind === "node").map((record) => -record.offsetY));
-    const below = Math.max(42, ...selected.filter((record) => record.anchor && record.kind === "component").map((record) => record.offsetY + record.height));
+    const source = side === "supply" ? layout.supplyLayout : layout.demandLayout;
+    const firstY = source.rows[0]?.y ?? source.busY, lastY = source.rows.at(-1)?.y ?? source.busY;
+    const above = Math.max(0, ...selected.map((record) => firstY - record.anchor.y - record.offsetY + 12));
+    const below = Math.max(42, ...selected.map((record) => record.anchor.y + record.offsetY + record.height - lastY));
     // Extra labels at a side bus must not stretch every parallel branch.
     // Reserve vertical space only where text in different rows shares X space.
-    const anchored = selected.filter((record) => record.anchor);
     let rowGap = 64;
-    for (const first of anchored) for (const next of anchored) {
+    for (const first of selected) for (const next of selected) {
       const rowsApart = (next.anchor.y - first.anchor.y) / 64;
       if (rowsApart <= 0 || first.x >= next.x + annotationWidth + 6 || next.x >= first.x + annotationWidth + 6) continue;
-      rowGap = Math.max(rowGap, (first.offsetY + first.height - next.offsetY + 12) / rowsApart);
+      rowGap = Math.max(rowGap, (first.offsetY + first.height - next.offsetY + 8) / rowsApart);
+    }
+    // Unmeasured equipment and branch numbers still occupy space in sparse
+    // frames, including the neighboring rows above and below a side bus.
+    for (const record of selected) for (const obstacle of obstacles) {
+      if (obstacle.side !== side || record.x >= obstacle.x + obstacle.width + 6 || record.x + annotationWidth <= obstacle.x - 6) continue;
+      const rowsApart = (obstacle.y - record.anchor.y) / 64;
+      if (rowsApart > 0) rowGap = Math.max(rowGap, (record.offsetY + record.height + obstacle.height / 2 + 6) / rowsApart);
+      if (rowsApart < 0) rowGap = Math.max(rowGap, (obstacle.height / 2 + 18 - record.offsetY) / -rowsApart);
     }
     const rowTopOffset = Math.max(46, above + 30), rowBottomPadding = below + 12;
     result[side] = { reserveAnnotations: true, rowTopOffset, rowBottomPadding,
-      rowGap: Math.ceil(rowGap),
-      extraBottom: detached.length ? Math.ceil(detached.length / 4) * detachedRowHeight + 38 : 0,
-      detachedRowHeight, above, below };
+      rowGap: Math.ceil(rowGap) };
   }
   return result;
 }
 
-function positionAnnotations(records, layout, bands) {
-  placeAnchoredAnnotations(records, layout);
-  for (const [side, source] of [["supply", layout.supplyLayout], ["demand", layout.demandLayout]]) {
-    const selected = records.filter((record) => record.side === side);
-    const detached = selected.filter((record) => !record.anchor);
-    const startY = source.top + source.height - bands[side].extraBottom + 32;
-    const startX = source.branchStartX - 45;
-    const columnWidth = (source.branchEndX - source.branchStartX + 90) / 4;
-    detached.forEach((record, index) => {
-      record.x = startX + index % 4 * columnWidth;
-      record.y = startY + Math.floor(index / 4) * bands[side].detachedRowHeight;
-    });
-  }
-}
-
 function renderObservation(record, selectedNode, selectedComponent) {
-  const { item, kind, anchor, nameLines, parentLines, metrics, status, x, y, height } = record;
+  const { item, kind, anchor, nameLines, metrics, status, x, y, height } = record;
   const target = kind === "node" ? selectedNode : selectedComponent;
   const selected = Boolean(item.selected || target && [item.id, item.name].some((value) => normalized(value) === normalized(target)));
   const active = item.active !== false && metrics.some((metric) => finite(metric.value) || metric.formattedValue != null);
@@ -290,30 +293,33 @@ function renderObservation(record, selectedNode, selectedComponent) {
   const title = [item.name, record.parent ? `↳ ${record.parent}` : "", ...metrics.map((metric) => `${metric.label || metric.id}: ${metricValue(metric)}`)].filter(Boolean).join("\n");
   const statusLabel = status === "unknown" ? "—" : status ? label(status === "on" ? "simulation.hvacStatusOn" : "simulation.hvacStatusOff", status === "on" ? "On" : "Off") : "";
   const leaderStartY = kind === "node" ? y + height - 2 : y - 14;
-  const leaderEndY = anchor ? anchor.y + (kind === "node" ? -13 : 23) : 0;
-  const leaderX = anchor ? Math.max(x, Math.min(x + annotationWidth, anchor.x)) : x;
-  return `<g class="hvac-inspect-vertex ${kind === "node" ? "node" : "equipment"} ${active ? "measured" : ""} ${selected ? "selected" : ""} ${escapeHTML(record.side)} ${anchor ? "anchored" : "unanchored"}" ${attr}="${escapeHTML(id)}" data-hvac-inspect-topology-id="${escapeHTML(kind === "node" ? `node:${normalized(item.name)}` : item.id || item.name)}" data-hvac-inspect-point-name="${escapeHTML(item.name)}" data-hvac-inspect-anchor-kind="${anchor ? record.parent ? "parent" : "exact" : "unavailable"}" role="button" tabindex="0" aria-pressed="${selected}" aria-label="${escapeHTML(title)}">
+  const leaderEndY = anchor.y + (kind === "node" ? -13 : 23);
+  const leaderX = Math.max(x, Math.min(x + annotationWidth, anchor.x));
+  return `<g class="hvac-inspect-vertex ${kind === "node" ? "node" : "equipment"} ${active ? "measured" : ""} ${selected ? "selected" : ""} ${escapeHTML(record.side)} anchored" ${attr}="${escapeHTML(id)}" data-hvac-inspect-topology-id="${escapeHTML(kind === "node" ? `node:${normalized(item.name)}` : item.id || item.name)}" data-hvac-inspect-point-name="${escapeHTML(item.name)}" data-hvac-inspect-anchor-kind="${record.parent ? "parent" : "exact"}" role="button" tabindex="0" aria-pressed="${selected}" aria-label="${escapeHTML(title)}">
     <title>${escapeHTML(title)}</title>
-    ${anchor ? `<path class="hvac-inspect-leader" d="M${leaderX},${leaderStartY} L${anchor.x},${leaderEndY}"></path>${kind === "node" ? `<circle class="hvac-inspect-node-ring" cx="${anchor.x}" cy="${anchor.y}" r="${active ? 11 : 8}"></circle><circle class="hvac-inspect-node-core" cx="${anchor.x}" cy="${anchor.y}" r="3"></circle>` : `<circle class="hvac-inspect-equipment-ring" cx="${anchor.x}" cy="${anchor.y}" r="29"></circle>`}` : ""}
+    <path class="hvac-inspect-leader" d="M${leaderX},${leaderStartY} L${anchor.x},${leaderEndY}"></path>${kind === "node" ? `<circle class="hvac-inspect-node-ring" cx="${anchor.x}" cy="${anchor.y}" r="${active ? 11 : 8}"></circle><circle class="hvac-inspect-node-core" cx="${anchor.x}" cy="${anchor.y}" r="3"></circle>` : `<circle class="hvac-inspect-equipment-ring" cx="${anchor.x}" cy="${anchor.y}" r="29"></circle>`}
     <g class="hvac-inspect-annotation" transform="translate(${x} ${y})" data-hvac-inspect-annotation-x="${x}" data-hvac-inspect-annotation-y="${y}" data-hvac-inspect-annotation-width="${annotationWidth}" data-hvac-inspect-annotation-height="${height}">
       ${nameLines.map((line, index) => `<text class="hvac-inspect-point-label" x="0" y="${index * 16}">${escapeHTML(line)}</text>`).join("")}
-      ${parentLines.map((line, index) => `<text class="hvac-inspect-parent-label" x="0" y="${(nameLines.length + index) * 16}">${escapeHTML(line)}</text>`).join("")}
-      ${status ? `<text class="hvac-inspect-state ${status}" x="0" y="${(nameLines.length + parentLines.length) * 16 + 4}">${escapeHTML(statusLabel)}</text>` : ""}
-      ${metrics.map((metric, index) => `<text class="hvac-inspect-metric" x="0" y="${(nameLines.length + parentLines.length) * 16 + (status ? 18 : 0) + index * metricRowHeight + 4}" data-hvac-inspect-metric="${escapeHTML(metric.id || metric.label)}"><tspan class="hvac-inspect-metric-label" x="0">${renderMetricSymbol(metric)}</tspan><tspan class="hvac-inspect-metric-value" x="32">${renderMetricValue(metric)}</tspan></text>`).join("")}
+      ${status ? `<text class="hvac-inspect-state ${status}" x="0" y="${nameLines.length * 16 + 4}">${escapeHTML(statusLabel)}</text>` : ""}
+      ${metrics.map((metric, index) => `<text class="hvac-inspect-metric" x="0" y="${nameLines.length * 16 + (status ? 18 : 0) + index * metricRowHeight + 4}" data-hvac-inspect-metric="${escapeHTML(metric.id || metric.label)}"><tspan class="hvac-inspect-metric-label" x="0">${renderMetricSymbol(metric)}</tspan><tspan class="hvac-inspect-metric-value" x="32">${renderMetricValue(metric)}</tspan></text>`).join("")}
     </g>
   </g>`;
 }
 
 export function renderHVACInspectionTopology({ loop, nodes = [], components = [], selectedNode = "", selectedComponent = "" } = {}) {
-  const graph = buildHVACInspectionTopology(loop || {}, { nodes, components });
+  const graph = buildHVACInspectionTopology(loop || {}, { components });
   if (!loop || !graph.edges.length) return `<div class="hvac-inspect-topology-empty" data-hvac-inspect-topology-empty>${escapeHTML(label("simulation.hvacTopologyUnavailable", "Topology is not available for this result."))}</div>`;
+  const equipmentKey = (item) => `${normalized(item.type)}\u0000${normalized(item.name)}`;
+  const members = new Set(graph.vertices.filter((vertex) => vertex.kind === "component").map(equipmentKey));
+  // Scope operating-mode evidence as well as labels. An unrelated reported
+  // component must not change a circuit node's setpoint comparison color.
+  const circuitComponents = components.filter((item) => members.has(equipmentKey(item)));
   const initial = buildHVACLoopDiagramLayout(loop, { readOnly: true, width: diagramWidth });
-  const bands = reservedBands(observationRecords(loop, graph, initial, nodes, components), initial);
+  const bands = reservedBands(observationRecords(loop, initial, nodes, circuitComponents), initial);
   const layout = buildHVACLoopDiagramLayout(loop, { readOnly: true, width: diagramWidth, annotationBands: bands });
-  const records = observationRecords(loop, graph, layout, nodes, components);
-  positionAnnotations(records, layout, bands);
-  const headings = [["supply", layout.supplyLayout], ["demand", layout.demandLayout]].filter(([side]) => bands[side].extraBottom).map(([side, source]) => `<text class="hvac-inspect-detached-label" x="${source.branchStartX - 45}" y="${source.top + source.height - bands[side].extraBottom + 8}">${escapeHTML(label("simulation.hvacTopologyOtherPoints", "Other equipment / points"))}</text>`).join("");
-  const overlay = headings + records.map((record) => renderObservation(record, selectedNode, selectedComponent)).join("");
+  const records = observationRecords(loop, layout, nodes, circuitComponents);
+  placeAnchoredAnnotations(records, layout);
+  const overlay = records.map((record) => renderObservation(record, selectedNode, selectedComponent)).join("");
   const diagram = renderHVACLoopDiagram(loop, { readOnly: true, layout, overlay, hideLegend: true, svgClass: "hvac-inspect-topology-svg" });
   return `<section class="hvac-inspect-topology" data-hvac-inspect-topology="${escapeHTML(loop.id || loop.name)}">
     <div class="hvac-inspect-topology-viewport" style="--hvac-inspect-width:${layout.width}px" tabindex="0" aria-label="${escapeHTML(loop.name || label("simulation.hvacTopology", "Loop topology"))}" data-hvac-inspect-topology-viewport>${diagram}</div>

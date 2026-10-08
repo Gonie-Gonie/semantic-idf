@@ -2,16 +2,20 @@ package frontendchecks
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os/exec"
-	"strings"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
 
 func TestHVACInspectionChartsBrowser(t *testing.T) {
+	for _, path := range []string{"frontend/src/js/hvac-inspection-charts.js", "frontend/src/styles/hvac-inspection-charts.css", "frontend/src/styles/base.css", "frontend/src/styles/profile.css", "frontend/src/styles/simulation.css"} {
+		_ = readTestFile(t, path)
+	}
 	if testing.Short() {
 		t.Skip("headless HVAC inspection chart acceptance")
 	}
@@ -29,13 +33,52 @@ func TestHVACInspectionChartsBrowser(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	output, err := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--virtual-time-budget=10000", "--user-data-dir="+t.TempDir(), "--dump-dom", server.URL+"/chart").CombinedOutput()
-	if err != nil || !strings.Contains(string(output), `data-hvac-chart-status="passed"`) {
-		t.Fatalf("HVAC inspection chart acceptance failed: %v\n%s", err, output)
+	browser := epath201FreshBrowser(t, ctx, chrome)
+	browser.call("Page.enable", map[string]any{}, nil)
+	browser.call("Emulation.setDeviceMetricsOverride", map[string]any{"width": 1600, "height": 1000, "deviceScaleFactor": 1, "mobile": false}, nil)
+	ready := func(url string) {
+		browser.call("Page.navigate", map[string]any{"url": url}, nil)
+		for deadline := time.Now().Add(10 * time.Second); ; {
+			status := string(browser.evaluate(`document.body?.dataset.hvacChartStatus`))
+			if status == `"passed"` {
+				return
+			}
+			if status == `"failed"` || time.Now().After(deadline) {
+				t.Fatalf("HVAC chart browser %s: %s", status, browser.evaluate(`document.getElementById('result')?.textContent`))
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+	}
+	ready(server.URL + "/chart")
+	t.Log(string(browser.evaluate(`document.getElementById('result').textContent`)))
+	if os.Getenv("HVAC_CHART_REVIEW") != "" {
+		ready(server.URL + "/chart?review=1")
+		directory := t.TempDir()
+		for _, viewport := range []struct {
+			name  string
+			width int
+		}{{"desktop", 1600}, {"mobile", 390}} {
+			browser.call("Emulation.setDeviceMetricsOverride", map[string]any{"width": viewport.width, "height": 1000, "deviceScaleFactor": 1, "mobile": false}, nil)
+			browser.evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`)
+			var screenshot struct {
+				Data string `json:"data"`
+			}
+			browser.call("Page.captureScreenshot", map[string]any{"format": "png", "fromSurface": true, "captureBeyondViewport": false}, &screenshot)
+			data, err := base64.StdEncoding.DecodeString(screenshot.Data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(directory, viewport.name+".png")
+			if err := os.WriteFile(path, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("temporary chart review screenshot: %s", path)
+		}
+		time.Sleep(45 * time.Second) // Optional local review only; t.TempDir removes both captures.
 	}
 }
 
-const hvacInspectionChartsHTML = `<!doctype html><html><head><link rel="stylesheet" href="/src/styles/hvac-inspection-charts.css"></head><body><div id="mount" style="width:720px"></div><pre id="result"></pre>
+const hvacInspectionChartsHTML = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/src/styles.css"></head><body class="guide-page"><div id="reference" style="position:absolute;visibility:hidden"><span class="profile-axis-tick">12</span><svg width="100" height="30" viewBox="0 0 100 30"><text class="simulation-axis" x="0" y="20">12</text><path class="simulation-line" d="M0,0 L1,1"/></svg></div><div id="mount" style="width:720px"></div><pre id="result"></pre>
 <script type="module">
 const check=(value,message)=>{if(!value)throw new Error(message);};
 try {
@@ -62,12 +105,50 @@ try {
  updateFrame(mount,100);check(mount.querySelector('[data-hvac-chart-frame-marker]').style.display==='none'&&!mount.querySelector('.is-frame'),'out-of-domain frame was clamped to invented point');
  updateFrame(mount.querySelector('section'),0);check(mount.querySelector('[data-hvac-chart-frame-marker]').style.display===''&&flowGroup.querySelector('[data-hvac-chart-time="0"].is-frame'),'frame zero or chart-root container unsupported');
  check(!mount.querySelector('table')&&!mount.textContent.includes('Source data'),'chart contains source/provenance details');
- check(Number.parseFloat(getComputedStyle(mount.querySelector('.hvac-chart-tick')).fontSize)>=15,'chart ticks are not readable');
+ const inheritedFamily=getComputedStyle(document.body).fontFamily;
+ check(getComputedStyle(mount.querySelector('.hvac-chart-tick')).fontFamily===inheritedFamily&&getComputedStyle(mount.querySelector('.hvac-chart-axis-label')).fontFamily===inheritedFamily,'HVAC tick/title font overrides the app family');
+ const screenFont=element=>parseFloat(getComputedStyle(element).fontSize)*element.getScreenCTM().a;
+ check(Math.abs(screenFont(mount.querySelector('.hvac-chart-tick'))-parseFloat(getComputedStyle(document.querySelector('.profile-axis-tick')).fontSize))<.02,'HVAC physical tick font does not match Profile at default panel width');
+ check(Math.abs(screenFont(mount.querySelector('.hvac-chart-tick'))-screenFont(document.querySelector('.simulation-axis')))<.02,'HVAC and Simulation default physical tick font differ');
+ check(getComputedStyle(mount.querySelector('.hvac-chart-tick')).fontWeight==='400'&&getComputedStyle(mount.querySelector('.hvac-chart-axis-label')).fontWeight==='600','tick/title hierarchy changed');
+ const appearance=[];
+ for(const font of [11,18])for(const width of [350,720,1100]){
+  document.documentElement.style.setProperty('--graph-label-font-size',font+'px');mount.style.width=width+'px';
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  const tick=mount.querySelector('.hvac-chart-tick'),axis=mount.querySelector('.hvac-chart-axis-label'),legend=mount.querySelector('.hvac-chart-legend'),svg=mount.querySelector('svg');
+  check(Math.abs(screenFont(tick)-font)<.02&&Math.abs(screenFont(axis)-(font+1))<.02,'resized/configured SVG font differs from app setting at '+JSON.stringify({font,width,tick:screenFont(tick),axis:screenFont(axis)}));
+  check(parseFloat(getComputedStyle(legend).fontSize)===font+1&&getComputedStyle(legend).fontFamily===inheritedFamily,'legend does not share inherited font/settings');
+  check(mount.querySelector('svg')===originalSVG&&flowGroup.querySelector('path')===originalPath&&originalPath.getAttribute('d')===path,'font/width change rebuilt or altered data geometry');
+  check(mount.scrollWidth===width,'chart scroller leaked outside panel at '+width);
+  for(const label of mount.querySelectorAll('[data-hvac-chart-tick="left"], [data-hvac-chart-tick="right"], [data-hvac-chart-tick="x"]')){const box=label.getBBox();check(box.x>=0&&box.x+box.width<=1000,'configured tick clips outside SVG at '+JSON.stringify({font,width,text:label.textContent,box:{x:box.x,width:box.width}}));}
+  appearance.push({font,width,screenFont:screenFont(tick),svgWidth:svg.getBoundingClientRect().width});
+ }
+ document.documentElement.style.setProperty('--graph-label-font-size','11px');mount.style.width='720px';await new Promise(resolve=>requestAnimationFrame(resolve));
+ const lightStroke=getComputedStyle(originalPath).stroke,legendSwatch=mount.querySelector('[data-hvac-chart-legend="flow"] i');
+ check(lightStroke===getComputedStyle(legendSwatch).backgroundColor&&lightStroke===getComputedStyle(document.querySelector('.simulation-line')).stroke,'line/legend do not share app primary color');
+ document.documentElement.dataset.theme='dark';await new Promise(resolve=>requestAnimationFrame(resolve));
+ check(getComputedStyle(originalPath).stroke===getComputedStyle(legendSwatch).backgroundColor&&getComputedStyle(originalPath).stroke!==lightStroke,'line/legend do not adapt together to dark theme');
+ check(getComputedStyle(mount.querySelector('.hvac-chart-tick')).fill===getComputedStyle(document.querySelector('.profile-axis-tick')).color,'dark HVAC tick color differs from Profile');
+ check(originalPath.getAttribute('d')===path&&mount.querySelector('[data-hvac-chart-frame="0"]'),'theme change changed observations or frame');
+ delete document.documentElement.dataset.theme;
  check(mount.scrollWidth===720,'responsive chart overflowed regular inspection panel');
  mount.innerHTML=render({series:[flow,{...temp,unit:'kg/s'}]});check(!mount.querySelector('[data-hvac-chart-axis="right"]'),'same-unit traces received separate Y axes');
  check(mount.querySelector('[data-hvac-chart-axis="left"]').textContent==='Value (kg/s)','shared-unit axis incorrectly names only one of different properties');
  mount.innerHTML=render({series:[{...flow,points:[point(0,1,'01/21 01:00:00'),point(1,2,'01/21 02:00:00'),point(2,3,'01/21 03:00:00')]}]});
  for(const label of mount.querySelectorAll('[data-hvac-chart-tick="x"]')){const bounds=label.getBBox();check(bounds.x>=0&&bounds.x+bounds.width<=1000,'full time tick clipped outside graph SVG at actual half-panel width');}
+ document.documentElement.style.setProperty('--graph-label-font-size','18px');mount.style.width='350px';
+ const irregular=[point(0,1,'01/21 01:00:00'),point(1,2,'01/21 02:00:00'),point(7,3,'01/21 08:00:00'),point(8,4,'01/21 09:00:00')];
+ mount.innerHTML=render({series:[{...flow,points:irregular}],frameKey:7});await new Promise(resolve=>requestAnimationFrame(resolve));
+ const tickBounds=[...mount.querySelectorAll('[data-hvac-chart-tick="x"]')].map(item=>item.getBoundingClientRect());
+ check(tickBounds.every((bounds,index)=>index===0||bounds.left>tickBounds[index-1].right),'irregular full timestamp labels overlap at maximum font/mobile width');
+ check(mount.querySelectorAll('[data-hvac-chart-series] circle').length===4&&mount.querySelector('[data-hvac-chart-time="7"].is-frame'),'axis label spacing removed actual observations or selected frame');
+ const regular=Array.from({length:5},(_,x)=>point(x,x+1,'01/21 0'+(x+1)+':00:00'));
+ mount.innerHTML=render({series:[{...flow,points:regular},{...temp,points:regular.map(item=>({...item,value:item.value+20}))}],frameKey:2});await new Promise(resolve=>requestAnimationFrame(resolve));
+ const regularTickBounds=[...mount.querySelectorAll('[data-hvac-chart-tick="x"]')].map(item=>item.getBoundingClientRect());
+ check(regularTickBounds.every((bounds,index)=>index===0||bounds.left>regularTickBounds[index-1].right),'regular full timestamp labels overlap between endpoint and centered tick at maximum font/mobile dual-axis width');
+ check(mount.querySelectorAll('[data-hvac-chart-series] circle').length===10&&mount.querySelectorAll('[data-hvac-chart-time="2"].is-frame').length===2&&mount.querySelector('[data-hvac-chart-frame="2"]'),'regular dual-axis label spacing removed observations or frame');
+ check(mount.querySelector('[data-hvac-chart-tick="x"]').textContent===regular[0].label&&[...mount.querySelectorAll('[data-hvac-chart-tick="x"]')].at(-1).textContent===regular.at(-1).label,'regular full timestamp endpoints disappeared');
+ document.documentElement.style.setProperty('--graph-label-font-size','11px');mount.style.width='720px';
  mount.innerHTML=render({series:[flow,temp,humidity]});check(mount.querySelector('[data-hvac-chart-empty]')&&!mount.querySelector('svg'),'three incompatible units were drawn on false shared scale');
  mount.innerHTML=render({series:[{...flow,points:[point(0,null),point(1,NaN)]}]});check(mount.querySelector('[data-hvac-chart-empty]'),'all missing values manufactured chart');
  mount.innerHTML=render({series:[flow],mode:'scatter'});check(mount.querySelector('[data-hvac-chart-empty]'),'scatter accepted fewer than two properties');
@@ -91,6 +172,11 @@ try {
  mount.innerHTML=render({series:[{...flow,label:'<img src=x onerror=alert(1)>',unit:'<script>',points:[point(0,1,'<b>time</b>')]}],title:'<button>unsafe</button>'});
  check(!mount.querySelector('img,script,button,b')&&mount.textContent.includes('<img'),'graph labels were not escaped');
  check(JSON.stringify({flow,temp,humidity})===before,'chart mutated source observations');
- document.body.dataset.hvacChartStatus='passed';document.getElementById('result').textContent='passed';
+ if(new URLSearchParams(location.search).has('review')){
+  mount.style.cssText='width:min(1100px,calc(100vw - 40px));margin:20px auto';
+  mount.innerHTML=render({series:[flow,temp],frameKey:3,title:'HVAC node trends'})+'<div style="height:20px"></div>'+render({series:[flow,temp],mode:'scatter',frameKey:3,title:'Flow rate / temperature'});
+  document.getElementById('result').hidden=true;
+ }
+ document.body.dataset.hvacChartStatus='passed';document.getElementById('result').textContent=JSON.stringify({status:'passed',appearance});
 }catch(error){document.body.dataset.hvacChartStatus='failed';document.getElementById('result').textContent=error.stack;}
 </script></body></html>`

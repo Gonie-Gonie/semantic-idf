@@ -228,12 +228,18 @@ energy, or reported COP where those outputs exist.
 
 Narrow schematic panes can scroll horizontally. Dense measurement labels add
 space around the loop rather than changing the physical connection meaning.
+The schematic annotates only its actual circuit nodes and equipment. A typed
+child can annotate its uniquely identified parent equipment. Observed readings
+without a drawn circuit position remain available in the graph controls.
+Ports of another circuit are not annotated, and detached labels are omitted.
 
 ## HVAC time-series and scatter {#hvac-charts}
 
 The basic charts show node flow, temperature, and humidity. Use the per-node
 controls to compare selected traces. Y ranges and Auto reset apply independently
-to different units.
+to different units. HVAC and Comfort plots use the app font and the graph
+label size in Settings. Larger labels keep a readable chart width; narrow
+panes scroll horizontally.
 
 Custom charts choose an equipment/node first, then a property. A line chart
 can use at most two units on separate axes. Scatter uses exactly two

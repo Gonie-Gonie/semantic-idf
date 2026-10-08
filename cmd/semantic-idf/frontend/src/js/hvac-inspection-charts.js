@@ -3,8 +3,9 @@ import { escapeHTML } from "./state.js";
 
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const copy = (key, fallback) => t(`simulation.hvacChart${key}`, {}, fallback);
-const colors = ["#5aa9d1", "#de914b", "#8dbb72", "#ba92d1", "#db7884", "#48b9a9", "#b8a355", "#939ce1"];
+const colors = ["var(--teal)", "var(--amber)", "var(--hvac-chart-blue)", "var(--hvac-chart-purple)", "var(--green)", "var(--red)", "var(--hvac-chart-gray)", "var(--hvac-chart-cyan)"];
 const unitLabel = (unit) => String(unit || "–");
+let tickLabelContext = null;
 
 /** Render observed HVAC time series. x and frameKey share the same numeric time
  * coordinate; interval optionally declares the expected sampling cadence.
@@ -26,7 +27,7 @@ export function renderHVACInspectionChart({ series = [], mode = "line", frameKey
   const scatter = mode === "scatter";
   const pairs = scatter ? alignedPairs(traces[0], traces[1]) : [];
   if (scatter && !pairs.length) return empty(copy("AlignedUnavailable", "No matching time observations are available for these two properties."));
-  const width = 1000, height = 340, left = 94, right = scatter || units.length === 1 ? 42 : 94, top = 44, bottom = 81;
+  const width = 1000, height = 340, left = 112, right = scatter || units.length === 1 ? 42 : 112, top = 44, bottom = 81;
   const plotWidth = width - left - right, plotHeight = height - top - bottom;
   const allPoints = scatter ? pairs : traces.flatMap((trace) => trace.points);
   const xDomain = domain(allPoints.map((point) => point.x));
@@ -47,7 +48,7 @@ export function renderHVACInspectionChart({ series = [], mode = "line", frameKey
     const position = y(value, axis), rightSide = axis === 1;
     return `${axis === 0 ? `<line class="hvac-chart-grid" x1="${left}" x2="${width - right}" y1="${position}" y2="${position}"/>` : ""}<line class="hvac-chart-axis" x1="${rightSide ? width - right : left}" x2="${rightSide ? width - right + 5 : left - 5}" y1="${position}" y2="${position}"/><text class="hvac-chart-tick" data-hvac-chart-tick="${rightSide ? "right" : "left"}" x="${rightSide ? width - right + 10 : left - 10}" y="${position + 5}" text-anchor="${rightSide ? "start" : "end"}">${escapeHTML(number(value, range.step))}</text>`;
   }).join("") + `<text class="hvac-chart-axis-label" data-hvac-chart-axis="${axis === 1 ? "right" : "left"}" data-hvac-chart-unit="${escapeHTML(axisUnit(axis))}" data-hvac-chart-y-low="${range.low}" data-hvac-chart-y-high="${range.high}" x="${axis === 1 ? width - right : left}" y="22" text-anchor="${axis === 1 ? "end" : "start"}">${escapeHTML(axisTitle(axis))}</text>`).join("");
-  const xTicks = scatter ? xDomain.ticks.map((value) => ({ x: value, label: number(value, xDomain.step) })) : timeTicks(allPoints, 5);
+  const xTicks = scatter ? xDomain.ticks.map((value) => ({ x: value, label: number(value, xDomain.step) })) : timeTicks(allPoints, 5, plotWidth);
   const xGrid = xTicks.map((point, index) => `<line class="hvac-chart-grid" x1="${x(point.x)}" x2="${x(point.x)}" y1="${top}" y2="${height - bottom}"/><text class="hvac-chart-tick" data-hvac-chart-tick="x" x="${x(point.x)}" y="${height - bottom + 25}" text-anchor="${xTicks.length < 2 ? "middle" : index === 0 ? "start" : index === xTicks.length - 1 ? "end" : "middle"}">${escapeHTML(point.label)}</text>`).join("");
   const marks = scatter ? scatterMarks(pairs, traces, x, y, frameKey) : traces.map((trace) => lineMarks(trace, units.indexOf(trace.unit), x, y, frameKey, Math.max(64, Math.floor(2400 / traces.length)))).join("");
   // A nested SVG clips geometry to the plot without changing observations or
@@ -151,15 +152,38 @@ function number(value, step) {
   return value.toLocaleString(undefined, { minimumFractionDigits: step ? 0 : Math.min(2, decimals), maximumFractionDigits: decimals });
 }
 
-function timeTicks(points, limit) {
+function timeTickLabelWidth(label) {
+  // The chart's minimum CSS width bounds scaled tick fonts to 20 SVG units.
+  // Measure the inherited UI family at that bound so every supported panel
+  // width fits; this detached canvas never draws or changes the plot DOM.
+  tickLabelContext ||= document.createElement("canvas").getContext("2d");
+  if (!tickLabelContext) return String(label).length * 12;
+  tickLabelContext.font = `20px ${getComputedStyle(document.documentElement).fontFamily}`;
+  return tickLabelContext.measureText(String(label)).width;
+}
+
+function timeTicks(points, limit, plotWidth) {
   const unique = [...new Map(points.map((point) => [point.x, point])).values()].sort((a, b) => a.x - b.x);
-  if (unique.length <= limit) return unique;
+  if (unique.length <= 2) return unique;
+  const candidates = unique.length <= limit ? unique.slice(1, -1) : [];
   const result = [unique[0]], start = unique[0].x, span = unique.at(-1).x - start;
-  for (let index = 1; index < limit - 1; index++) {
+  for (let index = 1; unique.length > limit && index < limit - 1; index++) {
     const target = start + span * index / (limit - 1);
     let best = unique[0];
     for (const point of unique) if (Math.abs(point.x - target) < Math.abs(best.x - target)) best = point;
-    if (best.x !== result.at(-1).x && best.x !== unique.at(-1).x) result.push(best);
+    candidates.push(best);
+  }
+  // Endpoints align inward; interior labels center on their observed time.
+  // Reserve their measured widths as well as the requested time spacing.
+  const minimumGap = span / (limit - 1) * .8;
+  let previousRight = timeTickLabelWidth(unique[0].label);
+  const lastLeft = plotWidth - timeTickLabelWidth(unique.at(-1).label);
+  for (const point of candidates) {
+    const position = (point.x - start) / span * plotWidth, halfWidth = timeTickLabelWidth(point.label) / 2;
+    if (point.x - result.at(-1).x >= minimumGap && unique.at(-1).x - point.x >= minimumGap
+      && position - halfWidth >= previousRight + 10 && position + halfWidth <= lastLeft - 10) {
+      result.push(point); previousRight = position + halfWidth;
+    }
   }
   result.push(unique.at(-1));
   return result;

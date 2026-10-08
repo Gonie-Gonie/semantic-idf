@@ -41,6 +41,8 @@ const check=(value,message)=>{if(!value)throw new Error(message);};
 try {
  const {buildHVACInspectionTopology:build,renderHVACInspectionTopology:render}=await import('/src/js/views/hvac-inspection-topology.js');
  const {renderHVACLoopDiagram}=await import('/src/js/views/hvac-views.js');
+ const {renderHVACInspection:renderInspection}=await import('/src/js/views/hvac-inspection-view.js');
+ const {prepareHVACInspection:prepare}=await import('/src/js/hvac-inspection-data.js');
  const equipment=(name,inlet,outlet,type='Pump:VariableSpeed')=>({objectType:type,objectName:name,inletNode:inlet,outletNode:outlet,exists:true});
  const loop={id:'plant-1',name:'Chilled water',type:'PlantLoop',supplySide:{inletNode:'Supply inlet',outletNode:'Supply outlet',branches:[
  {name:'Inlet branch',components:[equipment('Supply pump','Supply inlet','Splitter inlet')]},
@@ -61,12 +63,15 @@ try {
  const wrapper={id:'unitary-loop',supplySide:{branches:[{name:'Main branch',components:[equipment('Unitary system','Unit inlet','Unit outlet','AirLoopHVAC:UnitarySystem')]}]}};
  const children=[{id:'fan-child',name:'Nested fan',type:'Fan:SystemModel',parentComponentName:'Unitary system',parentComponentType:'AirLoopHVAC:UnitarySystem',nodePorts:[{nodeName:'Unit inlet',role:'air_inlet'},{nodeName:'Coil inlet',role:'air_outlet'}],metrics:[{id:'power',label:'Power',value:200,unit:'W'}]},
  {id:'coil-child',name:'Nested coil',type:'Coil:Cooling:DX:SingleSpeed',parentComponentName:'Unitary system',parentComponentType:'AirLoopHVAC:UnitarySystem',inletNodes:['Coil inlet'],outletNodes:['Unit outlet'],metrics:[{id:'cop',label:'COP',value:3,unit:''}]},
- {id:'unknown-device',name:'Unmapped device',type:'Boiler:HotWater',metrics:[{id:'power',label:'Power',value:100,unit:'W'}]}];
+ {id:'unknown-device',name:'Unmapped device',type:'Boiler:HotWater',nodePorts:[{nodeName:'Unit inlet',role:'water_inlet'},{nodeName:'Unmapped device outlet',role:'water_outlet'}],metrics:[{id:'power',label:'Power',value:100,unit:'W'}]},
+ {id:'wrong-type',name:'Unitary system',type:'Boiler:HotWater',metrics:[{id:'power',label:'Power',value:50,unit:'W'}]}];
  const extraNodes=[{id:'internal-point',name:'Coil inlet',metrics:[{id:'temperature',label:'Temperature',value:20,unit:'°C'}]},{id:'detached-point',name:'Unmapped point',metrics:[{id:'flow',label:'Flow',value:0,unit:'kg/s'}]}];
  const expanded=build(wrapper,{nodes:extraNodes,components:children});
  check(expanded.edges.some(item=>item.from==='observed:fan-child'&&item.to==='node:coil inlet'&&item.role==='air_outlet')&&expanded.edges.some(item=>item.from==='node:coil inlet'&&item.to==='observed:coil-child'),'typed inner fan/coil ports lost their real connections or medium role');
  check(!expanded.edges.some(item=>item.from==='component:supply:0:0'||item.to==='component:supply:0:0'),'expanded full internal path left a false wrapper bypass');
- check(expanded.vertices.some(item=>item.id==='observed:unknown-device')&&expanded.vertices.some(item=>item.id==='node:unmapped point')&&!expanded.edges.some(item=>item.from==='observed:unknown-device'||item.to==='node:unmapped point'),'unknown measured items disappeared or gained invented wires');
+ check(!expanded.vertices.some(item=>['observed:unknown-device','observed:wrong-type','node:unmapped point','node:unmapped device outlet'].includes(item.id)),'unrelated observations or a same-name wrong-type component became selected-loop members');
+ const ambiguousParent=build({supplySide:{branches:[{components:[equipment('Unitary system','Unit inlet','Unit outlet','AirLoopHVAC:UnitarySystem')]},{components:[equipment('Unitary system','Other inlet','Other outlet','AirLoopHVAC:UnitarySystem')]}]}},{components:[children[0]]});
+ check(!ambiguousParent.vertices.some(item=>item.id==='observed:fan-child'),'ambiguous wrapper occurrence established child ownership');
  const partial=build(wrapper,{components:[children[0]]});
  check(partial.edges.some(item=>item.from==='node:unit inlet'&&item.to==='component:supply:0:0'),'incomplete child observations erased the actual wrapper topology');
  const nodes=[{id:'inlet-point',name:'SUPPLY INLET',metrics:[{id:'flow',label:'Flow',value:0,unit:'kg/s'},{id:'temperature',label:'Temperature',value:7,unit:'°C'},{id:'humidity',label:'Humidity',value:.0047,unit:'kg/kg'},{id:'setpoint',label:'Setpoint',value:6,unit:'°C'}]},{id:'outlet-point',name:'Supply outlet',metrics:[{id:'flow',label:'Flow',value:2,unit:'kg/s'}]}];
@@ -102,13 +107,18 @@ try {
  check(valueFont>labelFont&&valueFont<=labelFont+1,'frame values must stay compact while slightly emphasizing measured values');
  for(const row of mount.querySelectorAll('[data-hvac-inspect-metric]')){
   const symbol=row.querySelector('.hvac-inspect-metric-label'),value=row.querySelector('.hvac-inspect-metric-value');
-  check(symbol.getStartPositionOfChar(0).x===0&&value.getStartPositionOfChar(0).x===32,'frame measurement labels and values do not align in fixed columns');
+  check(symbol.getAttribute('x')==='0'&&value.getAttribute('x')==='32','frame measurement fixed column attributes changed');
+  check(Math.abs(symbol.getStartPositionOfChar(0).x)<.001&&Math.abs(value.getStartPositionOfChar(0).x-32)<.001,'frame measurement labels and values do not align in fixed columns: '+row.textContent+'; x='+symbol.getStartPositionOfChar(0).x+'/'+value.getStartPositionOfChar(0).x);
   check(symbol.getBBox().x+symbol.getBBox().width<value.getBBox().x,'frame measurement label overlaps its value');
   check(Math.abs(value.getStartPositionOfChar(0).y-Number(row.getAttribute('y')))<.1,'a subscript shifted the measured value off its row');
  }
  const comparison=inlet.querySelector('[data-hvac-setpoint-state="unmet"]');
  check(!inlet.querySelector('[data-hvac-inspect-metric="setpoint"]')&&comparison?.textContent==='7.00 >set 6.00'&&comparison.querySelector('[baseline-shift="sub"]')?.textContent==='set','optional setpoint must be inline with temperature and reflect cooling inequality');
  check(getComputedStyle(comparison).fontWeight==='700'&&getComputedStyle(comparison).fill==='rgb(255, 123, 114)','unmet setpoint comparison is not bold red');
+ const unrelatedBoiler={id:'unowned-on-boiler',name:'Unrelated active boiler',type:'Boiler:HotWater',status:'on',nodePorts:[{nodeName:'SUPPLY INLET',role:'water_outlet'}],metrics:[{id:'heating',label:'Heating rate',value:100,unit:'W'}]};
+ mount.innerHTML=render({loop,nodes,components:[...components,unrelatedBoiler],selectedNode:'inlet-point'});
+ const preservedControl=mount.querySelector('[data-hvac-inspect-node="inlet-point"] [data-hvac-setpoint-state]');
+ check(!mount.querySelector('[data-hvac-inspect-component="unowned-on-boiler"]')&&preservedControl?.dataset.hvacSetpointState==='unmet'&&getComputedStyle(preservedControl).fill==='rgb(255, 123, 114)','excluded equipment sharing a port changed the selected-loop cooling control state');
  check(mount.querySelector('[data-hvac-inspect-component="pump-observation"]')?.textContent.includes('Off')&&mount.querySelector('[data-hvac-inspect-component="chiller-a-observation"]')?.textContent.includes('4.20'),'equipment status/power/COP missing');
  check(mount.querySelector('.hvac-loop-icon.pump')&&mount.querySelector('.hvac-loop-icon.chiller'),'equipment icons diverged from HVAC tab');
  check(!mount.querySelector('table,ul,dl')&&!mount.textContent.includes('Source data'),'topology introduced tabular or source/provenance detail');
@@ -121,9 +131,18 @@ try {
  check(!mount.querySelector('[data-hvac-setpoint-state]')&&mount.querySelector('[data-hvac-inspect-node="inlet-point"] [data-hvac-inspect-metric="temperature"] .hvac-inspect-metric-value').textContent==='7.00 °C','SQL roundoff produced a setpoint label/color on an uncontrolled node');
  check(annotationPositions()===positions,'missing setpoint changed topology positions');
  mount.innerHTML=render({loop:wrapper,nodes:extraNodes,components:children,selectedNode:'internal-point'});
- check(mount.querySelector('[data-hvac-inspect-node="internal-point"]')?.classList.contains('selected')&&mount.querySelector('[data-hvac-inspect-component="fan-child"]')&&mount.querySelector('[data-hvac-inspect-component="unknown-device"]')&&mount.querySelector('[data-hvac-inspect-node="detached-point"]'),'expanded internal or detached observations are not interactive/visible');
+ check(mount.querySelector('[data-hvac-inspect-component="fan-child"]')?.dataset.hvacInspectAnchorKind==='parent'&&mount.querySelector('[data-hvac-inspect-component="coil-child"]'),'owned typed child measurements lost their explicit wrapper anchor');
+ check(!mount.querySelector('[data-hvac-inspect-node="internal-point"]'),'typed internal port without a physical schematic anchor gained a detached label');
+ check(!mount.querySelector('[data-hvac-inspect-component="unknown-device"],[data-hvac-inspect-component="wrong-type"],[data-hvac-inspect-node="detached-point"],.unanchored,.hvac-inspect-detached-label'),'unrelated or unanchored frame observations still occupy the loop diagram');
+ const observationSource=JSON.stringify({nodes:extraNodes,components:children});
+ const observationSeries=(key,name,value)=>({file:'fixture.sql',keyValue:key,name,reportingFrequency:'Hourly',column:key+':'+name+' [W](Hourly)',points:[{x:1,label:'01/01 01:00',value},{x:2,label:'01/01 02:00',value}]});
+ const investigation={name:'Unitary inspection',loopType:'AirLoopHVAC',topology:wrapper,series:extraNodes.map(item=>observationSeries(item.name,'System Node Temperature',20)),components:children.map(item=>({...item,componentName:item.name,componentType:item.type,series:[observationSeries(item.name,'Boiler Heating Rate',100)]}))};
+ const investigationModel=prepare(investigation);mount.innerHTML=renderInspection(investigation,{});
+ check(investigationModel.entities.some(item=>item.name==='Unmapped point')&&investigationModel.entities.some(item=>item.name==='Unmapped device')&&investigationModel.entities.some(item=>item.name==='Coil inlet'),'diagram scoping removed original or typed internal observations from Data');
+ check([...mount.querySelectorAll('[data-hvac-inspect-entity] option')].some(item=>item.textContent==='Unmapped device')&&!mount.querySelector('[data-hvac-inspect-point-name="Unmapped device"],[data-hvac-inspect-point-name="Unmapped point"]'),'unmapped observation must remain selectable in Data while omitted from topology');
+ check(JSON.stringify({nodes:extraNodes,components:children})===observationSource,'diagram filtering mutated raw snapshots');
  const longNodes=['VAV_2_COOLCDEMAND INLET NODE','VAV_2_COOLCDEMAND OUTLET NODE','VAV_2_HEATCDEMAND INLET NODE','VAV_2_HEATCDEMAND OUTLET NODE'].map((name,index)=>({id:'long-node-'+index,name,metrics:nodes[0].metrics}));
- mount.innerHTML=render({loop,nodes:longNodes});checkAnnotationSpacing();
+ mount.innerHTML=render({loop,nodes:longNodes});check(!mount.querySelector('[data-hvac-inspect-node],.hvac-inspect-detached-label'),'other-loop port names were added by observation alone');checkAnnotationSpacing();
  mount.innerHTML=render({nodes,components});check(mount.querySelector('[data-hvac-inspect-topology-empty]')&&!mount.querySelector('svg'),'missing model topology generated guessed wiring');
  mount.innerHTML=render({loop,nodes,components,selectedNode:'inlet-point'});
  check(JSON.stringify(loop)===original,'inspection altered executed model topology');

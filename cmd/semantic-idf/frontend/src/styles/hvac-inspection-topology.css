@@ -3,7 +3,7 @@
    result pane so users can continue to the graphs below the topology. */
 .hvac-inspect-topology-viewport { overflow: auto; min-height: 240px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overscroll-behavior-x: contain; overscroll-behavior-y: auto; }
 .hvac-inspect-topology-viewport .hvac-graphic-shell { width: var(--hvac-inspect-width); min-width: var(--hvac-inspect-width); padding: 0; overflow: visible; }
-.hvac-inspect-topology-svg { display: block; width: 100%; max-width: none; min-height: 0; height: auto; }
+.hvac-inspect-topology-svg { display: block; width: 100%; max-width: none; min-height: 0; height: auto; font-family: inherit; }
 .hvac-inspect-topology-svg .hvac-loop-connector { stroke: var(--focus); stroke-width: 4.5; }
 .hvac-inspect-topology-svg .hvac-loop-path,
 .hvac-inspect-topology-svg .hvac-loop-branch-path,
@@ -27,7 +27,6 @@
 .hvac-inspect-vertex.selected .hvac-inspect-point-label { fill: var(--selection-primary); }
 .hvac-inspect-vertex.selected .hvac-inspect-leader { stroke: var(--selection-primary); opacity: 1; stroke-width: 1.5; }
 .hvac-inspect-point-label { fill: var(--muted); font-size: 12px; font-weight: 400; }
-.hvac-inspect-detached-label, .hvac-inspect-parent-label { fill: var(--muted); font-size: 12px; }
 .hvac-inspect-metric { fill: var(--ink); font-size: 13px; }
 .hvac-inspect-metric-label { fill: var(--muted); font-size: 12px; }
 .hvac-inspect-metric-value { font-variant-numeric: tabular-nums; font-weight: 600; }
