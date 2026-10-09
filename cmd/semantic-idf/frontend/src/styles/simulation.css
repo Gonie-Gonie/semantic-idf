@@ -1137,6 +1137,75 @@
   isolation: isolate;
 }
 
+.energy-path-layout-with-inputs {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.energy-path-layout-with-inputs .energy-path-stage-grid {
+  min-width: max(740px, calc(var(--graph-label-font-size, 12px) * 60));
+}
+
+.energy-path-input-note {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.energy-path-input-note > small {
+  display: block;
+  margin-top: 3px;
+  font-size: inherit;
+}
+
+.energy-path-context-connector {
+  fill: none;
+  stroke: var(--ink-soft);
+  stroke-width: 1.2px;
+  stroke-dasharray: 3 4;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.energy-path-context-connector path {
+  vector-effect: non-scaling-stroke;
+}
+
+.energy-path-context-connector .energy-path-context-arrow {
+  stroke-dasharray: none;
+}
+
+.energy-path-context-connector[data-energy-path-focus="path"] {
+  stroke: var(--focus);
+  stroke-width: 2px;
+  opacity: 1;
+}
+
+.energy-path-context-connector[data-energy-path-focus="dimmed"] {
+  opacity: 0.12;
+}
+
+.energy-path-link-hit.energy-path-context-hit {
+  fill: none;
+  stroke-width: 8px;
+  pointer-events: stroke;
+}
+
+.energy-path-legend-context {
+  width: 22px;
+  height: 0;
+  border-top: 1px dashed var(--ink-soft);
+}
+
+.energy-path-stage.boundary-domain .energy-path-node {
+  border-style: dashed;
+}
+
+.energy-path-stage.boundary-domain .energy-path-input-process {
+  background: var(--surface);
+}
+
 .energy-path-graph-underlay {
   position: absolute;
   inset: 0;

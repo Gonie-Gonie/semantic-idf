@@ -1,5 +1,6 @@
 const token = (value) => String(value ?? "").trim().toLowerCase();
-const LEVELS = ["driver", "load", "end_use", "carrier"];
+const LEVELS = ["input", "driver", "load", "end_use", "carrier"];
+const INPUT_ORDER = ["input.solar_incident", "input.exterior_convection", "input.exterior_longwave", "input.internal_gains", "input.solar_absorbed", "input.surface_storage"];
 const DRIVER_ORDER = [
   "surface.exterior_walls", "surface.roofs", "surface.ground_floors", "surface.windows_doors", "surface.interzone",
   "air.infiltration", "air.mechanical_ventilation", "air.interzone",
@@ -21,6 +22,7 @@ const nodeLevel = (node) => token(node?.presentationLevel || node?.level);
 const compareID = (left, right) => { const a = String(left?.id ?? ""), b = String(right?.id ?? ""); return a < b ? -1 : a > b ? 1 : 0; };
 
 function taxonomyRank(level, node) {
+  if (level === "input") return rank(INPUT_ORDER, token(node.kind));
   if (level === "driver") return rank(DRIVER_ORDER, token(node.driverCategory) === "internal.other" ? "balance.storage_other" : token(node.driverCategory));
   if (level === "load") return rank(["cooling", "heating"], token(node.serviceKind));
   if (level === "end_use") {
@@ -61,7 +63,7 @@ function inactiveFocus() {
 }
 
 /**
- * Focus only the visible, quantitatively validated graph. Ancestors and
+ * Focus only visible validated ribbons and measured context associations. Ancestors and
  * descendants are walked independently: arriving at a shared source must not
  * turn around and highlight unrelated energy demand. Correspondence is not flow.
  */
@@ -69,7 +71,7 @@ export function energyPathFocus(layout = {}, drawing = {}, selection = "", count
   const nodes = new Map((Array.isArray(layout?.nodes) ? layout.nodes : [])
     .filter((node) => node?.id && LEVELS.includes(nodeLevel(node)))
     .map((node) => [node.id, node]));
-  const links = new Map((Array.isArray(drawing?.ribbons) ? drawing.ribbons : [])
+  const links = new Map([...(Array.isArray(drawing?.ribbons) ? drawing.ribbons : []), ...(Array.isArray(drawing?.connectors) ? drawing.connectors : [])]
     .filter((link) => link?.id && nodes.has(link.fromId) && nodes.has(link.toId))
     .map((link) => [link.id, link]));
   const selectedNode = nodes.get(selection), selectedLink = links.get(selection);

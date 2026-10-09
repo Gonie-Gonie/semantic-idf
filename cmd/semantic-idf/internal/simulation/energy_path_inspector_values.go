@@ -63,6 +63,20 @@ func energyPathObservedMonthlyTimeAxis(db *sql.DB) map[int64]bool {
 // that guarantee: retain field presence instead of manufacturing reported zero.
 func (node EnergyExplanationNode) MarshalJSON() ([]byte, error) {
 	type plainNode EnergyExplanationNode
+	if node.Level == "input" && node.Basis == "reported_boundary" {
+		known := func(number float64, bit uint8) *float64 {
+			if number != 0 || !node.inspectorDecodedFromJSON || node.inspectorValuePresence&bit != 0 {
+				return &number
+			}
+			return nil
+		}
+		return json.Marshal(struct {
+			plainNode
+			RawValue       *float64 `json:"rawValue,omitempty"`
+			EffectiveValue *float64 `json:"effectiveValue,omitempty"`
+			SignedValue    *float64 `json:"signedValue,omitempty"`
+		}{plainNode(node), known(node.RawValue, 1), known(node.EffectiveValue, 2), known(node.SignedValue, 8)})
+	}
 	if node.Level != "driver" || !node.AllocationApplied {
 		if len(node.serviceBoundaryRestrictions) == 0 && len(node.storageChargeBoundaries) == 0 {
 			return json.Marshal(plainNode(node))
@@ -99,6 +113,7 @@ func (node *EnergyExplanationNode) UnmarshalJSON(data []byte) error {
 		RawValue                    json.RawMessage                        `json:"rawValue"`
 		EffectiveValue              json.RawMessage                        `json:"effectiveValue"`
 		AllocatedValue              json.RawMessage                        `json:"allocatedValue"`
+		SignedValue                 json.RawMessage                        `json:"signedValue"`
 		ServiceBoundaryRestrictions []energyPathServiceBoundaryRestriction `json:"serviceBoundaryRestrictions"`
 		StorageChargeBoundaries     []energyPathStorageChargeBoundary      `json:"storageChargeBoundaries"`
 	}
@@ -116,7 +131,7 @@ func (node *EnergyExplanationNode) UnmarshalJSON(data []byte) error {
 		node.Level, node.ZoneName = "support", ""
 	}
 	node.inspectorDecodedFromJSON = true
-	for index, raw := range []json.RawMessage{fields.RawValue, fields.EffectiveValue, fields.AllocatedValue} {
+	for index, raw := range []json.RawMessage{fields.RawValue, fields.EffectiveValue, fields.AllocatedValue, fields.SignedValue} {
 		if len(raw) > 0 && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 			node.inspectorValuePresence |= 1 << index
 		}

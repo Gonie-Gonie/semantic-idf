@@ -519,6 +519,11 @@ func (builder *purposePlanBuilder) addEnergyPathHourlyOutputs() {
 		if !purposeIDsContain(monthly.PurposeIDs, SimulationPurposeBasicEnergy) || !purposeObjectIsSeries(monthly.ObjectType) || !strings.EqualFold(monthly.ReportingFrequency, "Monthly") {
 			continue
 		}
+		if energyPathThermalInputVariable(monthly.VariableName) {
+			// Boundary context is Monthly (incident solar is Daily), not another
+			// building-wide Hourly output roster for the allocated driver chart.
+			continue
+		}
 		if builder.reuseEnergyPathPVElectricalHourlyCoverage(monthly) {
 			continue
 		}
@@ -606,6 +611,7 @@ func PurposeRunPlanApplyRequest(plan PurposeRunPlan, applyModes ...string) idf.O
 		})
 	}
 	sort.Ints(removeIndexes)
+	additions = mergeEnergyPathDiagnosticsAdditions(additions)
 	return idf.OutputApplyRequest{AddObjects: additions, Updates: updates, RemoveObjectIndexes: removeIndexes}
 }
 
@@ -720,6 +726,7 @@ func buildPurposeResultBundleWithProgress(result *SimulationRunResult, request S
 			report("energy_path", "Building Energy Path results")
 			bundle.EnergyExplanation = UpgradeEnergyExplanationV1(legacyExplanation)
 			applyEnergyFloorAreas(&bundle.EnergyExplanation, energyFloorAreasForRun(result, sharedDocument))
+			attachEnergyPathThermalInputs(&bundle.EnergyExplanation, result.Files, plan, driverContext, sharedGeometry, sharedDocument)
 			bundle.EnergyExplanationSummary = buildEnergyExplanationSummary(bundle.EnergyExplanation)
 			bundle.Completeness = append(bundle.Completeness, bundle.Energy.Completeness...)
 		case SimulationPurposeZoneHeatFlow:
@@ -2857,6 +2864,7 @@ func (builder *purposePlanBuilder) addBasicEnergyPath() {
 			}
 		}
 	}
+	builder.addEnergyPathThermalInputOutputs(zoneKeys)
 }
 
 type purposeOutputKeyTarget struct {
@@ -3925,7 +3933,7 @@ func (builder *purposePlanBuilder) addObject(object PurposeOutputObject) {
 		}
 		object.ObjectIndex = existing.ObjectIndex
 	} else if conflict, ok := builder.existingBase[purposeOutputBaseSignature(object.ObjectType, object.Fields)]; ok {
-		if object.Reason == "Basic Energy Path" && (strings.EqualFold(object.ReportingFrequency, "Monthly") || strings.EqualFold(object.ReportingFrequency, "Hourly")) && purposeObjectIsSeries(object.ObjectType) {
+		if object.Reason == "Basic Energy Path" && (strings.EqualFold(object.ReportingFrequency, "Monthly") || strings.EqualFold(object.ReportingFrequency, "Hourly") || strings.EqualFold(object.ReportingFrequency, "Daily")) && purposeObjectIsSeries(object.ObjectType) {
 			object.State = purposeTemporaryState(builder.request)
 			object.ObjectIndex = nil
 			builder.warn("info", "energy_path_"+strings.ToLower(object.ReportingFrequency)+"_added", fmt.Sprintf("%s exists at %s frequency; adding the %s Energy Path series without changing it.", purposeOutputLabel(conflict), conflict.ReportingFrequency, object.ReportingFrequency), firstPurposeID(object.PurposeIDs), object.Signature)

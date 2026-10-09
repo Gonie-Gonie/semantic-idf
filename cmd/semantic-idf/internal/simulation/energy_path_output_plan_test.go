@@ -238,7 +238,11 @@ func TestEPATH040BasicEnergyPathMonthlyFourStageOutputContract(t *testing.T) {
 		if object.Reason != "Basic Energy Path" {
 			t.Errorf("reason for %s/%s/%s = %q", object.ObjectType, object.KeyValue, object.VariableName, object.Reason)
 		}
-		if purposeObjectIsSeries(object.ObjectType) && object.ReportingFrequency != "Monthly" && object.ReportingFrequency != "Hourly" {
+		if frequency, thermalInput := energyPathExpectedThermalInputFrequency(object.VariableName); thermalInput {
+			if object.ObjectType != "Output:Variable" || object.ReportingFrequency != frequency {
+				t.Errorf("native thermal input frequency for %s/%s = %q, want %s", object.KeyValue, object.VariableName, object.ReportingFrequency, frequency)
+			}
+		} else if purposeObjectIsSeries(object.ObjectType) && object.ReportingFrequency != "Monthly" && object.ReportingFrequency != "Hourly" {
 			t.Errorf("frequency for %s/%s/%s = %q", object.ObjectType, object.KeyValue, object.VariableName, object.ReportingFrequency)
 		}
 	}

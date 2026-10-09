@@ -1,4 +1,4 @@
-const LEVELS = Object.freeze(["driver", "load", "end_use", "carrier"]);
+const LEVELS = Object.freeze(["input", "driver", "load", "end_use", "carrier"]);
 const token = (value) => String(value ?? "").trim().toLowerCase();
 const dimension = (value, fallback) => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
@@ -8,6 +8,7 @@ function layoutLevel(node) {
 }
 
 function nodeLane(node, level) {
+  if (level === "input") return "boundary";
   if (level === "driver") return "thermal";
   if (level === "load") return "main";
   if (level === "carrier") return "shared";
@@ -61,11 +62,14 @@ function flowIsValid(link, from, to) {
 /**
  * Immutable presentation geometry only. Inputs have already passed canonical
  * scope/period/taxonomy filtering. There are no energy scales or ribbon widths
- * here; changing reported values cannot change this four-column layout.
+ * here; changing reported values cannot change the column geometry. Legacy
+ * results without measured inputs retain their original four columns.
  */
 export function energyPathLayout(nodes = [], links = [], options = {}) {
-  const width = dimension(options?.width, 1000), height = dimension(options?.height, 420);
-  const columns = LEVELS.map((level, index) => ({ level, x: index * width / LEVELS.length, width: width / LEVELS.length }));
+  const hasInputs = (nodes || []).some((node) => layoutLevel(node || {}) === "input");
+  const levels = hasInputs ? LEVELS : LEVELS.slice(1);
+  const width = dimension(options?.width, hasInputs ? 1250 : 1000), height = dimension(options?.height, 420);
+  const columns = levels.map((level, index) => ({ level, x: index * width / levels.length, width: width / levels.length }));
   const byLevel = new Map(columns.map((column) => [column.level, column]));
   const seen = new Set();
   const entries = (Array.isArray(nodes) ? nodes : []).flatMap((node) => {
@@ -81,6 +85,7 @@ export function energyPathLayout(nodes = [], links = [], options = {}) {
   const { mainHeight, directY, directHeight } = laneGeometry(height, mainCount, direct.length);
   const directLabelHeight = direct.length ? Math.min(20, directHeight * 0.2) : 0;
   const positioned = [
+    ...placeRows(group("input"), byLevel.get("input"), 0, height, 40, 8),
     ...placeRows(group("driver"), byLevel.get("driver"), 0, height, 32, 3),
     ...placeRows(group("load"), byLevel.get("load"), 0, mainHeight, 52, 8),
     ...placeRows(group("end_use", "main"), byLevel.get("end_use"), 0, mainHeight, 52, 8),

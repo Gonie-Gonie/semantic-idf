@@ -38,8 +38,10 @@ when extending a feature.
 
 ## Wire contract
 
-The canonical graph explains **load drivers → thermal load → end-use energy →
-energy carrier** using separate thermal and site-energy scales. It is a measured
+The canonical accounting graph explains **load drivers → thermal load → end-use energy →
+energy carrier** using separate thermal and site-energy scales. An optional first
+column adds reported exterior/internal inputs and envelope process observations.
+It is a measured
 load explanation, not a single-scale Sankey balance or causal savings estimate.
 See [CLI and Python](energy-path.md#cli-and-python) for file/API access and
 [regression coverage](energy-path.md#regression-map) for the maintained test map.
@@ -79,6 +81,7 @@ Zone, Building or Annual.
 
 | `level` | Meaning | `scaleDomain` | Typical unit |
 | --- | --- | --- | --- |
+| `input` | Reported exterior/internal heat or envelope process context | `boundary` | `kWh` |
 | `driver` | Allocated contribution to actual service load | `thermal` | `kWh` thermal |
 | `load` | Observed cooling/heating at the declared boundary | `thermal` | `kWh` thermal |
 | `end_use` | Equipment or direct-use site energy | `site` | `kWh` site |
@@ -132,6 +135,8 @@ come from nodes, formulas from relationship rules / source allocation metadata.
 | `direct_end_use_to_carrier` | direct end use → carrier | Same site/site interpretation |
 | `residual` | positive unclassified residual → carrier | Material additive site-energy gap |
 | `source_correspondence` | thermal driver → matching direct end use | Independent endpoint quantities; **non-flow** |
+| `input_to_driver` | reported input → associated room driver | Signed boundary observation and allocated thermal reference; **non-flow** |
+| `load_to_auxiliary` | served load → fan/pump/auxiliary end use | Proven served-load reference and allocated site-energy slice; **non-flow**, no ratio |
 
 Legacy thermal residual → load links remain reconciliation context, not primary
 drivers or site-carrier branches. Source correspondence stays in `links`; exclude
@@ -151,6 +156,49 @@ quantities even if full annual node totals are larger. Annual ratios divide
 summed pairs, never averaged monthly ratios. Auxiliary fan/pump energy is not
 silently added to a cooling COP denominator; unsupported carrier splits receive
 no inferred fuel-specific ratio.
+
+### Reported inputs and auxiliary associations
+
+`energy_path_thermal_inputs.go` requests and attaches boundary observations in
+the shared purpose-result builder after canonical load/site accounting. Input
+IDs and association IDs remain stable across periods; `period` carries the
+calendar identity. Input `value` is the absolute magnitude, while `signedValue`
+and `effectiveValue` retain direction and `rawValue` retains the native scope.
+Explicit zero survives JSON; missing data does not become a reported zero.
+
+The supported kinds are `input.solar_incident`, `input.exterior_convection`,
+`input.exterior_longwave`, `input.internal_gains`, `input.solar_absorbed` and
+`input.surface_storage`. Incident solar uses native Daily averages, observed
+full-day durations and executed SQL net surface areas, with Hourly fallback for
+compatible stored results. Monthly average irradiance multiplied by calendar
+month duration is forbidden for partial-month runs. Other inputs use native
+Monthly energy. Exact owner, unit, surface roster, calendar coverage and
+Zone/Group factors must be proven; incomplete categories remain unavailable.
+
+Input observations are not additional driver pressure. Absorbed solar overlaps
+incident solar; storage is an envelope process rather than an external source.
+Exterior-face exchange and room heat response have different boundaries and
+timing. The displayed insulation/storage process does not infer a U-value,
+thermal capacity, causal contribution or savings from their difference.
+Old results without these outputs keep the four accounting stages and an
+availability notice; rerun Basic Energy to obtain the new observations.
+
+`energy_path_auxiliary_links.go` reuses source-local, topology-validated auxiliary
+budgets. Monthly service references and site slices are summed into Annual;
+annual load shares do not redistribute seasonal consumption. Unsupported
+ventilation, mixed-service pumps and unknown opposite-service loads remain
+unassigned. Fan and pump references may cover overlapping served loads, so keep
+their associations separate even when their display nodes are grouped.
+These thin context connectors never consume ribbon ports, alter thermal/site
+scales or closure, or enter a coil-only COP denominator. Their paired quantities
+are independently inspectable and carry no conversion ratio.
+
+The browser groups inputs by physical quantity while retaining original member
+and source identities. Monthly charts preserve signed input values, served-load
+subtotals and actual auxiliary slices; unavailable months and Hourly sources
+remain gaps. App and batch detail use the same presentation logic. File/API
+projections and trace exports preserve the optional input nodes and relations;
+the existing accounting summary categories remain unchanged.
 
 ### Driver allocation and multipliers
 

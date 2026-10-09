@@ -389,7 +389,14 @@ func ProjectEnergyPath(bundle PurposeResultBundle, selection EnergyPathSelection
 		if _, ok := ids[link.ToID]; !ok {
 			return EnergyPathProjection{}, fmt.Errorf("canonical link target endpoint is unavailable")
 		}
-		if _, ok := energyPathProjectionConsistentService([]string{link.ServiceKind, energyPathProjectionNodeService(ids[link.FromID]), energyPathProjectionNodeService(ids[link.ToID])}); !ok {
+		services := []string{link.ServiceKind, energyPathProjectionNodeService(ids[link.FromID]), energyPathProjectionNodeService(ids[link.ToID])}
+		if link.Relation == energyPathRelationLoadToAuxiliary && ids[link.FromID].Level == "load" &&
+			ids[link.ToID].Level == "end_use" && energyPathAuxiliaryEndUse(ids[link.ToID].EndUse) {
+			// A shared fan/pump can serve both services. Its historical service
+			// label does not override the exact attribution's served-load service.
+			services = services[:2]
+		}
+		if _, ok := energyPathProjectionConsistentService(services); !ok {
 			return EnergyPathProjection{}, fmt.Errorf("link service contradicts its canonical endpoints")
 		}
 	}

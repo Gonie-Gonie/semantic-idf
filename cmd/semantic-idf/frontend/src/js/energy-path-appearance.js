@@ -46,6 +46,8 @@ function qualifiedResidual(node = {}) {
 
 function nodeColor(node) {
   const level = token(node.level);
+  if (level === "input") return token(node.kind) === "input.internal_gains" ? "driver-internal"
+    : ["input.solar_incident", "input.exterior_convection", "input.exterior_longwave"].includes(token(node.kind)) ? "driver-envelope" : "neutral";
   if (level === "driver") {
     const category = token(node.driverCategory);
     if (category.startsWith("surface.")) return "driver-envelope";

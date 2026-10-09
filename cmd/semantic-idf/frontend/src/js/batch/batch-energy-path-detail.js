@@ -36,7 +36,7 @@ export function createBatchEnergyPathDetail({ host, resolveRun }) {
   const select = (id) => {
     if (!current) return;
     if (id && !current.scene.allGraphNodes.some((node) => node.id === id) &&
-      !current.scene.drawing.ribbons.some((link) => link.id === id)) return;
+      ![...current.scene.drawing.ribbons, ...(current.scene.drawing.connectors || [])].some((link) => link.id === id)) return;
     current.viewState.simulationEnergySelection = id;
     updateEnergyPathSelection(host, current.scene, current.viewState, options());
     focusGraph(id);

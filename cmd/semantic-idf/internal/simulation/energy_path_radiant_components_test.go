@@ -316,14 +316,45 @@ func TestEnergyPathRadiantNonNativeLegacyZoneRequestsUnchanged(t *testing.T) {
 	}
 }
 
-// Hourly charts add one frequency for each existing Energy Path identity, never
-// another metric or owner. Existing requests at other frequencies stay intact.
+// Boundary context has a smaller native roster than the paired allocated-driver
+// ledger/chart sources. Keep this literal contract independent of the producer
+// registry so another variable cannot accidentally acquire the exception.
+func energyPathExpectedThermalInputFrequency(name string) (string, bool) {
+	switch name {
+	case "Surface Outside Face Incident Solar Radiation Rate per Area":
+		return "Daily", true
+	case "Surface Outside Face Convection Heat Gain Energy",
+		"Surface Outside Face Net Thermal Radiation Heat Gain Energy",
+		"Surface Outside Face Solar Radiation Heat Gain Energy",
+		"Surface Heat Storage Energy", "Zone Total Internal Total Heating Energy":
+		return "Monthly", true
+	}
+	return "", false
+}
+
+// Hourly charts add one frequency for each existing paired Energy Path identity,
+// without changing its owner. Boundary context retains its exact native Daily/
+// Monthly contract; original requests at other frequencies stay intact.
 func assertEnergyPathMonthlyHourlyRequestPairs(t *testing.T, plan PurposeRunPlan) {
 	t.Helper()
 	pairs := map[string]map[string]PurposeOutputObject{}
+	boundary := map[string]bool{}
 	nativeFanPools := map[string]bool{}
 	for _, output := range plan.OutputObjects {
 		if !purposeObjectIsSeries(output.ObjectType) {
+			continue
+		}
+		if frequency, thermalInput := energyPathExpectedThermalInputFrequency(output.VariableName); thermalInput {
+			if output.ObjectType != "Output:Variable" || output.ReportingFrequency != frequency || output.KeyValue == "" || output.KeyValue == "*" ||
+				!purposeIDsContain(output.PurposeIDs, SimulationPurposeBasicEnergy) || output.Reason != "Basic Energy Path" ||
+				strings.TrimSpace(purposeFieldValue(output.Fields, "Schedule Name")) != "" {
+				t.Fatalf("thermal input lost exact native frequency/key/purpose coverage: %#v; want %s", output, frequency)
+			}
+			key := strings.ToLower(strings.Join([]string{output.ObjectType, output.KeyValue, output.VariableName}, "|"))
+			if boundary[key] {
+				t.Fatalf("duplicate boundary request %s", key)
+			}
+			boundary[key] = true
 			continue
 		}
 		// Native AirLoop fan pools are a separate, Hourly-only allocation

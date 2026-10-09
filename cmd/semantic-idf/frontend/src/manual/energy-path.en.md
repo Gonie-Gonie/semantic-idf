@@ -1,6 +1,6 @@
 # Energy Path
 
-Energy Path reads left to right: **Load drivers → Thermal loads → End-use energy → Energy sources** for a saved simulation. It combines actual observations with
+Energy Path reads left to right: **Reported inputs → Load drivers → Thermal loads → End-use energy → Energy sources** for a saved simulation. The input stage appears when its observations are available. It combines actual observations with
 explicitly labelled allocations. It is a load explanation and energy-accounting
 view, not a calculation of savings caused by a model change.
 
@@ -8,10 +8,11 @@ Run Basic Energy as described in [Simulation](./simulation.en.md#purposes).
 Use [Tools](./tools.en.md) for Building/Annual comparisons and
 [Automation](./automation.en.md) for file/API consumption.
 
-## Read the four stages {#reading-the-four-stages}
+## Read the stages {#reading-the-four-stages}
 
 | Stage | Quantity | Domain | Example |
 | --- | --- | --- | --- |
+| Inputs | Reported exterior/internal heat and envelope process observations. | Boundary context, independently scaled. | Incident solar, exterior convection, internal gains, surface storage. |
 | Drivers | Contribution allocated to actual cooling or heating load. | Thermal energy. | Exterior-wall cooling contribution. |
 | Loads | Observed thermal service at its declared boundary. | Thermal energy. | Zone sensible cooling. |
 | End uses | Consumption by equipment or direct uses. | Site energy. | Coil electricity, lighting, gas heating. |
@@ -30,6 +31,34 @@ A direct use such as lighting can enter site consumption without becoming
 HVAC consumption. Lighting heat and lighting electricity are related source
 evidence; they are not two interchangeable measures of one conserved quantity.
 People gains do not imply a purchased People-energy end use.
+
+## Inputs, insulation, storage, and auxiliaries {#inputs-and-auxiliaries}
+
+The first stage shows solar arriving at exterior surfaces, signed exterior
+convection and longwave exchange, and total internal gains. Absorbed solar and
+surface storage describe the envelope process. They overlap other observations
+and must not be added into one input total. Positive exterior exchange enters
+the outside face; positive storage enters envelope mass. Negative values retain
+their reported direction.
+
+Between these observations and room Drivers, insulation, absorption and thermal
+storage affect how much heat reaches the room and when. The process caption is
+not a calculated insulation rating, thermal capacity or savings estimate.
+Thin dashed associations identify related observations; their endpoint values
+need not balance and their widths do not express heat transfer.
+
+Cooling/heating loads also connect to fan, pump and auxiliary consumption when
+the system path and allocation budget are supported. A connection retains the
+actual served-load reference and its allocated auxiliary consumption. The same
+load can be served by both a fan and a pump: do not sum their load references.
+Auxiliary consumption remains counted once in site energy and is excluded from
+coil-only COP. Unsupported service allocations stay unassigned.
+
+Select an input or association for its Monthly graph. Input values retain their
+sign; missing months remain gaps. Hourly requires actual compatible source
+observations and is otherwise unavailable. Older results may lack the new input
+outputs: rerun **Basic Energy** to obtain them. Daily solar integration uses the
+executed surface area and actual reported days, including short runs.
 
 ## Scope, period, and component charts {#scope-and-period}
 

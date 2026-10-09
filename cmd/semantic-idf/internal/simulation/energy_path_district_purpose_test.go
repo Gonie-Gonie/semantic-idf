@@ -50,13 +50,24 @@ func TestEnergyPathDistrictPlanKeepsMonthlyLedgerAndAddsHourlyCharts(t *testing.
 			}
 			assertEnergyPathMonthlyHourlyRequestPairs(t, plan)
 			counts, monthlyCounts, hourlyCounts := map[string]int{}, map[string]int{}, map[string]int{}
+			boundaryCount, diagnosticsCount := 0, 0
 			meters, signatures := map[string]bool{}, map[string]bool{}
 			for _, output := range plan.OutputObjects {
 				if signatures[output.Signature] || output.Signature == "" {
 					t.Fatalf("duplicate/missing exact request signature: %#v", output)
 				}
 				signatures[output.Signature] = true
-				counts[output.ObjectType]++
+				_, thermalInput := energyPathExpectedThermalInputFrequency(output.VariableName)
+				if thermalInput {
+					boundaryCount++
+				} else if output.ObjectType == "Output:Diagnostics" {
+					diagnosticsCount++
+					if len(output.Fields) != 1 || output.Fields[0].Value != "DisplayAdvancedReportVariables" {
+						t.Fatalf("unexpected boundary diagnostic flags: %#v", output)
+					}
+				} else {
+					counts[output.ObjectType]++
+				}
 				// Reuse only an exact original Hourly identity, including its
 				// literal key: a wildcard cannot supply an exact-key opener.
 				// Monthly, support outputs and unmatched Hourly requests remain
@@ -79,6 +90,9 @@ func TestEnergyPathDistrictPlanKeepsMonthlyLedgerAndAddsHourlyCharts(t *testing.
 				}
 				if !purposeIDsContain(output.PurposeIDs, SimulationPurposeBasicEnergy) {
 					t.Fatalf("Energy Path added an unscoped measurement: %#v", output)
+				}
+				if thermalInput {
+					continue // Native Daily/Monthly context is checked by the shared helper.
 				}
 				switch output.ReportingFrequency {
 				case "Monthly":
@@ -119,8 +133,8 @@ func TestEnergyPathDistrictPlanKeepsMonthlyLedgerAndAddsHourlyCharts(t *testing.
 				wantSeries := map[string]int{"Output:Meter": 15, "Output:Variable": 952}
 				wantCounts := map[string]int{"Output:Meter": 30, "Output:Variable": 1904, "Output:SQLite": 1, "Output:VariableDictionary": 1}
 				if !reflect.DeepEqual(monthlyCounts, wantSeries) || !reflect.DeepEqual(hourlyCounts, wantSeries) ||
-					len(plan.OutputObjects) != 1936 || !reflect.DeepEqual(counts, wantCounts) {
-					t.Fatalf("District must keep 967 Monthly measurements and add exactly their 967 Hourly companions: total=%d / %v; Monthly=%v Hourly=%v", len(plan.OutputObjects), counts, monthlyCounts, hourlyCounts)
+					len(plan.OutputObjects) != 1936+boundaryCount+diagnosticsCount || !reflect.DeepEqual(counts, wantCounts) || boundaryCount == 0 || diagnosticsCount != 1 {
+					t.Fatalf("District must keep 967 Monthly/Hourly pairs plus native boundary context: total=%d / %v; Monthly=%v Hourly=%v; boundary=%d diagnostics=%d", len(plan.OutputObjects), counts, monthlyCounts, hourlyCounts, boundaryCount, diagnosticsCount)
 				}
 			}
 			for _, name := range []string{"Zone Air System Sensible Cooling Energy", "Zone Air System Sensible Heating Energy"} {

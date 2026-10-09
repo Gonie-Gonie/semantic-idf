@@ -15,17 +15,25 @@ export function energyPathMonthlyChartSeries(item = {}, kind = "node", graphs = 
   const fields = kind === "link" ? ["fromValue", "toValue"] : ["value"];
   return fields.map((field) => ({
     id: field,
-    label: kind === "link" ? field === "fromValue" ? copy("From", "From") : copy("To", "To") : item.label || item.id || "",
+    label: kind === "link" ? monthlyLinkLabel(item, field) : item.label || item.id || "",
     unit: kind === "link" ? item[field === "fromValue" ? "fromUnit" : "toUnit"] || "kWh" : item.unit || "kWh",
     points: Array.from({ length: 12 }, (_, month) => {
-      const records = graphs[month]?.[kind === "link" ? "links" : "nodes"] || [];
+      const graph = graphs[month] || {};
+      const records = kind === "link" ? [...(graph.links || []), ...(graph.relations || [])] : graph.nodes || [];
       const found = new Map();
       for (const record of records) {
         for (const member of members(record)) {
-          if (wanted.has(member.id)) found.set(member.id, member[field]);
+          if (!wanted.has(member.id)) continue;
+          const value = kind === "node" && member.level === "input" && finite(member.signedValue)
+            ? member.signedValue : member[field];
+          found.set(member.id, kind === "link" ? member : value);
         }
       }
-      const values = [...found.values()];
+      if (kind === "link" && ["input_to_driver", "load_to_auxiliary"].includes(item.relation)) {
+        return { x: month, label: t(`simulation.month.${month + 1}`, {}, `M${month + 1}`),
+          value: found.size === wanted.size ? contextMonthlyValue(item.relation, field, [...found.values()], records, wanted) : null };
+      }
+      const values = [...found.values()].map((value) => kind === "link" ? value[field] : value);
       return {
         x: month,
         label: t(`simulation.month.${month + 1}`, {}, `M${month + 1}`),
@@ -33,6 +41,34 @@ export function energyPathMonthlyChartSeries(item = {}, kind = "node", graphs = 
       };
     }),
   }));
+}
+
+function monthlyLinkLabel(item, field) {
+  const from = field === "fromValue";
+  if (item.relation === "input_to_driver") return t(`simulation.energyPathContext${from ? "FromInput" : "ToDriver"}`, {}, from ? "Reported observation" : "Allocated load-driver reference");
+  if (item.relation === "load_to_auxiliary") return t(`simulation.energyPathContext${from ? "FromThermal" : "ToAuxiliary"}`, {}, from ? "Served thermal reference" : "Allocated auxiliary site energy");
+  return from ? copy("From", "From") : copy("To", "To");
+}
+
+// Context endpoints retain independent reference quantities. Repeated input
+// endpoints count once; each auxiliary owner keeps its own served-load subset.
+function contextMonthlyValue(relation, field, links, records, wanted) {
+  if (relation === "load_to_auxiliary") {
+    // Fan and pump served-load sets can overlap without being identical.
+    // Keep each source attribution separate rather than invent their union.
+    return links.length === 1 && finite(links[0][field]) ? links[0][field] : null;
+  }
+  const observations = new Map();
+  for (const record of records) {
+    const original = members(record);
+    if (!original.some((member) => wanted.has(member.id))) continue;
+    if (!original.every((member) => wanted.has(member.id))) return null;
+    const endpoint = record[field === "fromValue" ? "fromId" : "toId"], value = record[field];
+    if (observations.has(endpoint) && observations.get(endpoint) !== value) return null;
+    observations.set(endpoint, value);
+  }
+  const values = [...observations.values()];
+  return values.length && values.every(finite) ? values.reduce((sum, value) => sum + value, 0) : null;
 }
 
 export function energyPathHourlyChartSeries(item = {}, sources = [], viewState = {}, hourlyLabels = []) {
@@ -166,13 +202,13 @@ export function renderEnergyPathComponentChart({ item = {}, kind = "node", label
       <option value="monthly"${frequency === "monthly" ? " selected" : ""}>${escapeHTML(copy("Monthly", "Monthly"))}</option>
       <option value="hourly"${frequency === "hourly" ? " selected" : ""}>${escapeHTML(copy("Hourly", "Hourly"))}</option>
     </select></header>
-    ${available ? renderPlot(series, frequency, display) : `<div class="energy-path-chart-empty" data-energy-path-chart-empty>${escapeHTML(display?.perArea && !(display.areaM2 > 0)
+    ${available ? renderPlot(series, frequency, display, item.level === "input") : `<div class="energy-path-chart-empty" data-energy-path-chart-empty>${escapeHTML(display?.perArea && !(display.areaM2 > 0)
       ? copy("AreaUnavailable", "Floor area is unavailable for this result.")
       : frequency === "hourly" ? copy("HourlyUnavailable", "Hourly data is unavailable for this component.") : copy("MonthlyUnavailable", "Monthly data is unavailable for this component."))}</div>`}
   </aside>`;
 }
 
-function renderPlot(series, frequency, display) {
+function renderPlot(series, frequency, display, boundaryInput = false) {
   const width = 1000, height = 340, right = 42, top = 52, bottom = 81;
   const traces = series.map((trace) => ({ ...trace, points: trace.points || [] }));
   // Both thermal and site traces are canonical kWh, divided by one scope area.
@@ -219,7 +255,7 @@ function renderPlot(series, frequency, display) {
     return `<path class="energy-path-chart-line energy-path-chart-color-${color}" d="${path}"/>` + drawn.filter((point) => finite(point.value)).map((point) => `<circle class="energy-path-chart-mark energy-path-chart-color-${color}" data-energy-path-chart-value="${point.value}" cx="${x(point.x)}" cy="${y(point.value)}" r="2.5"><title>${escapeHTML(title(point))}</title></circle>`).join("");
   }).join("");
   return `<div class="energy-path-chart-plot"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(copy(frequency === "hourly" ? "Hourly" : "Monthly", frequency === "hourly" ? "Hourly" : "Monthly"))}">
-    <text class="energy-path-chart-axis-label" data-energy-path-chart-axis="y" x="${left}" y="30">${escapeHTML(`${frequency === "hourly" ? copy("Measured", "Measured energy") : copy("Component", "Component energy")} (${energyPathDisplayUnit("kWh", display)})`)}</text>
+    <text class="energy-path-chart-axis-label" data-energy-path-chart-axis="y" x="${left}" y="30">${escapeHTML(`${boundaryInput ? copy("Boundary", "Reported boundary energy") : frequency === "hourly" ? copy("Measured", "Measured energy") : copy("Component", "Component energy")} (${energyPathDisplayUnit("kWh", display)})`)}</text>
     <text class="energy-path-chart-axis-label" data-energy-path-chart-axis="x" x="${left + plotWidth / 2}" y="${height - 16}" text-anchor="middle">${escapeHTML(frequency === "hourly" ? copy("DateHour", "Date & hour") : copy("Month", "Month"))}</text>${grid}${labels}<line class="energy-path-chart-axis" x1="${left}" x2="${width - right}" y1="${baseline}" y2="${baseline}"/>${marks}
   </svg></div>${traces.length > 1 || frequency === "hourly" ? `<div class="energy-path-chart-legend">${traces.map((trace, index) => `<span><i class="energy-path-chart-color-${index % 6}"></i>${escapeHTML(trace.label)}</span>`).join("")}</div>` : ""}`;
 }

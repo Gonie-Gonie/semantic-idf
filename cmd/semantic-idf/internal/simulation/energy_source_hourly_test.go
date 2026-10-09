@@ -153,10 +153,14 @@ func TestEnergySourceHourlyRejectsMissingInvalidAndAmbiguousObservations(t *test
 func TestEnergyPathHourlyRequestsRetainEveryMonthlyInputAndExistingOutputs(t *testing.T) {
 	doc := parsePurposePlanFixture(t, energyPathScopeFixtureIDF+"\nOutput:Meter,Electricity:Facility,Daily;\n")
 	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy}, FrequencyPolicy: PurposeFrequencyPolicyPreserve})
+	assertEnergyPathMonthlyHourlyRequestPairs(t, plan)
 	monthly, hourly := map[string]PurposeOutputObject{}, map[string]PurposeOutputObject{}
 	for _, output := range plan.OutputObjects {
 		if !purposeIDsContain(output.PurposeIDs, SimulationPurposeBasicEnergy) || !purposeObjectIsSeries(output.ObjectType) {
 			continue
+		}
+		if _, thermalInput := energyPathExpectedThermalInputFrequency(output.VariableName); thermalInput {
+			continue // Exact native boundary frequencies are checked above.
 		}
 		key := strings.Join([]string{output.ObjectType, output.KeyValue, output.VariableName}, "|")
 		if output.ReportingFrequency == "Monthly" {

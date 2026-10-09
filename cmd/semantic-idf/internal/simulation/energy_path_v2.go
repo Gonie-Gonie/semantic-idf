@@ -243,6 +243,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	result.Sources = applyEnergyPathCogenerationSourceObservations(result.Sources, input.cogenerationEvidence)
 	applyEnergyPathServiceBoundaryAnnualCensus(&result, annualBoundaryCensus)
 	filterEnergyPathServiceBoundaryResult(&result)
+	appendEnergyPathAuxiliaryServiceLinks(&result, input, annualZoneAuxiliaryAllocation, periodZoneAuxiliaryAllocations)
 	refreshEnergyPathQuality(&result)
 	orderEnergyPathAccounting(&result)
 	return result
@@ -5509,6 +5510,8 @@ func sanitizeEnergyExplanationV2Graph(nodes []EnergyExplanationNode, links []Ene
 	filteredLinks = qualifyEnergyPathMixedConsumptionBasis(filteredNodes, filteredLinks, sources, scope)
 	filteredLinks = filterEnergyPathServiceBoundaryConversions(filteredNodes, filteredLinks)
 	filteredLinks = filterEnergyPathStorageChargeLinks(filteredLinks, energyPathStorageChargeNodeBoundaries(filteredNodes))
+	filteredLinks = filterEnergyPathThermalInputLinks(filteredNodes, filteredLinks, sources, scope, firstNonEmpty(period, "annual"))
+	filteredLinks = filterEnergyPathAuxiliaryServiceLinks(filteredNodes, filteredLinks, sources, scope, firstNonEmpty(period, "annual"))
 
 	reconciliation = removeEnergyPathWaterReconciliation(reconciliation)
 	reconciliation = reconcileEnergyPathCarrierTotals(filteredNodes, filteredLinks, reconciliation, firstNonEmpty(period, "annual"))
@@ -5621,6 +5624,11 @@ func normalizeEnergyExplanationV2Nodes(nodes []EnergyExplanationNode, scope Ener
 		node.AggregationBasis = firstNonEmpty(node.AggregationBasis, scope.AggregationBasis)
 		if node.Multiplier == 0 {
 			node.Multiplier = 1
+		}
+		if node.Level == "input" {
+			// Boundary inputs carry independently observed signed/raw values;
+			// cancellation is a valid zero, not a missing allocation.
+			continue
 		}
 		if node.AllocationApplied {
 			// An applied allocation makes all three quantities independent.
