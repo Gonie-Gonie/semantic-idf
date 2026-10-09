@@ -202,12 +202,18 @@ try{
  const summary=name=>host.querySelector('[data-heatflow-summary="'+name+'"]');
  const kpi=name=>host.querySelector('[data-heatflow-kpi="'+name+'"]');
  const arrows=()=>[...host.querySelectorAll('[data-heatflow-arrow]')];
- const render=(next=result)=>{state.simulationResult=freeze(next);simulation.renderSimulation();};
+ const render=async(next=result)=>{state.simulationResult=freeze(next);simulation.renderSimulation();await tick();};
  check(host.querySelectorAll('g[data-heat-zone]').length===3&&summary('C')?.querySelector('[data-heatflow-local-gain]').getAttribute('data-heatflow-local-gain')==='','geometry-only zone became a reported zero or disappeared');
  check(summary('A')?.querySelector('[data-heatflow-local-gain]').dataset.heatflowLocalGain==='25600'&&summary('A').querySelector('[data-heatflow-local-loss]').dataset.heatflowLocalLoss==='-24600','zone local gain/loss numbers are not separate native W quantities');
  check(kpi('net')?.textContent==='+3.600 kW'&&kpi('net').title==='+3,600.000000 W'&&kpi('residual')?.textContent==='+1.400 kW','storage/deviation were counted as extra heat transfer or precision changed');
  check([...host.querySelectorAll('[data-heatflow-local-category]')].every(bar=>['internalConvective','systemAir','systemConvective'].includes(bar.dataset.heatflowLocalCategory)),'exchange or storage still appears in local map bars');
- check(arrows().length===3&&arrows().find(arrow=>arrow.dataset.peer==='zone:b'&&arrow.dataset.heatflowArrow==='incoming')?.dataset.value==='2'&&arrows().find(arrow=>arrow.dataset.peer==='zone:b'&&arrow.dataset.heatflowArrow==='outgoing')?.dataset.value==='0.5','canonical pair heat arrows netted simultaneous opposite flows or have wrong owner/sign/value');
+ check(arrows().length===2&&arrows().find(arrow=>arrow.dataset.peer==='zone:b')?.dataset.heatflowArrow==='incoming'&&arrows().find(arrow=>arrow.dataset.peer==='zone:b')?.dataset.value==='1.5','compact pair arrow lost signed net value or retained duplicate opposing paths');
+ check(arrows().find(arrow=>arrow.dataset.peer==='zone:b')?.dataset.grossIn==='2'&&arrows().find(arrow=>arrow.dataset.peer==='zone:b')?.dataset.grossOut==='0.5','compact arrow lost gross directions in its source attributes');
+ check(arrows().filter(arrow=>arrow.dataset.peer==='outdoors').length===1&&!host.querySelector('.heatflow-external-label'),'Outside was split into individual orientation or external name rails');
+ const neutralMount=document.createElement('div'),pair=map.heatFlowMeasuredExchanges(overlay,'A',dataset.labels[0]).find(item=>item.peerID==='zone:b');
+ neutralMount.innerHTML=map.renderHeatFlowExchangeArrows([{...pair,incoming:.5,outgoing:.5}],{x:80,y:80},new Map([['b',{x:200,y:80}]]),{width:300,height:160,markerID:'neutral-contract'});
+ const neutralArrow=neutralMount.querySelector('[data-heatflow-arrow]');
+ check(neutralMount.querySelectorAll('[data-heatflow-arrow]').length===1&&neutralArrow?.dataset.heatflowArrow==='neutral'&&neutralArrow.dataset.value==='0'&&neutralArrow.querySelector('path').getAttribute('marker-start')&&neutralArrow.querySelector('path').getAttribute('marker-end'),'equal opposite gross flows did not retain one bidirectional net-zero path');
  check(arrows().every(arrow=>arrow.dataset.unit==='kWh'&&arrow.querySelector('path').getAttribute('marker-end')),'interval energy was relabelled W or lacks arrowheads');
  check(host.querySelector('[data-heatflow-peer="zone:b"] [data-heatflow-pair-in="2"]')&&host.querySelector('[data-heatflow-peer="zone:b"] [data-heatflow-pair-out="0.5"]'),'measured pair ledger lost its separate simultaneous signed directions');
  check(host.querySelector('[data-heatflow-aggregate="outdoorAir"]').dataset.value==='1000'&&host.querySelector('[data-heatflow-aggregate="outdoorAir"]').classList.contains('incoming'),'outdoor zone-air transfer lacks explicit direction');
@@ -217,7 +223,7 @@ try{
  check(state.simulationHeatFlowFrameIndex===0,'moving pointer over graph unexpectedly changed inspected frame');
  chartHit.dispatchEvent(new MouseEvent('click',{clientX:hitBounds.left+hitBounds.width*.5,clientY:hitBounds.top+hitBounds.height/2,bubbles:true}));
  check(state.simulationHeatFlowFrameIndex===1,'clicking center frame bin did not select exact observation');
- state.simulationHeatFlowFrameIndex=0;render();
+ state.simulationHeatFlowFrameIndex=0;await render();
  const netScale=host.querySelector('[data-heatflow-scale="net"]')?.textContent;
  check(netScale?.includes('-17.200 kW')&&netScale.includes('/ 0 /')&&netScale.includes('+17.200 kW'),'net map legend lacks numeric physical balance bounds');
  const netFill=host.querySelector('g[data-heat-zone="A"] polygon').getAttribute('style');
@@ -228,24 +234,37 @@ try{
  check(host.querySelector('[data-heatflow-scale="net"]').textContent===netScale&&host.querySelector('g[data-heat-zone="A"] polygon').getAttribute('style')===netFill,'returning to net overlay changed its fixed numerical scale');
  const geometryBefore=host.querySelector('[data-heatflow-plan]').outerHTML;
  const editable=clone(fixture.geometry);editable.surfaces.forEach(surface=>surface.vertices.forEach(point=>point.x+=1000));editable.zones[0].name='Edited A';
- state.report={geometry:editable};render();check(host.querySelector('[data-heatflow-plan]').outerHTML===geometryBefore,'editing current analysis moved executed result geometry');
- const slider=document.getElementById('simulationHeatFlowSlider');slider.value='1';slider.dispatchEvent(new Event('input',{bubbles:true}));
+ state.report={geometry:editable};await render();check(host.querySelector('[data-heatflow-plan]').outerHTML===geometryBefore,'editing current analysis moved executed result geometry');
+ const slider=document.getElementById('simulationHeatFlowSlider');slider.value='1';slider.dispatchEvent(new Event('input',{bubbles:true}));await tick();
  check(state.simulationHeatFlowFrameIndex===1&&kpi('net').textContent==='-17.200 kW'&&kpi('residual').textContent==='0.000 kW','native slider did not update physical balance/residual');
- check(arrows().find(arrow=>arrow.dataset.peer==='zone:b'&&arrow.dataset.heatflowArrow==='outgoing')?.dataset.value==='3'&&arrows().find(arrow=>arrow.dataset.peer==='zone:b'&&arrow.dataset.heatflowArrow==='incoming')?.dataset.value==='1','sampled frame index was used instead of exact native timestamp');
+ check(arrows().find(arrow=>arrow.dataset.peer==='zone:b')?.dataset.value==='-2'&&arrows().find(arrow=>arrow.dataset.peer==='zone:b')?.dataset.heatflowArrow==='outgoing','sampled frame index was used instead of exact native timestamp or pair net polarity changed');
  check(host.querySelector('[data-heatflow-peer="zone:b"] [data-heatflow-pair-out="3"]'),'sampled-frame pair ledger failed to match exact native timestamp');
  const b=host.querySelector('g[data-heat-zone="B"]');b.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
  check(state.simulationHeatFlowSelectedZone==='B'&&host.querySelector('g[data-heat-zone="B"]').getAttribute('aria-pressed')==='true','keyboard activation did not select plan zone');
  check(kpi('net').textContent.endsWith('*')&&host.querySelector('.heatflow-partial-note')&&kpi('residual').textContent==='—','unobserved zone-air term became zero or complete residual');
  const unavailable=host.querySelector('[data-heatflow-aggregate="outdoorAir"]');check(unavailable.dataset.value===''&&unavailable.classList.contains('unavailable')&&!/[←→]/.test(unavailable.querySelector('b').textContent),'unobserved outdoor exchange became a zero/direction');
  const bBarHeight=host.querySelector('g[data-heat-zone="B"] [data-heatflow-local-category="systemAir"]').getAttribute('height');
- state.simulationHeatFlowFrameIndex=2;render();
+ state.simulationHeatFlowFrameIndex=2;await render();
  check(host.querySelector('g[data-heat-zone="B"] [data-heatflow-local-category="systemAir"]').getAttribute('height')===bBarHeight&&Number(bBarHeight)>0,'equal -2000 W local values changed map bar height when other frame magnitudes changed');
  check(host.querySelector('[data-heatflow-scale="net"]').textContent===netScale,'map color bounds changed with current frame');
- state.simulationHeatFlowFrameIndex=1;render();
- host.querySelector('[data-heatflow-summary="A"] button').click();check(state.simulationHeatFlowSelectedZone==='A','zone summary button lost native selection');
- const transform=host.querySelector('[data-heatflow-plan-content]').getAttribute('transform');host.querySelector('[data-heatflow-plan-zoom="in"]').click();
- check(host.querySelector('[data-heatflow-plan-content]').getAttribute('transform')!==transform&&state.simulationHeatFlowFrameIndex===1,'plan zoom lost transform or changed frame');
- host.querySelector('[data-heatflow-plan-zoom="reset"]').click();
+ state.simulationHeatFlowFrameIndex=1;await render();
+ const summaryButton=host.querySelector('[data-heatflow-summary="A"] button'),summaryDetails=summaryButton.closest('details');if(summaryDetails&&!summaryDetails.open)summaryDetails.querySelector('summary').click();
+ summaryButton.click();check(state.simulationHeatFlowSelectedZone==='A','zone summary button lost native selection');
+ await tick();
+ const planGeometry=()=>JSON.stringify([...host.querySelectorAll('[data-heatflow-plan-content]')].map(item=>item.outerHTML));
+ const planBounds=()=>JSON.stringify([...host.querySelectorAll('[data-heatflow-plan] polygon')].map(item=>{const bounds=item.getBoundingClientRect();return [bounds.left,bounds.top,bounds.width,bounds.height].map(value=>Number(value.toFixed(3)));}));
+ const fixedGeometry=planGeometry(),fixedBounds=planBounds();
+ Object.assign(state,{simulationHeatFlowPlanScale:3.5,simulationHeatFlowPlanPanX:140,simulationHeatFlowPlanPanY:-90});await render();
+ check(!host.querySelector('[data-heatflow-plan-zoom],.heatflow-viewport-actions')&&!host.querySelector('[data-heatflow-plan-content][transform]'),'fixed Heat Flow plans still expose camera controls or transform');
+ check(planGeometry()===fixedGeometry&&planBounds()===fixedBounds,'obsolete saved scale/pan moved the fixed Heat Flow plan');
+ const fixedPlan=host.querySelector('[data-heatflow-plan]'),planRectangle=fixedPlan.getBoundingClientRect(),planX=planRectangle.left+planRectangle.width/2,planY=planRectangle.top+planRectangle.height/2;
+ const planWheel=new WheelEvent('wheel',{deltaY:-120,clientX:planX,clientY:planY,bubbles:true,cancelable:true});fixedPlan.dispatchEvent(planWheel);
+ check(!planWheel.defaultPrevented,'fixed floor plan captures normal page scrolling');
+ fixedPlan.dispatchEvent(new PointerEvent('pointerdown',{pointerId:901,pointerType:'mouse',button:0,buttons:1,clientX:planX,clientY:planY,bubbles:true,cancelable:true}));
+ window.dispatchEvent(new PointerEvent('pointermove',{pointerId:901,pointerType:'mouse',buttons:1,clientX:planX+80,clientY:planY+60,bubbles:true}));
+ window.dispatchEvent(new PointerEvent('pointerup',{pointerId:901,pointerType:'mouse',button:0,clientX:planX+80,clientY:planY+60,bubbles:true}));
+ fixedPlan.dispatchEvent(new MouseEvent('dblclick',{clientX:planX,clientY:planY,bubbles:true,cancelable:true}));await tick();
+ check(planGeometry()===fixedGeometry&&planBounds()===fixedBounds&&state.simulationHeatFlowFrameIndex===1,'wheel/drag/double-click moved a fixed plan or changed the selected time');
  const chartBefore=host.querySelector('[data-heatflow-history]').outerHTML;host.querySelector('[data-heatflow-inspector-toggle]').click();
  check(state.simulationHeatFlowInspectorCollapsed&&host.querySelector('[data-heatflow-history]').outerHTML===chartBefore,'collapsing ledger hid or changed full-width graph');
  host.querySelector('[data-heatflow-inspector-toggle]').click();
@@ -256,40 +275,48 @@ try{
   ['duplicate native timestamp',next=>{const period=next.purposeResults.thermalTopology.periods.find(item=>item.id==='hourly');period.labels[1]=period.labels[2];}],
   ['masked native surface observation',next=>next.purposeResults.thermalTopology.periods.find(item=>item.id==='hourly').boundaryFlows.forEach(flow=>flow.observed[2]=false)]
  ]){
-  const next=clone(result);mutate(next);state.report={geometry:fixture.geometry};render(next);check(arrows().length===0,name+' manufactured measured pair arrows');
+  const next=clone(result);mutate(next);state.report={geometry:fixture.geometry};await render(next);check(arrows().length===0,name+' manufactured measured pair arrows');
   check(host.querySelector('[data-heatflow-aggregate="outdoorAir"]').dataset.value==='-1000',name+' removed independent aggregate zone observations');
  }
- render();state.simulationHeatFlowFrameIndex=2;render();
+ await render();state.simulationHeatFlowFrameIndex=2;await render();
  check(arrows().length===0&&kpi('net').textContent==='0.000 kW'&&!kpi('net').textContent.includes('*'),'reported zero heat was treated as missing or created transfer arrow');
  check(host.querySelector('[data-heatflow-aggregate="interzoneAir"]').classList.contains('neutral'),'reported zero interzone transfer lacks neutral state');
  const absent=clone(dataset.zones[0]);absent.values[0][0]=null;const balance=data.heatFlowBalance(dataset,absent,0);
  check(!balance.complete&&Number.isNaN(balance.residual)&&Number.isNaN(data.heatFlowCategoryValue(absent,0,0)),'null numeric data became complete heat balance');
- state.simulationHeatFlowFrameIndex=0;render();
- const preset=(labels,frame,name)=>{
+ state.simulationHeatFlowFrameIndex=0;await render();
+ const preset=async(labels,frame,name)=>{
   const next=clone(result),series=next.purposeResults.zoneHeatFlow;series.labels=labels;series.frameCount=series.originalFrameCount=labels.length;
   series.zones.forEach(zone=>{zone.values=zone.values.map(values=>labels.map(()=>values[0]));zone.observed=zone.observed.map(()=>labels.map(()=>true));zone.temperature=labels.map(()=>22);zone.temperatureObserved=labels.map(()=>true);});
-  state.simulationHeatFlowFrameIndex=frame;state.simulationHeatFlowRangeStart=0;state.simulationHeatFlowRangeEnd=-1;render(next);
+  state.simulationHeatFlowFrameIndex=frame;state.simulationHeatFlowRangeStart=0;state.simulationHeatFlowRangeEnd=-1;await render(next);
   const button=host.querySelector('[data-heatflow-range-preset="'+name+'"]');button.click();
   return {start:state.simulationHeatFlowRangeStart,end:state.simulationHeatFlowRangeEnd,disabled:button.disabled};
  };
  const sampled=Array.from({length:9},(_,index)=>{const date=new Date(Date.UTC(2000,0,1,1+index*13));return '01-'+String(date.getUTCDate()).padStart(2,'0')+' '+String(date.getUTCHours()).padStart(2,'0')+':00';});
- let range=preset(sampled,4,'day');check(range.start===4&&range.end===4,'24-hour preset used 24 sampled indices instead of source calendar time: '+JSON.stringify(range));
- range=preset(sampled,4,'week');check(range.start===0&&range.end===8,'week preset did not use elapsed calendar hours');
- range=preset(['01-01 12:00','01-01 24:00','01-02 01:00','01-02 12:00'],2,'day');check(range.start===1&&range.end===3,'24:00 calendar rollover shifted or discarded observed time: '+JSON.stringify(range));
- range=preset(['01-01 01:00','01-01 14:00','07-21 03:00','07-21 16:00','01-01 01:00','01-01 14:00'],3,'week');check(range.start===2&&range.end===3,'range crossed backwards design-day/run sequence boundary: '+JSON.stringify(range));
- range=preset(['01-01 01:00','01-01 02:00','01-01 02:00','01-01 03:00'],1,'day');check(range.start===0&&range.end===1,'range crossed ambiguous duplicate timestamps');
- range=preset(['01-01 01:00','02-31 01:00','01-03 01:00'],1,'day');check(range.disabled&&range.start===0&&range.end===2,'invalid calendar time enabled elapsed-time preset');
+ let range=await preset(sampled,4,'day');check(range.start===4&&range.end===4,'24-hour preset used 24 sampled indices instead of source calendar time: '+JSON.stringify(range));
+ range=await preset(sampled,4,'week');check(range.start===0&&range.end===8,'week preset did not use elapsed calendar hours');
+ const timeChart=host.querySelector('[data-heatflow-chart]'),timeBounds=timeChart.getBoundingClientRect(),timeWheel=new WheelEvent('wheel',{deltaY:-120,clientX:timeBounds.left+timeBounds.width/4,clientY:timeBounds.top+timeBounds.height/2,bubbles:true,cancelable:true});
+ timeChart.dispatchEvent(timeWheel);await tick();
+ const zoomStart=state.simulationHeatFlowRangeStart,zoomEnd=state.simulationHeatFlowRangeEnd;
+ check(timeWheel.defaultPrevented&&zoomEnd-zoomStart+1<sampled.length,'removing plan zoom also disabled history time-range zoom');
+ host.querySelector('[data-heatflow-chart]').dispatchEvent(new WheelEvent('wheel',{deltaY:120,shiftKey:true,bubbles:true,cancelable:true}));await tick();
+ check(state.simulationHeatFlowRangeStart>zoomStart&&state.simulationHeatFlowRangeEnd-state.simulationHeatFlowRangeStart===zoomEnd-zoomStart,'history Shift-scroll no longer pans the selected time range');
+ host.querySelector('[data-heatflow-chart]').dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true}));await tick();
+ check(state.simulationHeatFlowRangeStart===0&&state.simulationHeatFlowRangeEnd===8,'history double-click no longer restores full time range');
+ range=await preset(['01-01 12:00','01-01 24:00','01-02 01:00','01-02 12:00'],2,'day');check(range.start===1&&range.end===3,'24:00 calendar rollover shifted or discarded observed time: '+JSON.stringify(range));
+ range=await preset(['01-01 01:00','01-01 14:00','07-21 03:00','07-21 16:00','01-01 01:00','01-01 14:00'],3,'week');check(range.start===2&&range.end===3,'range crossed backwards design-day/run sequence boundary: '+JSON.stringify(range));
+ range=await preset(['01-01 01:00','01-01 02:00','01-01 02:00','01-01 03:00'],1,'day');check(range.start===0&&range.end===1,'range crossed ambiguous duplicate timestamps');
+ range=await preset(['01-01 01:00','02-31 01:00','01-03 01:00'],1,'day');check(range.disabled&&range.start===0&&range.end===2,'invalid calendar time enabled elapsed-time preset');
  check(data.heatFlowFrameTime('01-01 24:00')===data.heatFlowFrameTime('01-02 00:00')&&Number.isNaN(data.heatFlowFrameTime('01-01 24:01')),'calendar parser changed EnergyPlus 24:00 meaning');
- state.simulationHeatFlowFrameIndex=0;state.simulationHeatFlowRangeStart=0;state.simulationHeatFlowRangeEnd=-1;render();
+ state.simulationHeatFlowFrameIndex=0;state.simulationHeatFlowRangeStart=0;state.simulationHeatFlowRangeEnd=-1;await render();
  for(const language of['en','ko'])for(const font of[11,18]){
-  i18n.setLanguage(language);document.documentElement.style.setProperty('--graph-label-font-size',font+'px');render();await tick();
+  i18n.setLanguage(language);document.documentElement.style.setProperty('--graph-label-font-size',font+'px');await render();
   for(const item of host.querySelectorAll('.heatflow-chart-tick')){const size=parseFloat(getComputedStyle(item).fontSize)*item.getScreenCTM().a;check(Math.abs(size-Math.max(12,font))<.04,'graph font is unreadable or ignores setting '+JSON.stringify({language,font,size}));}
   check(host.querySelector('[data-heatflow-summary="A"] button').textContent.includes('A'),'translated UI renamed source zone');
  }
- i18n.setLanguage('en');document.documentElement.style.setProperty('--graph-label-font-size','11px');render();
+ i18n.setLanguage('en');document.documentElement.style.setProperty('--graph-label-font-size','11px');await render();
  window.heatFlowLedgerReview=()=>{state.report={geometry:fixture.geometry};state.simulationResult=result;state.simulationHeatFlowFrameIndex=0;state.simulationHeatFlowRangeStart=0;state.simulationHeatFlowRangeEnd=-1;state.simulationHeatFlowSelectedZone='A';state.simulationHeatFlowInspectorCollapsed=false;simulation.renderSimulation();};
  check(JSON.stringify(fixture)===before,'view mutated executed source geometry/numeric result');
- evidence.push('real IDF geometry + production canonical pair flow builder; exact sampled/native timestamps; kW transfer vs kWh interval; storage/deviation excluded; known zero and missing masks; snapshot ownership; keyboard/selection/zoom; EN/KO + configured physical graph fonts');
+ evidence.push('real IDF geometry + production canonical pair flow builder; exact sampled/native timestamps; kW transfer vs kWh interval; storage/deviation excluded; known zero and missing masks; snapshot ownership; keyboard/selection; fixed plan ignores legacy camera state and wheel/drag/double-click; EN/KO + configured physical graph fonts');
 }catch(error){failures.push(error.stack||String(error));}
 document.body.dataset.heatFlowLedgerStatus=failures.length?'failed':'passed';document.getElementById('heat-flow-ledger-result').textContent=JSON.stringify({failures,evidence});
 </script>`

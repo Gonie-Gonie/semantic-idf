@@ -60,6 +60,9 @@ let simulationSeriesPanels = [];
 let simulationSeriesPanelSequence = 1;
 let simulationSeriesPan = null;
 let heatFlowBrushStartFrame = null;
+let heatFlowSpatialObserver = null;
+let heatFlowSpatialObservedGrid = null;
+let heatFlowSpatialFrame = 0;
 let simulationEnergyDetailsReturnSelector = "";
 let simulationEnergyDrawer = { tab: "data", stage: "", outputSource: "" };
 const simulationEnergySceneSlot = createEnergyPathSceneSlot();
@@ -109,6 +112,7 @@ const simulationSeriesLookupCache = new WeakMap();
 const simulationPurposeOutputLookupCache = new WeakMap();
 const simulationHeatFlowZoneMapCache = new WeakMap();
 const simulationHeatFlowFloorSurfacesCache = new WeakMap();
+const simulationHeatFlowDisclosureCache = new WeakMap();
 const simulationWeatherOptionsCache = new WeakMap();
 const simulationRunSetupContext = new WeakMap();
 const simulationEnergyPeriodIndexCache = new WeakMap();
@@ -1057,9 +1061,6 @@ export function captureSimulationNavigationContext(context) {
     heatFlowRangeStart: Number(state.simulationHeatFlowRangeStart) || 0,
     heatFlowRangeEnd: Number.isFinite(Number(state.simulationHeatFlowRangeEnd)) ? Number(state.simulationHeatFlowRangeEnd) : -1,
     heatFlowInspectorCollapsed: Boolean(state.simulationHeatFlowInspectorCollapsed),
-    heatFlowPlanScale: Number(state.simulationHeatFlowPlanScale) || 1,
-    heatFlowPlanPanX: Number(state.simulationHeatFlowPlanPanX) || 0,
-    heatFlowPlanPanY: Number(state.simulationHeatFlowPlanPanY) || 0,
     seriesGroup: state.simulationSeriesGroup || "all",
     selectedSeries: state.simulationSelectedSeries || "",
     seriesRangeStart: Number(state.simulationSeriesRangeStart) || 0,
@@ -1089,9 +1090,6 @@ export async function restoreSimulationNavigationContext(snapshot = {}, context)
     simulationHeatFlowRangeStart: snapshot.heatFlowRangeStart,
     simulationHeatFlowRangeEnd: snapshot.heatFlowRangeEnd,
     simulationHeatFlowInspectorCollapsed: snapshot.heatFlowInspectorCollapsed,
-    simulationHeatFlowPlanScale: snapshot.heatFlowPlanScale,
-    simulationHeatFlowPlanPanX: snapshot.heatFlowPlanPanX,
-    simulationHeatFlowPlanPanY: snapshot.heatFlowPlanPanY,
     simulationSeriesGroup: snapshot.seriesGroup,
     simulationSelectedSeries: snapshot.selectedSeries,
     simulationSeriesRangeStart: snapshot.seriesRangeStart,
@@ -6072,6 +6070,7 @@ function renderSimulationHeatFlow() {
   const zoneMap = heatFlowZoneMap(dataset);
   const floorSurfacesByStory = heatFlowFloorSurfacesByStory(geometry);
   const selectedZone = ensureHeatFlowSelectedZone(dataset, geometry, zoneMap);
+  const disclosures = heatFlowDisclosures(geometry);
   const stats = [
     t("count.zones", { count: dataset.zones.length }, `${dataset.zones.length} zones`),
     t("count.floors", { count: geometry.stories.length }, `${geometry.stories.length} floors`),
@@ -6103,12 +6102,13 @@ function renderSimulationHeatFlow() {
   }
 
   elements.simulationHeatFlow.innerHTML = `
-    ${renderHeatFlowGuide()}
+    ${renderHeatFlowGuide(disclosures.guide)}
     ${renderHeatFlowTimelineBrush(dataset, zoneMap.get(normalizeHeatFlowName(selectedZone)), visibleRange, frameIndex)}
     ${renderHeatFlowSpatialToolbar(dataset)}
     <div class="heatflow-layout ${state.simulationHeatFlowInspectorCollapsed ? "inspector-collapsed" : ""}">
       <div class="heatflow-floor-grid">
-        ${visibleHeatFlowStories(geometry).map((story) => renderHeatFlowStoryCard(geometry, story, dataset, zoneMap, frameIndex, floorSurfacesByStory.get(story.index) || EMPTY_SIMULATION_ITEMS)).join("")}
+          ${visibleHeatFlowStories(geometry).map((story) => renderHeatFlowStoryCard(geometry, story, dataset, zoneMap, frameIndex, floorSurfacesByStory.get(story.index) || EMPTY_SIMULATION_ITEMS, disclosures.stories.has(String(story.index)))).join("")}
+          <svg class="heatflow-spatial-arrows" data-heatflow-spatial-arrows aria-hidden="true"></svg>
       </div>
       <aside class="heatflow-inspector">
         ${renderHeatFlowInspector(dataset, zoneMap.get(normalizeHeatFlowName(selectedZone)), selectedZone, frameIndex)}
@@ -6116,7 +6116,77 @@ function renderSimulationHeatFlow() {
     </div>
     ${renderHeatFlowStackChart(dataset, zoneMap.get(normalizeHeatFlowName(selectedZone)), frameIndex, visibleRange)}
     <div class="heatflow-tooltip hidden" role="tooltip"></div>`;
+  const surfaceDetails = elements.simulationHeatFlow.querySelector(".heatflow-surface-details");
+  if (surfaceDetails) surfaceDetails.open = disclosures.surface;
+  scheduleHeatFlowSpatialArrows();
+  if (!heatFlowSpatialObserver && typeof ResizeObserver === "function") {
+    heatFlowSpatialObserver = new ResizeObserver(scheduleHeatFlowSpatialArrows);
+    heatFlowSpatialObserver.observe(elements.simulationHeatFlow);
+  }
+  if (heatFlowSpatialObserver) {
+    if (heatFlowSpatialObservedGrid) heatFlowSpatialObserver.unobserve(heatFlowSpatialObservedGrid);
+    heatFlowSpatialObservedGrid = elements.simulationHeatFlow.querySelector(".heatflow-floor-grid");
+    if (heatFlowSpatialObservedGrid) heatFlowSpatialObserver.observe(heatFlowSpatialObservedGrid);
+  }
   pruneSimulationSemanticBindings();
+}
+
+function heatFlowDisclosures(geometry) {
+  let saved = simulationHeatFlowDisclosureCache.get(geometry);
+  if (!saved) {
+    saved = { stories: new Set(), guide: false, surface: false };
+    simulationHeatFlowDisclosureCache.set(geometry, saved);
+  }
+  const host = elements.simulationHeatFlow;
+  if (host?.heatFlowDisclosureGeometry === geometry) {
+    host.querySelectorAll("[data-heatflow-summary-story]").forEach(details => {
+      const index = details.dataset.heatflowSummaryStory;
+      if (details.open) saved.stories.add(index);
+      else saved.stories.delete(index);
+    });
+    saved.guide = Boolean(host.querySelector(".heatflow-guide-details")?.open);
+    saved.surface = Boolean(host.querySelector(".heatflow-surface-details")?.open);
+  }
+  if (host) host.heatFlowDisclosureGeometry = geometry;
+  return saved;
+}
+
+function scheduleHeatFlowSpatialArrows() {
+  if (heatFlowSpatialFrame) cancelAnimationFrame(heatFlowSpatialFrame);
+  heatFlowSpatialFrame = requestAnimationFrame(() => {
+    heatFlowSpatialFrame = 0;
+    updateHeatFlowSpatialArrows();
+  });
+}
+
+function updateHeatFlowSpatialArrows() {
+  const grid = elements.simulationHeatFlow?.querySelector(".heatflow-floor-grid");
+  const overlay = grid?.querySelector("[data-heatflow-spatial-arrows]");
+  if (!overlay) return;
+  const bounds = grid.getBoundingClientRect();
+  if (!(bounds.width > 0 && bounds.height > 0)) { overlay.innerHTML = ""; return; }
+  const centers = new Map();
+  let selectedPlan = null;
+  const selectedName = normalizeHeatFlowName(state.simulationHeatFlowSelectedZone);
+  grid.querySelectorAll("[data-heatflow-zone-badge]").forEach(badge => {
+    const rectangle = badge.getBoundingClientRect();
+    const plan = badge.closest("[data-heatflow-plan]");
+    const viewport = plan?.getBoundingClientRect();
+    const x = rectangle.left + rectangle.width / 2, y = rectangle.top + rectangle.height / 2;
+    if (!viewport || !(rectangle.width > 0) || x < viewport.left || x > viewport.right || y < viewport.top || y > viewport.bottom) return;
+    const name = normalizeHeatFlowName(badge.dataset.heatflowZoneBadge);
+    centers.set(name, { x: x - bounds.left, y: y - bounds.top, radius: rectangle.width / 2, number: badge.dataset.heatflowZoneNumber });
+    if (name === selectedName) selectedPlan = viewport;
+  });
+  const dataset = activeHeatFlowDataset();
+  const exchanges = heatFlowMeasuredExchanges(state.simulationResult?.purposeResults?.thermalTopology,
+    state.simulationHeatFlowSelectedZone, dataset?.labels?.[state.simulationHeatFlowFrameIndex]);
+  overlay.setAttribute("viewBox", `0 0 ${bounds.width} ${bounds.height}`);
+  overlay.innerHTML = renderHeatFlowExchangeArrows(exchanges, centers.get(selectedName), centers, {
+    width: bounds.width, height: bounds.height, markerID: "heatflow-grid",
+    outsideCenter: selectedPlan ? { x: selectedPlan.left - bounds.left + selectedPlan.width / 2,
+      y: selectedPlan.bottom - bounds.top - 14, radius: 28 } : undefined,
+  });
 }
 
 function activeHeatFlowDataset() {
@@ -6140,13 +6210,14 @@ function writeHeatFlowInspectorCollapsed(collapsed) {
   }
 }
 
-function renderHeatFlowGuide() {
+function renderHeatFlowGuide(open = false) {
   return `
+    <details class="heatflow-guide-details" ${open ? "open" : ""}><summary>${escapeHTML(t("simulation.heatFlowReadingGuide", {}, "Reading guide"))}</summary>
     <div class="heatflow-reading-guide">
       <span><i class="heatflow-guide-fill"></i>${escapeHTML(t("simulation.heatFlowGuideFill", {}, "Zone fill shows the selected overlay: net heat flow or temperature."))}</span>
-      <span><i class="heatflow-guide-stack"></i>${escapeHTML(t("simulation.heatFlowGuideLocal", {}, "Bars show local internal and HVAC gains/losses only. Zone numbers match the readable summary below each plan."))}</span>
-      <span><i class="heatflow-guide-arrow">→</i>${escapeHTML(t("simulation.heatFlowGuideExchange", {}, "Arrows show exchange for the selected zone. Surface arrows use kWh per reported interval; air-transfer totals use kW. Amber is incoming, blue is outgoing."))}</span>
-    </div>`;
+      <span><i class="heatflow-guide-stack"></i>${escapeHTML(t("simulation.heatFlowGuideLocal", {}, "Bars show local internal and HVAC gains/losses. Each zone has one number; expand Zone values for exact amounts."))}</span>
+      <span><i class="heatflow-guide-arrow">→</i>${escapeHTML(t("simulation.heatFlowGuideExchange", {}, "One net surface arrow joins each visible zone pair, and one combines Outside. Amber is incoming, blue outgoing; a grey two-headed arrow means balanced exchange. Units: kWh per reported interval."))}</span>
+    </div></details>`;
 }
 
 function renderHeatFlowSpatialToolbar(dataset) {
@@ -6161,23 +6232,6 @@ function renderHeatFlowSpatialToolbar(dataset) {
       <button class="heatflow-inspector-toggle ${collapsed ? "" : "active"}" type="button" data-heatflow-inspector-toggle aria-expanded="${collapsed ? "false" : "true"}">
         ${escapeHTML(collapsed ? t("simulation.showHeatFlowLedger", {}, "Show ledger") : t("simulation.hideHeatFlowLedger", {}, "Hide ledger"))}
       </button>
-    </div>`;
-}
-
-function renderHeatFlowPlanViewportActions() {
-  const zoomOut = t("action.zoomOut", {}, "Zoom out");
-  const fit = t("action.fit", {}, "Fit");
-  const zoomIn = t("action.zoomIn", {}, "Zoom in");
-  return `
-    <div class="viewport-action-tools heatflow-viewport-actions" role="group" aria-label="${escapeHTML(t("simulation.heatFlowPlanView", {}, "Heat-flow plan view"))}">
-      <button class="viewport-icon-button" type="button" data-heatflow-plan-zoom="out" title="${escapeHTML(zoomOut)}" aria-label="${escapeHTML(zoomOut)}"><span aria-hidden="true">−</span></button>
-      <button class="viewport-icon-button" type="button" data-heatflow-plan-zoom="reset" title="${escapeHTML(fit)}" aria-label="${escapeHTML(fit)}">
-        <svg class="viewport-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M8 4H4v4M16 4h4v4M20 16v4h-4M8 20H4v-4"></path>
-          <rect x="8" y="8" width="8" height="8" rx="1"></rect>
-        </svg>
-      </button>
-      <button class="viewport-icon-button" type="button" data-heatflow-plan-zoom="in" title="${escapeHTML(zoomIn)}" aria-label="${escapeHTML(zoomIn)}"><span aria-hidden="true">+</span></button>
     </div>`;
 }
 
@@ -6385,7 +6439,7 @@ function heatFlowFloorSurfacesByStory(geometry = {}) {
   return byStory;
 }
 
-function renderHeatFlowStoryCard(geometry, story, dataset, zoneMap, frameIndex, surfaces = EMPTY_SIMULATION_ITEMS) {
+function renderHeatFlowStoryCard(geometry, story, dataset, zoneMap, frameIndex, surfaces = EMPTY_SIMULATION_ITEMS, summaryOpen = false) {
   const bounds = heatFlowStoryBounds(surfaces);
   if (!bounds.ok || !surfaces.length) {
     return `
@@ -6395,47 +6449,55 @@ function renderHeatFlowStoryCard(geometry, story, dataset, zoneMap, frameIndex, 
       </article>`;
   }
 
-  const pad = 52;
-  const width = 620;
+  const pad = 14;
+  const width = 460;
   const modelWidth = Math.max(bounds.maxX - bounds.minX, 1);
   const modelHeight = Math.max(bounds.maxY - bounds.minY, 1);
-  const height = Math.max(300, Math.min(520, Math.round((modelHeight / modelWidth) * (width - pad * 2)) + pad * 2));
-  const scale = Math.min((width - pad * 2) / modelWidth, (height - pad * 2) / modelHeight);
+  const height = Math.max(210, Math.round((modelHeight / modelWidth) * width));
+  const top = 18, bottom = 40;
+  const scale = Math.min((width - pad * 2) / modelWidth, (height - top - bottom) / modelHeight);
+  const left = (width - modelWidth * scale) / 2;
+  const offsetY = top + (height - top - bottom - modelHeight * scale) / 2;
   const projectPoint = (point) => ({
-    x: pad + (point.x - bounds.minX) * scale,
-    y: height - pad - (point.y - bounds.minY) * scale,
+    x: left + (point.x - bounds.minX) * scale,
+    y: offsetY + (bounds.maxY - point.y) * scale,
   });
-  const zoneNames = [...new Set(surfaces.map(surface => surface.zoneName || ""))];
-  const centers = new Map();
+  const byZone = new Map();
+  for (const surface of surfaces) {
+    const name = normalizeHeatFlowName(surface.zoneName);
+    const group = byZone.get(name) || { name: surface.zoneName || "", polygons: [] };
+    group.polygons.push((surface.vertices || []).map(projectPoint));
+    byZone.set(name, group);
+  }
+  const zoneNumbers = new Map((geometry.zones || []).map((zone, index) => [normalizeHeatFlowName(zone.name), index + 1]));
+  for (const surface of geometry.surfaces || []) {
+    const name = normalizeHeatFlowName(surface.zoneName);
+    if (name && !zoneNumbers.has(name)) zoneNumbers.set(name, zoneNumbers.size + 1);
+  }
   const maxLocal = heatFlowPresentationExtents(dataset).localMax;
-  const shapes = surfaces.map((surface) => {
-    const zoneName = surface.zoneName || "";
+  const shapes = [...byZone.values()].map((group) => {
+    const zoneName = group.name;
     const zoneSeries = zoneMap.get(normalizeHeatFlowName(zoneName));
-    const points = (surface.vertices || []).map(projectPoint);
-    const pointText = points.map((point) => `${roundSVG(point.x)},${roundSVG(point.y)}`).join(" ");
-    const center = polygonCentroid(points);
-    centers.set(normalizeHeatFlowName(zoneName), center);
+    const center = heatFlowZonePlanCenter(group.polygons);
+    const number = zoneNumbers.get(normalizeHeatFlowName(zoneName));
     const fill = heatFlowZoneFill(zoneSeries, dataset, frameIndex);
     const selected = normalizeHeatFlowName(zoneName) === normalizeHeatFlowName(state.simulationHeatFlowSelectedZone);
     return `
       <g class="heatflow-zone ${selected ? "selected" : ""} ${zoneSeries ? "" : "missing"}" data-heat-zone="${escapeHTML(zoneName)}" ${simulationHeatFlowZoneSemanticAttributes(zoneName)} tabindex="0" role="button" aria-label="${escapeHTML(heatFlowZoneTitle(zoneName, zoneSeries, dataset, frameIndex))}" aria-pressed="${selected}">
-        <polygon points="${pointText}" style="--heatflow-fill: ${fill};"></polygon>
-        ${zoneSeries ? renderHeatFlowZoneStack(zoneSeries, dataset, frameIndex, center, maxLocal) : ""}
-        <circle class="heatflow-zone-number-back" cx="${roundSVG(center.x)}" cy="${roundSVG(center.y)}" r="12"></circle>
-        <text class="heatflow-zone-number" x="${roundSVG(center.x)}" y="${roundSVG(center.y + 5)}">${zoneNames.indexOf(zoneName) + 1}</text>
+        ${group.polygons.map(points => `<polygon points="${points.map(point => `${roundSVG(point.x)},${roundSVG(point.y)}`).join(" ")}" style="--heatflow-fill: ${fill};"></polygon>`).join("")}
+        ${zoneSeries ? renderHeatFlowZoneStack(zoneSeries, dataset, frameIndex, { x: center.x + (center.x > width - 52 ? -20 : 20), y: clampNumber(center.y, top + 28, height - bottom - 28) }, maxLocal) : ""}
+        <circle class="heatflow-zone-number-back" data-heatflow-zone-badge="${escapeHTML(zoneName)}" data-heatflow-zone-number="${number}" cx="${roundSVG(center.x)}" cy="${roundSVG(center.y)}" r="12"></circle>
+        <text class="heatflow-zone-number" x="${roundSVG(center.x)}" y="${roundSVG(center.y)}" dominant-baseline="central">${number}</text>
         <title>${escapeHTML(heatFlowZoneTitle(zoneName, zoneSeries, dataset, frameIndex))}</title>
       </g>`;
   });
   const selectedName = state.simulationHeatFlowSelectedZone;
-  const exchanges = heatFlowMeasuredExchanges(state.simulationResult?.purposeResults?.thermalTopology, selectedName, dataset.labels?.[frameIndex]);
-  const arrows = renderHeatFlowExchangeArrows(exchanges, centers.get(normalizeHeatFlowName(selectedName)), centers,
-    { width, height, markerID: `heatflow-story-${story.index}` });
-  const summaries = zoneNames.map((zoneName, index) => {
+  const summaries = [...byZone.values()].map(({ name: zoneName }) => {
     const series = zoneMap.get(normalizeHeatFlowName(zoneName));
     const balance = heatFlowBalance(dataset, series, frameIndex);
     const selected = normalizeHeatFlowName(zoneName) === normalizeHeatFlowName(selectedName);
     return `<tr class="${selected ? "selected" : ""}" data-heatflow-summary="${escapeHTML(zoneName)}">
-      <th scope="row"><button type="button" data-heat-zone="${escapeHTML(zoneName)}" aria-pressed="${selected}"><b>${index + 1}</b>${escapeHTML(zoneName)}</button></th>
+      <th scope="row"><button type="button" data-heat-zone="${escapeHTML(zoneName)}" aria-pressed="${selected}"><b>${zoneNumbers.get(normalizeHeatFlowName(zoneName))}</b>${escapeHTML(zoneName)}</button></th>
       <td class="incoming" title="${escapeHTML(heatFlowExactWatts(balance.localGains))}" data-heatflow-local-gain="${Number.isFinite(balance.localGains) ? balance.localGains : ""}">${escapeHTML(formatHeatFlowWatts(balance.localGains))}${balance.localComplete ? "" : " *"}</td>
       <td class="outgoing" title="${escapeHTML(heatFlowExactWatts(balance.localLosses))}" data-heatflow-local-loss="${Number.isFinite(balance.localLosses) ? balance.localLosses : ""}">${escapeHTML(formatHeatFlowWatts(balance.localLosses))}${balance.localComplete ? "" : " *"}</td>
       <td title="${escapeHTML(heatFlowExactWatts(balance.net))}">${escapeHTML(formatHeatFlowWatts(balance.net))}${balance.complete ? "" : " *"}</td>
@@ -6447,23 +6509,22 @@ function renderHeatFlowStoryCard(geometry, story, dataset, zoneMap, frameIndex, 
       <h4>${escapeHTML(story.name || `Level ${story.index + 1}`)}</h4>
       <div class="heatflow-floor-viewport">
         <svg class="heatflow-floor-plan" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(t("simulation.heatFlowPlanAria", { name: story.name || t("simulation.floor", {}, "Floor") }, "{name} heat-flow plan"))}" data-heatflow-plan="1">
-          <g class="heatflow-plan-content" data-heatflow-plan-content transform="${escapeHTML(heatFlowPlanTransform())}">
+          <g class="heatflow-plan-content" data-heatflow-plan-content>
             ${shapes.join("")}
-            ${arrows}
           </g>
         </svg>
-        ${renderHeatFlowPlanViewportActions()}
       </div>
+      <details class="heatflow-zone-summary-details" data-heatflow-summary-story="${story.index}" ${summaryOpen ? "open" : ""}><summary>${escapeHTML(t("simulation.heatFlowZoneValues", {}, "Zone values"))}</summary>
       <div class="heatflow-zone-summary-scroll"><table class="heatflow-zone-summary"><caption>${escapeHTML(t("simulation.heatFlowLocalSummary", {}, "Local gains / losses · kW"))}</caption>
         <thead><tr><th>${escapeHTML(t("common.zone", {}, "Zone"))}</th><th>${escapeHTML(t("simulation.heatFlowGain", {}, "Gain"))}</th><th>${escapeHTML(t("simulation.heatFlowLoss", {}, "Loss"))}</th><th>${escapeHTML(t("simulation.heatFlowTotalNet", {}, "Total net"))}</th></tr></thead>
-        <tbody>${summaries}</tbody></table></div>
+        <tbody>${summaries}</tbody></table></div></details>
     </article>`;
 }
 
 function renderHeatFlowZoneStack(zoneSeries, dataset, frameIndex, center, maxAbs) {
   const axisY = 0;
-  const barWidth = 16;
-  const maxHeight = 46;
+  const barWidth = 8;
+  const maxHeight = 28;
   let positiveOffset = 0;
   let negativeOffset = 0;
   const rects = (dataset.categories || []).map((category, index) => {
@@ -6538,6 +6599,9 @@ function bindHeatFlowInteractions() {
     return;
   }
   simulationHeatFlowInteractionHosts.add(host);
+  host.addEventListener("toggle", (event) => {
+    if (event.target instanceof Element && event.target.matches(".heatflow-zone-summary-details")) scheduleHeatFlowSpatialArrows();
+  }, true);
   host.addEventListener("keydown", (event) => {
     if (!["Enter", " "].includes(event.key) || !(event.target instanceof Element) || event.target.tagName.toLowerCase() === "button") return;
     const zone = event.target.closest("[data-heat-zone]");
@@ -6554,11 +6618,6 @@ function bindHeatFlowInteractions() {
     const rangeButton = event.target.closest("[data-heatflow-range-preset]");
     if (rangeButton) {
       applyHeatFlowRangePreset(dataset, rangeButton.dataset.heatflowRangePreset || "fit");
-      return;
-    }
-    const zoomButton = event.target.closest("[data-heatflow-plan-zoom]");
-    if (zoomButton) {
-      applyHeatFlowPlanZoomButton(host, zoomButton.dataset.heatflowPlanZoom || "reset");
       return;
     }
     if (event.target.closest("[data-heatflow-inspector-toggle]")) {
@@ -6614,16 +6673,9 @@ function bindHeatFlowInteractions() {
         return;
       }
       const chartTarget = event.target.closest("[data-heatflow-chart]");
-      const plan = event.target.closest("[data-heatflow-plan]");
-      if (!chartTarget && !plan) {
-        return;
-      }
+      if (!chartTarget) return;
       event.preventDefault();
-      if (chartTarget) {
-        zoomHeatFlowRange(event, activeHeatFlowDataset(), chartTarget);
-      } else {
-        applyHeatFlowPlanZoom(host, event.deltaY < 0 ? 1.18 : 1 / 1.18, heatFlowSVGPoint(plan, event));
-      }
+      zoomHeatFlowRange(event, activeHeatFlowDataset(), chartTarget);
     },
     { passive: false },
   );
@@ -6640,10 +6692,6 @@ function bindHeatFlowInteractions() {
       renderSimulationHeatFlow();
       return;
     }
-    if (event.target.closest("[data-heatflow-plan]")) {
-      event.preventDefault();
-      resetHeatFlowPlanTransform(host);
-    }
   });
   host.addEventListener("pointerdown", (event) => {
     if (!(event.target instanceof Element)) {
@@ -6656,98 +6704,11 @@ function bindHeatFlowInteractions() {
       brush.setPointerCapture?.(event.pointerId);
       return;
     }
-    const plan = event.target.closest("[data-heatflow-plan]");
-    if (plan && event.button === 0 && !event.target.closest("[data-heat-zone]")) {
-      startHeatFlowPlanPan(host, plan, event);
-    }
   });
   host.addEventListener("pointerup", finishHeatFlowBrushSelection);
   host.addEventListener("pointercancel", () => {
     heatFlowBrushStartFrame = null;
   });
-}
-
-function heatFlowPlanTransform() {
-  const scale = clampNumber(Number(state.simulationHeatFlowPlanScale) || 1, 0.5, 4);
-  state.simulationHeatFlowPlanScale = scale;
-  const panX = Number(state.simulationHeatFlowPlanPanX) || 0;
-  const panY = Number(state.simulationHeatFlowPlanPanY) || 0;
-  return `translate(${roundSVG(panX)} ${roundSVG(panY)}) scale(${roundSVG(scale)})`;
-}
-
-function startHeatFlowPlanPan(host, svg, event) {
-  event.preventDefault();
-  const rect = svg.getBoundingClientRect();
-  const viewBox = svg.viewBox.baseVal;
-  const unitsPerPixelX = viewBox.width / Math.max(rect.width, 1);
-  const unitsPerPixelY = viewBox.height / Math.max(rect.height, 1);
-  const start = {
-    x: event.clientX,
-    y: event.clientY,
-    panX: Number(state.simulationHeatFlowPlanPanX) || 0,
-    panY: Number(state.simulationHeatFlowPlanPanY) || 0,
-  };
-  const move = (moveEvent) => {
-    state.simulationHeatFlowPlanPanX = start.panX + (moveEvent.clientX - start.x) * unitsPerPixelX;
-    state.simulationHeatFlowPlanPanY = start.panY + (moveEvent.clientY - start.y) * unitsPerPixelY;
-    updateHeatFlowPlanTransformNodes(host);
-  };
-  const end = (endEvent) => {
-    svg.classList.remove("panning");
-    svg.releasePointerCapture?.(endEvent.pointerId);
-    svg.removeEventListener("pointermove", move);
-  };
-  svg.classList.add("panning");
-  svg.setPointerCapture?.(event.pointerId);
-  svg.addEventListener("pointermove", move);
-  svg.addEventListener("pointerup", end, { once: true });
-  svg.addEventListener("pointercancel", end, { once: true });
-}
-
-function applyHeatFlowPlanZoomButton(host, action) {
-  if (action === "reset") {
-    resetHeatFlowPlanTransform(host);
-    return;
-  }
-  const svg = host.querySelector("[data-heatflow-plan]");
-  const viewBox = svg?.viewBox?.baseVal;
-  const anchor = viewBox
-    ? { x: viewBox.x + viewBox.width / 2, y: viewBox.y + viewBox.height / 2 }
-    : { x: 230, y: 120 };
-  applyHeatFlowPlanZoom(host, action === "in" ? 1.25 : 0.8, anchor);
-}
-
-function applyHeatFlowPlanZoom(host, factor, anchor) {
-  const previousScale = clampNumber(Number(state.simulationHeatFlowPlanScale) || 1, 0.5, 4);
-  const nextScale = clampNumber(previousScale * factor, 0.5, 4);
-  const ratio = nextScale / previousScale;
-  const panX = Number(state.simulationHeatFlowPlanPanX) || 0;
-  const panY = Number(state.simulationHeatFlowPlanPanY) || 0;
-  state.simulationHeatFlowPlanScale = nextScale;
-  state.simulationHeatFlowPlanPanX = anchor.x - (anchor.x - panX) * ratio;
-  state.simulationHeatFlowPlanPanY = anchor.y - (anchor.y - panY) * ratio;
-  updateHeatFlowPlanTransformNodes(host);
-}
-
-function resetHeatFlowPlanTransform(host) {
-  state.simulationHeatFlowPlanScale = 1;
-  state.simulationHeatFlowPlanPanX = 0;
-  state.simulationHeatFlowPlanPanY = 0;
-  updateHeatFlowPlanTransformNodes(host);
-}
-
-function updateHeatFlowPlanTransformNodes(host) {
-  const transform = heatFlowPlanTransform();
-  host.querySelectorAll("[data-heatflow-plan-content]").forEach((node) => node.setAttribute("transform", transform));
-}
-
-function heatFlowSVGPoint(svg, event) {
-  const rect = svg.getBoundingClientRect();
-  const viewBox = svg.viewBox.baseVal;
-  return {
-    x: viewBox.x + clampNumber((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1) * viewBox.width,
-    y: viewBox.y + clampNumber((event.clientY - rect.top) / Math.max(rect.height, 1), 0, 1) * viewBox.height,
-  };
 }
 
 function zoomHeatFlowRange(event, dataset, chartTarget = event.currentTarget) {
@@ -7025,17 +6986,56 @@ function heatFlowStoryBounds(surfaces) {
   return bounds;
 }
 
-function polygonCentroid(points) {
-  if (!points?.length) {
-    return { x: 0, y: 0 };
+function heatFlowZonePlanCenter(polygons) {
+  let x = 0, y = 0, totalArea = 0;
+  for (const points of polygons) {
+    let twiceArea = 0, cx = 0, cy = 0;
+    for (let index = 0; index < points.length; index++) {
+      const a = points[index], b = points[(index + 1) % points.length];
+      const cross = a.x * b.y - b.x * a.y;
+      twiceArea += cross;
+      cx += (a.x + b.x) * cross;
+      cy += (a.y + b.y) * cross;
+    }
+    if (Math.abs(twiceArea) < 1e-9) continue;
+    const area = Math.abs(twiceArea);
+    x += cx / (3 * twiceArea) * area;
+    y += cy / (3 * twiceArea) * area;
+    totalArea += area;
   }
-  let x = 0;
-  let y = 0;
-  points.forEach((point) => {
-    x += point.x;
-    y += point.y;
-  });
-  return { x: x / points.length, y: y / points.length };
+  const center = totalArea ? { x: x / totalArea, y: y / totalArea } : polygons[0]?.[0] || { x: 0, y: 0 };
+  if (polygons.some(points => heatFlowPolygonContains(points, center))) return center;
+  // Disjoint/concave footprints can have a centroid in a gap. Choose the
+  // nearest interior point on a scanline through an actual floor polygon.
+  let best = null, distance = Infinity;
+  for (const points of polygons) {
+    const levels = [...new Set(points.map(point => point.y))].sort((a, b) => a - b);
+    const rows = [center.y, ...levels.slice(1).map((value, index) => (value + levels[index]) / 2)];
+    for (const row of rows) {
+      const crossings = [];
+      for (let index = 0; index < points.length; index++) {
+        const a = points[index], b = points[(index + 1) % points.length];
+        if ((a.y > row) !== (b.y > row)) crossings.push(a.x + (row - a.y) * (b.x - a.x) / (b.y - a.y));
+      }
+      crossings.sort((a, b) => a - b);
+      for (let index = 0; index + 1 < crossings.length; index += 2) {
+        const a = crossings[index], b = crossings[index + 1], inset = Math.min(1, (b - a) / 4);
+        const point = { x: clampNumber(center.x, a + inset, b - inset), y: row };
+        const delta = Math.hypot(point.x - center.x, point.y - center.y);
+        if (delta < distance) { best = point; distance = delta; }
+      }
+    }
+  }
+  return best || center;
+}
+
+function heatFlowPolygonContains(points, point) {
+  let inside = false;
+  for (let index = 0, previous = points.length - 1; index < points.length; previous = index++) {
+    const a = points[index], b = points[previous];
+    if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
 }
 
 function heatFlowFrameLabel(dataset, frameIndex) {

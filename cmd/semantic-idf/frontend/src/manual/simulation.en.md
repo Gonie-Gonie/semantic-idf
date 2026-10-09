@@ -187,9 +187,14 @@ be replaced with nearby times, another zone, or the Building value.
 
 ## Heat-Flow Ledger {#heat-flow-ledger}
 
-Select a zone in the floor plan or its numbered row to inspect the current
-timestamp. The floor tables show each zone's local gains, local losses and total
-Net. The ledger displays signed rates in kW to 0.001 kW and temperature in °C.
+Select a zone number in the compact floor plans to inspect the current timestamp
+in the right-hand ledger. Zone numbers are unique across the model. A zone with
+several floor pieces, such as a plenum, has one number and one local stack.
+The plans fit their cards automatically and stay fixed; wheel, drag and
+double-click do not change their scale or position.
+Expand **Zone values** below a plan for each zone's local gains, local losses
+and total Net; the tables and reading guide start closed to keep the plans clear.
+The ledger displays signed rates in kW to 0.001 kW and temperature in °C.
 Hover a rate to read the W value retained in the result. Positive transfer adds
 heat to zone air; negative transfer removes it. Gains and losses remain visible
 separately, even when their Net is small.
@@ -241,6 +246,15 @@ in **kWh per reported interval**. Surface conduction and window exchange differ
 from the zone-air convection ledger and must not be added to its kW total.
 Missing or unverified pairs have no measured arrow. Older results need a new
 Surface-detail run to provide the executed geometry and frame evidence.
+
+The floor grid draws one net surface arrow per visible zone pair, directly
+between their number badges, including pairs on different visible levels.
+All observed outdoor orientations combine into one **Outside** arrow; Ground
+and Adiabatic boundaries are not outdoor exchange. Hidden zones are not replaced
+with external labels. Direction follows incoming minus outgoing interval energy;
+balanced nonzero exchange uses one grey two-headed arrow. Expand **Measured
+surface exchange** for the original separate incoming/outgoing amounts. The
+combined arrow totals only verified observations, never unreported boundaries.
 
 **Heat-flow history** uses the full result width for three panels: local
 transfers, boundary exchange, and reported storage/balance deviation. The panels

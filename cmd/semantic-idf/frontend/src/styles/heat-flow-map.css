@@ -1,5 +1,5 @@
 .heatflow-layout {
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 430px);
+  grid-template-columns: minmax(320px, 1fr) minmax(300px, 0.42fr);
   align-items: start;
 }
 .heatflow-layout.inspector-collapsed { grid-template-columns: minmax(0, 1fr); }
@@ -7,17 +7,22 @@
 .heatflow-color-scale { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .heatflow-color-scale i { display: inline-block; width: 72px; height: 9px; border-radius: 4px; background: linear-gradient(to right, #3b82f6, #24303a, #ef4444); }
 .heatflow-color-scale[data-heatflow-scale="temperature"] i { background: linear-gradient(to right, #2563eb, #22c55e 33%, #facc15 68%, #ef4444); }
-.heatflow-floor-grid { grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); }
-.heatflow-floor-card { padding: 12px; gap: 12px; }
-.heatflow-floor-card h4 { font-size: 15px; font-weight: 650; }
-.heatflow-floor-plan { display: block; background: var(--surface); }
+.heatflow-floor-grid { position: relative; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); align-items: start; }
+.heatflow-floor-card { padding: 8px; gap: 6px; }
+.heatflow-floor-card h4 { font-size: 13px; font-weight: 650; }
+.heatflow-floor-plan { display: block; min-height: 0; height: auto; background: var(--surface); }
+.heatflow-spatial-arrows { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; overflow: visible; pointer-events: none; }
+.heatflow-guide-details, .heatflow-zone-summary-details, .heatflow-surface-details { min-width: 0; }
+.heatflow-guide-details > summary, .heatflow-zone-summary-details > summary, .heatflow-surface-details > summary { cursor: pointer; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.heatflow-guide-details[open] > summary, .heatflow-zone-summary-details[open] > summary, .heatflow-surface-details[open] > summary { margin-bottom: 8px; }
+.heatflow-surface-details[open] { display: grid; gap: 8px; }
 .heatflow-zone polygon { stroke: color-mix(in srgb, var(--ink) 50%, transparent); }
 .heatflow-zone.selected polygon { stroke: var(--teal); stroke-width: 3; filter: brightness(1.1); }
 .heatflow-zone:focus { outline: none; }
 .heatflow-zone:focus polygon { stroke: var(--focus); stroke-width: 4; }
 .heatflow-zone-number-back { fill: var(--surface); stroke: var(--ink); stroke-width: 1.2; pointer-events: none; }
 .heatflow-guide-arrow { color: var(--amber); font-size: 24px; font-style: normal; line-height: 1; }
-.heatflow-zone-number { font-size: 22px; font-weight: 700; font-family: inherit; text-anchor: middle; fill: var(--ink); pointer-events: none; }
+.heatflow-zone-number { font-size: 18px; font-weight: 700; font-family: inherit; text-anchor: middle; fill: var(--ink); pointer-events: none; }
 .heatflow-floor-viewport, .heatflow-timeline { container-type: inline-size; }
 .heatflow-timeline-brush .simulation-axis { font-family: inherit; font-size: 18px; }
 .heatflow-mini-stack { opacity: .92; }
@@ -44,6 +49,7 @@
 :root[data-theme="dark"] .heatflow-layout .outgoing { --heatflow-direction-color: #38bdf8; }
 .heatflow-measured-arrows .incoming { --heatflow-direction-color: #fbbf24; }
 .heatflow-measured-arrows .outgoing { --heatflow-direction-color: #38bdf8; }
+.heatflow-measured-arrows .neutral { --heatflow-direction-color: var(--muted); }
 .heatflow-layout .incoming strong, .heatflow-layout td.incoming { color: var(--heatflow-direction-color); }
 .heatflow-layout .outgoing strong, .heatflow-layout td.outgoing { color: var(--heatflow-direction-color); }
 .heatflow-flow-note, .heatflow-exchanges p, .heatflow-balance-check p, .heatflow-partial-note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
@@ -60,18 +66,19 @@
 .heatflow-surface-exchange > span:first-child { grid-column: 1 / -1; overflow-wrap: anywhere; font-weight: 600; }
 .heatflow-surface-exchange strong { font-variant-numeric: tabular-nums; display: block; }
 .heatflow-measured-arrows { pointer-events: none; }
-.heatflow-measured-arrow path { fill: none; stroke: var(--heatflow-direction-color); stroke-linecap: round; opacity: .92; }
-.heatflow-floor-plan marker .incoming { fill: #fbbf24; }
-.heatflow-floor-plan marker .outgoing { fill: #38bdf8; }
-.heatflow-external-label { font-size: 14px; font-family: inherit; fill: var(--ink); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.heatflow-measured-arrow path { fill: none; stroke: var(--heatflow-direction-color); stroke-linecap: round; opacity: .92; pointer-events: stroke; }
+.heatflow-spatial-arrows marker .incoming { fill: #fbbf24; }
+.heatflow-spatial-arrows marker .outgoing { fill: #38bdf8; }
+.heatflow-spatial-arrows marker .neutral { fill: var(--muted); }
+.heatflow-outside-badge rect { fill: var(--surface); stroke: var(--line); }
+.heatflow-outside-badge text { font-size: 12px; font-family: inherit; fill: var(--ink); }
 @supports (font-size: calc(11px * (1000px / 1000px))) {
-  .heatflow-floor-plan { --heatflow-plan-font-scale: calc(620px / 100cqw); }
-  .heatflow-zone-number { font-size: calc(14px * var(--heatflow-plan-font-scale)); }
-  .heatflow-zone-number-back { r: calc(12px * var(--heatflow-plan-font-scale)); }
-  .heatflow-external-label { font-size: calc(13px * var(--heatflow-plan-font-scale)); }
+  .heatflow-floor-plan { --heatflow-plan-font-scale: calc(460px / 100cqw); }
+  .heatflow-zone-number { font-size: calc(12px * var(--heatflow-plan-font-scale)); }
+  .heatflow-zone-number-back { r: calc(10px * var(--heatflow-plan-font-scale)); }
   .heatflow-timeline-brush .simulation-axis { font-size: calc(max(12px, var(--graph-label-font-size, 11px)) * (760px / 100cqw)); }
 }
-@container heatflow (max-width: 1050px) {
+@container heatflow (max-width: 660px) {
   .heatflow-layout { grid-template-columns: minmax(0, 1fr); }
   .heatflow-inspector { border-left: 0; border-top: 1px solid var(--line); padding-left: 0; padding-top: 14px; }
 }

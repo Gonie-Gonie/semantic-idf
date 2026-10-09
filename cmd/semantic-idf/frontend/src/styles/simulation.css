@@ -4648,34 +4648,13 @@
   min-width: 0;
 }
 
-.heatflow-viewport-actions {
-  top: 8px;
-  right: 8px;
-}
-
-.heatflow-viewport-actions .viewport-icon-button {
-  width: 30px;
-  min-width: 30px;
-  min-height: 30px;
-  font-size: 18px;
-  font-weight: 700;
-}
-
 .heatflow-floor-plan {
   width: 100%;
   min-height: 180px;
   border-radius: 4px;
   background: #080c12;
-  cursor: grab;
-  touch-action: none;
-}
-
-.heatflow-floor-plan.panning {
-  cursor: grabbing;
-}
-
-.heatflow-plan-content {
-  transform-origin: 0 0;
+  cursor: default;
+  touch-action: pan-y;
 }
 
 .heatflow-floor-empty {

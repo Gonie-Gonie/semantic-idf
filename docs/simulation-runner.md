@@ -277,6 +277,18 @@ unmatched observations cannot produce a verified pair arrow. Older results
 retain aggregate zone exchange direction but require a new Surface-detail run
 for verified pair arrows.
 
+The compact floor grid keeps one globally numbered badge/local stack per zone,
+grouping its floor polygons without changing their geometry. Zone tables,
+reading guidance and measured peer details start collapsed and retain their
+disclosure state during frame changes. A shared SVG connects actual visible
+badge centres, including cross-level pairs; resize and disclosure changes
+refresh those positions. Plans fit the card automatically with no zoom/pan
+camera, controls or transform state. Each visible pair has one signed-net arrow. All
+verified outdoor orientations combine into one Outside arrow, excluding Ground
+and Adiabatic peers; hidden zone peers never become external labels. Balanced
+nonzero gross exchange has one neutral bidirectional path. Original gross
+incoming/outgoing values and canonical provenance remain in the details.
+
 The history section spans the result width and separates local transfers,
 boundary exchanges and reported storage/deviation into three panels with a
 shared signed scale. Labels inherit the UI font and Settings graph font size

@@ -72,24 +72,21 @@ func TestGraphicViewportActionsUseAccessibleIconsInsideTheirFigures(t *testing.T
 	}
 
 	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
-	for _, required := range []string{
-		"function renderHeatFlowPlanViewportActions()",
-		`class="viewport-action-tools heatflow-viewport-actions"`,
-		`data-heatflow-plan-zoom="out"`,
-		`data-heatflow-plan-zoom="reset"`,
-		`data-heatflow-plan-zoom="in"`,
-		`class="viewport-icon"`,
-		`aria-hidden="true"`,
-		`title="${escapeHTML(fit)}"`,
-		`aria-label="${escapeHTML(fit)}"`,
+	for _, removed := range []string{
+		"renderHeatFlowPlanViewportActions",
+		"heatflow-viewport-actions",
+		"data-heatflow-plan-zoom",
+		"heatFlowPlanTransform",
+		"startHeatFlowPlanPan",
+		"applyHeatFlowPlanZoom",
 	} {
-		if !strings.Contains(simulation, required) {
-			t.Fatalf("Heat Flow viewport icon contract is missing %q", required)
+		if strings.Contains(simulation, removed) {
+			t.Fatalf("fixed Heat Flow plans retain obsolete viewport control %q", removed)
 		}
 	}
 	storyCard := sliceBetween(simulation, "function renderHeatFlowStoryCard", "function heatFlowStoryBounds")
-	if !strings.Contains(storyCard, "renderHeatFlowPlanViewportActions()") || !strings.Contains(storyCard, `class="heatflow-floor-viewport"`) {
-		t.Fatal("Heat Flow zoom/Fit icons must be rendered inside each plan viewport")
+	if !strings.Contains(storyCard, `class="heatflow-floor-viewport"`) || !strings.Contains(storyCard, "data-heatflow-plan-content") || strings.Contains(storyCard, `data-heatflow-plan-content transform=`) {
+		t.Fatal("Heat Flow floor figures must retain fixed plan content without camera transforms")
 	}
 
 	baseStyles := readTestFile(t, "frontend/src/styles/base.css")
@@ -102,10 +99,12 @@ func TestGraphicViewportActionsUseAccessibleIconsInsideTheirFigures(t *testing.T
 		"button:focus-visible",
 		".topology-viewport-actions",
 		".hvac-viewport-actions",
-		".heatflow-viewport-actions",
 	} {
 		if !strings.Contains(baseStyles+topologyStyles+hvacStyles+simulationStyles, required) {
 			t.Fatalf("shared viewport action styling is missing %q", required)
 		}
+	}
+	if strings.Contains(simulationStyles, ".heatflow-viewport-actions") {
+		t.Fatal("removed Heat Flow viewport controls retain obsolete styling")
 	}
 }

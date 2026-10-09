@@ -87,40 +87,155 @@ export function renderHeatFlowExchangeDetails(dataset, zone, zoneName, frame, ov
   return `<section class="heatflow-exchanges"><h5>${escapeHTML(t("simulation.heatFlowExchangeHeading", {}, "Exchange with the selected zone"))}</h5>
     <p>${escapeHTML(t("simulation.heatFlowAggregateNote", {}, "Arrows point into or out of this zone. Air and surface-convection values are zone totals (kW), without an assigned neighbouring zone."))}</p>
     ${rows}
-    <h5>${escapeHTML(t("simulation.heatFlowSurfaceExchangeHeading", {}, "Measured surface exchange · kWh / reported interval"))}</h5>
-    <p>${escapeHTML(t("simulation.heatFlowSurfaceExchangeNote", {}, "Surface conduction and window exchange use the executed model and exact matching timestamps. These interval energies are separate from the zone-air balance above."))}</p>
-    ${pairRows || `<p class="heatflow-unavailable">${escapeHTML(t("simulation.heatFlowPairUnavailable", {}, "No verified surface-exchange observations at this time. A new Surface-detail run provides the required frame and geometry evidence."))}</p>`}
+    <details class="heatflow-surface-details"><summary>${escapeHTML(t("simulation.heatFlowSurfaceExchangeHeading", {}, "Measured surface exchange · kWh / reported interval"))}</summary>
+      <p>${escapeHTML(t("simulation.heatFlowSurfaceExchangeNote", {}, "Surface conduction and window exchange use the executed model and exact matching timestamps. These interval energies are separate from the zone-air balance above."))}</p>
+      ${pairRows || `<p class="heatflow-unavailable">${escapeHTML(t("simulation.heatFlowPairUnavailable", {}, "No verified surface-exchange observations at this time. A new Surface-detail run provides the required frame and geometry evidence."))}</p>`}
+    </details>
   </section>`;
 }
 
-export function renderHeatFlowExchangeArrows(exchanges, selectedCenter, centers, { width, height, markerID }) {
+function compactArrowExchanges(exchanges, centers) {
+  const groups = new Map();
+  for (const item of exchanges) {
+    const outdoors = item.peerKind === "outdoors" || item.peerKind?.startsWith("outdoors_");
+    const zoneKey = key(item.peerName);
+    if (!outdoors && (item.peerKind !== "zone" || !centers.has(zoneKey))) continue;
+    const groupKey = outdoors ? "outdoors" : `zone:${zoneKey}`;
+    const group = groups.get(groupKey) || { peerID: outdoors ? "outdoors" : item.peerID,
+      peerName: outdoors ? t("simulation.heatFlowOutside", {}, "Outside") : item.peerName, peerKind: outdoors ? "outdoors" : "zone",
+      incoming: 0, outgoing: 0, peerIDs: [], boundaryIDs: [], sourceIDs: [] };
+    group.incoming += item.incoming;
+    group.outgoing += item.outgoing;
+    group.peerIDs.push(item.peerID);
+    group.boundaryIDs.push(...(item.boundaryIDs || []));
+    group.sourceIDs.push(...(item.sourceIDs || []));
+    groups.set(groupKey, group);
+  }
+  return [...groups.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+    .map(([, item]) => ({ ...item, peerIDs: [...new Set(item.peerIDs)],
+      boundaryIDs: [...new Set(item.boundaryIDs)], sourceIDs: [...new Set(item.sourceIDs)] }))
+    .filter(item => item.incoming > 0 || item.outgoing > 0);
+}
+
+function trimmedPoint(center, toward, fallbackRadius) {
+  const distance = Math.hypot(toward.x - center.x, toward.y - center.y);
+  const trim = (center.radius ?? fallbackRadius) + 4;
+  return { x: center.x + (toward.x - center.x) / distance * trim,
+    y: center.y + (toward.y - center.y) / distance * trim };
+}
+
+function arrowRoute(selected, target, controls, badgeRadius) {
+  return { start: trimmedPoint(selected, controls[0] || target, badgeRadius),
+    end: trimmedPoint(target, controls.at(-1) || selected, badgeRadius), controls };
+}
+
+function routePoint(route, t) {
+  const u = 1 - t, { start, end, controls } = route;
+  if (controls.length === 1) return { x: u * u * start.x + 2 * u * t * controls[0].x + t * t * end.x,
+    y: u * u * start.y + 2 * u * t * controls[0].y + t * t * end.y };
+  if (controls.length === 2) return { x: u * u * u * start.x + 3 * u * u * t * controls[0].x + 3 * u * t * t * controls[1].x + t * t * t * end.x,
+    y: u * u * u * start.y + 3 * u * u * t * controls[0].y + 3 * u * t * t * controls[1].y + t * t * t * end.y };
+  return { x: u * start.x + t * end.x, y: u * start.y + t * end.y };
+}
+
+function routePenalty(route, circles, rectangles, width, height) {
+  const points = [route.start, ...route.controls, route.end];
+  const controlLength = points.slice(1).reduce((sum, point, index) => sum + Math.hypot(point.x - points[index].x, point.y - points[index].y), 0);
+  const samples = Math.min(256, Math.max(24, Math.ceil(controlLength / 4)));
+  let penalty = 0;
+  for (let index = 0; index <= samples; index++) {
+    const point = routePoint(route, index / samples);
+    if (point.x < 2 || point.y < 2 || point.x > width - 2 || point.y > height - 2) penalty += 1;
+    for (const circle of circles) {
+      const distance = Math.hypot(point.x - circle.x, point.y - circle.y);
+      if (distance < circle.clearance) penalty += 100 + (circle.clearance - distance);
+    }
+    for (const rectangle of rectangles) {
+      if (point.x > rectangle.left && point.x < rectangle.right && point.y > rectangle.top && point.y < rectangle.bottom) penalty += 100;
+    }
+  }
+  return penalty / (samples + 1);
+}
+
+function chooseArrowRoute(selected, target, centers, rectangleObstacles, width, height, badgeRadius) {
+  const dx = target.x - selected.x, dy = target.y - selected.y, length = Math.hypot(dx, dy);
+  const nx = -dy / length, ny = dx / length;
+  const samePosition = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) < 0.1;
+  const circles = [...centers.values()].filter(center => !samePosition(center, selected) && !samePosition(center, target))
+    .map(center => ({ ...center, clearance: (center.radius ?? badgeRadius) + 6 }));
+  const rectangles = rectangleObstacles.filter(rectangle => [rectangle.left, rectangle.top, rectangle.right, rectangle.bottom].every(Number.isFinite))
+    .map(rectangle => ({ left: rectangle.left - 6, top: rectangle.top - 6, right: rectangle.right + 6, bottom: rectangle.bottom + 6 }));
+  let best = null, bestPenalty = Infinity;
+  const consider = controls => {
+    const route = arrowRoute(selected, target, controls, badgeRadius);
+    const penalty = routePenalty(route, circles, rectangles, width, height);
+    if (penalty < bestPenalty) { best = route; bestPenalty = penalty; }
+    return penalty === 0;
+  };
+  if (consider([])) return best;
+  for (const bend of [24, 40, 64, 96, 144, 216, 320, 480]) {
+    for (const sign of [1, -1]) {
+      if (consider([{ x: (selected.x + target.x) / 2 + nx * bend * sign,
+        y: (selected.y + target.y) / 2 + ny * bend * sign }])) return best;
+    }
+  }
+  for (const bend of [64, 128, 256, 384]) {
+    for (const sign of [1, -1]) {
+      for (const otherSign of [sign, -sign]) {
+        if (consider([{ x: selected.x + dx / 3 + nx * bend * sign, y: selected.y + dy / 3 + ny * bend * sign },
+          { x: selected.x + dx * 2 / 3 + nx * bend * otherSign, y: selected.y + dy * 2 / 3 + ny * bend * otherSign }])) return best;
+      }
+    }
+  }
+  return best;
+}
+
+function arrowPath(route, reverse) {
+  const start = reverse ? route.end : route.start, end = reverse ? route.start : route.end;
+  const controls = reverse ? [...route.controls].reverse() : route.controls;
+  const point = value => `${round(value.x)} ${round(value.y)}`;
+  const command = controls.length === 2 ? "C" : controls.length === 1 ? "Q" : "L";
+  return `M ${point(start)} ${command} ${[...controls, end].map(point).join(" ")}`;
+}
+
+export function renderHeatFlowExchangeArrows(exchanges, selectedCenter, centers,
+  { width, height, markerID, outsideCenter, badgeRadius = 12, renderOutsideBadge = true }) {
   if (!selectedCenter || !exchanges.length) return "";
-  const visible = exchanges.filter(item => item.incoming > 0 || item.outgoing > 0);
-  const scale = Math.max(0.001, ...visible.map(item => Math.max(item.incoming, item.outgoing)));
+  const visible = compactArrowExchanges(exchanges, centers);
+  const outside = outsideCenter || { x: width - 32, y: Math.min(28, height / 2), radius: 24 };
+  const outsideHalfWidth = Math.max(28, outside.radius ?? 24);
+  const outsideObstacle = { left: outside.x - outsideHalfWidth, right: outside.x + outsideHalfWidth,
+    top: outside.y - 12, bottom: outside.y + 12 };
+  const hasOutside = renderOutsideBadge && visible.some(item => item.peerKind === "outdoors");
   const parts = [];
-  for (const [index, item] of visible.entries()) {
+  for (const item of visible) {
     const peer = item.peerKind === "zone" ? centers.get(key(item.peerName)) : null;
-    const target = peer || { x: selectedCenter.x < width / 2 ? width - 32 : 32, y: 54 + index * 44 % Math.max(height - 110, 44) };
+    const target = peer || outside;
     const dx = target.x - selectedCenter.x, dy = target.y - selectedCenter.y;
     const length = Math.hypot(dx, dy);
-    if (length < 24) continue;
-    const nx = -dy / length, ny = dx / length;
-    for (const direction of ["incoming", "outgoing"]) {
-      const value = item[direction];
-      if (value <= 0) continue;
-      const offset = direction === "incoming" ? -6 : 6;
-      const from = direction === "incoming" ? target : selectedCenter;
-      const to = direction === "incoming" ? selectedCenter : target;
-      const ux = (to.x - from.x) / length, uy = (to.y - from.y) / length;
-      const x1 = from.x + ux * 24 + nx * offset, y1 = from.y + uy * 24 + ny * offset;
-      const x2 = to.x - ux * 24 + nx * offset, y2 = to.y - uy * 24 + ny * offset;
-      const strokeWidth = 2.5 + 3 * Math.sqrt(value / scale);
-      parts.push(`<g class="heatflow-measured-arrow ${direction}" data-heatflow-arrow="${direction}" data-peer="${escapeHTML(item.peerID)}" data-value="${value}" data-unit="kWh">
-        <title>${escapeHTML(`${item.peerName} ${direction === "incoming" ? "→" : "←"} ${energy(value)}`)}</title>
-        <path d="M ${round(x1)} ${round(y1)} L ${round(x2)} ${round(y2)}" stroke-width="${round(strokeWidth)}" marker-end="url(#${markerID}-${direction})"></path>
+    const selectedTrim = (selectedCenter.radius ?? badgeRadius) + 4;
+    const targetTrim = (target.radius ?? badgeRadius) + 4;
+    if (length <= selectedTrim + targetTrim) continue;
+    const difference = item.incoming - item.outgoing;
+    const net = Math.abs(difference) <= Number.EPSILON * Math.max(1, item.incoming, item.outgoing) * 8 ? 0 : difference;
+    const direction = net === 0 ? "neutral" : net > 0 ? "incoming" : "outgoing";
+    const route = chooseArrowRoute(selectedCenter, target, centers,
+      peer && hasOutside ? [outsideObstacle] : [], width, height, badgeRadius);
+    const tooltip = `${item.peerName}: ${t("simulation.heatFlowSurfaceExchangeHeading", {}, "Measured surface exchange · kWh / reported interval")}\n`
+      + `${t("simulation.heatFlowTotalNet", {}, "Total net")} ${energy(net)}; `
+      + `${t("simulation.heatFlowIn", {}, "In")} ${energy(item.incoming)}; ${t("simulation.heatFlowOut", {}, "Out")} ${energy(item.outgoing)}\n`
+      + `Boundary: ${item.boundaryIDs.join(", ")}\nSource: ${item.sourceIDs.join(", ")}`;
+    parts.push(`<g class="heatflow-measured-arrow ${direction}" data-heatflow-arrow="${direction}" data-peer="${escapeHTML(item.peerID)}" data-peers="${escapeHTML(JSON.stringify(item.peerIDs))}" data-value="${net}" data-gross-in="${item.incoming}" data-gross-out="${item.outgoing}" data-unit="kWh" data-boundaries="${escapeHTML(JSON.stringify(item.boundaryIDs))}" data-sources="${escapeHTML(JSON.stringify(item.sourceIDs))}">
+      <title>${escapeHTML(tooltip)}</title>
+      <path d="${arrowPath(route, direction === "incoming")}" stroke-width="2" ${direction === "neutral" ? `marker-start="url(#${markerID}-${direction})"` : ""} marker-end="url(#${markerID}-${direction})"></path>
+    </g>`);
+    if (!peer && renderOutsideBadge) {
+      parts.push(`<g class="heatflow-outside-badge" data-heatflow-outside-badge="1">
+        <rect x="${round(target.x - outsideHalfWidth)}" y="${round(target.y - 12)}" width="${round(outsideHalfWidth * 2)}" height="24" rx="8"></rect>
+        <text x="${round(target.x)}" y="${round(target.y + 4)}" text-anchor="middle">${escapeHTML(item.peerName)}</text>
       </g>`);
     }
-    if (!peer) parts.push(`<text class="heatflow-external-label" x="${round(target.x)}" y="${round(target.y - 10)}" text-anchor="${target.x > width / 2 ? "end" : "start"}">${escapeHTML(item.peerName)}</text>`);
   }
-  return `<defs>${["incoming", "outgoing"].map(direction => `<marker id="${markerID}-${direction}" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M 0 0 L 9 5 L 0 10 Z" class="${direction}"></path></marker>`).join("")}</defs><g class="heatflow-measured-arrows">${parts.join("")}</g>`;
+  if (!parts.length) return "";
+  return `<defs>${["incoming", "outgoing", "neutral"].map(direction => `<marker id="${markerID}-${direction}" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 0 0 L 7 3.5 L 0 7 Z" class="${direction}"></path></marker>`).join("")}</defs><g class="heatflow-measured-arrows">${parts.join("")}</g>`;
 }
