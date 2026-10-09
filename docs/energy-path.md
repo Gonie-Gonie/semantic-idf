@@ -1670,7 +1670,9 @@ and [approved header](../cmd/semantic-idf/internal/simulation/testdata/energy_pa
 ### Current development boundaries
 
 Energy Path uses the existing chart-focused UI with Scope/Period selection,
-kWh/m2 presentation and Monthly/Hourly component inspection. Removed KPI cards,
+kWh/m2 presentation and Monthly/Hourly component inspection. Component charts
+follow Settings' graph label font size and scroll horizontally within the chart
+when the available panel is narrow. Removed KPI cards,
 Service selection, detailed legacy inspectors and cross-panel HVAC/Output
 navigation are not requirements for restoring the current view. Wire/consumer
 service and trace contracts remain independent of visible controls. Regression

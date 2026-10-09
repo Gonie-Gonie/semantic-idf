@@ -50,6 +50,9 @@ Monthly or Hourly graph:
 - A selected month limits the Hourly calendar to that month.
 - Unavailable Hourly identity, calendar, or area produces an unavailable chart.
 
+Monthly and Hourly charts follow Settings' **Graph label font size** and scroll
+horizontally within the chart in narrow panels.
+
 A shared component can have a reported Building Hourly source while its
 Monthly Zone contribution is allocated. These charts need not sum to the same
 value. Do not interpret the Hourly source as newly measured Zone consumption.

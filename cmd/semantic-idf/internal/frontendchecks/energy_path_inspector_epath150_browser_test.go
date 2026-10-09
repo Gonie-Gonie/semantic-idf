@@ -107,6 +107,14 @@ try{
   check(!panel.querySelector("[data-energy-path-detail-section],[data-energy-path-inspector-value],[data-energy-path-link-value],[data-energy-path-series-id],[data-energy-path-driver-destination],[data-energy-path-service-destination]"),label+" retains removed component information/actions");
   check(!/What this represents|Calculation \/ allocation basis|Related model entities|Source data/.test(panel.innerText),label+" retains old detail copy");
   check(pane.scrollWidth<=pane.clientWidth+1,label+" chart causes horizontal overflow");
+  const family=getComputedStyle(document.body).fontFamily,title=panel.querySelector("header strong");
+  check(getComputedStyle(panel).fontFamily===family&&getComputedStyle(title).fontFamily===family&&getComputedStyle(frequency).fontFamily===family,label+" native Sankey component lost inherited app typography");
+  check(parseFloat(getComputedStyle(title).fontSize)>parseFloat(getComputedStyle(frequency).fontSize)&&Number(getComputedStyle(title).fontWeight)>Number(getComputedStyle(frequency).fontWeight),label+" native title/frequency control hierarchy is missing");
+  const svg=panel.querySelector("svg"),graphFont=Math.max(12,parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--graph-label-font-size"))||11);
+  if(svg){
+   const plot=panel.querySelector(".energy-path-chart-plot");check(getComputedStyle(plot).overflowX==="auto",label+" native component chart CSS/inner scroll is missing");
+   for(const text of svg.querySelectorAll(".energy-path-chart-tick,.energy-path-chart-axis-label")){const size=parseFloat(getComputedStyle(text).fontSize)*text.getScreenCTM().a;check(Math.abs(size-(graphFont+(text.classList.contains("energy-path-chart-axis-label")?1:0)))<.06,label+" native chart does not apply configured physical graph fonts");}
+  }
  };
  const nodeIDs=graph().nodes.filter(item=>button(item.id)).map(item=>item.id);
  if(new URLSearchParams(location.search).get("run150")!=="1"){
@@ -119,6 +127,8 @@ try{
   for(const id of nodeIDs){select(id);checkChart("node "+id);}
   for(const relation of["driver_to_load","load_to_end_use","end_use_to_carrier","residual"]){const item=graph().links.find(link=>link.relation===relation&&edge(link.id));if(item){select(item.id);checkChart("link "+relation);}}
   select(nodeIDs[0]);check(inspector()?.querySelector("[data-energy-path-chart-frequency]")?.value==="monthly","component chart did not default Monthly");
+  const january=view.energyPathGraphForState(result.purposeResults.energyExplanation,{...state,simulationEnergyPeriod:"M1"}).nodes.find(node=>node.id===nodeIDs[0]);
+  check(january&&Number(inspector()?.querySelector("[data-energy-path-chart-value]")?.dataset.energyPathChartValue)===january.value,"native Sankey Monthly chart changed selected component's reported January energy");
   change("[data-energy-path-chart-frequency]","hourly");checkChart("hourly");check(state.simulationEnergyChartFrequency==="hourly"&&inspector()?.querySelector("[data-energy-path-chart-frequency]")?.value==="hourly","native Hourly selector did not update chart state");
   check(inspector()?.querySelector("[data-energy-path-chart-empty]")&&!inspector()?.querySelector("svg"),"Monthly-only fixture fabricated Hourly energy");
   check(document.activeElement===inspector()?.querySelector("[data-energy-path-chart-frequency]"),"frequency change lost keyboard focus");
@@ -131,7 +141,7 @@ try{
   check(JSON.stringify([...host.querySelectorAll("[data-energy-path-ribbon]")].map(path=>path.getAttribute("d")))===paths,"chart selection changed quantitative flow paths");
   for(const scope of["building","zone"]){change("[data-simulation-energy-scope]",scope);if(scope==="zone")change("[data-simulation-energy-zone-name]","Office");change("[data-simulation-energy-path-period]","M1");const id=graph().nodes.find(item=>button(item.id)).id;select(id);checkChart(scope+" January");}
   check(JSON.stringify(result)===rawJSON&&JSON.stringify(state.report)===reportJSON,"component chart mutated result/model data");
-  evidence.push("Every visible node/link uses Monthly/Hourly graph; old details absent; native frequency control and workspace restore; graph retained; scoped immutable results.");
+  evidence.push("Every visible node/link uses Monthly/Hourly graph; loaded CSS and inherited typography with configured physical graph fonts; reported January values preserved; old details absent; native frequency control and workspace restore; graph retained; scoped immutable results.");
   if(failures.length)throw new Error(failures.join("\n"));document.body.dataset.epath150Status="passed";
  }
  document.getElementById("epath150-result").textContent=evidence.join("\n");

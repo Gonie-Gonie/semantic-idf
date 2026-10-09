@@ -1820,44 +1820,68 @@
 }
 
 .energy-path-component-chart {
+  --energy-path-chart-font-size: max(12px, var(--graph-label-font-size, 11px));
+  --energy-path-chart-min-width: max(560px, calc(var(--energy-path-chart-font-size) * 50));
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--surface-2);
+  border-radius: var(--radius, 8px);
+  background: var(--surface);
   padding: 12px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.42;
+}
+
+.energy-path-component-chart[data-energy-path-chart-mode="monthly"] {
+  --energy-path-chart-min-width: max(640px, calc(var(--energy-path-chart-font-size) * 55));
 }
 
 .energy-path-component-chart > header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 8px 12px;
+  margin-bottom: 8px;
 }
 
 .energy-path-component-chart > header strong {
+  flex: 1 1 200px;
   min-width: 0;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.4;
   overflow-wrap: anywhere;
 }
 
-.energy-path-component-chart select { flex: 0 0 auto; }
-.energy-path-chart-plot { min-width: 0; }
-.energy-path-chart-plot svg { display: block; width: 100%; height: auto; overflow: visible; }
-.energy-path-chart-grid { stroke: var(--line); stroke-width: 1; }
-.energy-path-chart-tick { fill: var(--muted); font-size: 16px; font-variant-numeric: tabular-nums; }
-.energy-path-chart-axis-label { fill: var(--ink); font-size: 17px; }
+.energy-path-component-chart select { flex: 0 0 auto; max-width: 100%; min-height: 30px; font-size: 12px; }
+.energy-path-chart-plot { min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; container-type: inline-size; }
+.energy-path-chart-plot svg { display: block; width: 100%; min-width: var(--energy-path-chart-min-width); height: auto; overflow: visible; font-family: inherit; }
+.energy-path-chart-grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 3; opacity: .56; vector-effect: non-scaling-stroke; }
+.energy-path-chart-axis { stroke: var(--muted); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+.energy-path-chart-tick { fill: var(--muted); font-size: calc(var(--energy-path-chart-font-size) * 1.67); font-weight: 400; font-variant-numeric: tabular-nums; }
+.energy-path-chart-axis-label { fill: var(--muted); font-size: calc((var(--energy-path-chart-font-size) + 1px) * 1.67); font-weight: 600; }
 .energy-path-chart-mark { fill: var(--chart-color); }
 .energy-path-chart-mark:focus { outline: 2px solid var(--focus); }
-.energy-path-chart-line { fill: none; stroke: var(--chart-color); stroke-width: 1.5; }
+.energy-path-chart-line { fill: none; stroke: var(--chart-color); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .energy-path-chart-color-0 { --chart-color: var(--accent); }
 .energy-path-chart-color-1 { --chart-color: var(--amber); }
 .energy-path-chart-color-2 { --chart-color: var(--focus); }
 .energy-path-chart-color-3 { --chart-color: var(--green); }
 .energy-path-chart-color-4 { --chart-color: var(--red); }
 .energy-path-chart-color-5 { --chart-color: var(--selection-hidden); }
-.energy-path-chart-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 11px; color: var(--muted); }
-.energy-path-chart-legend span { min-width: 0; overflow-wrap: anywhere; }
-.energy-path-chart-legend i { display: inline-block; width: 9px; height: 9px; margin-right: 5px; background: var(--chart-color); }
-.energy-path-chart-empty { padding: 48px 12px; color: var(--muted); text-align: center; }
+.energy-path-chart-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; padding-top: 4px; font-size: var(--energy-path-chart-font-size); line-height: 1.4; color: var(--muted); }
+.energy-path-chart-legend > span { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.energy-path-chart-legend i { flex: 0 0 12px; width: 12px; height: 8px; border-radius: 1px; background: var(--chart-color); }
+.energy-path-chart-empty { padding: 32px 12px; color: var(--muted); font-size: 13px; line-height: 1.5; text-align: center; }
+
+/* Keep graph labels at their configured screen size as the 1000-unit SVG fits
+   the card. Each mode reserves enough physical width for its time labels. */
+@supports (font-size: calc(11px * (1000px / 1000px))) {
+  .energy-path-chart-plot svg { --energy-path-chart-font-scale: calc(1000px / max(var(--energy-path-chart-min-width), 100cqw)); }
+  .energy-path-chart-tick { font-size: calc(var(--energy-path-chart-font-size) * var(--energy-path-chart-font-scale)); }
+  .energy-path-chart-axis-label { font-size: calc((var(--energy-path-chart-font-size) + 1px) * var(--energy-path-chart-font-scale)); }
+}
 
 .energy-path-node-inspector {
   display: grid;

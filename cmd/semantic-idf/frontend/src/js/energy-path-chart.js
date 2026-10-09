@@ -6,6 +6,7 @@ const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const copy = (key, fallback, values = {}) => t(`simulation.energyPathChart${key}`, values, fallback);
 const members = (item) => item.groupedMembers?.length ? item.groupedMembers : [item];
 const token = (value) => String(value || "").trim().toLowerCase();
+let chartLabelContext = null;
 
 // Keep the selected group's original members fixed while monthly grouping changes.
 // Missing observations remain gaps; an annual total never supplies monthly values.
@@ -172,26 +173,34 @@ export function renderEnergyPathComponentChart({ item = {}, kind = "node", label
 }
 
 function renderPlot(series, frequency, display) {
-  const width = 1000, height = 285, left = 76, right = 60, top = 32, bottom = 62;
-  const plotWidth = width - left - right, plotHeight = height - top - bottom;
+  const width = 1000, height = 340, right = 42, top = 52, bottom = 81;
   const traces = series.map((trace) => ({ ...trace, points: trace.points || [] }));
   // Both thermal and site traces are canonical kWh, divided by one scope area.
   const points = traces.flatMap((trace) => trace.points).filter((point) => finite(point.value));
   const minimum = points.reduce((value, point) => Math.min(value, point.value), 0), maximum = points.reduce((value, point) => Math.max(value, point.value), 0);
   const low = minimum, high = maximum > minimum ? maximum : minimum + 1;
+  const number = (value, unit = "kWh") => formatEnergyPathDisplayValue(value, unit, display, { includeUnit: false });
+  const yTicks = Array.from({ length: 5 }, (_, index) => {
+    const value = low + (high - low) * index / 4;
+    return { value, label: number(value) };
+  });
+  const left = Math.max(112, ...yTicks.map((tick) => Math.ceil(chartLabelWidth(tick.label) + 18)));
+  const plotWidth = width - left - right, plotHeight = height - top - bottom;
   const allX = traces.flatMap((trace) => trace.points).map((point) => point.x).filter(finite);
   const xMin = frequency === "monthly" ? -.5 : allX.reduce((value, next) => Math.min(value, next), Infinity), xMax = frequency === "monthly" ? 11.5 : allX.reduce((value, next) => Math.max(value, next), -Infinity);
   const x = (value) => xMax > xMin ? left + (value - xMin) / (xMax - xMin) * plotWidth : left + plotWidth / 2;
   const y = (value) => top + (high - value) / (high - low) * plotHeight;
   const baseline = y(0);
-  const number = (value, unit = "kWh") => formatEnergyPathDisplayValue(value, unit, display, { includeUnit: false });
-  const grid = Array.from({ length: 5 }, (_, index) => {
-    const value = low + (high - low) * index / 4, position = y(value);
-    return `<line class="energy-path-chart-grid" x1="${left}" y1="${position}" x2="${width - right}" y2="${position}"/><text class="energy-path-chart-tick" x="${left - 9}" y="${position + 4}" text-anchor="end">${escapeHTML(number(value))}</text>`;
+  const grid = yTicks.map((tick) => {
+    const position = y(tick.value);
+    return `<line class="energy-path-chart-grid" x1="${left}" y1="${position}" x2="${width - right}" y2="${position}"/><text class="energy-path-chart-tick" data-energy-path-chart-tick="y" x="${left - 10}" y="${position + 5}" text-anchor="end">${escapeHTML(tick.label)}</text>`;
   }).join("");
   const visiblePoints = traces[0]?.points || [];
-  const ticks = frequency === "monthly" ? visiblePoints : visiblePoints.filter((_, index) => index === 0 || index === visiblePoints.length - 1 || index % Math.max(1, Math.floor(visiblePoints.length / 4)) === 0);
-  const labels = ticks.map((point) => `<line class="energy-path-chart-grid" x1="${x(point.x)}" y1="${top}" x2="${x(point.x)}" y2="${height - bottom}"/><text class="energy-path-chart-tick" x="${x(point.x)}" y="${height - 36}" text-anchor="middle">${escapeHTML(point.label)}</text>`).join("");
+  const ticks = frequency === "monthly" ? visiblePoints : hourlyChartTicks(visiblePoints, x);
+  const labels = ticks.map((point, index) => {
+    const anchor = frequency === "monthly" || ticks.length < 2 ? "middle" : index === 0 ? "start" : index === ticks.length - 1 ? "end" : "middle";
+    return `<line class="energy-path-chart-grid" x1="${x(point.x)}" y1="${top}" x2="${x(point.x)}" y2="${height - bottom}"/><text class="energy-path-chart-tick" data-energy-path-chart-tick="x" x="${x(point.x)}" y="${height - bottom + 27}" text-anchor="${anchor}">${escapeHTML(point.label)}</text>`;
+  }).join("");
   const marks = traces.map((trace, traceIndex) => {
     const color = traceIndex % 6;
     const title = (point) => `${point.label} · ${trace.label}: ${formatEnergyPathDisplayValue(point.value, trace.unit || "kWh", display)}`;
@@ -210,9 +219,34 @@ function renderPlot(series, frequency, display) {
     return `<path class="energy-path-chart-line energy-path-chart-color-${color}" d="${path}"/>` + drawn.filter((point) => finite(point.value)).map((point) => `<circle class="energy-path-chart-mark energy-path-chart-color-${color}" data-energy-path-chart-value="${point.value}" cx="${x(point.x)}" cy="${y(point.value)}" r="2.5"><title>${escapeHTML(title(point))}</title></circle>`).join("");
   }).join("");
   return `<div class="energy-path-chart-plot"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(copy(frequency === "hourly" ? "Hourly" : "Monthly", frequency === "hourly" ? "Hourly" : "Monthly"))}">
-    <text class="energy-path-chart-axis-label" data-energy-path-chart-axis="y" x="${left}" y="17">${escapeHTML(`${frequency === "hourly" ? copy("Measured", "Measured energy") : copy("Component", "Component energy")} (${energyPathDisplayUnit("kWh", display)})`)}</text>
-    <text class="energy-path-chart-axis-label" data-energy-path-chart-axis="x" x="${left + plotWidth / 2}" y="${height - 7}" text-anchor="middle">${escapeHTML(frequency === "hourly" ? copy("DateHour", "Date & hour") : copy("Month", "Month"))}</text>${grid}${labels}${marks}
+    <text class="energy-path-chart-axis-label" data-energy-path-chart-axis="y" x="${left}" y="30">${escapeHTML(`${frequency === "hourly" ? copy("Measured", "Measured energy") : copy("Component", "Component energy")} (${energyPathDisplayUnit("kWh", display)})`)}</text>
+    <text class="energy-path-chart-axis-label" data-energy-path-chart-axis="x" x="${left + plotWidth / 2}" y="${height - 16}" text-anchor="middle">${escapeHTML(frequency === "hourly" ? copy("DateHour", "Date & hour") : copy("Month", "Month"))}</text>${grid}${labels}<line class="energy-path-chart-axis" x1="${left}" x2="${width - right}" y1="${baseline}" y2="${baseline}"/>${marks}
   </svg></div>${traces.length > 1 || frequency === "hourly" ? `<div class="energy-path-chart-legend">${traces.map((trace, index) => `<span><i class="energy-path-chart-color-${index % 6}"></i>${escapeHTML(trace.label)}</span>`).join("")}</div>` : ""}`;
+}
+
+// Minimum chart widths bound corrected tick fonts to 20 SVG units. Reserve a
+// little extra for the inherited UI family without measuring the mounted SVG.
+function chartLabelWidth(label) {
+  chartLabelContext ||= document.createElement("canvas").getContext("2d");
+  if (!chartLabelContext) return String(label).length * 13;
+  chartLabelContext.font = `22px ${getComputedStyle(document.documentElement).fontFamily}`;
+  return chartLabelContext.measureText(String(label)).width;
+}
+
+function hourlyChartTicks(points, x) {
+  if (points.length < 3) return points;
+  const first = points[0], last = points.at(-1), result = [first];
+  const candidates = points.filter((_, index) => index > 0 && index < points.length - 1 && index % Math.max(1, Math.floor(points.length / 4)) === 0);
+  let previousRight = x(first.x) + chartLabelWidth(first.label);
+  const lastLeft = x(last.x) - chartLabelWidth(last.label);
+  for (const point of candidates) {
+    const position = x(point.x), halfWidth = chartLabelWidth(point.label) / 2;
+    if (position - halfWidth < previousRight + 10 || position + halfWidth > lastLeft - 10) continue;
+    result.push(point);
+    previousRight = position + halfWidth;
+  }
+  result.push(last);
+  return result;
 }
 
 // Bound SVG geometry while preserving observed extrema and real missing-hour gaps.
