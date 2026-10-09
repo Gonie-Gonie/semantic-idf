@@ -241,8 +241,54 @@ these are not desktop navigation surfaces to extend.
 
 ### Heat Flow and HVAC
 
-Zone Heat Flow retains SQL or CSV/ESO signed-flow ledgers, frame sampling, and
-time-range controls. Static Topology remains separate; see
+Zone Heat Flow retains SQL or CSV/ESO observations. Transfer signs are relative
+to zone air: positive adds heat; negative removes heat. Physical Net sums the
+six transfer terms (`internalConvective`, `surfaceConvection`, `interzoneAir`,
+`outdoorAir`, `systemAir`, `systemConvective`). `airStorage` and `deviation`
+are separate diagnostics, never additional gains/losses. Positive storage means
+air warming and negative storage means air cooling. The computed balance residual
+is `Net - airStorage`, available only when all six transfer terms and storage
+are observed; reported deviation retains its original sign separately. Zone-air
+heat-balance rates retain EnergyPlus's per-modelled-zone basis without applying
+Zone/ZoneGroup multipliers. See the
+[EnergyPlus balance equation](https://github.com/NREL/EnergyPlus/blob/v25.1.0/src/EnergyPlus/ZoneTempPredictorCorrector.cc#L4981).
+
+The map's local bars and gain/loss summaries include internal convective gains,
+system air transfer and system convective gains. Surface convection, interzone
+air and outdoor air form a separate exchange group. Zone-level air/convection
+arrows show aggregate direction, without assigning that total to a neighbouring
+zone. Ledger numbers use signed kW to 0.001 kW, with the retained W value in
+their title. Partial totals are marked; missing observations are not zeros.
+New zone-series `observed` category-major masks and `temperatureObserved`
+frame masks distinguish valid zero from invalid/absent values. Older payloads
+without masks retain their historical value-array semantics.
+
+Concrete surface arrows use canonical `thermalTopology` boundary flows with
+explicit owner/target identities, the executed model's minimal `planGeometry`
+snapshot, and verified Hourly source observations at the exact ledger timestamp.
+Each reciprocal interzone pair is counted once. Incoming and outgoing amounts
+remain separate, with kWh per reported interval; surface conduction/window
+exchange is not the zone-air convection rate and is never added to its kW
+balance. Contributing sources need explicit supported rate/energy units. Rate
+aliases additionally require an actual one-hour integration interval; reported
+Hourly energy in J/kWh can remain verified at aligned observed timestamps even
+if other hours are absent. Unaligned sparse, mixed-frequency, ambiguous or
+unmatched observations cannot produce a verified pair arrow. Older results
+retain aggregate zone exchange direction but require a new Surface-detail run
+for verified pair arrows.
+
+The history section spans the result width and separates local transfers,
+boundary exchanges and reported storage/deviation into three panels with a
+shared signed scale. Labels inherit the UI font and Settings graph font size
+with a readable minimum; narrow panels scroll horizontally. It draws every
+frame supplied by the backend, with gaps for unavailable observations and no
+extra frontend stride/averaging. Backend sampling remains bounded by
+`maxHeatFlowFrames` (720, with retained last-frame handling), and displayed frame
+counts identify sampling. Day/Week/Month select 24-hour/7-day/30-day timestamp
+windows around the selected time within one contiguous calendar sequence;
+invalid dates or a backward/wrapped sequence cannot fall back to frame counts.
+A displayed frame count is not elapsed hours, and sampled W values cannot
+establish annual kWh totals. Static Topology remains separate; see
 [Topology data contracts](topology.md#data-contracts).
 
 HVAC Loop Check uses executed-input topology and the shared supply/demand

@@ -24,11 +24,54 @@ type ThermalTopologySimulationResult struct {
 	UnavailableReason string                            `json:"unavailableReason,omitempty"`
 	State             string                            `json:"state"`
 	SignConvention    string                            `json:"signConvention"`
+	PlanGeometry      *HeatFlowPlanGeometry             `json:"planGeometry,omitempty"`
 	Periods           []ThermalTopologySimulationPeriod `json:"periods,omitempty"`
 	Sources           []EnergyDataSource                `json:"sources,omitempty"`
 	Completeness      []PurposeCompletenessItem         `json:"completeness,omitempty"`
 	Reconciliation    []EnergyReconciliation            `json:"reconciliation,omitempty"`
 	OutputWeight      ThermalTopologyOutputWeight       `json:"outputWeight"`
+}
+
+// HeatFlowPlanGeometry records only the executed model's floor plans and node
+// identities needed to place measured flows. It remains independent of the
+// editable analysis geometry and excludes its expensive fields and metrics.
+type HeatFlowPlanGeometry struct {
+	SourceModelHash string                `json:"sourceModelHash,omitempty"`
+	Zones           []HeatFlowPlanZone    `json:"zones"`
+	Stories         []HeatFlowPlanStory   `json:"stories"`
+	Surfaces        []HeatFlowPlanSurface `json:"surfaces"`
+	Topology        HeatFlowPlanTopology  `json:"topology"`
+}
+
+type HeatFlowPlanZone struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	StoryIndex int    `json:"storyIndex"`
+}
+
+type HeatFlowPlanStory struct {
+	Index int    `json:"index"`
+	Name  string `json:"name"`
+}
+
+type HeatFlowPlanSurface struct {
+	ID          string              `json:"id"`
+	ZoneName    string              `json:"zoneName"`
+	StoryIndex  int                 `json:"storyIndex"`
+	SurfaceType string              `json:"surfaceType"`
+	Vertices    []idf.GeometryPoint `json:"vertices"`
+}
+
+type HeatFlowPlanTopology struct {
+	Nodes []HeatFlowPlanNode `json:"nodes"`
+}
+
+type HeatFlowPlanNode struct {
+	ID         string `json:"id"`
+	Label      string `json:"label"`
+	Kind       string `json:"kind"`
+	ZoneName   string `json:"zoneName,omitempty"`
+	StoryIndex int    `json:"storyIndex"`
 }
 
 type ThermalTopologySimulationPeriod struct {
@@ -50,6 +93,7 @@ type ThermalTopologyBoundaryFlow struct {
 	TargetNodeID       string                     `json:"targetNodeId"`
 	Value              float64                    `json:"value"`
 	Values             []float64                  `json:"values,omitempty"`
+	Observed           []bool                     `json:"observed,omitempty"`
 	Unit               string                     `json:"unit"`
 	Direction          string                     `json:"direction"`
 	SignConvention     string                     `json:"signConvention"`
@@ -90,17 +134,18 @@ type ThermalTopologyOutputWeight struct {
 }
 
 type thermalTopologyRawSeries struct {
-	keyValue           string
-	variableName       string
-	unit               string
-	reportingFrequency string
-	file               string
-	sourceType         string
-	indexGroup         string
-	points             []SimulationPoint
-	family             string
-	rate               bool
-	source             EnergyDataSource
+	keyValue                 string
+	variableName             string
+	unit                     string
+	reportingFrequency       string
+	nativeReportingFrequency string
+	file                     string
+	sourceType               string
+	indexGroup               string
+	points                   []SimulationPoint
+	family                   string
+	rate                     bool
+	source                   EnergyDataSource
 }
 
 type thermalTopologyRawFlow struct {
@@ -109,6 +154,7 @@ type thermalTopologyRawFlow struct {
 	connectionID       string
 	labels             []string
 	values             []float64
+	observed           []bool
 	sourceIDs          []string
 	aggregationMethods []string
 	traces             map[string]thermalTopologyTraceValues
@@ -137,17 +183,20 @@ func buildThermalTopologySimulationResultWithGeometry(result *SimulationRunResul
 		State:          "static_topology",
 		SignConvention: "positive enters the owning zone; negative leaves the owning zone",
 	}
+	if geometry == nil && geometryErr == nil {
+		report, err := geometryReportFromSimulationInput(result.InputPath)
+		geometry = &report
+		geometryErr = err
+	}
+	if geometryErr == nil && geometry != nil {
+		out.PlanGeometry = buildHeatFlowPlanGeometry(*geometry, fileSHA256(result.InputPath))
+	}
 	if request.ZoneHeatFlowDetail != PurposeZoneHeatFlowDetailSurface {
 		out.UnavailableReason = "Run Zone Heat Flow with Surface detail to load a simulation overlay."
 		out.Completeness = []PurposeCompletenessItem{thermalTopologyCompleteness(false, "purpose plan", out.UnavailableReason)}
 		return out
 	}
 
-	if geometry == nil && geometryErr == nil {
-		report, err := geometryReportFromSimulationInput(result.InputPath)
-		geometry = &report
-		geometryErr = err
-	}
 	if geometryErr != nil {
 		out.UnavailableReason = "The simulation input could not be mapped to thermal topology: " + geometryErr.Error()
 		out.Completeness = []PurposeCompletenessItem{thermalTopologyCompleteness(false, "simulation input", out.UnavailableReason)}
@@ -169,6 +218,13 @@ func buildThermalTopologySimulationResultWithGeometry(result *SimulationRunResul
 	}
 
 	frameLabels := longestThermalTopologyLabels(flows)
+	nativeSeriesByID := map[string][]thermalTopologyRawSeries{}
+	for _, item := range series {
+		nativeSeriesByID[item.source.ID] = append(nativeSeriesByID[item.source.ID], item)
+	}
+	for index := range flows {
+		flows[index].observed = thermalTopologyFlowObserved(flows[index], nativeSeriesByID, frameLabels)
+	}
 	periodDefinitions := thermalTopologyPeriodDefinitions(frameLabels)
 	for _, definition := range periodDefinitions {
 		out.Periods = append(out.Periods, buildThermalTopologySimulationPeriod(topology, flows, definition))
@@ -188,6 +244,31 @@ func buildThermalTopologySimulationResultWithGeometry(result *SimulationRunResul
 		Rating: thermalTopologyWeightRating(len(sources), frameCount),
 	}
 	return out
+}
+
+func buildHeatFlowPlanGeometry(geometry idf.GeometryReport, sourceModelHash string) *HeatFlowPlanGeometry {
+	plan := &HeatFlowPlanGeometry{SourceModelHash: sourceModelHash}
+	for _, zone := range geometry.Zones {
+		plan.Zones = append(plan.Zones, HeatFlowPlanZone{ID: zone.ID, Name: zone.Name, StoryIndex: zone.StoryIndex})
+	}
+	for _, story := range geometry.Stories {
+		plan.Stories = append(plan.Stories, HeatFlowPlanStory{Index: story.Index, Name: story.Name})
+	}
+	for _, surface := range geometry.Surfaces {
+		if !strings.EqualFold(surface.SurfaceType, "Floor") {
+			continue
+		}
+		plan.Surfaces = append(plan.Surfaces, HeatFlowPlanSurface{
+			ID: surface.ID, ZoneName: surface.ZoneName, StoryIndex: surface.StoryIndex,
+			SurfaceType: surface.SurfaceType, Vertices: append([]idf.GeometryPoint(nil), surface.Vertices...),
+		})
+	}
+	for _, node := range geometry.Topology.Nodes {
+		plan.Topology.Nodes = append(plan.Topology.Nodes, HeatFlowPlanNode{
+			ID: node.ID, Label: node.Label, Kind: node.Kind, ZoneName: node.ZoneName, StoryIndex: node.StoryIndex,
+		})
+	}
+	return plan
 }
 
 func thermalTopologyCompleteness(found bool, source string, message string) PurposeCompletenessItem {
@@ -298,16 +379,17 @@ func loadThermalTopologyRawSeriesFromSQL(path string) ([]thermalTopologyRawSerie
 			continue
 		}
 		raw := thermalTopologyRawSeries{
-			keyValue:           strings.TrimSpace(item.row.KeyValue),
-			variableName:       strings.TrimSpace(item.row.Name),
-			unit:               strings.TrimSpace(item.row.Units),
-			reportingFrequency: strings.TrimSpace(item.row.ReportingFrequency),
-			file:               filepath.Base(path),
-			sourceType:         "sql_report_data",
-			indexGroup:         strings.TrimSpace(item.row.IndexGroup),
-			points:             item.points,
-			family:             family,
-			rate:               rate,
+			keyValue:                 strings.TrimSpace(item.row.KeyValue),
+			variableName:             strings.TrimSpace(item.row.Name),
+			unit:                     strings.TrimSpace(item.row.Units),
+			reportingFrequency:       strings.TrimSpace(item.row.ReportingFrequency),
+			nativeReportingFrequency: strings.TrimSpace(item.row.ReportingFrequency),
+			file:                     filepath.Base(path),
+			sourceType:               "sql_report_data",
+			indexGroup:               strings.TrimSpace(item.row.IndexGroup),
+			points:                   item.points,
+			family:                   family,
+			rate:                     rate,
 		}
 		raw.source = thermalTopologyEnergySource(raw)
 		out = append(out, raw)
@@ -324,20 +406,112 @@ func loadThermalTopologyRawSeriesFromFallback(series []SimulationSeries) []therm
 			continue
 		}
 		raw := thermalTopologyRawSeries{
-			keyValue:           keyValue,
-			variableName:       variableName,
-			unit:               unitFromSeriesColumn(item.Column),
-			reportingFrequency: "Hourly",
-			file:               item.File,
-			sourceType:         "simulation_series",
-			points:             append([]SimulationPoint(nil), item.Points...),
-			family:             family,
-			rate:               rate,
+			keyValue:                 keyValue,
+			variableName:             variableName,
+			unit:                     unitFromSeriesColumn(item.Column),
+			reportingFrequency:       "Hourly",
+			nativeReportingFrequency: thermalTopologyNativeSeriesFrequency(item),
+			file:                     item.File,
+			sourceType:               "simulation_series",
+			points:                   append([]SimulationPoint(nil), item.Points...),
+			family:                   family,
+			rate:                     rate,
 		}
 		raw.source = thermalTopologyEnergySource(raw)
 		out = append(out, raw)
 	}
 	return out
+}
+
+func thermalTopologyNativeSeriesFrequency(series SimulationSeries) string {
+	if frequency := strings.TrimSpace(series.ReportingFrequency); frequency != "" {
+		return frequency
+	}
+	column := strings.TrimSpace(series.Column)
+	if index := strings.LastIndex(column, "("); index >= 0 && strings.HasSuffix(column, ")") {
+		return strings.TrimSpace(strings.TrimSuffix(column[index+1:], ")"))
+	}
+	return ""
+}
+
+// These flags supplement the historical aggregates. They never repair or
+// realign values: an hourly interval arrow needs every contributing native
+// observation to match the exact executed hourly sequence.
+func thermalTopologyFlowObserved(flow thermalTopologyRawFlow, sources map[string][]thermalTopologyRawSeries, labels []string) []bool {
+	observed := make([]bool, len(labels))
+	if len(flow.sourceIDs) == 0 || len(flow.labels) != len(labels) || len(flow.values) != len(labels) {
+		return observed
+	}
+	for index, label := range labels {
+		if strings.TrimSpace(label) == "" || flow.labels[index] != label {
+			return observed
+		}
+	}
+	rateHoursBySource := map[string][]float64{}
+	for _, sourceID := range flow.sourceIDs {
+		items := sources[sourceID]
+		if len(items) != 1 || !strings.EqualFold(strings.TrimSpace(items[0].nativeReportingFrequency), "Hourly") || len(items[0].points) != len(labels) {
+			return observed
+		}
+		if !thermalTopologyExplicitUnitSupported(items[0]) {
+			return observed
+		}
+		for index, point := range items[0].points {
+			if point.Label != labels[index] {
+				return observed
+			}
+		}
+		if items[0].rate {
+			rateHoursBySource[sourceID] = thermalTopologyIntervalHours(items[0])
+		}
+	}
+	for index := range observed {
+		observed[index] = !math.IsNaN(flow.values[index]) && !math.IsInf(flow.values[index], 0)
+		for _, sourceID := range flow.sourceIDs {
+			point := sources[sourceID][0].points[index]
+			if math.IsNaN(point.Value) || math.IsInf(point.Value, 0) {
+				observed[index] = false
+			}
+			// Legacy rate integration can bridge a missing hour. Keep those
+			// historical values, but do not label the resulting multi-hour
+			// energy as a verified single Hourly interval in the map.
+			if hours, rate := rateHoursBySource[sourceID]; rate && hours[index] != 1 {
+				observed[index] = false
+			}
+		}
+	}
+	return observed
+}
+
+// Historical normalization accepts blank units and retains unknown-unit values.
+// Verified map arrows need an explicit unit whose conversion to kWh is known.
+func thermalTopologyExplicitUnitSupported(item thermalTopologyRawSeries) bool {
+	unit := strings.ToLower(strings.TrimSpace(item.unit))
+	if item.rate {
+		switch unit {
+		case "w", "watt", "watts", "kw", "mw":
+			return true
+		}
+	} else {
+		switch unit {
+		case "j", "joule", "joules", "kj", "mj", "gj", "wh", "kwh", "mwh":
+			return true
+		}
+	}
+	return false
+}
+
+func thermalTopologyPeriodObserved(observed []bool, definition thermalTopologyPeriodDefinition) []bool {
+	if definition.kind != "hourly" {
+		return nil
+	}
+	flags := make([]bool, len(definition.buckets))
+	for bucketIndex, indexes := range definition.buckets {
+		if len(indexes) == 1 && indexes[0] >= 0 && indexes[0] < len(observed) {
+			flags[bucketIndex] = observed[indexes[0]]
+		}
+	}
+	return flags
 }
 
 func thermalTopologySurfaceVariableNames() []string {
@@ -777,6 +951,7 @@ func buildThermalTopologySimulationPeriod(topology idf.ThermalTopologyReport, fl
 			TargetNodeID:       raw.boundary.TargetID,
 			Value:              value,
 			Values:             values,
+			Observed:           thermalTopologyPeriodObserved(raw.observed, definition),
 			Unit:               "kWh",
 			Direction:          thermalTopologyFlowDirection(value),
 			SignConvention:     "positive enters owner",

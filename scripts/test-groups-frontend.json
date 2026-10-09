@@ -280,6 +280,7 @@
           "areas": ["simulation"],
           "tier": "fast"
         },
+        {"files": ["heat_flow_*_browser_test.go"], "areas": ["simulation", "topology", "i18n"], "tier": "browser"},
         {"files": ["batch_simulation_progress_browser_test.go"], "areas": ["batch", "simulation", "i18n"], "tier": "browser"},
         {
           "files": ["tools_*_test.go"],

@@ -39,9 +39,14 @@ type HeatFlowCategory struct {
 }
 
 type HeatFlowZoneSeries struct {
-	Name        string      `json:"name"`
-	Values      [][]float64 `json:"values"`
-	Temperature []float64   `json:"temperature,omitempty"`
+	Name   string      `json:"name"`
+	Values [][]float64 `json:"values"`
+	// Observed follows Values in category-major order. False identifies padding
+	// for absent/invalid observations; a reported zero remains true. Older
+	// saved payloads can omit the mask and retain their legacy Values semantics.
+	Observed            [][]bool  `json:"observed,omitempty"`
+	Temperature         []float64 `json:"temperature,omitempty"`
+	TemperatureObserved []bool    `json:"temperatureObserved,omitempty"`
 }
 
 type heatFlowCategoryDefinition struct {
@@ -61,11 +66,13 @@ type heatFlowColumn struct {
 }
 
 type heatFlowZoneBuilder struct {
-	name            string
-	values          [][]float64
-	temperature     []float64
-	hasTemperature  bool
-	hasHeatFlowData bool
+	name                string
+	values              [][]float64
+	observed            [][]bool
+	temperature         []float64
+	temperatureObserved []bool
+	hasTemperature      bool
+	hasHeatFlowData     bool
 }
 
 func heatFlowCategoryDefinitions() []heatFlowCategoryDefinition {
@@ -160,12 +167,14 @@ func parseSimulationHeatFlowCSV(path string) (HeatFlowDataset, error) {
 			builder.ensureFrame(keptFrames, len(categories))
 			if column.temperature {
 				builder.temperature[keptFrames] = roundedHeatFlowNumber(value)
+				builder.temperatureObserved[keptFrames] = true
 				builder.hasTemperature = true
 				dataset.MinTemperature = math.Min(dataset.MinTemperature, value)
 				dataset.MaxTemperature = math.Max(dataset.MaxTemperature, value)
 				continue
 			}
 			builder.values[column.categoryIndex][keptFrames] = roundedHeatFlowNumber(value)
+			builder.observed[column.categoryIndex][keptFrames] = true
 			builder.hasHeatFlowData = true
 			dataset.MaxAbs = math.Max(dataset.MaxAbs, math.Abs(value))
 		}
@@ -194,9 +203,10 @@ func parseSimulationHeatFlowCSV(path string) (HeatFlowDataset, error) {
 			continue
 		}
 		builder.ensureFrame(keptFrames-1, len(categories))
-		zone := HeatFlowZoneSeries{Name: builder.name, Values: builder.values}
+		zone := HeatFlowZoneSeries{Name: builder.name, Values: builder.values, Observed: builder.observed}
 		if builder.hasTemperature {
 			zone.Temperature = builder.temperature
+			zone.TemperatureObserved = builder.temperatureObserved
 		}
 		dataset.Zones = append(dataset.Zones, zone)
 	}
@@ -296,12 +306,14 @@ func parseSimulationHeatFlowESO(path string) (HeatFlowDataset, error) {
 		builder.ensureFrame(keptFrameIndex, len(categories))
 		if column.temperature {
 			builder.temperature[keptFrameIndex] = roundedHeatFlowNumber(value)
+			builder.temperatureObserved[keptFrameIndex] = true
 			builder.hasTemperature = true
 			dataset.MinTemperature = math.Min(dataset.MinTemperature, value)
 			dataset.MaxTemperature = math.Max(dataset.MaxTemperature, value)
 			continue
 		}
 		builder.values[column.categoryIndex][keptFrameIndex] = roundedHeatFlowNumber(value)
+		builder.observed[column.categoryIndex][keptFrameIndex] = true
 		builder.hasHeatFlowData = true
 		dataset.MaxAbs = math.Max(dataset.MaxAbs, math.Abs(value))
 	}
@@ -587,9 +599,10 @@ func finalizeHeatFlowDataset(dataset HeatFlowDataset, zoneBuilders map[string]*h
 			continue
 		}
 		builder.ensureFrame(dataset.FrameCount-1, categoryCount)
-		zone := HeatFlowZoneSeries{Name: builder.name, Values: builder.values}
+		zone := HeatFlowZoneSeries{Name: builder.name, Values: builder.values, Observed: builder.observed}
 		if builder.hasTemperature {
 			zone.Temperature = builder.temperature
+			zone.TemperatureObserved = builder.temperatureObserved
 		}
 		dataset.Zones = append(dataset.Zones, zone)
 	}
@@ -605,13 +618,18 @@ func (builder *heatFlowZoneBuilder) ensureFrame(frameIndex int, categoryCount in
 	}
 	for len(builder.temperature) <= frameIndex {
 		builder.temperature = append(builder.temperature, 0)
+		builder.temperatureObserved = append(builder.temperatureObserved, false)
 	}
 	for len(builder.values) < categoryCount {
 		builder.values = append(builder.values, nil)
 	}
+	for len(builder.observed) < categoryCount {
+		builder.observed = append(builder.observed, nil)
+	}
 	for index := 0; index < categoryCount; index++ {
 		for len(builder.values[index]) <= frameIndex {
 			builder.values[index] = append(builder.values[index], 0)
+			builder.observed[index] = append(builder.observed[index], false)
 		}
 	}
 }

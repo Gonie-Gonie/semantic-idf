@@ -577,12 +577,14 @@ func parseSimulationHeatFlowSQLWithProgress(path string, progress func(sqlWorkPr
 		number := value.Float64
 		if column.temperature {
 			builder.temperature[keptFrameIndex] = roundedHeatFlowNumber(number)
+			builder.temperatureObserved[keptFrameIndex] = true
 			builder.hasTemperature = true
 			dataset.MinTemperature = math.Min(dataset.MinTemperature, number)
 			dataset.MaxTemperature = math.Max(dataset.MaxTemperature, number)
 			return nil
 		}
 		builder.values[column.categoryIndex][keptFrameIndex] = roundedHeatFlowNumber(number)
+		builder.observed[column.categoryIndex][keptFrameIndex] = true
 		builder.hasHeatFlowData = true
 		dataset.MaxAbs = math.Max(dataset.MaxAbs, math.Abs(number))
 		return nil

@@ -187,16 +187,81 @@ be replaced with nearby times, another zone, or the Building value.
 
 ## Heat-Flow Ledger {#heat-flow-ledger}
 
-The ledger follows zone heat-balance quantities over displayed frames.
-Rate values use the shown W unit; temperatures use °C. Inspect the category
-meaning and sign together. A gain adds heat to the relevant zone balance;
-a loss removes heat. Opposite directions can cancel in a net total.
+Select a zone in the floor plan or its numbered row to inspect the current
+timestamp. The floor tables show each zone's local gains, local losses and total
+Net. The ledger displays signed rates in kW to 0.001 kW and temperature in °C.
+Hover a rate to read the W value retained in the result. Positive transfer adds
+heat to zone air; negative transfer removes it. Gains and losses remain visible
+separately, even when their Net is small.
+The local bars and Net colours use fixed scales across all retained frames, so
+their sizes and colours remain comparable during playback. The floor-plan colour
+legend shows the selected Net or temperature range.
+These zone-air rates describe one modelled zone; Zone/ZoneGroup multipliers
+are not applied to the reported ledger.
 
-The separate surface/connection energy trace uses a canonical owning side:
-positive enters that owner and negative leaves it. Reciprocal interzone
-surfaces represent one interface, with both source sides retained.
-Integrated overlay quantities use kWh; they are not identical to an
-instantaneous W ledger reading.
+| Group | Included transfer terms | Meaning |
+| --- | --- | --- |
+| Local gains / losses | Internal convective gains | Heat from people, lights and equipment to zone air. |
+| Local gains / losses | HVAC system air transfer | Heat delivered or removed through HVAC supply air. |
+| Local gains / losses | HVAC/system convective gains | Direct convective heat from non-air HVAC equipment. |
+| Boundary exchange | Surface convection | Combined transfer between all zone surfaces and zone air. |
+| Boundary exchange | Interzone air transfer | Combined transfer caused by air exchange with other zones. |
+| Boundary exchange | Outdoor air transfer | Combined transfer from outside air, including infiltration. |
+
+```text
+Net = sum of the six transfer terms
+Balance residual = Net − air energy storage
+```
+
+**Air energy storage** and **reported balance deviation** are shown separately
+from transfers. Positive storage means the air stores heat as it warms;
+negative storage means it releases heat as it cools. They are not extra gains
+or losses to add to Net. The computed residual is available only when all six
+transfer terms and storage are observed. The independently reported deviation
+keeps its reported sign. This follows the
+[EnergyPlus zone-air balance](https://github.com/NREL/EnergyPlus/blob/v25.1.0/src/EnergyPlus/ZoneTempPredictorCorrector.cc#L4981).
+
+A `*` marks a partial Net or local subtotal: it sums the available terms without treating missing
+terms as zero. An unavailable number or chart gap differs from a measured zero.
+New results record availability for each zone/category/time and temperature.
+Older saved results retain their original value arrays, whose padded zeros may
+not distinguish absent observations; rerunning provides that evidence.
+
+**Exchange arrows** point into or out of the selected zone. The air-transfer and
+surface-convection rows show aggregate zone rates in kW; they do not identify a
+particular neighbouring zone. The separate measured surface arrows identify a
+zone or external boundary from the executed model. They require verified Hourly
+source observations, an exact timestamp match and explicit supported rate or
+energy units. Rate-based energy needs a verified one-hour integration interval.
+Reported Hourly J/kWh energy can remain usable at aligned observed timestamps
+even when other hours are absent. Reciprocal interzone surfaces represent one
+interface and are counted once, while their source identities
+remain available. Incoming and outgoing interval energies are shown separately
+in **kWh per reported interval**. Surface conduction and window exchange differ
+from the zone-air convection ledger and must not be added to its kW total.
+Missing or unverified pairs have no measured arrow. Older results need a new
+Surface-detail run to provide the executed geometry and frame evidence.
+
+**Heat-flow history** uses the full result width for three panels: local
+transfers, boundary exchange, and reported storage/balance deviation. The panels
+share a signed scale; the diagnostics retain their reported signs. Axis units
+are labelled. Fonts follow the UI and **Settings → Graph label font size**, with
+a readable minimum and horizontal scrolling on narrow panels. Click a
+chart to select a frame; scroll to zoom, Shift-scroll to pan, or double-click
+to restore the complete range. Legends retain the selected frame's values.
+Increasing valid timestamps use elapsed-time spacing. Backward, duplicate or
+unavailable dates use an explicitly labelled recorded-frame sequence instead.
+Sparse observations do not fill the unobserved intervals.
+**24 hours**, **7 days** and **30 days** select windows around
+the selected timestamp. They stay within one continuous calendar sequence;
+unusable dates or a backward date boundary do not fall back to frame counts.
+
+The history renders every supplied frame without additional stride sampling
+or averaging. Long runs are already sampled by the backend around its 720-frame
+limit; the retained last frame can affect that count. Check shown/original
+frame counts and timestamps. Twenty-four displayed frames need not mean one
+day, and adding sampled W readings cannot produce annual kWh. Use actual
+timestamp ranges and the integrated energy results for those quantities.
 
 Static Topology UA is conductance in W/K. It has no weather, operating time,
 or temperature difference. For illustration, UA = 100 W/K and a steady

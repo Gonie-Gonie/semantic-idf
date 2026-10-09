@@ -96,6 +96,9 @@ $nestedModules = @(
     "views/input-views.js",
     "views/profile-views.js",
     "views/simulation-views.js",
+    "heat-flow-data.js",
+    "views/heat-flow-chart.js",
+    "views/heat-flow-map.js",
     "views/comfort-inspection-view.js",
     "tools/multi-simulation.js"
 )
@@ -117,6 +120,8 @@ $styles = @(
     "styles/profile.css",
     "styles/responsive.css",
     "styles/simulation.css",
+    "styles/heat-flow-chart.css",
+    "styles/heat-flow-map.css",
     "styles/comfort-inspection.css",
     "styles/guide-manual.css",
     "styles/settings.css",

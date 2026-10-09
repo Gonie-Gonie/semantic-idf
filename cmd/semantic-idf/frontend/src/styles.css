@@ -1,4 +1,6 @@
 @import "./styles/simulation.css";
+@import "./styles/heat-flow-chart.css";
+@import "./styles/heat-flow-map.css";
 @import "./styles/base.css";
 @import "./styles/hvac.css";
 @import "./styles/hvac-inspection.css";
