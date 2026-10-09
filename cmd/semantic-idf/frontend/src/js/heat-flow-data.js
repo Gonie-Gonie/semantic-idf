@@ -4,6 +4,7 @@ const exchangeCategories = new Set(["surfaceConvection", "interzoneAir", "outdoo
 const diagnosticCategories = new Set(["airStorage", "deviation"]);
 const physicalCategories = ["internalConvective", "surfaceConvection", "interzoneAir", "outdoorAir", "systemAir", "systemConvective"];
 const presentationExtents = new WeakMap();
+const presentationReferenceWatts = 1;
 
 export function heatFlowCategoryKind(category) {
   return diagnosticCategories.has(category?.id) ? "diagnostic" : exchangeCategories.has(category?.id) ? "exchange" : "local";
@@ -52,18 +53,47 @@ export function heatFlowCategoryLabel(category) {
 }
 
 export function heatFlowPresentationExtents(dataset) {
-  if (!dataset || typeof dataset !== "object") return { localMax: 1, netMax: 1 };
+  const extents = { localMax: NaN, netMax: NaN, rateMax: NaN, localCount: 0, netCount: 0, rateCount: 0 };
+  if (!dataset || typeof dataset !== "object") return extents;
   if (presentationExtents.has(dataset)) return presentationExtents.get(dataset);
-  const extents = { localMax: 1, netMax: 1 };
+  const frameCount = Math.max(0, Number(dataset.frameCount) || dataset.labels?.length || 0);
+  const includeRate = value => {
+    if (!Number.isFinite(value)) return;
+    extents.rateMax = Math.max(extents.rateCount ? extents.rateMax : 0, Math.abs(value));
+    extents.rateCount++;
+  };
+  // A fixed reference across every zone and supplied frame. Cache the one
+  // history scan; selection, Story filters and playback never change the scale.
   for (const zone of dataset.zones || []) {
-    for (let frame = 0; frame < (Number(dataset.frameCount) || dataset.labels?.length || 0); frame++) {
+    for (let frame = 0; frame < frameCount; frame++) {
       const balance = heatFlowBalance(dataset, zone, frame);
-      extents.localMax = Math.max(extents.localMax, balance.localGains || 0, Math.abs(balance.localLosses || 0));
-      extents.netMax = Math.max(extents.netMax, Math.abs(balance.net || 0));
+      if (Number.isFinite(balance.net)) {
+        extents.netMax = Math.max(extents.netCount ? extents.netMax : 0, Math.abs(balance.net));
+        extents.netCount++;
+      }
+      if (Number.isFinite(balance.localGains) && Number.isFinite(balance.localLosses)) {
+        extents.localMax = Math.max(extents.localCount ? extents.localMax : 0, balance.localGains, Math.abs(balance.localLosses));
+        extents.localCount++;
+      }
+      for (let categoryIndex = 0; categoryIndex < (dataset.categories?.length || 0); categoryIndex++) {
+        includeRate(heatFlowCategoryValue(zone, categoryIndex, frame));
+      }
+      includeRate(balance.residual);
     }
   }
   presentationExtents.set(dataset, extents);
   return extents;
+}
+
+// A disclosed symmetric log scale with one physical 1 W reference. For stacks,
+// map each sign's total and distribute its height by the original value shares.
+// Keep displayed amounts unchanged; a missing observation is never zero.
+export function heatFlowPresentationRatio(value, maximum) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return NaN;
+  if (value === 0) return 0;
+  if (typeof maximum !== "number" || !Number.isFinite(maximum) || maximum <= 0) return NaN;
+  return Math.sign(value) * Math.log1p(Math.abs(value) / presentationReferenceWatts)
+    / Math.log1p(maximum / presentationReferenceWatts);
 }
 
 export function formatHeatFlowWatts(value, { signed = true, unit = "kW", digits = 3 } = {}) {

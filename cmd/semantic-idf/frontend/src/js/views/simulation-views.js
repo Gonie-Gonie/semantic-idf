@@ -35,10 +35,11 @@ import { renderHVACInspection, handleHVACInspectionEvent } from "./hvac-inspecti
 import { renderComfortInspection, handleComfortInspectionEvent, renderComfortInspectionReport } from "./comfort-inspection-view.js";
 import { decodeSimulationResultTransfer, simulationResultTransferMediaType } from "../simulation-result-transport.js";
 import { createSimulationProgress, readSimulationJSONResponse } from "../simulation-progress.js";
-import { heatFlowBalance, heatFlowPresentationExtents, heatFlowCategoryKind, heatFlowCategoryLabel, heatFlowCategoryValue as heatFlowObservedValue,
+import { heatFlowBalance, heatFlowPresentationExtents, heatFlowPresentationRatio, heatFlowCategoryKind, heatFlowCategoryLabel, heatFlowCategoryValue as heatFlowObservedValue,
   heatFlowZoneTemperature as heatFlowObservedTemperature, formatHeatFlowWatts, heatFlowExactWatts, heatFlowFrameTime } from "../heat-flow-data.js";
 import { renderHeatFlowStackChart, heatFlowChartFrameFromRatio } from "./heat-flow-chart.js";
 import { heatFlowMeasuredExchanges, renderHeatFlowExchangeArrows, renderHeatFlowExchangeDetails } from "./heat-flow-map.js";
+import { heatFlowLedgerMaximum, renderHeatFlowLedgerAxis, renderHeatFlowLedgerRow } from "./heat-flow-ledger.js";
 
 let progressListenerRegistered = false;
 let simulationPendingResponseRunID = "";
@@ -6223,12 +6224,15 @@ function renderHeatFlowGuide(open = false) {
 function renderHeatFlowSpatialToolbar(dataset) {
   const collapsed = Boolean(state.simulationHeatFlowInspectorCollapsed);
   const scale = heatFlowPresentationExtents(dataset);
+  const temperature = state.simulationHeatFlowOverlay === "temperature";
   const range = state.simulationHeatFlowOverlay === "temperature"
     ? `${formatTemperature(dataset.minTemperature)} → ${formatTemperature(dataset.maxTemperature)}`
-    : `${formatHeatFlowWatts(-scale.netMax)} / 0 / ${formatHeatFlowWatts(scale.netMax)}`;
+    : Number.isFinite(scale.netMax) ? `${formatHeatFlowWatts(-scale.netMax)} / 0 / ${formatHeatFlowWatts(scale.netMax)}` : t("simulation.heatFlowUnavailable", {}, "Unavailable");
+  const barRange = Number.isFinite(scale.localMax) ? `${scale.localMax > 0 ? "±" : ""}${formatHeatFlowWatts(scale.localMax, { signed: false })}` : t("simulation.heatFlowUnavailable", {}, "Unavailable");
   return `
     <div class="heatflow-spatial-toolbar">
-      <span class="heatflow-color-scale" data-heatflow-scale="${state.simulationHeatFlowOverlay === "temperature" ? "temperature" : "net"}"><i aria-hidden="true"></i>${escapeHTML(range)}</span>
+      <div class="heatflow-scale-group"><span class="heatflow-color-scale" data-heatflow-scale="${temperature ? "temperature" : "net"}"><i aria-hidden="true"></i>${escapeHTML(range)}${temperature ? "" : `<small>${escapeHTML(t("simulation.heatFlowFixedColourScale", {}, "All frames · logarithmic colours"))}</small>`}</span>
+        <span class="heatflow-bar-scale">${escapeHTML(t("simulation.heatFlowFixedBarScale", { range: barRange }, "Local bars: {range} · all frames · logarithmic"))}</span></div>
       <button class="heatflow-inspector-toggle ${collapsed ? "" : "active"}" type="button" data-heatflow-inspector-toggle aria-expanded="${collapsed ? "false" : "true"}">
         ${escapeHTML(collapsed ? t("simulation.showHeatFlowLedger", {}, "Show ledger") : t("simulation.hideHeatFlowLedger", {}, "Hide ledger"))}
       </button>
@@ -6480,12 +6484,13 @@ function renderHeatFlowStoryCard(geometry, story, dataset, zoneMap, frameIndex, 
     const zoneSeries = zoneMap.get(normalizeHeatFlowName(zoneName));
     const center = heatFlowZonePlanCenter(group.polygons);
     const number = zoneNumbers.get(normalizeHeatFlowName(zoneName));
-    const fill = heatFlowZoneFill(zoneSeries, dataset, frameIndex);
+    const observed = Number.isFinite(state.simulationHeatFlowOverlay === "temperature" ? heatFlowZoneTemperature(zoneSeries, frameIndex) : heatFlowZoneNet(zoneSeries, dataset, frameIndex));
+    const fill = observed ? heatFlowZoneFill(zoneSeries, dataset, frameIndex) : `url(#heatflow-unavailable-${story.index})`;
     const selected = normalizeHeatFlowName(zoneName) === normalizeHeatFlowName(state.simulationHeatFlowSelectedZone);
     return `
-      <g class="heatflow-zone ${selected ? "selected" : ""} ${zoneSeries ? "" : "missing"}" data-heat-zone="${escapeHTML(zoneName)}" ${simulationHeatFlowZoneSemanticAttributes(zoneName)} tabindex="0" role="button" aria-label="${escapeHTML(heatFlowZoneTitle(zoneName, zoneSeries, dataset, frameIndex))}" aria-pressed="${selected}">
+      <g class="heatflow-zone ${selected ? "selected" : ""} ${observed ? "" : "missing"}" data-heat-zone="${escapeHTML(zoneName)}" data-heatflow-map-observed="${observed}" ${simulationHeatFlowZoneSemanticAttributes(zoneName)} tabindex="0" role="button" aria-label="${escapeHTML(heatFlowZoneTitle(zoneName, zoneSeries, dataset, frameIndex))}" aria-pressed="${selected}">
         ${group.polygons.map(points => `<polygon points="${points.map(point => `${roundSVG(point.x)},${roundSVG(point.y)}`).join(" ")}" style="--heatflow-fill: ${fill};"></polygon>`).join("")}
-        ${zoneSeries ? renderHeatFlowZoneStack(zoneSeries, dataset, frameIndex, { x: center.x + (center.x > width - 52 ? -20 : 20), y: clampNumber(center.y, top + 28, height - bottom - 28) }, maxLocal) : ""}
+        ${zoneSeries ? renderHeatFlowZoneStack(zoneSeries, dataset, frameIndex, { x: center.x + (center.x > width - 52 ? -24 : 24), y: clampNumber(center.y, top + 46, height - bottom - 46) }, maxLocal) : ""}
         <circle class="heatflow-zone-number-back" data-heatflow-zone-badge="${escapeHTML(zoneName)}" data-heatflow-zone-number="${number}" cx="${roundSVG(center.x)}" cy="${roundSVG(center.y)}" r="12"></circle>
         <text class="heatflow-zone-number" x="${roundSVG(center.x)}" y="${roundSVG(center.y)}" dominant-baseline="central">${number}</text>
         <title>${escapeHTML(heatFlowZoneTitle(zoneName, zoneSeries, dataset, frameIndex))}</title>
@@ -6509,6 +6514,7 @@ function renderHeatFlowStoryCard(geometry, story, dataset, zoneMap, frameIndex, 
       <h4>${escapeHTML(story.name || `Level ${story.index + 1}`)}</h4>
       <div class="heatflow-floor-viewport">
         <svg class="heatflow-floor-plan" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(t("simulation.heatFlowPlanAria", { name: story.name || t("simulation.floor", {}, "Floor") }, "{name} heat-flow plan"))}" data-heatflow-plan="1">
+          <defs><pattern id="heatflow-unavailable-${story.index}" patternUnits="userSpaceOnUse" width="10" height="10"><rect class="heatflow-unavailable-base" width="10" height="10"></rect><path class="heatflow-unavailable-stripe" d="M-2 2 L2 -2 M0 10 L10 0 M8 12 L12 8"></path></pattern></defs>
           <g class="heatflow-plan-content" data-heatflow-plan-content>
             ${shapes.join("")}
           </g>
@@ -6522,18 +6528,21 @@ function renderHeatFlowStoryCard(geometry, story, dataset, zoneMap, frameIndex, 
 }
 
 function renderHeatFlowZoneStack(zoneSeries, dataset, frameIndex, center, maxAbs) {
+  const balance = heatFlowBalance(dataset, zoneSeries, frameIndex);
+  if (!Number.isFinite(balance.localGains) && !Number.isFinite(balance.localLosses)) return "";
   const axisY = 0;
-  const barWidth = 8;
-  const maxHeight = 28;
+  const barWidth = 14;
+  const maxHeight = 46;
   let positiveOffset = 0;
   let negativeOffset = 0;
   const rects = (dataset.categories || []).map((category, index) => {
     if (heatFlowCategoryKind(category) !== "local") return "";
     const value = heatFlowCategoryValue(zoneSeries, index, frameIndex);
-    if (!Number.isFinite(value) || Math.abs(value) <= 1e-9) {
+    if (!Number.isFinite(value) || value === 0) {
       return "";
     }
-    const height = Math.abs(value) / maxAbs * maxHeight;
+    const total = Math.abs(value > 0 ? balance.localGains : balance.localLosses);
+    const height = maxAbs > 0 && total > 0 ? Math.abs(heatFlowPresentationRatio(total, maxAbs)) * maxHeight * Math.abs(value) / total : 0;
     const y = value >= 0 ? axisY - positiveOffset - height : axisY + negativeOffset;
     if (value >= 0) {
       positiveOffset += height;
@@ -6544,7 +6553,7 @@ function renderHeatFlowZoneStack(zoneSeries, dataset, frameIndex, center, maxAbs
   });
   return `
     <g class="heatflow-mini-stack" transform="translate(${roundSVG(center.x)} ${roundSVG(center.y)})">
-      <line x1="-9" x2="9" y1="0" y2="0"></line>
+      <line x1="-11" x2="11" y1="0" y2="0"></line>
       ${rects.join("")}
     </g>`;
 }
@@ -6555,16 +6564,20 @@ function renderHeatFlowInspector(dataset, zoneSeries, zoneName, frameIndex) {
   }
   const frameLabel = heatFlowFrameLabel(dataset, frameIndex);
   const balance = heatFlowBalance(dataset, zoneSeries, frameIndex);
+  const maximum = heatFlowLedgerMaximum(dataset);
+  const basis = zoneSeries.rateBasis;
+  const convectiveIndex = (dataset.categories || []).findIndex(category => category.id === "systemConvective");
+  const mixedBasis = basis?.systemConvective === "energyplus_reported" && basis.effectiveMultiplier !== 1
+    && Number.isFinite(heatFlowCategoryValue(zoneSeries, convectiveIndex, frameIndex));
   const temp = heatFlowZoneTemperature(zoneSeries, frameIndex);
   const rows = (dataset.categories || [])
     .map((category, index) => {
       if (heatFlowCategoryKind(category) !== "local") return "";
       const value = heatFlowCategoryValue(zoneSeries, index, frameIndex);
-      return `
-        <div class="heatflow-ledger-row ${value > 0 ? "incoming" : value < 0 ? "outgoing" : ""}">
-          <span><i style="--legend-color: ${escapeHTML(category.color || "#94a3b8")}"></i>${escapeHTML(heatFlowCategoryLabel(category))}</span>
-          <strong title="${escapeHTML(heatFlowExactWatts(value))}">${escapeHTML(formatHeatFlowWatts(value))}</strong>
-        </div>`;
+      const reported = category.id === "systemAir" ? basis?.reportedSystemAir?.[frameIndex] : category.id === "systemConvective" ? basis?.reportedSystemConvective?.[frameIndex] : NaN;
+      const sourceTooltip = basis?.[category.id] === "modeled_zone" && basis.effectiveMultiplier !== 1 && Number.isFinite(reported) && Number.isFinite(value)
+        ? t("simulation.heatFlowNormalizedSource", { value: heatFlowExactWatts(value), reported: heatFlowExactWatts(reported), multiplier: basis.effectiveMultiplier }, "{value} · EnergyPlus reported {reported} ÷ Zone × List multiplier {multiplier}") : "";
+      return renderHeatFlowLedgerRow({ id: category.id, label: heatFlowCategoryLabel(category), value, maximum, color: category.color || "#94a3b8", sourceTooltip });
     })
     .join("");
   return `
@@ -6580,15 +6593,19 @@ function renderHeatFlowInspector(dataset, zoneSeries, zoneName, frameIndex) {
     </div>
     <div class="heatflow-flow-note">${escapeHTML(t("simulation.heatFlowBalanceSignNote", {}, "Positive transfer adds heat to the zone air; negative transfer removes it. Total net includes local terms and exchange, excluding storage and balance deviation."))}</div>
     ${balance.complete ? "" : `<div class="heatflow-partial-note">${escapeHTML(t("simulation.heatFlowPartialNote", {}, "* Partial balance: one or more transfer terms are unavailable. The net is the sum of reported terms; missing values are not zero."))}</div>`}
+    ${mixedBasis ? `<div class="heatflow-partial-note">${escapeHTML(t("simulation.heatFlowMixedBasisNote", {}, "HVAC convective gain retains the EnergyPlus reported aggregate: its components may use different multiplier bases. Net is the sum of the displayed terms."))}</div>` : ""}
     <h5 class="heatflow-section-title">${escapeHTML(t("simulation.heatFlowLocalChart", {}, "Local zone gains / losses"))}</h5>
+    <p class="heatflow-ledger-scale-note">${escapeHTML(t("simulation.heatFlowRateBarScale", {}, "Fixed logarithmic scale across all zones and times. Losses extend left; gains extend right. Read the values for exact amounts."))}</p>
+    ${renderHeatFlowLedgerAxis(maximum)}
     <div class="heatflow-ledger-list">
       ${rows}
     </div>
-    ${renderHeatFlowExchangeDetails(dataset, zoneSeries, zoneName, frameIndex, state.simulationResult?.purposeResults?.thermalTopology)}
+    ${renderHeatFlowExchangeDetails(dataset, zoneSeries, zoneName, frameIndex, state.simulationResult?.purposeResults?.thermalTopology, maximum)}
     <section class="heatflow-balance-check"><h5>${escapeHTML(t("simulation.heatFlowBalanceHeading", {}, "Air storage and balance check"))}</h5>
-      <div class="heatflow-ledger-row"><span>${escapeHTML(t("simulation.heatFlowCategory.airStorage", {}, "Air energy storage"))}</span><strong title="${escapeHTML(heatFlowExactWatts(balance.storage))}">${escapeHTML(formatHeatFlowWatts(balance.storage))}</strong></div>
-      <div class="heatflow-ledger-row"><span>${escapeHTML(t("simulation.heatFlowResidual", {}, "Net − air storage"))}</span><strong data-heatflow-kpi="residual" title="${escapeHTML(heatFlowExactWatts(balance.residual))}">${escapeHTML(formatHeatFlowWatts(balance.residual))}</strong></div>
-      <div class="heatflow-ledger-row"><span>${escapeHTML(t("simulation.heatFlowCategory.deviation", {}, "Reported balance deviation"))}</span><strong title="${escapeHTML(heatFlowExactWatts(balance.deviation))}">${escapeHTML(formatHeatFlowWatts(balance.deviation))}</strong></div>
+      ${renderHeatFlowLedgerAxis(maximum)}
+      ${renderHeatFlowLedgerRow({ id: "airStorage", label: t("simulation.heatFlowCategory.airStorage", {}, "Air energy storage"), value: balance.storage, maximum })}
+      ${renderHeatFlowLedgerRow({ id: "residual", label: t("simulation.heatFlowResidual", {}, "Net − air storage"), value: balance.residual, maximum, kpi: "residual" })}
+      ${renderHeatFlowLedgerRow({ id: "deviation", label: t("simulation.heatFlowCategory.deviation", {}, "Reported balance deviation"), value: balance.deviation, maximum })}
       <p>${escapeHTML(t("simulation.heatFlowStorageNote", {}, "Positive storage means air warming; negative storage means air cooling. Storage and deviation are not additional gains or losses. Rates are shown in kW to 0.001 kW; hover a number for its reported W precision."))}</p>
     </section>`;
 }
@@ -7045,13 +7062,11 @@ function heatFlowFrameLabel(dataset, frameIndex) {
 
 function heatFlowNetColor(value, maxAbs) {
   if (!Number.isFinite(value)) return "#24303a";
-  const scale = Math.min(1, Math.abs(Number(value) || 0) / Math.max(Number(maxAbs) || 1, 1));
-  if (scale < 0.035) {
-    return "#24303a";
-  }
+  const scale = Math.abs(heatFlowPresentationRatio(value, maxAbs));
+  if (!Number.isFinite(scale) || !scale) return "#24303a";
   return value >= 0
-    ? mixHexColor("#23313a", "#ef4444", 0.2 + scale * 0.72)
-    : mixHexColor("#23313a", "#3b82f6", 0.2 + scale * 0.72);
+    ? mixHexColor("#24303a", "#ef4444", scale)
+    : mixHexColor("#24303a", "#3b82f6", scale);
 }
 
 function heatFlowTemperatureColor(value, min, max) {

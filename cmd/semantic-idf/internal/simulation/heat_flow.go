@@ -39,8 +39,9 @@ type HeatFlowCategory struct {
 }
 
 type HeatFlowZoneSeries struct {
-	Name   string      `json:"name"`
-	Values [][]float64 `json:"values"`
+	Name      string             `json:"name"`
+	Values    [][]float64        `json:"values"`
+	RateBasis *HeatFlowRateBasis `json:"rateBasis,omitempty"`
 	// Observed follows Values in category-major order. False identifies padding
 	// for absent/invalid observations; a reported zero remains true. Older
 	// saved payloads can omit the mask and retain their legacy Values semantics.
@@ -67,6 +68,7 @@ type heatFlowColumn struct {
 
 type heatFlowZoneBuilder struct {
 	name                string
+	rateBasis           *HeatFlowRateBasis
 	values              [][]float64
 	observed            [][]bool
 	temperature         []float64
@@ -88,7 +90,8 @@ func heatFlowCategoryDefinitions() []heatFlowCategoryDefinition {
 	}
 }
 
-func parseSimulationHeatFlowCSV(path string) (HeatFlowDataset, error) {
+func parseSimulationHeatFlowCSV(path string, sources ...heatFlowSourceOptions) (HeatFlowDataset, error) {
+	basis := newHeatFlowBasisContext(nil, sources...)
 	header, rowCount, err := heatFlowCSVHeaderAndRowCount(path)
 	if err != nil {
 		return HeatFlowDataset{}, err
@@ -173,6 +176,7 @@ func parseSimulationHeatFlowCSV(path string) (HeatFlowDataset, error) {
 				dataset.MaxTemperature = math.Max(dataset.MaxTemperature, value)
 				continue
 			}
+			value = basis.value(builder, categories[column.categoryIndex], keptFrames, value)
 			builder.values[column.categoryIndex][keptFrames] = roundedHeatFlowNumber(value)
 			builder.observed[column.categoryIndex][keptFrames] = true
 			builder.hasHeatFlowData = true
@@ -203,7 +207,7 @@ func parseSimulationHeatFlowCSV(path string) (HeatFlowDataset, error) {
 			continue
 		}
 		builder.ensureFrame(keptFrames-1, len(categories))
-		zone := HeatFlowZoneSeries{Name: builder.name, Values: builder.values, Observed: builder.observed}
+		zone := HeatFlowZoneSeries{Name: builder.name, Values: builder.values, Observed: builder.observed, RateBasis: builder.rateBasis}
 		if builder.hasTemperature {
 			zone.Temperature = builder.temperature
 			zone.TemperatureObserved = builder.temperatureObserved
@@ -213,10 +217,12 @@ func parseSimulationHeatFlowCSV(path string) (HeatFlowDataset, error) {
 	if len(dataset.Zones) == 0 {
 		return HeatFlowDataset{}, nil
 	}
+	applyHeatFlowBasisWarnings(&dataset)
 	return dataset, nil
 }
 
-func parseSimulationHeatFlowESO(path string) (HeatFlowDataset, error) {
+func parseSimulationHeatFlowESO(path string, sources ...heatFlowSourceOptions) (HeatFlowDataset, error) {
+	basis := newHeatFlowBasisContext(nil, sources...)
 	categories, columns, rowCount, err := heatFlowESOColumnsAndFrameCount(path)
 	if err != nil {
 		return HeatFlowDataset{}, err
@@ -312,6 +318,7 @@ func parseSimulationHeatFlowESO(path string) (HeatFlowDataset, error) {
 			dataset.MaxTemperature = math.Max(dataset.MaxTemperature, value)
 			continue
 		}
+		value = basis.value(builder, categories[column.categoryIndex], keptFrameIndex, value)
 		builder.values[column.categoryIndex][keptFrameIndex] = roundedHeatFlowNumber(value)
 		builder.observed[column.categoryIndex][keptFrameIndex] = true
 		builder.hasHeatFlowData = true
@@ -599,7 +606,7 @@ func finalizeHeatFlowDataset(dataset HeatFlowDataset, zoneBuilders map[string]*h
 			continue
 		}
 		builder.ensureFrame(dataset.FrameCount-1, categoryCount)
-		zone := HeatFlowZoneSeries{Name: builder.name, Values: builder.values, Observed: builder.observed}
+		zone := HeatFlowZoneSeries{Name: builder.name, Values: builder.values, Observed: builder.observed, RateBasis: builder.rateBasis}
 		if builder.hasTemperature {
 			zone.Temperature = builder.temperature
 			zone.TemperatureObserved = builder.temperatureObserved
@@ -609,6 +616,7 @@ func finalizeHeatFlowDataset(dataset HeatFlowDataset, zoneBuilders map[string]*h
 	if len(dataset.Zones) == 0 {
 		return HeatFlowDataset{}, nil
 	}
+	applyHeatFlowBasisWarnings(&dataset)
 	return dataset, nil
 }
 
@@ -630,6 +638,15 @@ func (builder *heatFlowZoneBuilder) ensureFrame(frameIndex int, categoryCount in
 		for len(builder.values[index]) <= frameIndex {
 			builder.values[index] = append(builder.values[index], 0)
 			builder.observed[index] = append(builder.observed[index], false)
+		}
+	}
+	if builder.rateBasis != nil {
+		for _, values := range []*[]float64{&builder.rateBasis.ReportedSystemAir, &builder.rateBasis.ReportedSystemConvective} {
+			if *values != nil {
+				for len(*values) <= frameIndex {
+					*values = append(*values, 0)
+				}
+			}
 		}
 	}
 }

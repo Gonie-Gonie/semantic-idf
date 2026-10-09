@@ -4,7 +4,9 @@
 }
 .heatflow-layout.inspector-collapsed { grid-template-columns: minmax(0, 1fr); }
 .heatflow-spatial-toolbar { justify-content: space-between; }
-.heatflow-color-scale { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.heatflow-scale-group { display: grid; gap: 4px; min-width: 0; }
+.heatflow-color-scale { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--ink); font-size: 12px; font-variant-numeric: tabular-nums; }
+.heatflow-color-scale small, .heatflow-bar-scale { color: var(--muted); font-size: 11px; }
 .heatflow-color-scale i { display: inline-block; width: 72px; height: 9px; border-radius: 4px; background: linear-gradient(to right, #3b82f6, #24303a, #ef4444); }
 .heatflow-color-scale[data-heatflow-scale="temperature"] i { background: linear-gradient(to right, #2563eb, #22c55e 33%, #facc15 68%, #ef4444); }
 .heatflow-floor-grid { position: relative; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); align-items: start; }
@@ -17,6 +19,9 @@
 .heatflow-guide-details[open] > summary, .heatflow-zone-summary-details[open] > summary, .heatflow-surface-details[open] > summary { margin-bottom: 8px; }
 .heatflow-surface-details[open] { display: grid; gap: 8px; }
 .heatflow-zone polygon { stroke: color-mix(in srgb, var(--ink) 50%, transparent); }
+.heatflow-zone.missing polygon { fill: var(--heatflow-fill); opacity: 1; }
+.heatflow-unavailable-base { fill: var(--surface-2); }
+.heatflow-unavailable-stripe { fill: none; stroke: var(--muted); stroke-width: 1; opacity: .45; }
 .heatflow-zone.selected polygon { stroke: var(--teal); stroke-width: 3; filter: brightness(1.1); }
 .heatflow-zone:focus { outline: none; }
 .heatflow-zone:focus polygon { stroke: var(--focus); stroke-width: 4; }
@@ -25,7 +30,9 @@
 .heatflow-zone-number { font-size: 18px; font-weight: 700; font-family: inherit; text-anchor: middle; fill: var(--ink); pointer-events: none; }
 .heatflow-floor-viewport, .heatflow-timeline { container-type: inline-size; }
 .heatflow-timeline-brush .simulation-axis { font-family: inherit; font-size: 18px; }
-.heatflow-mini-stack { opacity: .92; }
+.heatflow-mini-stack { opacity: 1; }
+.heatflow-mini-stack rect { stroke: var(--surface); stroke-width: .65; }
+.heatflow-mini-stack line { stroke: var(--ink); opacity: .8; }
 .heatflow-zone-summary-scroll { overflow-x: auto; }
 .heatflow-zone-summary { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
 .heatflow-zone-summary caption { text-align: left; color: var(--muted); font-size: 13px; padding-bottom: 8px; }
@@ -58,10 +65,20 @@
 .heatflow-ledger-row { padding: 7px 0; font-size: 14px; }
 .heatflow-ledger-row span { white-space: normal; overflow: visible; line-height: 1.4; }
 .heatflow-ledger-row strong { white-space: nowrap; }
+.heatflow-ledger-scale-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.heatflow-ledger-axis { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.heatflow-ledger-axis span:last-child { text-align: right; }
+.heatflow-bar-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 9px 0; }
+.heatflow-bar-label { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: baseline; }
+.heatflow-bar-label > span { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.heatflow-bar-label i { align-self: center; }
+.heatflow-value-bar { position: relative; height: 13px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.heatflow-value-bar::before { content: ""; position: absolute; inset: 0 auto 0 50%; width: 1px; background: var(--muted); z-index: 1; }
+.heatflow-value-bar > i { position: absolute; height: 100%; border-radius: 2px; background: var(--heatflow-direction-color, var(--muted)); }
+.heatflow-bar-row.unavailable .heatflow-value-bar { height: 18px; background: repeating-linear-gradient(135deg, var(--surface-2) 0 4px, var(--surface) 4px 8px); }
+.heatflow-bar-row.unavailable .heatflow-value-bar::before { display: none; }
+.heatflow-value-bar .heatflow-bar-unavailable { display: block; position: relative; text-align: center; font-size: 11px; line-height: 18px; color: var(--muted); background: var(--surface); }
 .heatflow-exchanges, .heatflow-balance-check { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 14px; }
-.heatflow-exchange-row { display: grid; grid-template-columns: minmax(0, 1fr) 26px auto; align-items: center; gap: 8px; font-size: 13px; border-bottom: 1px solid var(--line); padding: 5px 0; }
-.heatflow-exchange-row strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.heatflow-direction { color: var(--heatflow-direction-color, var(--muted)); font-size: 28px; font-weight: 650; text-align: center; }
 .heatflow-surface-exchange { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; padding: 8px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
 .heatflow-surface-exchange > span:first-child { grid-column: 1 / -1; overflow-wrap: anywhere; font-weight: 600; }
 .heatflow-surface-exchange strong { font-variant-numeric: tabular-nums; display: block; }

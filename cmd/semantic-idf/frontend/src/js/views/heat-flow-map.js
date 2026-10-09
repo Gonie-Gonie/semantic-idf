@@ -1,6 +1,7 @@
 import { escapeHTML } from "../state.js";
 import { getLanguage, t } from "../i18n.js";
-import { heatFlowCategoryValue, heatFlowCategoryLabel, formatHeatFlowWatts, heatFlowExactWatts, heatFlowFrameTime } from "../heat-flow-data.js";
+import { heatFlowCategoryValue, heatFlowCategoryLabel, heatFlowFrameTime } from "../heat-flow-data.js";
+import { heatFlowLedgerMaximum, renderHeatFlowLedgerAxis, renderHeatFlowLedgerRow } from "./heat-flow-ledger.js";
 
 const indexes = new WeakMap();
 const key = value => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -67,18 +68,10 @@ function energy(value) {
   return `${new Intl.NumberFormat(getLanguage(), { minimumFractionDigits: 3, maximumFractionDigits: 3 }).format(value)} kWh`;
 }
 
-export function renderHeatFlowExchangeDetails(dataset, zone, zoneName, frame, overlay) {
+export function renderHeatFlowExchangeDetails(dataset, zone, zoneName, frame, overlay, maximum = heatFlowLedgerMaximum(dataset)) {
   const aggregate = heatFlowAggregateExchanges(dataset, zone, frame);
   const measured = heatFlowMeasuredExchanges(overlay, zoneName, dataset.labels?.[frame]);
-  const unavailable = t("simulation.heatFlowUnavailable", {}, "Unavailable");
-  const rows = aggregate.map(item => {
-    const available = Number.isFinite(item.value);
-    const direction = !available ? "unavailable" : item.value === 0 ? "neutral" : item.value > 0 ? "incoming" : "outgoing";
-    return `<div class="heatflow-exchange-row ${direction}" data-heatflow-aggregate="${escapeHTML(item.id)}" data-value="${available ? item.value : ""}">
-      <span>${escapeHTML(item.label)}</span><b class="heatflow-direction" aria-label="${escapeHTML(!available ? unavailable : item.value === 0 ? t("simulation.heatFlowNoTransfer", {}, "No net transfer") : item.value > 0 ? t("simulation.heatFlowIntoZone", {}, "Into zone") : t("simulation.heatFlowOutOfZone", {}, "Out of zone"))}">${!available ? "—" : item.value === 0 ? "↔" : item.value > 0 ? "→" : "←"}</b>
-      <strong title="${escapeHTML(heatFlowExactWatts(item.value))}">${escapeHTML(formatHeatFlowWatts(item.value))}</strong>
-    </div>`;
-  }).join("");
+  const rows = aggregate.map(item => renderHeatFlowLedgerRow({ ...item, maximum, aggregate: true })).join("");
   const pairRows = measured.map(item => `<div class="heatflow-surface-exchange" data-heatflow-peer="${escapeHTML(item.peerID)}">
     <span>${escapeHTML(item.peerName)}</span>
     <span class="incoming">→ ${escapeHTML(t("simulation.heatFlowIn", {}, "In"))} <strong data-heatflow-pair-in="${item.incoming}">${energy(item.incoming)}</strong></span>
@@ -86,7 +79,7 @@ export function renderHeatFlowExchangeDetails(dataset, zone, zoneName, frame, ov
   </div>`).join("");
   return `<section class="heatflow-exchanges"><h5>${escapeHTML(t("simulation.heatFlowExchangeHeading", {}, "Exchange with the selected zone"))}</h5>
     <p>${escapeHTML(t("simulation.heatFlowAggregateNote", {}, "Arrows point into or out of this zone. Air and surface-convection values are zone totals (kW), without an assigned neighbouring zone."))}</p>
-    ${rows}
+    ${renderHeatFlowLedgerAxis(maximum)}${rows}
     <details class="heatflow-surface-details"><summary>${escapeHTML(t("simulation.heatFlowSurfaceExchangeHeading", {}, "Measured surface exchange · kWh / reported interval"))}</summary>
       <p>${escapeHTML(t("simulation.heatFlowSurfaceExchangeNote", {}, "Surface conduction and window exchange use the executed model and exact matching timestamps. These interval energies are separate from the zone-air balance above."))}</p>
       ${pairRows || `<p class="heatflow-unavailable">${escapeHTML(t("simulation.heatFlowPairUnavailable", {}, "No verified surface-exchange observations at this time. A new Surface-detail run provides the required frame and geometry evidence."))}</p>`}

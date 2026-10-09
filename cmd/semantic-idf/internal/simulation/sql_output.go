@@ -442,16 +442,17 @@ func (builder *energySeriesBuilder) sortedPoints() []SimulationPoint {
 	return points
 }
 
-func parseSimulationHeatFlowSQL(path string) (HeatFlowDataset, error) {
-	return parseSimulationHeatFlowSQLWithProgress(path, nil)
+func parseSimulationHeatFlowSQL(path string, sources ...heatFlowSourceOptions) (HeatFlowDataset, error) {
+	return parseSimulationHeatFlowSQLWithProgress(path, nil, sources...)
 }
 
-func parseSimulationHeatFlowSQLWithProgress(path string, progress func(sqlWorkProgress)) (HeatFlowDataset, error) {
+func parseSimulationHeatFlowSQLWithProgress(path string, progress func(sqlWorkProgress), sources ...heatFlowSourceOptions) (HeatFlowDataset, error) {
 	db, err := openSimulationSQLiteReadOnly(path)
 	if err != nil {
 		return HeatFlowDataset{}, err
 	}
 	defer db.Close()
+	basis := newHeatFlowBasisContext(db, sources...)
 
 	ready, err := sqlHasTables(db, "ReportDataDictionary", "ReportData", "Time")
 	if err != nil || !ready {
@@ -583,6 +584,7 @@ func parseSimulationHeatFlowSQLWithProgress(path string, progress func(sqlWorkPr
 			dataset.MaxTemperature = math.Max(dataset.MaxTemperature, number)
 			return nil
 		}
+		number = basis.value(builder, categories[column.categoryIndex], keptFrameIndex, number)
 		builder.values[column.categoryIndex][keptFrameIndex] = roundedHeatFlowNumber(number)
 		builder.observed[column.categoryIndex][keptFrameIndex] = true
 		builder.hasHeatFlowData = true

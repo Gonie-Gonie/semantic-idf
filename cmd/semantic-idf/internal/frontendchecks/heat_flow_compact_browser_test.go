@@ -85,14 +85,16 @@ func TestHeatFlowLargeOfficePlenumCompactBrowser(t *testing.T) {
 			t.Log(string(browser.evaluate(`document.getElementById('heat-flow-compact-result').textContent`)))
 			for _, width := range []int{1600, 1100} {
 				browser.call("Emulation.setDeviceMetricsOverride", map[string]any{"width": width, "height": 1100, "deviceScaleFactor": 1, "mobile": false}, nil)
-				var routeFailures []string
-				if err := json.Unmarshal(browser.evaluate(`window.heatFlowCompactValidateRouteLayout()`), &routeFailures); err != nil {
-					t.Fatal(err)
+				for _, theme := range []string{"dark", "light"} {
+					var routeFailures []string
+					if err := json.Unmarshal(browser.evaluate(fmt.Sprintf(`window.heatFlowCompactValidateRouteLayout(%q)`, theme)), &routeFailures); err != nil {
+						t.Fatal(err)
+					}
+					if len(routeFailures) != 0 {
+						t.Fatalf("actual LargeOffice bar/route layout at %dpx viewport %s theme: %v", width, theme, routeFailures)
+					}
 				}
-				if len(routeFailures) != 0 {
-					t.Fatalf("actual LargeOffice route collisions at %dpx viewport: %v", width, routeFailures)
-				}
-				t.Logf("fixed native floor plans expose no viewport controls and routes avoid unrelated badges at %dpx viewport", width)
+				t.Logf("fixed native floor plans, signed-rate bars and unrelated-badge clearance pass at %dpx viewport in dark/light", width)
 			}
 			if os.Getenv("HEAT_FLOW_COMPACT_REVIEW") != "" {
 				directory, err := os.MkdirTemp("", "idf-heat-flow-compact-review-")
@@ -146,7 +148,7 @@ func TestHeatFlowLargeOfficePlenumCompactBrowser(t *testing.T) {
 func heatFlowLargeOfficeResult(inputPath string, geometry idf.GeometryReport) simulation.SimulationRunResult {
 	ids := []string{"internalConvective", "surfaceConvection", "interzoneAir", "outdoorAir", "systemAir", "systemConvective", "airStorage", "deviation"}
 	colors := []string{"#f59e0b", "#ef4444", "#a855f7", "#14b8a6", "#3b82f6", "#64748b", "#e5e7eb", "#94a3b8"}
-	dataset := simulation.HeatFlowDataset{FrameCount: 3, OriginalFrameCount: 3, Labels: []string{"01-01 01:00", "01-01 02:00", "01-01 03:00"}, Unit: "W", TemperatureUnit: "C", MinTemperature: 21, MaxTemperature: 25, MaxAbs: 8000}
+	dataset := simulation.HeatFlowDataset{FrameCount: 3, OriginalFrameCount: 3, Labels: []string{"01-01 01:00", "01-01 02:00", "01-01 03:00"}, Unit: "W", TemperatureUnit: "C", MinTemperature: 21, MaxTemperature: 25, MaxAbs: 587000}
 	for index, id := range ids {
 		dataset.Categories = append(dataset.Categories, simulation.HeatFlowCategory{ID: id, Label: id, Unit: "W", Color: colors[index]})
 	}
@@ -156,6 +158,9 @@ func heatFlowLargeOfficeResult(inputPath string, geometry idf.GeometryReport) si
 		for _, value := range values {
 			item.Values = append(item.Values, []float64{value, value, value})
 			item.Observed = append(item.Observed, []bool{true, true, true})
+		}
+		if index == 0 {
+			item.Values[0][2] = 587000
 		}
 		dataset.Zones = append(dataset.Zones, item)
 	}
@@ -205,6 +210,12 @@ try{
  fixedPlan.dispatchEvent(new MouseEvent('dblclick',{clientX:x,clientY:y,bubbles:true,cancelable:true}));await tick();
  check(planGeometry()===fixedGeometry&&planBounds()===fixedBounds&&state.simulationHeatFlowFrameIndex===0,'LargeOffice wheel/drag/double-click moved floor geometry or time selection');
  check(host.querySelectorAll('.heatflow-floor-card').length===7,'LargeOffice story separation changed or floors were omitted');
+ const fixedScale=host.querySelector('[data-heatflow-scale="net"]').textContent;
+ check(fixedScale.includes('583.300 kW')&&/fixed|all frames/i.test(fixedScale)&&/log/i.test(fixedScale),'LargeOffice historical +587kW observation is omitted from its disclosed fixed all-time log map scale');
+ const largestMini=Math.max(...[...host.querySelectorAll('[data-heatflow-local-category="internalConvective"]')].map(item=>Number(item.getAttribute('height'))));
+ check(largestMini>=30&&Math.abs(largestMini-46*Math.log1p(6800)/Math.log1p(587000))<.02,'normal LargeOffice gains remain faint or have incorrect log size under a fixed annual outlier');
+ const originalPlenumMini=host.querySelector('g[data-heat-zone="GroundFloor_Plenum"] .heatflow-mini-stack').outerHTML,originalPlenumColor=host.querySelector('g[data-heat-zone="GroundFloor_Plenum"] polygon').getAttribute('style');
+ check([...host.querySelectorAll('.heatflow-inspector [data-heatflow-ledger]')].every(row=>row.dataset.barMax==='587000'),'LargeOffice inspector uses an independent frame/zone scale instead of fixed global W maximum');
  for(const name of['GroundFloor_Plenum','MidFloor_Plenum','TopFloor_Plenum']){
   const shapes=[...host.querySelectorAll('g[data-heat-zone]')].filter(item=>item.dataset.heatZone===name);
   const polygonCount=shapes.reduce((sum,item)=>sum+item.querySelectorAll('polygon').length,0),badgeCount=shapes.reduce((sum,item)=>sum+item.querySelectorAll('.heatflow-zone-number').length,0);
@@ -253,16 +264,27 @@ try{
  check(host.querySelector(detailsSelector).open&&badgeFor('TopFloor_Plenum').getBoundingClientRect().top-selectedTopBefore>20,'native details opening did not exercise lower-card position change');
  assertBadgeAnchors();state.simulationHeatFlowFrameIndex=1;await render('TopFloor_Plenum');
  check(host.querySelector(detailsSelector).open,'frame render discarded native zone-values open state');assertBadgeAnchors();
+ check(host.querySelector('[data-heatflow-scale="net"]').textContent===fixedScale&&host.querySelector('g[data-heat-zone="GroundFloor_Plenum"] .heatflow-mini-stack').outerHTML===originalPlenumMini&&host.querySelector('g[data-heat-zone="GroundFloor_Plenum"] polygon').getAttribute('style')===originalPlenumColor,'same plenum W values change map colour/mini size after a frame change');
  host.querySelector(detailsSelector+' > summary').click();await tick();assertBadgeAnchors();
  await render('GroundFloor_Plenum');
+ const unfilteredMini=host.querySelector('g[data-heat-zone="GroundFloor_Plenum"] .heatflow-mini-stack').outerHTML,unfilteredColor=host.querySelector('g[data-heat-zone="GroundFloor_Plenum"] polygon').getAttribute('style');
  const selector=document.getElementById('simulationHeatFlowStory'),plenumStory=fixture.result.purposeResults.thermalTopology.planGeometry.zones.find(zone=>zone.name==='GroundFloor_Plenum').storyIndex;
  selector.value=String(plenumStory);selector.dispatchEvent(new Event('change',{bubbles:true}));await tick();
  check(host.querySelectorAll('.heatflow-floor-card').length===1&&!host.querySelector('[data-heatflow-arrow][data-peer^="zone:"]'),'story filter still draws paths to absent zone badges');
+ check(host.querySelector('[data-heatflow-scale="net"]').textContent===fixedScale&&host.querySelector('g[data-heat-zone="GroundFloor_Plenum"] .heatflow-mini-stack').outerHTML===unfilteredMini&&host.querySelector('g[data-heat-zone="GroundFloor_Plenum"] polygon').getAttribute('style')===unfilteredColor,'story filter changes the fixed global log scale or gives one zone a misleading independent visual magnitude');
  selector.value='all';selector.dispatchEvent(new Event('change',{bubbles:true}));await tick();
- window.heatFlowCompactValidateRouteLayout=async()=>{
+ window.heatFlowCompactValidateRouteLayout=async(theme='dark')=>{
+  document.documentElement.dataset.theme=theme;
   await render('GroundFloor_Plenum');
   const errors=[],badges=[...host.querySelectorAll('[data-heatflow-zone-badge]')];
   if(host.querySelector('[data-heatflow-plan-zoom],.heatflow-viewport-actions,[data-heatflow-plan-content][transform]'))errors.push('fixed plans expose camera controls or transforms');
+  const rateRows=[...host.querySelectorAll('.heatflow-inspector [data-heatflow-ledger]')];
+  if(rateRows.length!==9)errors.push('inspector omits one or more signed W category/diagnostic rows');
+  for(const row of rateRows){
+   const bounds=row.getBoundingClientRect(),value=row.querySelector('strong'),valueBounds=value?.getBoundingClientRect(),fill=row.querySelector('[data-heatflow-bar-fill]');
+   if(row.dataset.unit!=='W'||valueBounds?.left<bounds.left-1||valueBounds?.right>bounds.right+1||parseFloat(getComputedStyle(value).fontSize)<12)errors.push('explicit W value is unreadable or clips '+row.dataset.heatflowLedger);
+   if(Number(row.dataset.value)!==0&&row.dataset.observed==='true'&&!(fill?.getBoundingClientRect().width>0))errors.push('observed nonzero signed rate lacks a visible bar '+row.dataset.heatflowLedger);
+  }
   const arrows=[...host.querySelectorAll('[data-heatflow-arrow]')];
   for(const arrow of arrows){
    const path=arrow.querySelector('path'),length=path.getTotalLength(),matrix=path.getScreenCTM(),peer=arrow.dataset.peer.replace(/^zone:/,''),unrelated=badges.filter(item=>![state.simulationHeatFlowSelectedZone.toLowerCase(),peer].includes(item.dataset.heatflowZoneBadge.toLowerCase())).map(item=>{const bounds=item.getBoundingClientRect();return {name:item.dataset.heatflowZoneBadge,x:bounds.left+bounds.width/2,y:bounds.top+bounds.height/2,radius:bounds.width/2};});
@@ -275,7 +297,7 @@ try{
   return errors;
  };
  check(JSON.stringify(fixture)===before,'compact map modified canonical LargeOffice numeric/source geometry payload');
- window.heatFlowCompactReview=async zone=>{setLanguage('ko');document.documentElement.style.setProperty('--graph-label-font-size','12px');await render(zone);host.scrollIntoView({block:'start'});await tick();return {zone,mainWidth:document.querySelector('.analysis-panel').getBoundingClientRect().width,floorCards:host.querySelectorAll('.heatflow-floor-card').length,arrows:[...host.querySelectorAll('[data-heatflow-arrow]')].map(item=>({peer:item.dataset.peer,net:Number(item.dataset.value),grossIn:Number(item.dataset.grossIn),grossOut:Number(item.dataset.grossOut)}))};};
+ window.heatFlowCompactReview=async zone=>{setLanguage('ko');document.documentElement.dataset.theme='dark';document.documentElement.style.setProperty('--graph-label-font-size','12px');await render(zone);host.scrollIntoView({block:'start'});await tick();return {zone,mainWidth:document.querySelector('.analysis-panel').getBoundingClientRect().width,floorCards:host.querySelectorAll('.heatflow-floor-card').length,arrows:[...host.querySelectorAll('[data-heatflow-arrow]')].map(item=>({peer:item.dataset.peer,net:Number(item.dataset.value),grossIn:Number(item.dataset.grossIn),grossOut:Number(item.dataset.grossOut)}))};};
  evidence.push('actual bundled LargeOffice production geometry: 19 zones / 7 stories / 31 native floor pieces; each 5-piece plenum retains one badge; fixed plans ignore stale camera state and wheel/drag/double-click; cross-story peers connect visible zone badges; one signed pair net and one Outside with gross ledger preserved; native details opening/closing repositions arrow endpoints and remains open after frame changes');
 }catch(error){failures.push(error.stack||String(error));}
 document.body.dataset.heatFlowCompactStatus=failures.length?'failed':'passed';document.getElementById('heat-flow-compact-result').textContent=JSON.stringify({failures,evidence});

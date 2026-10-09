@@ -1289,7 +1289,7 @@ func parseSQLResultsWithProgress(result *SimulationRunResult, runID string, prog
 		}
 		if len(result.HeatFlow.Zones) == 0 {
 			emitSimulationProgress(progress, runID, "sql_heat_flow", "running", "Reading SQL heat-flow observations", 6, simulationProgressTotal, path)
-			if heatFlow, err := parseSimulationHeatFlowSQLWithProgress(file.Path, work); err == nil && len(heatFlow.Zones) > 0 {
+			if heatFlow, err := parseSimulationHeatFlowSQLWithProgress(file.Path, work, heatFlowSourceOptions{InputPath: result.InputPath, EngineVersion: result.EnergyPlusVersion}); err == nil && len(heatFlow.Zones) > 0 {
 				result.HeatFlow = heatFlow
 				used = true
 			}
@@ -1325,7 +1325,7 @@ func parseCSVResults(result *SimulationRunResult) bool {
 			result.Series = append(result.Series, series...)
 		}
 		if len(result.HeatFlow.Zones) == 0 {
-			heatFlow, err := parseSimulationHeatFlowCSV(file.Path)
+			heatFlow, err := parseSimulationHeatFlowCSV(file.Path, heatFlowSourceOptions{InputPath: result.InputPath, EngineVersion: result.EnergyPlusVersion})
 			if err == nil && len(heatFlow.Zones) > 0 {
 				result.HeatFlow = heatFlow
 			}
@@ -1340,7 +1340,7 @@ func parseHeatFlowFallback(result *SimulationRunResult) bool {
 			if file.Kind != "eso" {
 				continue
 			}
-			heatFlow, err := parseSimulationHeatFlowESO(file.Path)
+			heatFlow, err := parseSimulationHeatFlowESO(file.Path, heatFlowSourceOptions{InputPath: result.InputPath, EngineVersion: result.EnergyPlusVersion})
 			if err == nil && len(heatFlow.Zones) > 0 {
 				result.HeatFlow = heatFlow
 				return true

@@ -198,11 +198,39 @@ The ledger displays signed rates in kW to 0.001 kW and temperature in °C.
 Hover a rate to read the W value retained in the result. Positive transfer adds
 heat to zone air; negative transfer removes it. Gains and losses remain visible
 separately, even when their Net is small.
-The local bars and Net colours use fixed scales across all retained frames, so
-their sizes and colours remain comparable during playback. The floor-plan colour
-legend shows the selected Net or temperature range.
-These zone-air rates describe one modelled zone; Zone/ZoneGroup multipliers
-are not applied to the reported ledger.
+Local bars and Net colours use fixed logarithmic scales across all zones and
+all retained timestamps. The same local total keeps its height, and the same
+Net keeps its colour during
+playback and Story filtering. The labelled maxima are computed once for the
+complete dataset, not recalculated for the selected time. Temperature colours
+retain the reported temperature range. Zero remains neutral; missing map
+observations use hatching, and missing local terms have no measured-zero baseline.
+
+The logarithmic magnitude is `ln(1 + abs(q)/1 W) / ln(1 + maximum/1 W)`.
+It is continuous at zero and handles both signs. Net colours use the maximum
+absolute Net, and local stacks use the largest positive/negative local total.
+Each sign's total stack height uses that logarithmic magnitude; category segments
+retain their proportions within that total. Logarithmic heights and colours
+help show smaller transfers beside large peaks; they do not imply linear ratios.
+
+The right-hand ledger shows horizontal bars and exact signed values for local
+terms, zone-level exchange and the separate storage/balance diagnostics. The
+zero line is centred: losses extend left and gains right. All these rate bars
+share one fixed logarithmic kW scale across all zones and timestamps, with labelled
+endpoints. Missing observations show an unavailable track, not a zero bar.
+Use the numerical values for exact comparisons and the history charts for linear
+rate plots. Measured surface-exchange energies remain separate in kWh per reported interval.
+New results with verified engine/input metadata normalize system-air transfer
+to one modelled zone by dividing the engine report by the Zone × ZoneList
+multiplier. System convective gain is normalized only when the executed input
+excludes high-temperature radiant equipment and indoor pools; otherwise that
+aggregate may mix bases, remains unchanged and receives a notice. Hover a
+normalized HVAC rate to see the engine's original W value and divisor.
+Generic time series and original output files retain their reported values.
+Older saved results without basis metadata retain their existing values; run
+again to obtain the corrected ledger and source-basis annotations.
+Reported deviation remains the engine's original diagnostic and can differ
+from the computed Net − storage residual after this normalization.
 
 | Group | Included transfer terms | Meaning |
 | --- | --- | --- |

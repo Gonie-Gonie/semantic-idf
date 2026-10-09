@@ -248,10 +248,24 @@ six transfer terms (`internalConvective`, `surfaceConvection`, `interzoneAir`,
 are separate diagnostics, never additional gains/losses. Positive storage means
 air warming and negative storage means air cooling. The computed balance residual
 is `Net - airStorage`, available only when all six transfer terms and storage
-are observed; reported deviation retains its original sign separately. Zone-air
-heat-balance rates retain EnergyPlus's per-modelled-zone basis without applying
-Zone/ZoneGroup multipliers. See the
+are observed; reported deviation retains its original sign separately. See the
 [EnergyPlus balance equation](https://github.com/NREL/EnergyPlus/blob/v25.1.0/src/EnergyPlus/ZoneTempPredictorCorrector.cc#L4981).
+
+For verified EnergyPlus report versions, readers normalize `systemAir` by the
+effective Zone × ZoneList multiplier. SQL producing-engine/`Zones` metadata is
+authoritative; CSV/ESO and SQL fallbacks use the executed input copy, never a
+later editor model. `systemConvective` is divided only when the executed input
+excludes `ZoneHVAC:HighTemperatureRadiant` and `SwimmingPool:Indoor`; those
+per-zone contributions otherwise mix with multiplied NonAirSystemResponse in
+the same aggregate. Mixed aggregates retain the reported basis with a warning.
+See [the engine report calculation](https://github.com/NatLabRockies/EnergyPlus/blob/v25.1.0/src/EnergyPlus/ZoneTempPredictorCorrector.cc#L5326).
+The optional zone `rateBasis` records `effectiveMultiplier`, `systemAir` and
+`systemConvective` basis names plus original `reportedSystemAir` and
+`reportedSystemConvective` arrays using the category's observation mask.
+Generic Series, original outputs and canonical boundary energy remain raw.
+Legacy payloads without basis metadata are not corrected on reload; a new run
+is required. Reported deviation also stays raw and need not equal the computed
+normalized Net-minus-storage residual. Unknown producing basis is never guessed.
 
 The map's local bars and gain/loss summaries include internal convective gains,
 system air transfer and system convective gains. Surface convection, interzone
@@ -288,6 +302,21 @@ verified outdoor orientations combine into one Outside arrow, excluding Ground
 and Adiabatic peers; hidden zone peers never become external labels. Balanced
 nonzero gross exchange has one neutral bidirectional path. Original gross
 incoming/outgoing values and canonical provenance remain in the details.
+
+Map colours, local stacks and inspector rate bars use fixed whole-dataset
+extents across every zone and retained timestamp, independent of the Story
+filter and selected frame. Signed logarithmic magnitudes use
+`sign(q) * log1p(abs(q) / 1 W) / log1p(maximum / 1 W)` without a zero deadband.
+Local stacks map each sign's total height then preserve category proportions
+within that sign. Net fill uses the maximum absolute physical Net; local stacks
+use the largest positive/negative local total. Inspector rows share the largest
+absolute category/residual rate, including separately grouped diagnostics.
+These extents are cached once per immutable dataset. Legends disclose fixed
+logarithmic scaling; exact kW/W values and linear history plots remain available.
+Temperature retains its reported range. Missing map observations are hatched
+and missing local totals have no measured-zero baseline; known zero remains
+neutral. Missing inspector rows are explicitly unavailable. Interval kWh
+surface exchanges never enter the rate scales.
 
 The history section spans the result width and separates local transfers,
 boundary exchanges and reported storage/deviation into three panels with a

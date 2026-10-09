@@ -6,7 +6,8 @@
       "defaultAreas": ["simulation"],
       "defaultTier": "fast",
       "rules": [
-        {"files": ["heat_flow_observed_test.go", "heat_flow_plan_test.go"], "areas": ["simulation-results", "simulation-topology"], "tier": "fast"},
+        {"files": ["heat_flow_observed_test.go", "heat_flow_plan_test.go", "heat_flow_basis_test.go"], "areas": ["simulation-results", "simulation-topology"], "tier": "fast"},
+        {"files": ["heat_flow_basis_test.go"], "tests": ["TestHeatFlowRateBasisSavedSQL"], "areas": ["simulation-results", "simulation-topology"], "tier": "regression"},
         {"files": ["progress_tracker_test.go"], "areas": ["simulation-run", "simulation-results", "batch"], "tier": "fast"},
         {"files": ["storage*_test.go"], "areas": ["settings", "storage", "simulation-run"], "tier": "fast"},
         {"files":["energy*_test.go"],"areas":["energy-path"]},
