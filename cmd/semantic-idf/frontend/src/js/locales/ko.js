@@ -41,7 +41,7 @@ export default Object.freeze({
   "simulation.heatFlowPartialNote": "* 일부 열 전달 항목의 관측값이 없습니다. 순값은 보고된 항목의 합계이며, 누락값을 0으로 간주하지 않습니다.",
   "simulation.heatFlowBalanceHeading": "공기 저장열 및 열수지 확인",
   "simulation.heatFlowResidual": "순값 − 공기 저장열",
-  "simulation.heatFlowStorageNote": "저장열이 양수이면 공기가 따뜻해지고, 음수이면 차가워집니다. 저장열과 오차는 추가 열획득·손실이 아닙니다. 열 전달률은 0.001 kW 단위로 표시하며, 수치에 마우스를 올리면 보고된 W 정밀도를 확인할 수 있습니다.",
+  "simulation.heatFlowStorageNote": "저장열이 양수이면 공기가 따뜻해지고, 음수이면 차가워집니다. 저장열과 오차는 추가 열획득·손실이 아닙니다. 열 전달률은 kW 단위로 소수점 둘째 자리까지 표시하며, 수치에 마우스를 올리면 보고된 W 정밀도를 확인할 수 있습니다.",
   "simulation.heatFlowGuideLocal": "막대는 내부 발생열과 HVAC 열획득·손실을 표시합니다. 존마다 번호 하나를 사용하며, 존별 수치를 펼치면 정확한 값을 볼 수 있습니다.",
   "simulation.heatFlowGuideExchange": "보이는 존 번호끼리 순교환 화살표 하나로 연결하고, 외부는 모두 합쳐 하나로 표시합니다. 주황색은 유입, 파란색은 유출, 회색 양방향 화살표는 유입·유출이 균형인 교환입니다. 단위는 보고 구간당 kWh입니다.",
   "simulation.heatFlowCategory.internalConvective": "내부 대류 발열",

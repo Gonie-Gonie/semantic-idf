@@ -41,7 +41,7 @@ export default Object.freeze({
   "simulation.heatFlowPartialNote": "* Partial balance: one or more transfer terms are unavailable. The net is the sum of reported terms; missing values are not zero.",
   "simulation.heatFlowBalanceHeading": "Air storage and balance check",
   "simulation.heatFlowResidual": "Net − air storage",
-  "simulation.heatFlowStorageNote": "Positive storage means air warming; negative storage means air cooling. Storage and deviation are not additional gains or losses. Rates are shown in kW to 0.001 kW; hover a number for its reported W precision.",
+  "simulation.heatFlowStorageNote": "Positive storage means air warming; negative storage means air cooling. Storage and deviation are not additional gains or losses. Rates are shown in kW to two decimal places; hover a number for its reported W precision.",
   "simulation.heatFlowGuideLocal": "Bars show local internal and HVAC gains/losses. Each zone has one number; expand Zone values for exact amounts.",
   "simulation.heatFlowGuideExchange": "One net surface arrow joins each visible zone pair, and one combines Outside. Amber is incoming, blue outgoing; a grey two-headed arrow means balanced exchange. Units: kWh per reported interval.",
   "simulation.heatFlowCategory.internalConvective": "Internal convective gains",

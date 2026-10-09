@@ -96,11 +96,14 @@ export function heatFlowPresentationRatio(value, maximum) {
     / Math.log1p(maximum / presentationReferenceWatts);
 }
 
-export function formatHeatFlowWatts(value, { signed = true, unit = "kW", digits = 3 } = {}) {
+export function formatHeatFlowWatts(value, { signed = true, unit = "kW", digits = unit === "kW" ? 2 : 3 } = {}) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "—";
   const number = unit === "kW" ? value / 1000 : value;
-  const text = new Intl.NumberFormat(getLanguage(), { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(number);
-  return `${signed && value > 0 ? "+" : ""}${text} ${unit}`;
+  // Suppress signed rounded zero in kW labels; exact W tooltips and source
+  // values retain the direction and precision of these small transfers.
+  const displayNumber = unit === "kW" && Math.abs(number) < .5 * 10 ** -digits ? 0 : number;
+  const text = new Intl.NumberFormat(getLanguage(), { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(displayNumber);
+  return `${signed && displayNumber > 0 ? "+" : ""}${text} ${unit}`;
 }
 
 export function heatFlowExactWatts(value) {

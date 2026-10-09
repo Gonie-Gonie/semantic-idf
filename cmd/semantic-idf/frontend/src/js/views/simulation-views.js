@@ -6299,7 +6299,7 @@ function renderHeatFlowSpatialToolbar(dataset) {
   const temperature = state.simulationHeatFlowOverlay === "temperature";
   const range = state.simulationHeatFlowOverlay === "temperature"
     ? `${formatTemperature(dataset.minTemperature)} → ${formatTemperature(dataset.maxTemperature)}`
-    : Number.isFinite(scale.netMax) ? `${formatHeatFlowWatts(-scale.netMax)} / 0 / ${formatHeatFlowWatts(scale.netMax)}` : t("simulation.heatFlowUnavailable", {}, "Unavailable");
+    : Number.isFinite(scale.netMax) ? `${formatHeatFlowWatts(-scale.netMax)} / ${formatHeatFlowWatts(0)} / ${formatHeatFlowWatts(scale.netMax)}` : t("simulation.heatFlowUnavailable", {}, "Unavailable");
   const barRange = Number.isFinite(scale.localMax) ? `${scale.localMax > 0 ? "±" : ""}${formatHeatFlowWatts(scale.localMax, { signed: false })}` : t("simulation.heatFlowUnavailable", {}, "Unavailable");
   return `
     <div class="heatflow-spatial-toolbar">
@@ -6682,7 +6682,7 @@ function renderHeatFlowInspector(dataset, zoneSeries, zoneName, frameIndex) {
       ${renderHeatFlowLedgerRow({ id: "airStorage", label: t("simulation.heatFlowCategory.airStorage", {}, "Air energy storage"), value: balance.storage, maximum })}
       ${renderHeatFlowLedgerRow({ id: "residual", label: t("simulation.heatFlowResidual", {}, "Net − air storage"), value: balance.residual, maximum, kpi: "residual" })}
       ${renderHeatFlowLedgerRow({ id: "deviation", label: t("simulation.heatFlowCategory.deviation", {}, "Reported balance deviation"), value: balance.deviation, maximum })}
-      <p>${escapeHTML(t("simulation.heatFlowStorageNote", {}, "Positive storage means air warming; negative storage means air cooling. Storage and deviation are not additional gains or losses. Rates are shown in kW to 0.001 kW; hover a number for its reported W precision."))}</p>
+      <p>${escapeHTML(t("simulation.heatFlowStorageNote", {}, "Positive storage means air warming; negative storage means air cooling. Storage and deviation are not additional gains or losses. Rates are shown in kW to two decimal places; hover a number for its reported W precision."))}</p>
     </section>`;
 }
 

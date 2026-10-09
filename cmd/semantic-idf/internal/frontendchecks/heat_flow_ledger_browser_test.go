@@ -82,20 +82,24 @@ func TestHeatFlowLedgerMeasuredExchangeBrowser(t *testing.T) {
 						continue
 					}
 					height := 1000
-					if review == "history" || review == "history-final" || review == "inspector" {
+					if review == "history" || review == "history-final" || review == "inspector" || review == "typography" {
 						capture.width = 1600
 						capture.name += "-" + review
 					}
-					if review == "inspector" {
+					if review == "inspector" || review == "typography" {
 						height = 1500
 					} else if review == "history-final" {
 						height = 2000
 					}
 					browser.call("Emulation.setDeviceMetricsOverride", map[string]any{"width": capture.width, "height": height, "deviceScaleFactor": 1, "mobile": false}, nil)
-					browser.evaluate(fmt.Sprintf(`(async()=>{document.documentElement.dataset.theme=%q; document.documentElement.style.setProperty('--graph-label-font-size','18px'); const {setLanguage}=await import('/src/js/i18n.js');setLanguage(%q);window.heatFlowLedgerReview();await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));document.getElementById('simulationHeatFlow').scrollIntoView({block:'start'});})()`, capture.theme, capture.language))
-					if review == "history" || review == "history-final" || review == "inspector" {
+					font := 18
+					if review == "typography" && capture.language == "en" {
+						font = 11
+					}
+					browser.evaluate(fmt.Sprintf(`(async()=>{document.documentElement.dataset.theme=%q; document.documentElement.style.setProperty('--graph-label-font-size','%dpx'); const {setLanguage}=await import('/src/js/i18n.js');setLanguage(%q);window.heatFlowLedgerReview();await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));document.getElementById('simulationHeatFlow').scrollIntoView({block:'start'});})()`, capture.theme, font, capture.language))
+					if review == "history" || review == "history-final" || review == "inspector" || review == "typography" {
 						selector := "[data-heatflow-history]"
-						if review == "inspector" {
+						if review == "inspector" || review == "typography" {
 							selector = ".heatflow-inspector"
 						}
 						t.Log(string(browser.evaluate(fmt.Sprintf(`(async()=>{document.querySelector('[data-layout-preset="analysis"]').click();await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));document.querySelector(%q).scrollIntoView({block:'start'});await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));return {mainWidth:document.querySelector('.analysis-panel').getBoundingClientRect().width,history:document.querySelector('[data-heatflow-history]').getBoundingClientRect().toJSON(),inspector:document.querySelector('.heatflow-inspector').getBoundingClientRect().toJSON()};})()`, selector))))
@@ -212,14 +216,14 @@ try{
   const row=rateRow(id),observed=Number.isFinite(value),fill=row?.querySelector('[data-heatflow-bar-fill]');
   check(row?.dataset.value===(observed?String(value):'')&&row.dataset.unit==='W'&&row.dataset.observed===String(observed)&&row.dataset.direction===direction&&Number(row.dataset.barMax)===max,'signed rate bar lost exact W/observation/direction/shared-scale metadata '+id);
   check(row?.querySelector('strong')?.title===data.heatFlowExactWatts(value),'signed rate bar lost precise source W tooltip '+id);
-  if(!observed||value===0){check(!fill||fill.getBoundingClientRect().width===0,'unknown/zero rate created a visible gain or loss bar '+id);check(observed?row?.querySelector('strong')?.textContent==='0.000 kW':row?.querySelector('strong')?.textContent!=='0.000 kW','unknown and known-zero visible values became indistinguishable '+id);return;}
+  if(!observed||value===0){check(!fill||fill.getBoundingClientRect().width===0,'unknown/zero rate created a visible gain or loss bar '+id);check(observed?row?.querySelector('strong')?.textContent==='0.00 kW':row?.querySelector('strong')?.textContent!=='0.00 kW','unknown and known-zero visible values became indistinguishable '+id);return;}
   const bounds=fill?.getBoundingClientRect(),track=fill?.parentElement,trackBounds=track?.getBoundingClientRect(),width=bounds?.width/track?.clientWidth*100,left=(bounds?.left-trackBounds?.left-track?.clientLeft)/track?.clientWidth*100,expected=50*Math.log1p(Math.abs(value))/Math.log1p(max);
   check(bounds?.width>0&&Math.abs(width-expected)<.4&&Math.abs(left-(value>0?50:50-expected))<.4,'signed rate bar does not use the disclosed fixed log W scale from a common zero center '+JSON.stringify({id,width,left,expected}));
  };
  check(host.querySelectorAll('g[data-heat-zone]').length===3&&summary('C')?.querySelector('[data-heatflow-local-gain]').getAttribute('data-heatflow-local-gain')==='','geometry-only zone became a reported zero or disappeared');
  assertMissingMap('C');check(!host.querySelector('g[data-heat-zone="C"] .heatflow-mini-stack'),'geometry-only missing zone manufactured a known-zero baseline');
  check(summary('A')?.querySelector('[data-heatflow-local-gain]').dataset.heatflowLocalGain==='25600'&&summary('A').querySelector('[data-heatflow-local-loss]').dataset.heatflowLocalLoss==='-24600','zone local gain/loss numbers are not separate native W quantities');
- check(kpi('net')?.textContent==='+3.600 kW'&&kpi('net').title==='+3,600.000000 W'&&kpi('residual')?.textContent==='+1.400 kW','storage/deviation were counted as extra heat transfer or precision changed');
+ check(kpi('net')?.textContent==='+3.60 kW'&&kpi('net').title==='+3,600.000000 W'&&kpi('residual')?.textContent==='+1.40 kW','storage/deviation were counted as extra heat transfer or precision changed');
  check([...host.querySelectorAll('[data-heatflow-local-category]')].every(bar=>['internalConvective','systemAir','systemConvective'].includes(bar.dataset.heatflowLocalCategory)),'exchange or storage still appears in local map bars');
  check(arrows().length===2&&arrows().find(arrow=>arrow.dataset.peer==='zone:b')?.dataset.heatflowArrow==='incoming'&&arrows().find(arrow=>arrow.dataset.peer==='zone:b')?.dataset.value==='1.5','compact pair arrow lost signed net value or retained duplicate opposing paths');
  check(arrows().find(arrow=>arrow.dataset.peer==='zone:b')?.dataset.grossIn==='2'&&arrows().find(arrow=>arrow.dataset.peer==='zone:b')?.dataset.grossOut==='0.5','compact arrow lost gross directions in its source attributes');
@@ -230,6 +234,7 @@ try{
  check(neutralMount.querySelectorAll('[data-heatflow-arrow]').length===1&&neutralArrow?.dataset.heatflowArrow==='neutral'&&neutralArrow.dataset.value==='0'&&neutralArrow.querySelector('path').getAttribute('marker-start')&&neutralArrow.querySelector('path').getAttribute('marker-end'),'equal opposite gross flows did not retain one bidirectional net-zero path');
  check(arrows().every(arrow=>arrow.dataset.unit==='kWh'&&arrow.querySelector('path').getAttribute('marker-end')),'interval energy was relabelled W or lacks arrowheads');
  check(host.querySelector('[data-heatflow-peer="zone:b"] [data-heatflow-pair-in="2"]')&&host.querySelector('[data-heatflow-peer="zone:b"] [data-heatflow-pair-out="0.5"]'),'measured pair ledger lost its separate simultaneous signed directions');
+ check(host.querySelector('[data-heatflow-peer="zone:b"] [data-heatflow-pair-in="2"]').textContent==='2.000 kWh'&&host.querySelector('[data-heatflow-peer="zone:b"] [data-heatflow-pair-out="0.5"]').textContent==='0.500 kWh','two-decimal kW formatting changed separate interval-energy kWh precision');
  check(host.querySelector('[data-heatflow-aggregate="outdoorAir"]').dataset.value==='1000'&&host.querySelector('[data-heatflow-aggregate="outdoorAir"]').classList.contains('incoming'),'outdoor zone-air transfer lacks explicit direction');
  for(const [id,value]of[['internalConvective',25600],['surfaceConvection',1100],['interzoneAir',500],['outdoorAir',1000],['systemAir',-24600],['systemConvective',0],['airStorage',2200],['residual',1400],['deviation',-100]])assertRateBar(id,value,value>0?'incoming':value<0?'outgoing':'neutral',30000);
  check(host.querySelectorAll('.heatflow-inspector [data-heatflow-ledger]').length===9&&[...host.querySelectorAll('.heatflow-inspector [data-heatflow-ledger]')].every(row=>row.dataset.unit==='W'),'inspector rate bars mix measured interval-energy kWh with W rates');
@@ -242,7 +247,7 @@ try{
  await tick();check(host.querySelector('[data-heatflow-history]')===history&&history.querySelector('[data-heatflow-category="internalConvective"]')===clickHistoryPath&&clickHistoryPath.getAttribute('d')===clickHistoryD&&host.querySelector('.heatflow-timeline-line')===clickTimelinePath&&history.querySelectorAll('[data-heatflow-chart-frame="1"]').length===3,'graph frame click rebuilt full-history/timeline geometry or retained a stale cursor');
  state.simulationHeatFlowFrameIndex=0;await render();
  const netScale=host.querySelector('[data-heatflow-scale="net"]')?.textContent;
- check(netScale?.includes('-17.200 kW')&&netScale.includes('/ 0 /')&&netScale.includes('+17.200 kW')&&/fixed|all frames/i.test(netScale)&&/log/i.test(netScale),'net map legend does not disclose its fixed all-time numeric bounds and log colour scale');
+ check(netScale?.includes('-17.20 kW')&&netScale.includes('/ 0.00 kW /')&&netScale.includes('+17.20 kW')&&/fixed|all frames/i.test(netScale)&&/log/i.test(netScale),'net map legend does not disclose its fixed all-time numeric bounds and log colour scale');
  check(/fixed|all frames/i.test(host.querySelector('.heatflow-bar-scale')?.textContent)&&/log/i.test(host.querySelector('.heatflow-bar-scale')?.textContent),'mini-stack legend omits its fixed all-time log scale');
  const netFill=host.querySelector('g[data-heat-zone="A"] polygon').getAttribute('style');
  const color=name=>getComputedStyle(host.querySelector('g[data-heat-zone="'+name+'"] polygon')).fill.match(/\d+/g).map(Number);
@@ -258,14 +263,14 @@ try{
  const outlier=clone(result),outlierData=outlier.purposeResults.zoneHeatFlow;outlierData.zones[0].values[0][2]=587000;outlierData.maxAbs=587000;
  await render(outlier);
  const outlierScale=host.querySelector('[data-heatflow-scale="net"]').textContent,outlierColor=color('A'),outlierHeight=Number(host.querySelector('g[data-heat-zone="A"] [data-heatflow-local-category="internalConvective"]').getAttribute('height'));
- check(outlierScale.includes('586.000 kW')&&outlierScale!==netScale&&outlierColor[0]-outlierColor[2]>40&&outlierHeight>=30&&Math.abs(outlierHeight-46*Math.log1p(25600)/Math.log1p(587000))<.02,'historical +587kW peak is omitted from the fixed scale or still washes out ordinary log-scaled values');
+ check(outlierScale.includes('586.00 kW')&&outlierScale!==netScale&&outlierColor[0]-outlierColor[2]>40&&outlierHeight>=30&&Math.abs(outlierHeight-46*Math.log1p(25600)/Math.log1p(587000))<.02,'historical +587kW peak is omitted from the fixed scale or still washes out ordinary log-scaled values');
  assertRateBar('internalConvective',25600,'incoming',587000);assertRateBar('systemAir',-24600,'outgoing',587000);
  await render();
  const geometryBefore=host.querySelector('[data-heatflow-plan]').outerHTML;
  const editable=clone(fixture.geometry);editable.surfaces.forEach(surface=>surface.vertices.forEach(point=>point.x+=1000));editable.zones[0].name='Edited A';
  state.report={geometry:editable};await render();check(host.querySelector('[data-heatflow-plan]').outerHTML===geometryBefore,'editing current analysis moved executed result geometry');
  const slider=document.getElementById('simulationHeatFlowSlider');slider.value='1';slider.dispatchEvent(new Event('input',{bubbles:true}));await tick();
- check(state.simulationHeatFlowFrameIndex===1&&kpi('net').textContent==='-17.200 kW'&&kpi('residual').textContent==='0.000 kW','native slider did not update physical balance/residual');
+ check(state.simulationHeatFlowFrameIndex===1&&kpi('net').textContent==='-17.20 kW'&&kpi('residual').textContent==='0.00 kW','native slider did not update physical balance/residual');
  const lossColor=color('A');check(lossColor[2]-lossColor[0]>40&&host.querySelector('[data-heatflow-scale="net"]').textContent===netScale,'negative balance lacks visible blue fill or changed the fixed all-time bound');
  const internalSegment=Number(host.querySelector('g[data-heat-zone="A"] [data-heatflow-local-category="internalConvective"]').getAttribute('height')),systemSegment=Number(host.querySelector('g[data-heat-zone="A"] [data-heatflow-local-category="systemConvective"]').getAttribute('height'));
  check(Math.abs(internalSegment+systemSegment-46*Math.log1p(18300)/Math.log1p(30000))<.025&&Math.abs(internalSegment/(internalSegment+systemSegment)-18000/18300)<.0005,'mini log-scaled total distorted the original18000:300 positive category composition');
@@ -316,7 +321,7 @@ try{
   check(host.querySelector('[data-heatflow-aggregate="outdoorAir"]').dataset.value==='-1000',name+' removed independent aggregate zone observations');
  }
  await render();state.simulationHeatFlowFrameIndex=2;await render();
- check(arrows().length===0&&kpi('net').textContent==='0.000 kW'&&!kpi('net').textContent.includes('*'),'reported zero heat was treated as missing or created transfer arrow');
+ check(arrows().length===0&&kpi('net').textContent==='0.00 kW'&&!kpi('net').textContent.includes('*'),'reported zero heat was treated as missing or created transfer arrow');
  check(host.querySelector('[data-heatflow-aggregate="interzoneAir"]').classList.contains('neutral'),'reported zero interzone transfer lacks neutral state');
  assertRateBar('outdoorAir',0,'neutral',30000);assertRateBar('residual',0,'neutral',30000);
  const allZero=clone(result);allZero.purposeResults.zoneHeatFlow.zones.forEach(zone=>{zone.values.forEach(values=>values.fill(0));zone.observed.forEach(values=>values.fill(true));});await render(allZero);
@@ -329,12 +334,12 @@ try{
  basisZone.rateBasis={effectiveMultiplier:6,systemAir:'modeled_zone',reportedSystemAir:[-6000,-12000,-12000],systemConvective:'energyplus_reported',reportedSystemConvective:[0,300,0]};basisZone.values[5][1]=300;
  state.simulationHeatFlowSelectedZone='B';state.simulationHeatFlowFrameIndex=1;await render(normalized);
  const normalizedAir=rateRow('systemAir'),normalizedTitle=normalizedAir.querySelector('strong').title;
- check(normalizedAir.dataset.value==='-2000'&&normalizedAir.querySelector('strong').textContent==='-2.000 kW'&&normalizedTitle.includes('-2,000.000000 W')&&normalizedTitle.includes('-12,000.000000 W')&&normalizedTitle.includes('multiplier 6'),'corrected HVAC air rate lost displayed -2000W/raw -12000W/multiplier6 source provenance or was divided twice');
+ check(normalizedAir.dataset.value==='-2000'&&normalizedAir.querySelector('strong').textContent==='-2.00 kW'&&normalizedTitle.includes('-2,000.000000 W')&&normalizedTitle.includes('-12,000.000000 W')&&normalizedTitle.includes('multiplier 6'),'corrected HVAC air rate lost displayed -2000W/raw -12000W/multiplier6 source provenance or was divided twice');
  assertRateBar('systemConvective',300,'incoming',30000);
  const mixedWarning=i18n.t('simulation.heatFlowMixedBasisNote'),hasMixedWarning=()=>[...host.querySelectorAll('.heatflow-partial-note')].some(item=>item.textContent===mixedWarning);
- check(hasMixedWarning()&&rateRow('systemConvective').querySelector('strong').textContent==='+0.300 kW','mixed-basis nonzero HVAC convective gain was renormalized or lacks its translated source-basis warning');
+ check(hasMixedWarning()&&rateRow('systemConvective').querySelector('strong').textContent==='+0.30 kW','mixed-basis nonzero HVAC convective gain was renormalized or lacks its translated source-basis warning');
  const normalizedZero=clone(normalized),reportedZeroZone=normalizedZero.purposeResults.zoneHeatFlow.zones.find(zone=>zone.name==='B');reportedZeroZone.values[5][1]=0;reportedZeroZone.rateBasis.reportedSystemConvective[1]=0;await render(normalizedZero);
- check(hasMixedWarning()&&rateRow('systemConvective').dataset.value==='0'&&rateRow('systemConvective').dataset.observed==='true'&&rateRow('systemConvective').querySelector('strong').textContent==='0.000 kW'&&!rateRow('systemConvective').querySelector('[data-heatflow-bar-fill]'),'observed mixed-basis zero lost its cancellation warning or was changed into a modeled nonzero/unavailable value');
+ check(hasMixedWarning()&&rateRow('systemConvective').dataset.value==='0'&&rateRow('systemConvective').dataset.observed==='true'&&rateRow('systemConvective').querySelector('strong').textContent==='0.00 kW'&&!rateRow('systemConvective').querySelector('[data-heatflow-bar-fill]'),'observed mixed-basis zero lost its cancellation warning or was changed into a modeled nonzero/unavailable value');
  const normalizedMissing=clone(normalized);normalizedMissing.purposeResults.zoneHeatFlow.zones.find(zone=>zone.name==='B').observed[5][1]=false;await render(normalizedMissing);
  check(!hasMixedWarning()&&rateRow('systemConvective').dataset.observed==='false'&&!rateRow('systemConvective').querySelector('[data-heatflow-bar-fill]'),'unobserved raw HVAC convective sample became a normalized numeric gain/warning');
  const absent=clone(dataset.zones[0]);absent.values[0][0]=null;const balance=data.heatFlowBalance(dataset,absent,0);
@@ -420,9 +425,15 @@ try{
   playTimers.clear();window.setInterval=nativeInterval;window.clearInterval=nativeClearInterval;
  }
  state.simulationHeatFlowFrameIndex=0;state.simulationHeatFlowRangeStart=0;state.simulationHeatFlowRangeEnd=-1;await render();
- for(const language of['en','ko'])for(const font of[11,18]){
-  i18n.setLanguage(language);document.documentElement.style.setProperty('--graph-label-font-size',font+'px');await render();
+ for(const language of['en','ko'])for(const theme of['dark','light'])for(const font of[12,18]){
+  i18n.setLanguage(language);document.documentElement.dataset.theme=theme;document.documentElement.style.setProperty('--graph-label-font-size',font+'px');await render();
   for(const item of host.querySelectorAll('.heatflow-chart-tick')){const size=parseFloat(getComputedStyle(item).fontSize)*item.getScreenCTM().a;check(Math.abs(size-Math.max(12,font))<.04,'graph font is unreadable or ignores setting '+JSON.stringify({language,font,size}));}
+  const style=selector=>getComputedStyle(host.querySelector(selector)),size=selector=>parseFloat(style(selector).fontSize),family=getComputedStyle(document.body).fontFamily;
+  const heading=size('.heatflow-inspector-head strong'),body=size('.heatflow-ledger-row'),caption=size('.heatflow-flow-note');
+  check(heading===size('.heatflow-chart-heading h4')&&heading>body&&size('.heatflow-current-kpis strong')>heading&&size('.heatflow-floor-card h4')===body&&size('.heatflow-section-title')===body&&size('.heatflow-zone-summary')===body&&caption<body&&size('.heatflow-ledger-axis')===caption,'Heat Flow heading/body/value/caption hierarchy differs between views or themes '+JSON.stringify({language,theme,font}));
+  check(Number(style('.heatflow-inspector-head strong').fontWeight)>Number(style('.heatflow-ledger-row').fontWeight)&&Number(style('.heatflow-current-kpis strong').fontWeight)>Number(style('.heatflow-ledger-row').fontWeight),'Heat Flow headings/values do not stand apart from body text');
+  for(const selector of['.heatflow-inspector-head strong','.heatflow-floor-card h4','.heatflow-ledger-row','.heatflow-chart-heading h4','.heatflow-chart-legend'])check(style(selector).fontFamily===family,'Heat Flow typography uses another app font family '+selector);
+  check(size('.heatflow-chart-legend')===font&&size('.heatflow-chart-panel h5')>=Math.max(body,font),'graph labels or panel titles ignore configured graph typography');
   check(host.querySelector('[data-heatflow-summary="A"] button').textContent.includes('A'),'translated UI renamed source zone');
  }
  i18n.setLanguage('en');document.documentElement.style.setProperty('--graph-label-font-size','11px');await render();

@@ -4405,6 +4405,9 @@
   position: relative;
   min-width: 0;
   container: heatflow / inline-size;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.42;
 }
 
 .simulation-heatflow-head {
@@ -4429,6 +4432,12 @@
   min-width: 0;
 }
 
+.simulation-heatflow-controls button,
+.simulation-heatflow-controls input,
+.simulation-heatflow-controls select {
+  font-size: 12px;
+}
+
 .simulation-heatflow-controls input[type="range"] {
   min-width: 86px;
 }
@@ -4441,6 +4450,7 @@
   background: var(--surface-2);
   color: var(--text);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4499,7 +4509,7 @@
   color: var(--text);
   padding: 0 9px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .heatflow-timeline-brush {

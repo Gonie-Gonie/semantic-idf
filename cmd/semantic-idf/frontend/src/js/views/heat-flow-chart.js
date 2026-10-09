@@ -163,7 +163,7 @@ function renderPanel(group, { zoneSeries, start, end, selected, extent, unit, di
     const className = group.kind === "diagnostic" ? `heatflow-chart-diagnostic is-${category.id}` : "heatflow-chart-stack";
     return `<path class="${escapeHTML(className)}" data-heatflow-${group.kind === "diagnostic" ? "diagnostic" : "category"}="${escapeHTML(category.id)}" data-heatflow-observed-count="${observed}"${range} d="${paths[index].join("")}" style="--heatflow-series-color:${escapeHTML(color(category))}"><title>${escapeHTML(heatFlowCategoryLabel(category))}</title></path>`;
   }).join("");
-  const ticks = [-extent, -extent / 2, 0, extent / 2, extent].map((value) => `<line class="heatflow-chart-grid${value === 0 ? " is-zero" : ""}" x1="${left}" x2="${width - right}" y1="${y(value)}" y2="${y(value)}"/><text class="heatflow-chart-tick" data-heatflow-chart-tick="y" x="${left - 12}" y="${y(value)}" dy=".35em" text-anchor="end">${escapeHTML(tickNumber(value / divisor))}</text>`).join("");
+  const ticks = [-extent, -extent / 2, 0, extent / 2, extent].map((value) => `<line class="heatflow-chart-grid${value === 0 ? " is-zero" : ""}" x1="${left}" x2="${width - right}" y1="${y(value)}" y2="${y(value)}"/><text class="heatflow-chart-tick" data-heatflow-chart-tick="y" x="${left - 12}" y="${y(value)}" dy=".35em" text-anchor="end">${escapeHTML(tickNumber(value / divisor, unit))}</text>`).join("");
   const cursorX = selected == null ? left : x(selected);
   const aria = `${copy("heatFlowStackAria", "{name} heat-flow stack", { name: zoneSeries.name || "" })} · ${group.title}`;
   const legend = `<div class="heatflow-chart-legend is-${group.kind}">${group.items.map((category) => {
@@ -241,6 +241,7 @@ function niceExtent(value) {
   return (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * power;
 }
 
-function tickNumber(value) {
-  return `${value > 0 ? "+" : ""}${value.toLocaleString(getLanguage(), { maximumFractionDigits: 4 })}`;
+function tickNumber(value, unit) {
+  const precision = unit === "kW" ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : { maximumFractionDigits: 4 };
+  return `${value > 0 ? "+" : ""}${value.toLocaleString(getLanguage(), precision)}`;
 }

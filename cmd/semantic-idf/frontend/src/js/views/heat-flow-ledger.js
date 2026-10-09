@@ -10,7 +10,7 @@ export function heatFlowLedgerMaximum(dataset) {
 
 export function renderHeatFlowLedgerAxis(maximum) {
   if (!Number.isFinite(maximum)) return `<div class="heatflow-ledger-axis">${escapeHTML(t("simulation.heatFlowUnavailable", {}, "Unavailable"))}</div>`;
-  return `<div class="heatflow-ledger-axis" aria-hidden="true"><span>${escapeHTML(formatHeatFlowWatts(-maximum))}</span><span>0</span><span>${escapeHTML(formatHeatFlowWatts(maximum))}</span></div>`;
+  return `<div class="heatflow-ledger-axis" aria-hidden="true"><span>${escapeHTML(formatHeatFlowWatts(-maximum))}</span><span>${escapeHTML(formatHeatFlowWatts(0, { signed: false }))}</span><span>${escapeHTML(formatHeatFlowWatts(maximum))}</span></div>`;
 }
 
 export function renderHeatFlowLedgerRow({ id, label, value, maximum, color, aggregate = false, kpi = "", sourceTooltip = "" }) {

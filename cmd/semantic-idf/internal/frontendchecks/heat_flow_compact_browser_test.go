@@ -211,7 +211,7 @@ try{
  check(planGeometry()===fixedGeometry&&planBounds()===fixedBounds&&state.simulationHeatFlowFrameIndex===0,'LargeOffice wheel/drag/double-click moved floor geometry or time selection');
  check(host.querySelectorAll('.heatflow-floor-card').length===7,'LargeOffice story separation changed or floors were omitted');
  const fixedScale=host.querySelector('[data-heatflow-scale="net"]').textContent;
- check(fixedScale.includes('583.300 kW')&&/fixed|all frames/i.test(fixedScale)&&/log/i.test(fixedScale),'LargeOffice historical +587kW observation is omitted from its disclosed fixed all-time log map scale');
+ check(fixedScale.includes('583.30 kW')&&/fixed|all frames/i.test(fixedScale)&&/log/i.test(fixedScale),'LargeOffice historical +587kW observation is omitted from its disclosed fixed all-time log map scale');
  const largestMini=Math.max(...[...host.querySelectorAll('[data-heatflow-local-category="internalConvective"]')].map(item=>Number(item.getAttribute('height'))));
  check(largestMini>=30&&Math.abs(largestMini-46*Math.log1p(6800)/Math.log1p(587000))<.02,'normal LargeOffice gains remain faint or have incorrect log size under a fixed annual outlier');
  const originalPlenumMini=host.querySelector('g[data-heat-zone="GroundFloor_Plenum"] .heatflow-mini-stack').outerHTML,originalPlenumColor=host.querySelector('g[data-heat-zone="GroundFloor_Plenum"] polygon').getAttribute('style');

@@ -196,7 +196,9 @@ The plans fit their cards automatically and stay fixed; wheel, drag and
 double-click do not change their scale or position.
 Expand **Zone values** below a plan for each zone's local gains, local losses
 and total Net; the tables and reading guide start closed to keep the plans clear.
-The ledger displays signed rates in kW to 0.001 kW and temperature in °C.
+The ledger displays signed rates in kW to two decimal places and temperature in °C.
+Rounding affects displayed text only; bars, colours and totals use the retained
+values. Rates rounding to zero display `0.00 kW`; their W tooltips retain the sign.
 Hover a rate to read the W value retained in the result. Positive transfer adds
 heat to zone air; negative transfer removes it. Gains and losses remain visible
 separately, even when their Net is small.

@@ -271,8 +271,10 @@ The map's local bars and gain/loss summaries include internal convective gains,
 system air transfer and system convective gains. Surface convection, interzone
 air and outdoor air form a separate exchange group. Zone-level air/convection
 arrows show aggregate direction, without assigning that total to a neighbouring
-zone. Ledger numbers use signed kW to 0.001 kW, with the retained W value in
-their title. Partial totals are marked; missing observations are not zeros.
+zone. Ledger numbers, legends and kW history ticks use two decimal places, with
+the retained W value in numeric titles. Rounded zero displays `0.00 kW`; source
+sign/precision, geometry and balance arithmetic are unchanged. Partial totals
+are marked; missing observations are not zeros.
 New zone-series `observed` category-major masks and `temperatureObserved`
 frame masks distinguish valid zero from invalid/absent values. Older payloads
 without masks retain their historical value-array semantics.
@@ -320,7 +322,9 @@ surface exchanges never enter the rate scales.
 
 The history section spans the result width and separates local transfers,
 boundary exchanges and reported storage/deviation into three panels with a
-shared signed scale. Labels inherit the UI font and Settings graph font size
+shared signed scale. Heat Flow follows the other inspection views: 15 px main
+headings, 13 px subsections/body, 16 px KPI values and 12 px controls/captions.
+Labels inherit the UI font and Settings graph font size
 with a readable minimum; narrow panels scroll horizontally. It draws every
 source frame from SQL, CSV or ESO, without a frame cap, stride or averaging.
 Timestamps are registered even when all selected observations at that time are

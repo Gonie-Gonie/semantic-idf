@@ -51,6 +51,14 @@ const check=(value,message)=>{if(!value)throw new Error(message);};
 try {
  const {renderHeatFlowStackChart:render,updateHeatFlowStackChart:update,heatFlowChartFrameFromRatio:frameFromRatio}=await import('/src/js/views/heat-flow-chart.js');
  const {setLanguage}=await import('/src/js/i18n.js');
+ const {formatHeatFlowWatts,heatFlowExactWatts}=await import('/src/js/heat-flow-data.js');
+ for(const language of['en','ko']){
+  setLanguage(language);
+  for(const [watts,expected]of[[25555.555,'+25.56 kW'],[-1234.567,'-1.23 kW'],[125.125,'+0.13 kW'],[5,'+0.01 kW'],[-5,'-0.01 kW'],[4.999,'0.00 kW'],[-4.999,'0.00 kW'],[.125,'0.00 kW'],[-.125,'0.00 kW'],[0,'0.00 kW']])check(formatHeatFlowWatts(watts)===expected,'kW display does not have exactly two decimals or leaks a rounded-zero sign '+JSON.stringify({language,watts,expected}));
+  for(const missing of[null,undefined,NaN,Infinity])check(formatHeatFlowWatts(missing)==='\u2014','missing kW was displayed as a known zero '+language);
+  check(heatFlowExactWatts(.125)==='+0.125000 W'&&heatFlowExactWatts(-.125)==='-0.125000 W'&&heatFlowExactWatts(0)==='0.000000 W','two-decimal kW formatting changed exact signed W evidence '+language);
+ }
+ setLanguage('en');
  const mount=document.getElementById('mount');
  const ids=['internalConvective','surfaceConvection','interzoneAir','outdoorAir','systemAir','systemConvective','airStorage','deviation'];
  const colors=['#f59e0b','#ef4444','#a855f7','#14b8a6','#3b82f6','#64748b','#e5e7eb','#94a3b8'];
@@ -65,6 +73,7 @@ try {
  check(!local.querySelector('[data-heatflow-category="surfaceConvection"]')&&!exchange.querySelector('[data-heatflow-category="systemAir"]'),'local and boundary exchange mixed');
  check(!mount.querySelector('[data-heatflow-category="airStorage"], [data-heatflow-category="deviation"]')&&diagnostic.querySelectorAll('[data-heatflow-diagnostic]').length===2,'storage or deviation included in gain/loss stack');
  check(new Set([...mount.querySelectorAll('svg')].map(svg=>svg.dataset.heatflowChartExtent)).size===1&&local.querySelector('svg').dataset.heatflowChartExtent==='50000','panels do not share exact numeric scale');
+ for(const panel of mount.querySelectorAll('[data-heatflow-chart-panel]'))check(JSON.stringify([...panel.querySelectorAll('[data-heatflow-chart-tick="y"]')].map(item=>item.textContent))===JSON.stringify(['-50.00','-25.00','0.00','+25.00','+50.00']),'kW axis ticks do not show exactly two decimals and preserve signs, including zero');
  const internal=local.querySelector('[data-heatflow-category="internalConvective"]'),cooling=local.querySelector('[data-heatflow-category="systemAir"]');
  check(internal.getAttribute('d').startsWith('M174.4,132H182.4V82.848H174.4Z'),'positive observation glyph has incorrect zero/scale');
  check(cooling.getAttribute('d').startsWith('M174.4,132H182.4V179.232H174.4Z'),'negative observation glyph has incorrect zero/scale');
@@ -74,12 +83,12 @@ try {
  check((storage.getAttribute('d').match(/M/g)||[]).length===2,'storage path joined across missing observation');
  check(storage.dataset.heatflowObservedMin==='0'&&storage.dataset.heatflowObservedMax==='2200','diagnostic values/sign altered');
  check(local.querySelector('[data-heatflow-chart-legend="internalConvective"]').title.includes('25,600.000000 W'),'current legend loses exact numeric detail');
- check(local.querySelector('[data-heatflow-chart-legend="internalConvective"] strong').textContent==='+25.600 kW'&&local.querySelector('[data-heatflow-chart-legend="systemAir"] strong').textContent==='-24.600 kW','legend current gains/losses do not retain signed kW precision');
+ check(local.querySelector('[data-heatflow-chart-legend="internalConvective"] strong').textContent==='+25.60 kW'&&local.querySelector('[data-heatflow-chart-legend="systemAir"] strong').textContent==='-24.60 kW','legend current gains/losses do not retain signed two-decimal kW precision');
  check(mount.querySelectorAll('[data-heatflow-chart="1"]').length===3&&mount.querySelectorAll('[data-heatflow-chart-frame="0"]').length===3,'interactive frame hit/cursor missing');
  const inheritedFamily=getComputedStyle(document.body).fontFamily,screenFont=element=>parseFloat(getComputedStyle(element).fontSize)*element.getScreenCTM().a;
  const originalPath=internal,originalGeometry=internal.getAttribute('d');
  const appearance=[];
- for(const font of [11,18])for(const width of [350,720,1100,1423,1600,1800,2000,2800]){
+ for(const font of [11,12,18])for(const width of [350,720,1100,1423,1600,1800,2000,2800]){
   document.documentElement.style.setProperty('--graph-label-font-size',font+'px');mount.style.width=width+'px';
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
   for(const panel of mount.querySelectorAll('[data-heatflow-chart-panel]')){
@@ -125,7 +134,7 @@ try {
  check((isolatedPath.match(/h1L/g)||[]).length===2&&!isolatedPath.includes('l0,0'),'isolated diagnostic observations do not paint real short segments');
  check(isolatedStorage.getTotalLength()>=2,'isolated diagnostic glyphs have no paintable native SVG stroke length');
  check(isolatedPath.includes(',132h1L')&&isolatedStorage.dataset.heatflowObservedMin==='0'&&isolatedStorage.dataset.heatflowObservedCount==='2','reported zero diagnostic point is absent');
- check(mount.querySelector('[data-heatflow-chart-legend="airStorage"] strong').textContent==='0.000 kW','known-zero diagnostic legend does not display its current value');
+ check(mount.querySelector('[data-heatflow-chart-legend="airStorage"] strong').textContent==='0.00 kW','known-zero diagnostic legend does not display its current value');
  const designDay={...irregular,labels:['07/21 01:00:00','07/21 02:00:00','01/21 01:00:00','01/21 02:00:00']};mount.innerHTML=render(designDay,irregularZone,2);
  check([...mount.querySelectorAll('svg')].every(svg=>svg.dataset.heatflowChartTimeMode==='ordinal')&&mount.querySelector('.heatflow-chart-sequence-note')&&mount.textContent.includes('Recorded frame sequence'),'backward DesignDay timestamps were guessed/reordered into elapsed time');
  check(frameFromRatio(designDay,{start:0,end:3},.62)===2&&frameFromRatio(designDay,{start:2,end:3},0)===2&&frameFromRatio(designDay,{start:2,end:3},1)===3,'ordinal pointer mapping or restricted range incorrect');
@@ -133,7 +142,7 @@ try {
  const leap={...irregular,labels:['02/28 24:00:00','02/29 01:00:00','02/29 24:00:00','03/01 01:00:00']};mount.innerHTML=render(leap,irregularZone,0);check(mount.querySelector('svg').dataset.heatflowChartTimeMode==='elapsed','valid leap-day/24:00 timestamps lost exact calendar spacing');
  const masked={...zone,observed:zone.values.map((values,index)=>values.map((_value,frame)=>!(index===0&&frame===0)))};
  mount.innerHTML=render(dataset,masked,0);check(mount.querySelector('.heatflow-chart-missing')&&mount.querySelector('[data-heatflow-category="internalConvective"]').dataset.heatflowObservedCount==='3','explicit absent mask became known numeric value');
- check(mount.querySelector('[data-heatflow-chart-legend="internalConvective"] strong').dataset.heatflowLegendValue===''&&mount.querySelector('[data-heatflow-chart-legend="internalConvective"] strong').textContent!=='0.000 kW','missing current legend value became known zero');
+ check(mount.querySelector('[data-heatflow-chart-legend="internalConvective"] strong').dataset.heatflowLegendValue===''&&mount.querySelector('[data-heatflow-chart-legend="internalConvective"] strong').textContent!=='0.00 kW','missing current legend value became known zero');
  const count=24000,large={...dataset,frameCount:count,labels:Array.from({length:count},(_,frame)=>'Hour '+frame)},largeZone={name:'Large',values:ids.map((_id,index)=>Array.from({length:count},(_,frame)=>index===0?(frame===12003?9000000:frame===17998?-7000000:3):index===4?-2:0))};
  mount.innerHTML=render(large,largeZone,17611);
  const largePath=mount.querySelector('[data-heatflow-category="internalConvective"]');
@@ -158,7 +167,7 @@ try {
   check(current.dataset.heatflowLegendValue===(raw===null?'':String(raw)),'incremental legend invented, rounded or retained a stale source value');
   check(mount.querySelector('.heatflow-chart-missing').hidden===![1,2].includes(frame),'incremental missing status is stale or turns unavailable diagnostics into known zero');
  }
- check(update(mount,dataset,zone,3)&&mount.querySelector('[data-heatflow-chart-legend="internalConvective"]').title.includes('0.125000 W'),'incremental legend tooltip loses fractional source-W precision');
+ check(update(mount,dataset,zone,3)&&mount.querySelector('[data-heatflow-chart-legend="internalConvective"]').title.includes('0.125000 W')&&mount.querySelector('[data-heatflow-chart-legend="internalConvective"] strong').textContent==='0.00 kW','incremental legend loses exact fractional W evidence or does not round its displayed kW to two decimals');
  const otherZone={...zone,name:'Other zone',values:zone.values.map(values=>values.map(value=>value===null?null:value*2))};
  check(!update(mount,dataset,otherZone,3)&&mount.querySelector('.heatflow-cursor')===staticCursor,'zone change falsely reuses another zone chart context or mutates it before rebuild');
  mount.innerHTML=render(dataset,otherZone,3);check(mount.querySelector('.heatflow-chart-heading h4').textContent.includes('Other zone'),'rebuilt history retains the previous zone identity');
