@@ -49,7 +49,7 @@ const heatFlowChartHTML = `<!doctype html><html><head><meta charset="utf-8"><met
 <script type="module">
 const check=(value,message)=>{if(!value)throw new Error(message);};
 try {
- const {renderHeatFlowStackChart:render,heatFlowChartFrameFromRatio:frameFromRatio}=await import('/src/js/views/heat-flow-chart.js');
+ const {renderHeatFlowStackChart:render,updateHeatFlowStackChart:update,heatFlowChartFrameFromRatio:frameFromRatio}=await import('/src/js/views/heat-flow-chart.js');
  const {setLanguage}=await import('/src/js/i18n.js');
  const mount=document.getElementById('mount');
  const ids=['internalConvective','surfaceConvection','interzoneAir','outdoorAir','systemAir','systemConvective','airStorage','deviation'];
@@ -141,6 +141,34 @@ try {
  check((largePath.getAttribute('d').match(/M/g)||[]).length===count,'large chart dropped supplied frames');
  check(mount.querySelectorAll('path').length===8&&mount.querySelectorAll('*').length<170,'full source frames create unbounded DOM elements');
  check(mount.querySelectorAll('[data-heatflow-chart-frame="17611"]').length===3,'large current observed frame disappeared');
+ const largeGeometry=largePath.getAttribute('d');
+ for(const [frame,value]of[[12003,9000000],[17998,-7000000]]){
+  check(update(mount,large,largeZone,frame)&&mount.querySelector('[data-heatflow-category="internalConvective"]')===largePath&&largePath.getAttribute('d')===largeGeometry,'24,000-frame update rebuilt or changed static full-history paths');
+  check(mount.querySelectorAll('[data-heatflow-chart-frame="'+frame+'"]').length===3&&mount.querySelector('[data-heatflow-chart-current]').textContent===large.labels[frame]&&mount.querySelector('[data-heatflow-chart-legend="internalConvective"] strong').dataset.heatflowLegendValue===String(value),'large-frame jump retained a stale cursor, timestamp or exact peak value');
+ }
+ mount.innerHTML=render(dataset,zone,0);
+ const staticNodes=[...mount.querySelectorAll('[data-heatflow-category],[data-heatflow-diagnostic],.heatflow-chart-grid,.heatflow-chart-tick,.heatflow-chart-axis,.heatflow-chart-axis-label')],staticPaths=staticNodes.filter(item=>item.tagName.toLowerCase()==='path').map(item=>item.getAttribute('d'));
+ const staticCursor=mount.querySelector('.heatflow-cursor');
+ for(const frame of[1,2,3,4,0]){
+  check(update(mount,dataset,zone,frame),'same dataset/zone/range/language requires a full chart rebuild');
+  const nextNodes=[...mount.querySelectorAll('[data-heatflow-category],[data-heatflow-diagnostic],.heatflow-chart-grid,.heatflow-chart-tick,.heatflow-chart-axis,.heatflow-chart-axis-label')];
+  check(nextNodes.length===staticNodes.length&&nextNodes.every((node,index)=>node===staticNodes[index])&&JSON.stringify(staticPaths)===JSON.stringify(nextNodes.filter(item=>item.tagName.toLowerCase()==='path').map(item=>item.getAttribute('d'))),'incremental frame update replaced static history SVG nodes or numeric geometry');
+  check(mount.querySelector('.heatflow-cursor')===staticCursor&&mount.querySelectorAll('[data-heatflow-chart-frame="'+frame+'"]').length===3&&mount.querySelector('[data-heatflow-chart-current]').textContent===dataset.labels[frame],'incremental frame cursor/timestamp does not match the actual selected observation');
+  const current=mount.querySelector('[data-heatflow-chart-legend="internalConvective"] strong'),raw=zone.values[0][frame];
+  check(current.dataset.heatflowLegendValue===(raw===null?'':String(raw)),'incremental legend invented, rounded or retained a stale source value');
+  check(mount.querySelector('.heatflow-chart-missing').hidden===![1,2].includes(frame),'incremental missing status is stale or turns unavailable diagnostics into known zero');
+ }
+ check(update(mount,dataset,zone,3)&&mount.querySelector('[data-heatflow-chart-legend="internalConvective"]').title.includes('0.125000 W'),'incremental legend tooltip loses fractional source-W precision');
+ const otherZone={...zone,name:'Other zone',values:zone.values.map(values=>values.map(value=>value===null?null:value*2))};
+ check(!update(mount,dataset,otherZone,3)&&mount.querySelector('.heatflow-cursor')===staticCursor,'zone change falsely reuses another zone chart context or mutates it before rebuild');
+ mount.innerHTML=render(dataset,otherZone,3);check(mount.querySelector('.heatflow-chart-heading h4').textContent.includes('Other zone'),'rebuilt history retains the previous zone identity');
+ check(!update(mount,dataset,otherZone,2,{start:1,end:3}),'range change falsely reuses the full-range numeric plot');
+ mount.innerHTML=render(dataset,otherZone,2,{start:1,end:3});check(update(mount,dataset,otherZone,3,{start:1,end:3}),'rebuilt range context cannot update its selected frame');
+ setLanguage('ko');check(!update(mount,dataset,otherZone,3,{start:1,end:3}),'language change falsely reuses stale translated history labels');
+ mount.innerHTML=render(dataset,otherZone,3,{start:1,end:3});const fontStablePath=mount.querySelector('[data-heatflow-category="internalConvective"]');
+ document.documentElement.style.setProperty('--graph-label-font-size','18px');document.documentElement.dataset.theme='light';
+ check(update(mount,dataset,otherZone,2,{start:1,end:3})&&mount.querySelector('[data-heatflow-category="internalConvective"]')===fontStablePath,'font/theme changes unnecessarily rebuild observed numeric paths');
+ setLanguage('en');
  setLanguage('ko');mount.innerHTML=render(dataset,zone,0);check(!mount.querySelector('[data-heatflow-chart-panel="local"]').textContent.includes('Local zone gains / losses'),'Korean chart headings did not use app language');
  setLanguage('en');const unsafe={frameCount:1,labels:['<img src=x onerror=alert(1)>'],categories:[{id:'custom',label:'<script>unsafe<\/script>',color:'#f59e0b'}]};mount.innerHTML=render(unsafe,{name:'<button>zone</button>',values:[[1]]},0);
  check(!mount.querySelector('img,script,button')&&mount.textContent.includes('<img'),'chart labels were not escaped');

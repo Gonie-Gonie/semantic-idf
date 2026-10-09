@@ -515,11 +515,6 @@ func parseSimulationHeatFlowSQLWithProgress(path string, progress func(sqlWorkPr
 	if rowCount == 0 {
 		return HeatFlowDataset{}, nil
 	}
-	stride := 1
-	if rowCount > maxHeatFlowFrames {
-		stride = int(math.Ceil(float64(rowCount) / float64(maxHeatFlowFrames)))
-	}
-
 	dataset := HeatFlowDataset{
 		SourceFile:         filepath.Base(path),
 		Unit:               "W",
@@ -531,9 +526,7 @@ func parseSimulationHeatFlowSQLWithProgress(path string, progress func(sqlWorkPr
 	}
 	zoneBuilders := map[string]*heatFlowZoneBuilder{}
 	zoneOrder := []string{}
-	seenFrames := map[int64]struct{}{}
-	keptFrame := map[int64]int{}
-	frameIndex := -1
+	frames := map[int64]int{}
 
 	if err := walkReportDataCompactWithProgress(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
 		timeIndex := row.TimeIndex
@@ -543,21 +536,16 @@ func parseSimulationHeatFlowSQLWithProgress(path string, progress func(sqlWorkPr
 		minute := row.Minute
 		dictionaryIndex := row.DictionaryIndex
 		value := row.Value
-		if !value.Valid || math.IsNaN(value.Float64) || math.IsInf(value.Float64, 0) {
-			return nil
-		}
-		_, known := seenFrames[timeIndex]
+		frameIndex, known := frames[timeIndex]
 		if !known {
-			frameIndex++
-			seenFrames[timeIndex] = struct{}{}
-			if stride <= 1 || frameIndex%stride == 0 || frameIndex == rowCount-1 {
-				keptFrame[timeIndex] = dataset.FrameCount
-				dataset.Labels = append(dataset.Labels, sqlFrameLabel(month, day, hour, minute))
-				dataset.FrameCount++
-			}
+			frameIndex = dataset.FrameCount
+			frames[timeIndex] = frameIndex
+			dataset.Labels = append(dataset.Labels, sqlFrameLabel(month, day, hour, minute))
+			dataset.FrameCount++
 		}
-		keptFrameIndex, keep := keptFrame[timeIndex]
-		if !keep {
+		// Timestamp registration precedes validity checks so even a frame
+		// containing only NULL/invalid selected values retains its cadence.
+		if !value.Valid || math.IsNaN(value.Float64) || math.IsInf(value.Float64, 0) {
 			return nil
 		}
 		column, ok := columns[dictionaryIndex]
@@ -574,27 +562,24 @@ func parseSimulationHeatFlowSQLWithProgress(path string, progress func(sqlWorkPr
 			zoneBuilders[key] = builder
 			zoneOrder = append(zoneOrder, key)
 		}
-		builder.ensureFrame(keptFrameIndex, len(categories))
+		builder.ensureFrame(frameIndex, len(categories))
 		number := value.Float64
 		if column.temperature {
-			builder.temperature[keptFrameIndex] = roundedHeatFlowNumber(number)
-			builder.temperatureObserved[keptFrameIndex] = true
+			builder.temperature[frameIndex] = roundedHeatFlowNumber(number)
+			builder.temperatureObserved[frameIndex] = true
 			builder.hasTemperature = true
 			dataset.MinTemperature = math.Min(dataset.MinTemperature, number)
 			dataset.MaxTemperature = math.Max(dataset.MaxTemperature, number)
 			return nil
 		}
-		number = basis.value(builder, categories[column.categoryIndex], keptFrameIndex, number)
-		builder.values[column.categoryIndex][keptFrameIndex] = roundedHeatFlowNumber(number)
-		builder.observed[column.categoryIndex][keptFrameIndex] = true
+		number = basis.value(builder, categories[column.categoryIndex], frameIndex, number)
+		builder.values[column.categoryIndex][frameIndex] = roundedHeatFlowNumber(number)
+		builder.observed[column.categoryIndex][frameIndex] = true
 		builder.hasHeatFlowData = true
 		dataset.MaxAbs = math.Max(dataset.MaxAbs, math.Abs(number))
 		return nil
 	}, progress); err != nil {
 		return HeatFlowDataset{}, err
-	}
-	if rowCount > dataset.FrameCount {
-		dataset.Warnings = append(dataset.Warnings, "Heat-flow frames were sampled for interactive rendering.")
 	}
 	return finalizeHeatFlowDataset(dataset, zoneBuilders, zoneOrder, len(categories))
 }

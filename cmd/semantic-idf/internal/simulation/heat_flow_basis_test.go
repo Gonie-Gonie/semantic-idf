@@ -184,12 +184,11 @@ func TestHeatFlowRateBasisSavedSQL(t *testing.T) {
 						t.Fatalf("real source mismatch at %s: raw %.9fW normalized %.9fW", data.Labels[frame], raw, zone.Values[i][frame])
 					}
 				}
-				if count == 0 {
-					t.Fatal("no sampled observed CORE_MID system-air rates")
+				if count != 12 {
+					t.Fatalf("native monthly CORE_MID system-air observations lost: %d", count)
 				}
-				// The sampled reader may omit this monthly frame while retaining
-				// hourly temperature frames. Check the actual peak SQL observation
-				// through the identical basis context without changing sampling.
+				// Check the actual peak SQL observation through the identical basis
+				// context as an independent quantity/provenance cross-check.
 				db, err := openSimulationSQLiteReadOnly(path)
 				if err != nil {
 					t.Fatal(err)
@@ -204,7 +203,7 @@ func TestHeatFlowRateBasisSavedSQL(t *testing.T) {
 				if math.Abs(raw-(-260112.50058018052)) > 0.000001 || math.Abs(corrected-(-26011.25005801805)) > 0.000001 {
 					t.Fatalf("peak source basis mismatch: raw %.9fW corrected %.9fW", raw, corrected)
 				}
-				t.Logf("CORE_MID peak raw %.9fW /10 = %.9fW; %d sampled rates verified", raw, corrected, count)
+				t.Logf("CORE_MID peak raw %.9fW /10 = %.9fW; %d native rates verified", raw, corrected, count)
 				return
 			}
 		}

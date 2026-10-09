@@ -152,8 +152,8 @@ func TestInitialCompactSQLMatchesOriginalWalkerAcrossSamplingAndCaps(t *testing.
 		t.Fatalf("per-dictionary monthly totals changed: %#v", got.Energy.FacilityMonthly)
 	}
 	heat := got.HeatFlow
-	if heat.OriginalFrameCount != 1503 || heat.FrameCount != 502 || len(heat.Categories) != 2 || len(heat.Zones) != 2 || heat.SourceFile != "eplusout.sql" || heat.Labels[0] != "01-01 01:00" || heat.Labels[1] != "01-01 04:00" || heat.Labels[501] != "03-31 24:00" {
-		t.Fatalf("HeatFlow time-first stride/forced last frame changed: frames=%d/%d labels=%v", heat.FrameCount, heat.OriginalFrameCount, heat.Labels)
+	if heat.OriginalFrameCount != 1503 || heat.FrameCount != 1503 || len(heat.Categories) != 2 || len(heat.Zones) != 2 || heat.SourceFile != "eplusout.sql" || heat.Labels[0] != "01-01 01:00" || heat.Labels[1] != "01-01 02:00" || heat.Labels[1502] != "03-31 24:00" {
+		t.Fatalf("HeatFlow native timestamps changed: frames=%d/%d", heat.FrameCount, heat.OriginalFrameCount)
 	}
 	var office, lab *HeatFlowZoneSeries
 	for index := range heat.Zones {
@@ -164,7 +164,7 @@ func TestInitialCompactSQLMatchesOriginalWalkerAcrossSamplingAndCaps(t *testing.
 			lab = &heat.Zones[index]
 		}
 	}
-	if office == nil || lab == nil || heat.Categories[0].ID != "internalConvective" || heat.Categories[1].ID != "surfaceConvection" || office.Values[0][0] != 999 || office.Values[0][1] != 0 || lab.Values[1][0] != -1 || office.Temperature[501] != 99 {
+	if office == nil || lab == nil || heat.Categories[0].ID != "internalConvective" || heat.Categories[1].ID != "surfaceConvection" || office.Values[0][0] != 999 || office.Values[0][1] != 0 || office.Observed[0][3] || lab.Values[1][0] != -1 || office.Temperature[1502] != 99 {
 		t.Fatal("duplicate order, NULL filtering, signed category-major values or last monthly temperature changed")
 	}
 }

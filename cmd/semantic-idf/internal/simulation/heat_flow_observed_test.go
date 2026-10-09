@@ -56,33 +56,92 @@ func TestParseSimulationHeatFlowPreservesObservedValuesAcrossFormats(t *testing.
 	}
 }
 
-func TestParseSimulationHeatFlowSamplingPreservesObservationMasks(t *testing.T) {
-	// 730 native frames select every second frame, plus the otherwise skipped
-	// final frame. The selected middle gap and final signed readings exercise
-	// masks against sampling rather than merely checking their array shape.
+func TestParseSimulationHeatFlowNativeFramesPreserveObservationMasks(t *testing.T) {
+	// Preserve formerly skipped odd frames, an entirely unavailable interior
+	// frame, reported zeros, and the final frame without changing source cadence.
 	records := make([][4]string, 730)
 	for i := range records {
 		records[i] = [4]string{"0", "0", "", "1"}
 	}
 	records[0][2] = "10"
-	records[364] = [4]string{"", "NaN", "NaN", "0"}
+	records[1] = [4]string{"1", "123.456", "-7", "0"}
+	records[364] = [4]string{"", "NaN", "NaN", ""}
 	records[729] = [4]string{"-3", "-25", "invalid", "1"}
 	for _, format := range []string{"csv", "eso", "sql"} {
 		t.Run(format, func(t *testing.T) {
 			dataset := heatFlowObservedFixture(t, format, records)
-			if dataset.FrameCount != 366 || dataset.OriginalFrameCount != 730 || len(dataset.Warnings) != 1 {
-				t.Fatalf("sampling policy changed: frames=%d/%d warnings=%v", dataset.FrameCount, dataset.OriginalFrameCount, dataset.Warnings)
+			if dataset.FrameCount != 730 || dataset.OriginalFrameCount != 730 || len(dataset.Warnings) != 0 {
+				t.Fatalf("native frames were skipped: frames=%d/%d warnings=%v", dataset.FrameCount, dataset.OriginalFrameCount, dataset.Warnings)
 			}
 			office, lab := dataset.Zones[1], dataset.Zones[0]
 			for frame := 0; frame < dataset.FrameCount; frame++ {
-				wantObserved := frame != 182
+				wantObserved := frame != 364
 				if office.Observed[0][frame] != wantObserved || office.TemperatureObserved[frame] != wantObserved ||
-					office.Observed[1][frame] != (frame == 0) || lab.Observed[0][frame] || !lab.Observed[1][frame] {
-					t.Fatalf("observation masks drifted from selected frame %d: Office=%#v Lab=%#v", frame, office, lab)
+					office.Observed[1][frame] != (frame == 0 || frame == 1) || lab.Observed[0][frame] || lab.Observed[1][frame] != wantObserved {
+					t.Fatalf("observation masks drifted at native frame %d", frame)
 				}
 			}
-			if office.Values[0][365] != -25 || office.Temperature[365] != -3 || lab.Values[1][182] != 0 || !lab.Observed[1][182] {
-				t.Fatal("forced last-frame values or the sampled measured zero were lost")
+			if office.Values[0][729] != -25 || office.Temperature[729] != -3 || office.Values[0][1] != 123.456 || office.Values[1][1] != -7 || lab.Values[1][1] != 0 || !lab.Observed[1][1] {
+				t.Fatal("formerly skipped values, last frame, or the reported zero were lost")
+			}
+		})
+	}
+}
+
+func TestParseSimulationHeatFlowPreservesAnnualNativeCadence(t *testing.T) {
+	records := make([][4]string, 8760)
+	for frame := range records {
+		records[frame] = [4]string{"20", strconv.Itoa(frame), "0", "0"}
+	}
+	for _, format := range []string{"csv", "eso", "sql"} {
+		t.Run(format, func(t *testing.T) {
+			data := heatFlowObservedFixture(t, format, records)
+			if data.FrameCount != len(records) || data.OriginalFrameCount != len(records) || len(data.Warnings) != 0 {
+				t.Fatalf("annual native cadence lost: %d/%d", data.FrameCount, data.OriginalFrameCount)
+			}
+			office := data.Zones[1]
+			for frame, label := range data.Labels {
+				date := time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(frame+1) * time.Hour)
+				if label != date.Format("01-02 15:04") || office.Values[0][frame] != float64(frame) || !office.Observed[0][frame] {
+					t.Fatalf("native frame %d lost cadence or value: %q %.3fW", frame, label, office.Values[0][frame])
+				}
+			}
+		})
+	}
+}
+
+func TestParseSimulationHeatFlowFallbackInputEdges(t *testing.T) {
+	csvHeader := "Date/Time,Office:Zone Air Heat Balance Internal Convective Heat Gain Rate [W](Hourly)\n"
+	esoHeader := "Program Version,EnergyPlus\n2,8,Day of Simulation[],Month[],Day of Month[],DST Indicator[],Hour[],StartMinute[],EndMinute[],DayType\n10,1,Office,Zone Air Heat Balance Internal Convective Heat Gain Rate [W] !Hourly\nEnd of Data Dictionary\n"
+	for _, test := range []struct {
+		name, format, text string
+		wantError          bool
+		frames             int
+	}{
+		{"empty CSV", "csv", "", true, 0},
+		{"empty ESO", "eso", "", false, 0},
+		{"CSV header only", "csv", csvHeader, false, 0},
+		{"ESO dictionary only", "eso", esoHeader, false, 0},
+		{"malformed CSV record", "csv", csvHeader + "01-01 01:00,100\n01-01 02:00,ba\"d\n01-01 03:00,300\n", false, 3},
+		{"invalid ESO observation", "eso", esoHeader + "2,1,1,1,0,1,0,60,Monday\n10,100\n2,1,1,1,0,2,0,60,Monday\n10,invalid\n2,1,1,1,0,3,0,60,Monday\n10,300\nEnd of Data\n", false, 3},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "eplusout."+test.format)
+			if err := os.WriteFile(path, []byte(test.text), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var data HeatFlowDataset
+			var err error
+			if test.format == "csv" {
+				data, err = parseSimulationHeatFlowCSV(path)
+			} else {
+				data, err = parseSimulationHeatFlowESO(path)
+			}
+			if (err != nil) != test.wantError || data.FrameCount != test.frames || data.OriginalFrameCount != test.frames {
+				t.Fatalf("fallback edge changed: frames=%d/%d err=%v", data.FrameCount, data.OriginalFrameCount, err)
+			}
+			if test.frames > 0 && (!reflect.DeepEqual(data.Labels, []string{"01-01 01:00", "01-01 02:00", "01-01 03:00"}) || !reflect.DeepEqual(data.Zones[0].Values[0], []float64{100, 0, 300}) || !reflect.DeepEqual(data.Zones[0].Observed[0], []bool{true, false, true})) {
+				t.Fatalf("malformed middle record collapsed cadence or fabricated a value: %#v", data)
 			}
 		})
 	}

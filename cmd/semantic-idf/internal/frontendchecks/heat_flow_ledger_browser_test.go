@@ -234,11 +234,12 @@ try{
  for(const [id,value]of[['internalConvective',25600],['surfaceConvection',1100],['interzoneAir',500],['outdoorAir',1000],['systemAir',-24600],['systemConvective',0],['airStorage',2200],['residual',1400],['deviation',-100]])assertRateBar(id,value,value>0?'incoming':value<0?'outgoing':'neutral',30000);
  check(host.querySelectorAll('.heatflow-inspector [data-heatflow-ledger]').length===9&&[...host.querySelectorAll('.heatflow-inspector [data-heatflow-ledger]')].every(row=>row.dataset.unit==='W'),'inspector rate bars mix measured interval-energy kWh with W rates');
  check(host.querySelector('[data-heatflow-history]')&&!host.querySelector('.heatflow-inspector [data-heatflow-history]'),'history remains squeezed into narrow inspector');
- const history=host.querySelector('[data-heatflow-history]');const chartHit=history.querySelector('[data-heatflow-chart]');const hitBounds=chartHit.getBoundingClientRect();
+ const history=host.querySelector('[data-heatflow-history]');const chartHit=history.querySelector('[data-heatflow-chart]');const hitBounds=chartHit.getBoundingClientRect(),clickHistoryPath=history.querySelector('[data-heatflow-category="internalConvective"]'),clickHistoryD=clickHistoryPath.getAttribute('d'),clickTimelinePath=host.querySelector('.heatflow-timeline-line');
  chartHit.dispatchEvent(new PointerEvent('pointermove',{clientX:hitBounds.left+hitBounds.width*.9,clientY:hitBounds.top+hitBounds.height/2,bubbles:true}));
  check(state.simulationHeatFlowFrameIndex===0,'moving pointer over graph unexpectedly changed inspected frame');
  chartHit.dispatchEvent(new MouseEvent('click',{clientX:hitBounds.left+hitBounds.width*.5,clientY:hitBounds.top+hitBounds.height/2,bubbles:true}));
  check(state.simulationHeatFlowFrameIndex===1,'clicking center frame bin did not select exact observation');
+ await tick();check(host.querySelector('[data-heatflow-history]')===history&&history.querySelector('[data-heatflow-category="internalConvective"]')===clickHistoryPath&&clickHistoryPath.getAttribute('d')===clickHistoryD&&host.querySelector('.heatflow-timeline-line')===clickTimelinePath&&history.querySelectorAll('[data-heatflow-chart-frame="1"]').length===3,'graph frame click rebuilt full-history/timeline geometry or retained a stale cursor');
  state.simulationHeatFlowFrameIndex=0;await render();
  const netScale=host.querySelector('[data-heatflow-scale="net"]')?.textContent;
  check(netScale?.includes('-17.200 kW')&&netScale.includes('/ 0 /')&&netScale.includes('+17.200 kW')&&/fixed|all frames/i.test(netScale)&&/log/i.test(netScale),'net map legend does not disclose its fixed all-time numeric bounds and log colour scale');
@@ -301,8 +302,8 @@ try{
  window.dispatchEvent(new PointerEvent('pointerup',{pointerId:901,pointerType:'mouse',button:0,clientX:planX+80,clientY:planY+60,bubbles:true}));
  fixedPlan.dispatchEvent(new MouseEvent('dblclick',{clientX:planX,clientY:planY,bubbles:true,cancelable:true}));await tick();
  check(planGeometry()===fixedGeometry&&planBounds()===fixedBounds&&state.simulationHeatFlowFrameIndex===1,'wheel/drag/double-click moved a fixed plan or changed the selected time');
- const chartBefore=host.querySelector('[data-heatflow-history]').outerHTML;host.querySelector('[data-heatflow-inspector-toggle]').click();
- check(state.simulationHeatFlowInspectorCollapsed&&host.querySelector('[data-heatflow-history]').outerHTML===chartBefore,'collapsing ledger hid or changed full-width graph');
+ const historyMarkup=()=>host.querySelector('[data-heatflow-history]').outerHTML.replace(/ data-heatflow-chart-context="[^"]*"/g,''),chartBefore=historyMarkup();host.querySelector('[data-heatflow-inspector-toggle]').click();
+ check(state.simulationHeatFlowInspectorCollapsed&&historyMarkup()===chartBefore,'collapsing ledger hid or changed full-width graph');
  host.querySelector('[data-heatflow-inspector-toggle]').click();
  for(const [name,mutate]of[
   ['missing execution snapshot',next=>delete next.purposeResults.thermalTopology.planGeometry],
@@ -362,6 +363,62 @@ try{
  range=await preset(['01-01 01:00','01-01 02:00','01-01 02:00','01-01 03:00'],1,'day');check(range.start===0&&range.end===1,'range crossed ambiguous duplicate timestamps');
  range=await preset(['01-01 01:00','02-31 01:00','01-03 01:00'],1,'day');check(range.disabled&&range.start===0&&range.end===2,'invalid calendar time enabled elapsed-time preset');
  check(data.heatFlowFrameTime('01-01 24:00')===data.heatFlowFrameTime('01-02 00:00')&&Number.isNaN(data.heatFlowFrameTime('01-01 24:01')),'calendar parser changed EnergyPlus 24:00 meaning');
+ const playbackResult=clone(result),playback=playbackResult.purposeResults.zoneHeatFlow;
+ playback.labels=['01-01 01:00','01-01 01:15','01-01 01:30','01-01 02:00','01-01 02:15'];playback.frameCount=playback.originalFrameCount=playback.labels.length;
+ playback.zones.forEach((zone,zoneIndex)=>{
+  zone.values=playback.categories.map((_category,category)=>playback.labels.map((_label,frame)=>category===0?(zoneIndex===0?1100:101)*(frame+1):category===4?-(zoneIndex===0?100:1)*(frame+1):category===6?(zoneIndex===0?1000:100)*(frame+1):0));
+  zone.observed=playback.categories.map(()=>playback.labels.map(()=>true));zone.temperature=playback.labels.map((_label,frame)=>20+frame);zone.temperatureObserved=playback.labels.map(()=>true);delete zone.rateBasis;
+ });
+ playback.zones[0].observed[0][2]=false;
+ check(playbackResult.heatFlow.frameCount===3&&playback.frameCount===5,'purpose-dataset authority regression lost its distinct legacy frame count');
+ const playbackBefore=JSON.stringify(playbackResult),nativeInterval=window.setInterval,nativeClearInterval=window.clearInterval,playTimers=new Map();let nextPlayTimer=900000;
+ window.setInterval=(callback,delay,...args)=>{if(![900,420,160].includes(Number(delay)))return nativeInterval.call(window,callback,delay,...args);const timer=nextPlayTimer++;playTimers.set(timer,{delay,callback:()=>callback(...args)});return timer;};
+ window.clearInterval=timer=>{if(!playTimers.delete(timer))nativeClearInterval.call(window,timer);};
+ try{
+  const play=document.getElementById('simulationHeatFlowPlay'),speed=document.getElementById('simulationHeatFlowSpeed'),frameLabel=document.getElementById('simulationHeatFlowFrame');
+  const advance=async()=>{check(playTimers.size===1,'playback has no timer or concurrent timers');const timer=[...playTimers.values()][0];if(timer)timer.callback();await tick();};
+  const historyPath=()=>host.querySelector('[data-heatflow-category="internalConvective"]'),timelinePath=()=>host.querySelector('.heatflow-timeline-line');
+  const assertPlaybackFrame=(frame,series=playback.zones[0])=>{
+   const available=series.observed[0][frame],raw=series.values[0][frame],legend=host.querySelector('[data-heatflow-chart-legend="internalConvective"] strong');
+   check(state.simulationHeatFlowFrameIndex===frame&&frameLabel.textContent===playback.labels[frame]&&host.querySelector('[data-heatflow-chart-current]').textContent===playback.labels[frame],'Play skipped, reordered or invented a native timestamp '+frame);
+   check(legend.dataset.heatflowLegendValue===(available?String(raw):'')&&host.querySelectorAll('[data-heatflow-chart-frame="'+frame+'"]').length===3,'Play current legend/cursors do not describe the exact native source frame '+frame);
+   check(host.querySelector('.heatflow-chart-missing').hidden===available&&rateRow('internalConvective').dataset.value===(available?String(raw):'')&&rateRow('internalConvective').dataset.observed===String(available),'Play retained stale numeric/missing status '+frame);
+  };
+  Object.assign(state,{simulationHeatFlowSelectedZone:'A',simulationHeatFlowFrameIndex:0,simulationHeatFlowRangeStart:0,simulationHeatFlowRangeEnd:-1,simulationActiveResultView:'zone_heat_flow'});speed.value='420';await render(playbackResult);
+  check(playback.labels.length===5&&!playback.labels.includes('01-01 01:45')&&host.querySelector('[data-heatflow-chart]').closest('svg').dataset.heatflowChartTimeMode==='elapsed','native cadence fixture lost its explicit unobserved 15-minute gap');
+  const fixedHistory=historyPath(),fixedHistoryD=fixedHistory.getAttribute('d'),fixedTimeline=timelinePath(),fixedTimelineD=fixedTimeline.getAttribute('d'),fixedFloor=host.querySelector('[data-heatflow-plan-content]');
+  const assertStaticPlayback=()=>check(historyPath()===fixedHistory&&fixedHistory.getAttribute('d')===fixedHistoryD&&timelinePath()===fixedTimeline&&fixedTimeline.getAttribute('d')===fixedTimelineD&&host.querySelector('[data-heatflow-plan-content]')===fixedFloor,'Play/Pause/speed/slider rebuilt static full-history, timeline or floor geometry');
+  assertPlaybackFrame(0);play.click();await tick();check(state.simulationHeatFlowPlaying&&playTimers.size===1&&[...playTimers.values()][0].delay===420,'native Play did not start one timer at the selected speed');assertStaticPlayback();
+  const cursorX=new Map([[0,Number(host.querySelector('[data-heatflow-chart-frame]').getAttribute('x1'))]]);
+  for(const frame of[1,2,3,4,0]){await advance();assertPlaybackFrame(frame);assertStaticPlayback();cursorX.set(frame,Number(host.querySelector('[data-heatflow-chart-frame]').getAttribute('x1')));}
+  check(Math.abs((cursorX.get(3)-cursorX.get(2))/(cursorX.get(1)-cursorX.get(0))-2)<.0001,'playback chart interpolated or compressed the unobserved 01:45 source gap');
+  for(const delay of[900,420,160]){
+   const previous=[...playTimers.keys()][0],frame=state.simulationHeatFlowFrameIndex;speed.value=String(delay);speed.dispatchEvent(new Event('change',{bubbles:true}));await tick();
+   check(playTimers.size===1&&!playTimers.has(previous)&&[...playTimers.values()][0].delay===delay&&state.simulationHeatFlowFrameIndex===frame,'speed restart leaks timers or advances/skips a native frame '+delay);assertStaticPlayback();
+   await advance();assertPlaybackFrame((frame+1)%5);assertStaticPlayback();
+  }
+  const pausedFrame=state.simulationHeatFlowFrameIndex;play.click();await tick();check(!state.simulationHeatFlowPlaying&&playTimers.size===0&&state.simulationHeatFlowFrameIndex===pausedFrame,'Pause leaves a timer running or changes the inspected frame');assertStaticPlayback();
+  slider.value='4';slider.dispatchEvent(new Event('input',{bubbles:true}));await tick();assertPlaybackFrame(4);assertStaticPlayback();
+  const setRange=async(start,end)=>{for(const [id,value]of[['simulationHeatFlowRangeStart',start],['simulationHeatFlowRangeEnd',end]]){const input=document.getElementById(id);input.value=String(value);input.dispatchEvent(new Event('input',{bubbles:true}));await tick();}};
+  await setRange(1,3);check(historyPath()!==fixedHistory&&[...host.querySelectorAll('[data-heatflow-chart]')].every(chart=>chart.closest('svg').dataset.heatflowChartStart==='1'&&chart.closest('svg').dataset.heatflowChartEnd==='3'),'native visible-range change reused full-range history geometry');
+  slider.value='1';slider.dispatchEvent(new Event('input',{bubbles:true}));await tick();play.click();await tick();
+  for(const frame of[2,3,1]){await advance();assertPlaybackFrame(frame);}
+  const seriesTab=document.querySelector('[data-simulation-result-view-button="series"]');check(!seriesTab.disabled,'leave-view playback fixture has no available destination');seriesTab.click();await tick();
+  check(state.simulationActiveResultView==='series'&&!state.simulationHeatFlowPlaying&&playTimers.size===0,'leaving Heat Flow keeps advancing hidden results');
+  document.querySelector('[data-simulation-result-view-button="zone_heat_flow"]').click();await tick();check(!state.simulationHeatFlowPlaying&&playTimers.size===0,'returning to Heat Flow silently resumes playback');
+  const aHistory=historyPath();host.querySelector('g[data-heat-zone="B"]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await tick();
+  check(historyPath()!==aHistory&&host.querySelector('.heatflow-chart-zone').textContent==='B','zone selection reuses the previous zone history');assertPlaybackFrame(1,playback.zones[1]);
+  const englishHistory=historyPath();i18n.setLanguage('ko');await render(playbackResult);check(historyPath()!==englishHistory&&!host.querySelector('.heatflow-chart-heading h4').textContent.includes('Heat-flow history'),'language change retains stale history text');i18n.setLanguage('en');
+  Object.assign(state,{simulationHeatFlowSelectedZone:'A',simulationHeatFlowFrameIndex:0,simulationHeatFlowRangeStart:0,simulationHeatFlowRangeEnd:-1});await render(playbackResult);
+  const ordinalResult=clone(playbackResult),ordinal=ordinalResult.purposeResults.zoneHeatFlow;ordinal.labels=['07-21 01:00','07-21 01:00','01-21 01:00','01-21 01:15','01-21 01:30'];await render(ordinalResult);
+  check(host.querySelector('[data-heatflow-chart]').closest('svg').dataset.heatflowChartTimeMode==='ordinal'&&host.querySelector('.heatflow-chart-sequence-note'),'duplicate/backwards source sequence was sorted or treated as elapsed time');play.click();await tick();
+  for(const frame of[1,2,3,4,0]){await advance();check(state.simulationHeatFlowFrameIndex===frame&&frameLabel.textContent===ordinal.labels[frame]&&host.querySelectorAll('[data-heatflow-chart-frame="'+frame+'"]').length===3,'ordinal Play skipped or sorted a recorded native frame '+frame);}
+  await setRange(2,2);await advance();check(play.disabled&&!state.simulationHeatFlowPlaying&&playTimers.size===0&&state.simulationHeatFlowFrameIndex===2,'reducing a playing range to one native frame leaves a useless timer or changes that frame');play.click();await tick();check(playTimers.size===0,'disabled single-frame Play starts a timer');
+  check(JSON.stringify(playbackResult)===playbackBefore,'incremental Play mutated native labels, values or observation masks');
+ }finally{
+  if(state.simulationHeatFlowPlaying)document.getElementById('simulationHeatFlowPlay').click();
+  playTimers.clear();window.setInterval=nativeInterval;window.clearInterval=nativeClearInterval;
+ }
  state.simulationHeatFlowFrameIndex=0;state.simulationHeatFlowRangeStart=0;state.simulationHeatFlowRangeEnd=-1;await render();
  for(const language of['en','ko'])for(const font of[11,18]){
   i18n.setLanguage(language);document.documentElement.style.setProperty('--graph-label-font-size',font+'px');await render();
@@ -371,7 +428,7 @@ try{
  i18n.setLanguage('en');document.documentElement.style.setProperty('--graph-label-font-size','11px');await render();
  window.heatFlowLedgerReview=()=>{state.report={geometry:fixture.geometry};state.simulationResult=result;state.simulationHeatFlowFrameIndex=0;state.simulationHeatFlowRangeStart=0;state.simulationHeatFlowRangeEnd=-1;state.simulationHeatFlowSelectedZone='A';state.simulationHeatFlowInspectorCollapsed=false;simulation.renderSimulation();};
  check(JSON.stringify(fixture)===before,'view mutated executed source geometry/numeric result');
- evidence.push('real IDF geometry + production canonical pair flow builder; exact sampled/native timestamps; fixed all-time log scales retain ordinary-value visibility with historical +587kW peaks; original mini-segment proportions; signed log inspector bars with exact W metadata/values; kW transfer vs kWh interval; storage/deviation excluded; known zero and missing masks; snapshot ownership; keyboard/selection; fixed plan ignores legacy camera state and wheel/drag/double-click; EN/KO + configured physical graph fonts');
+ evidence.push('real IDF geometry + production canonical pair flow builder; exact sampled/native timestamps; fixed all-time log scales retain ordinary-value visibility with historical +587kW peaks; original mini-segment proportions; signed log inspector bars with exact W metadata/values; kW transfer vs kWh interval; storage/deviation excluded; known zero and missing masks; snapshot ownership; keyboard/selection; fixed plan ignores legacy camera state and wheel/drag/double-click; native 15-minute Play visits every recorded frame without interpolating missing times, speed/range/pause/view lifecycle, static history/timeline/floor DOM identity, zone/range/language invalidation and ordinal DesignDay sequence; EN/KO + configured physical graph fonts');
 }catch(error){failures.push(error.stack||String(error));}
 document.body.dataset.heatFlowLedgerStatus=failures.length?'failed':'passed';document.getElementById('heat-flow-ledger-result').textContent=JSON.stringify({failures,evidence});
 </script>`

@@ -12,8 +12,6 @@ import (
 	"strings"
 )
 
-const maxHeatFlowFrames = 720
-
 type HeatFlowDataset struct {
 	SourceFile         string                    `json:"sourceFile,omitempty"`
 	Unit               string                    `json:"unit,omitempty"`
@@ -91,21 +89,6 @@ func heatFlowCategoryDefinitions() []heatFlowCategoryDefinition {
 }
 
 func parseSimulationHeatFlowCSV(path string, sources ...heatFlowSourceOptions) (HeatFlowDataset, error) {
-	basis := newHeatFlowBasisContext(nil, sources...)
-	header, rowCount, err := heatFlowCSVHeaderAndRowCount(path)
-	if err != nil {
-		return HeatFlowDataset{}, err
-	}
-	categories, columns := heatFlowColumnsFromHeader(header)
-	if len(categories) == 0 || len(columns) == 0 {
-		return HeatFlowDataset{}, nil
-	}
-
-	stride := 1
-	if rowCount > maxHeatFlowFrames {
-		stride = int(math.Ceil(float64(rowCount) / float64(maxHeatFlowFrames)))
-	}
-
 	file, err := os.Open(path)
 	if err != nil {
 		return HeatFlowDataset{}, err
@@ -114,41 +97,43 @@ func parseSimulationHeatFlowCSV(path string, sources ...heatFlowSourceOptions) (
 
 	reader := csv.NewReader(file)
 	reader.FieldsPerRecord = -1
-	if _, err := reader.Read(); err != nil {
+	header, err := reader.Read()
+	if err != nil {
 		return HeatFlowDataset{}, err
 	}
+	categories, columns := heatFlowColumnsFromHeader(header)
+	if len(categories) == 0 || len(columns) == 0 {
+		return HeatFlowDataset{}, nil
+	}
+	basis := newHeatFlowBasisContext(nil, sources...)
 
 	dataset := HeatFlowDataset{
-		SourceFile:         filepath.Base(path),
-		Unit:               "W",
-		TemperatureUnit:    "C",
-		OriginalFrameCount: rowCount,
-		Categories:         categories,
-		MinTemperature:     math.Inf(1),
-		MaxTemperature:     math.Inf(-1),
+		SourceFile:      filepath.Base(path),
+		Unit:            "W",
+		TemperatureUnit: "C",
+		Categories:      categories,
+		MinTemperature:  math.Inf(1),
+		MaxTemperature:  math.Inf(-1),
 	}
 	zoneBuilders := map[string]*heatFlowZoneBuilder{}
 	zoneOrder := []string{}
-	frameIndex := 0
-	keptFrames := 0
 	for {
 		record, err := reader.Read()
 		if err == io.EOF {
 			break
-		}
-		if err != nil {
-			frameIndex++
-			continue
-		}
-		if stride > 1 && frameIndex%stride != 0 && frameIndex != rowCount-1 {
-			frameIndex++
-			continue
 		}
 		label := ""
 		if len(record) > 0 {
 			label = strings.TrimSpace(record[0])
 		}
 		dataset.Labels = append(dataset.Labels, label)
+		frameIndex := dataset.FrameCount
+		dataset.FrameCount++
+		// Retain the source record even when its values cannot be parsed. A
+		// missing observation must not collapse the playback time axis.
+		if err != nil {
+			continue
+		}
 		for _, column := range columns {
 			if column.index >= len(record) {
 				continue
@@ -167,74 +152,35 @@ func parseSimulationHeatFlowCSV(path string, sources ...heatFlowSourceOptions) (
 				zoneBuilders[key] = builder
 				zoneOrder = append(zoneOrder, key)
 			}
-			builder.ensureFrame(keptFrames, len(categories))
+			builder.ensureFrame(frameIndex, len(categories))
 			if column.temperature {
-				builder.temperature[keptFrames] = roundedHeatFlowNumber(value)
-				builder.temperatureObserved[keptFrames] = true
+				builder.temperature[frameIndex] = roundedHeatFlowNumber(value)
+				builder.temperatureObserved[frameIndex] = true
 				builder.hasTemperature = true
 				dataset.MinTemperature = math.Min(dataset.MinTemperature, value)
 				dataset.MaxTemperature = math.Max(dataset.MaxTemperature, value)
 				continue
 			}
-			value = basis.value(builder, categories[column.categoryIndex], keptFrames, value)
-			builder.values[column.categoryIndex][keptFrames] = roundedHeatFlowNumber(value)
-			builder.observed[column.categoryIndex][keptFrames] = true
+			value = basis.value(builder, categories[column.categoryIndex], frameIndex, value)
+			builder.values[column.categoryIndex][frameIndex] = roundedHeatFlowNumber(value)
+			builder.observed[column.categoryIndex][frameIndex] = true
 			builder.hasHeatFlowData = true
 			dataset.MaxAbs = math.Max(dataset.MaxAbs, math.Abs(value))
 		}
-		keptFrames++
-		frameIndex++
 	}
-	dataset.FrameCount = keptFrames
-	if rowCount > keptFrames {
-		dataset.Warnings = append(dataset.Warnings, "Heat-flow frames were sampled for interactive rendering.")
-	}
-	if math.IsInf(dataset.MinTemperature, 0) {
-		dataset.MinTemperature = 0
-		dataset.MaxTemperature = 0
-	} else {
-		dataset.MinTemperature = roundedHeatFlowNumber(dataset.MinTemperature)
-		dataset.MaxTemperature = roundedHeatFlowNumber(dataset.MaxTemperature)
-	}
-	dataset.MaxAbs = roundedHeatFlowNumber(dataset.MaxAbs)
-
-	sort.SliceStable(zoneOrder, func(i, j int) bool {
-		return strings.ToLower(zoneBuilders[zoneOrder[i]].name) < strings.ToLower(zoneBuilders[zoneOrder[j]].name)
-	})
-	for _, key := range zoneOrder {
-		builder := zoneBuilders[key]
-		if !builder.hasHeatFlowData {
-			continue
-		}
-		builder.ensureFrame(keptFrames-1, len(categories))
-		zone := HeatFlowZoneSeries{Name: builder.name, Values: builder.values, Observed: builder.observed, RateBasis: builder.rateBasis}
-		if builder.hasTemperature {
-			zone.Temperature = builder.temperature
-			zone.TemperatureObserved = builder.temperatureObserved
-		}
-		dataset.Zones = append(dataset.Zones, zone)
-	}
-	if len(dataset.Zones) == 0 {
-		return HeatFlowDataset{}, nil
-	}
-	applyHeatFlowBasisWarnings(&dataset)
-	return dataset, nil
+	dataset.OriginalFrameCount = dataset.FrameCount
+	return finalizeHeatFlowDataset(dataset, zoneBuilders, zoneOrder, len(categories))
 }
 
 func parseSimulationHeatFlowESO(path string, sources ...heatFlowSourceOptions) (HeatFlowDataset, error) {
-	basis := newHeatFlowBasisContext(nil, sources...)
-	categories, columns, rowCount, err := heatFlowESOColumnsAndFrameCount(path)
+	categories, columns, err := heatFlowESOColumns(path)
 	if err != nil {
 		return HeatFlowDataset{}, err
 	}
-	if len(categories) == 0 || len(columns) == 0 || rowCount == 0 {
+	if len(categories) == 0 || len(columns) == 0 {
 		return HeatFlowDataset{}, nil
 	}
-
-	stride := 1
-	if rowCount > maxHeatFlowFrames {
-		stride = int(math.Ceil(float64(rowCount) / float64(maxHeatFlowFrames)))
-	}
+	basis := newHeatFlowBasisContext(nil, sources...)
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -243,20 +189,17 @@ func parseSimulationHeatFlowESO(path string, sources ...heatFlowSourceOptions) (
 	defer file.Close()
 
 	dataset := HeatFlowDataset{
-		SourceFile:         filepath.Base(path),
-		Unit:               "W",
-		TemperatureUnit:    "C",
-		OriginalFrameCount: rowCount,
-		Categories:         categories,
-		MinTemperature:     math.Inf(1),
-		MaxTemperature:     math.Inf(-1),
+		SourceFile:      filepath.Base(path),
+		Unit:            "W",
+		TemperatureUnit: "C",
+		Categories:      categories,
+		MinTemperature:  math.Inf(1),
+		MaxTemperature:  math.Inf(-1),
 	}
 	zoneBuilders := map[string]*heatFlowZoneBuilder{}
 	zoneOrder := []string{}
 	afterDictionary := false
 	frameIndex := -1
-	keptFrameIndex := -1
-	keepFrame := false
 
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -281,14 +224,10 @@ func parseSimulationHeatFlowESO(path string, sources ...heatFlowSourceOptions) (
 		}
 		if recordID == 2 {
 			frameIndex++
-			keepFrame = stride <= 1 || frameIndex%stride == 0 || frameIndex == rowCount-1
-			if keepFrame {
-				keptFrameIndex++
-				dataset.Labels = append(dataset.Labels, heatFlowESOFrameLabel(record))
-			}
+			dataset.Labels = append(dataset.Labels, heatFlowESOFrameLabel(record))
 			continue
 		}
-		if !keepFrame || keptFrameIndex < 0 {
+		if frameIndex < 0 {
 			continue
 		}
 		column, ok := columns[recordID]
@@ -309,55 +248,27 @@ func parseSimulationHeatFlowESO(path string, sources ...heatFlowSourceOptions) (
 			zoneBuilders[key] = builder
 			zoneOrder = append(zoneOrder, key)
 		}
-		builder.ensureFrame(keptFrameIndex, len(categories))
+		builder.ensureFrame(frameIndex, len(categories))
 		if column.temperature {
-			builder.temperature[keptFrameIndex] = roundedHeatFlowNumber(value)
-			builder.temperatureObserved[keptFrameIndex] = true
+			builder.temperature[frameIndex] = roundedHeatFlowNumber(value)
+			builder.temperatureObserved[frameIndex] = true
 			builder.hasTemperature = true
 			dataset.MinTemperature = math.Min(dataset.MinTemperature, value)
 			dataset.MaxTemperature = math.Max(dataset.MaxTemperature, value)
 			continue
 		}
-		value = basis.value(builder, categories[column.categoryIndex], keptFrameIndex, value)
-		builder.values[column.categoryIndex][keptFrameIndex] = roundedHeatFlowNumber(value)
-		builder.observed[column.categoryIndex][keptFrameIndex] = true
+		value = basis.value(builder, categories[column.categoryIndex], frameIndex, value)
+		builder.values[column.categoryIndex][frameIndex] = roundedHeatFlowNumber(value)
+		builder.observed[column.categoryIndex][frameIndex] = true
 		builder.hasHeatFlowData = true
 		dataset.MaxAbs = math.Max(dataset.MaxAbs, math.Abs(value))
 	}
 	if err := scanner.Err(); err != nil {
 		return HeatFlowDataset{}, err
 	}
-	dataset.FrameCount = keptFrameIndex + 1
-	if rowCount > dataset.FrameCount {
-		dataset.Warnings = append(dataset.Warnings, "Heat-flow frames were sampled for interactive rendering.")
-	}
+	dataset.FrameCount = frameIndex + 1
+	dataset.OriginalFrameCount = dataset.FrameCount
 	return finalizeHeatFlowDataset(dataset, zoneBuilders, zoneOrder, len(categories))
-}
-
-func heatFlowCSVHeaderAndRowCount(path string) ([]string, int, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer file.Close()
-	reader := csv.NewReader(file)
-	reader.FieldsPerRecord = -1
-	header, err := reader.Read()
-	if err != nil {
-		return nil, 0, err
-	}
-	rowCount := 0
-	for {
-		_, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			continue
-		}
-		rowCount++
-	}
-	return header, rowCount, nil
 }
 
 func heatFlowColumnsFromHeader(header []string) ([]HeatFlowCategory, []heatFlowColumn) {
@@ -406,17 +317,15 @@ func heatFlowColumnsFromHeader(header []string) ([]HeatFlowCategory, []heatFlowC
 	return categories, columns
 }
 
-func heatFlowESOColumnsAndFrameCount(path string) ([]HeatFlowCategory, map[int]heatFlowColumn, int, error) {
+func heatFlowESOColumns(path string) ([]HeatFlowCategory, map[int]heatFlowColumn, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, err
 	}
 	defer file.Close()
 
 	definitions := heatFlowCategoryDefinitions()
 	columns := map[int]heatFlowColumn{}
-	afterDictionary := false
-	rowCount := 0
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
@@ -424,50 +333,40 @@ func heatFlowESOColumnsAndFrameCount(path string) ([]HeatFlowCategory, map[int]h
 		if line == "" {
 			continue
 		}
-		if !afterDictionary {
-			if strings.EqualFold(line, "End of Data Dictionary") {
-				afterDictionary = true
-				continue
-			}
-			record, err := parseHeatFlowCSVLine(line)
-			if err != nil || len(record) < 4 {
-				continue
-			}
-			reportID, err := strconv.Atoi(strings.TrimSpace(record[0]))
-			if err != nil {
-				continue
-			}
-			zoneName := strings.TrimSpace(record[2])
-			variableName := heatFlowColumnMainName(record[3])
-			if zoneName == "" || variableName == "" {
-				continue
-			}
-			if heatFlowVariableMatches(variableName, heatFlowTemperatureVariables()) {
-				columns[reportID] = heatFlowColumn{zoneName: zoneName, temperature: true}
-				continue
-			}
-			for defIndex, definition := range definitions {
-				names := append([]string{definition.variable}, definition.aliases...)
-				if heatFlowVariableMatches(variableName, names) {
-					definition.available = true
-					definitions[defIndex] = definition
-					columns[reportID] = heatFlowColumn{zoneName: zoneName, categoryIndex: defIndex}
-					break
-				}
-			}
-			continue
+		// Only the small dictionary is scanned here. The data section is read
+		// once by the parser; native frame counts are accumulated there.
+		if strings.EqualFold(line, "End of Data Dictionary") {
+			break
 		}
 		record, err := parseHeatFlowCSVLine(line)
-		if err != nil || len(record) == 0 {
+		if err != nil || len(record) < 4 {
 			continue
 		}
 		reportID, err := strconv.Atoi(strings.TrimSpace(record[0]))
-		if err == nil && reportID == 2 {
-			rowCount++
+		if err != nil {
+			continue
+		}
+		zoneName := strings.TrimSpace(record[2])
+		variableName := heatFlowColumnMainName(record[3])
+		if zoneName == "" || variableName == "" {
+			continue
+		}
+		if heatFlowVariableMatches(variableName, heatFlowTemperatureVariables()) {
+			columns[reportID] = heatFlowColumn{zoneName: zoneName, temperature: true}
+			continue
+		}
+		for defIndex, definition := range definitions {
+			names := append([]string{definition.variable}, definition.aliases...)
+			if heatFlowVariableMatches(variableName, names) {
+				definition.available = true
+				definitions[defIndex] = definition
+				columns[reportID] = heatFlowColumn{zoneName: zoneName, categoryIndex: defIndex}
+				break
+			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, nil, 0, err
+		return nil, nil, err
 	}
 
 	categories, categoryIndexMap := heatFlowCategoriesFromDefinitions(definitions)
@@ -483,7 +382,7 @@ func heatFlowESOColumnsAndFrameCount(path string) ([]HeatFlowCategory, map[int]h
 		column.categoryIndex = categoryIndex
 		columns[reportID] = column
 	}
-	return categories, columns, rowCount, nil
+	return categories, columns, nil
 }
 
 func heatFlowCategoriesFromDefinitions(definitions []heatFlowCategoryDefinition) ([]HeatFlowCategory, map[int]int) {

@@ -322,14 +322,23 @@ The history section spans the result width and separates local transfers,
 boundary exchanges and reported storage/deviation into three panels with a
 shared signed scale. Labels inherit the UI font and Settings graph font size
 with a readable minimum; narrow panels scroll horizontally. It draws every
-frame supplied by the backend, with gaps for unavailable observations and no
-extra frontend stride/averaging. Backend sampling remains bounded by
-`maxHeatFlowFrames` (720, with retained last-frame handling), and displayed frame
-counts identify sampling. Day/Week/Month select 24-hour/7-day/30-day timestamp
+source frame from SQL, CSV or ESO, without a frame cap, stride or averaging.
+Timestamps are registered even when all selected observations at that time are
+invalid; observed masks retain those gaps. Original record order, missing
+timestamps, design-day reversals and duplicate labels remain intact, without
+interpolation or calendar sorting. Play advances one source frame per tick and
+loops within the selected range. Slow/Normal/Fast change the wall-clock delay
+(900/420/160 ms), never the frame increment. Playback updates only current
+values, floor overlays, exchange arrows, legends and cursors; static history
+paths and the overview brush remain mounted. Chart time layouts use a bounded
+four-range cache per immutable dataset. Zone/range/language changes rebuild the
+affected history. Previously saved sampled results retain their shown/original
+counts and need regeneration to recover discarded source frames.
+Day/Week/Month select 24-hour/7-day/30-day timestamp
 windows around the selected time within one contiguous calendar sequence;
 invalid dates or a backward/wrapped sequence cannot fall back to frame counts.
-A displayed frame count is not elapsed hours, and sampled W values cannot
-establish annual kWh totals. Static Topology remains separate; see
+A displayed frame count is not elapsed hours; rate values require their actual
+intervals for energy integration. Static Topology remains separate; see
 [Topology data contracts](topology.md#data-contracts).
 
 HVAC Loop Check uses executed-input topology and the shared supply/demand

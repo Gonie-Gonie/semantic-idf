@@ -6,6 +6,10 @@ const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const number = (value) => String(Number(value.toFixed(6)));
 const copy = (key, fallback, parameters = {}) => t(`simulation.${key}`, parameters, fallback);
 const color = (category) => category.id === "airStorage" ? "var(--heatflow-storage-color)" : category.id === "deviation" ? "var(--heatflow-deviation-color)" : category.color || "var(--muted)";
+const layoutCache = new WeakMap();
+const renderContexts = new WeakMap();
+const cacheLimit = 4;
+let renderSequence = 0;
 
 /** Every supplied frame is drawn, without stride sampling or averaging. Local
  * gains/losses, boundary exchanges, and reported diagnostics have separate panels
@@ -44,14 +48,76 @@ export function renderHeatFlowStackChart(dataset, zoneSeries, frameIndex, { star
   const selected = finite(frameIndex) && frameIndex >= start && frameIndex <= end ? Math.floor(frameIndex) : null;
   const label = (frame) => String(dataset.labels?.[frame] || `#${frame + 1}`);
   const missingCount = groups.filter((group) => group.kind !== "diagnostic").reduce((sum, group) => sum + group.frames.filter((row) => !row.complete).length, 0);
-  const selectedMissing = selected != null && (!heatFlowBalance(dataset, zoneSeries, selected).complete || groups.some((group) => !group.frames[selected - start].complete));
-  return `<section class="heatflow-history" data-heatflow-history data-heatflow-chart-missing-count="${missingCount}">
+  const selectedMissing = selectedFrameMissing(dataset, zoneSeries, selected);
+  const context = rememberRenderContext(dataset, { zoneSeries, start, end, language: getLanguage() });
+  return `<section class="heatflow-history" data-heatflow-history data-heatflow-chart-context="${context}" data-heatflow-chart-missing-count="${missingCount}">
     <div class="heatflow-chart-heading"><h4>${escapeHTML(copy("heatFlowHistory", "Heat-flow history"))}${zoneSeries.name ? ` · <span class="heatflow-chart-zone">${escapeHTML(zoneSeries.name)}</span>` : ""}</h4><span class="heatflow-chart-current" data-heatflow-chart-current>${escapeHTML(selected == null ? "" : label(selected))}</span></div>
-    ${selectedMissing ? `<p class="heatflow-chart-missing" role="status">${escapeHTML(copy("heatFlowMissingFrame", "Incomplete observations at this frame"))}</p>` : ""}
+    <p class="heatflow-chart-missing" role="status"${selectedMissing ? "" : " hidden"}>${escapeHTML(copy("heatFlowMissingFrame", "Incomplete observations at this frame"))}</p>
     ${layout.elapsed ? "" : `<p class="heatflow-chart-sequence-note">${escapeHTML(copy("heatFlowRecordedFrameNote", "Timestamps are missing, repeated or out of order. Observations are shown in their recorded sequence."))}</p>`}
     <div class="heatflow-chart-panels">${groups.map((group) => renderPanel(group, { zoneSeries, start, end, selected, extent, unit, divisor, label, layout })).join("")}</div>
     <p class="heatflow-chart-help">${escapeHTML(copy("heatFlowChartHelp", "Click the graph to select a time; scroll to zoom the time range."))}</p>
   </section>`;
+}
+
+/** Update the selected observation without replacing static SVG paths or axes.
+ * False means the existing render belongs to another dataset/zone/range/language
+ * or its expected dynamic elements are absent; the caller can render it fully. */
+export function updateHeatFlowStackChart(host, dataset, zoneSeries, frameIndex, range = {}) {
+  const history = host?.matches?.("[data-heatflow-history]") ? host : host?.querySelector?.("[data-heatflow-history]");
+  const context = renderContexts.get(dataset)?.get(history?.dataset.heatflowChartContext);
+  const normalized = normalizedRange(dataset, range);
+  if (!context || !normalized || context.zoneSeries !== zoneSeries || context.language !== getLanguage()
+    || context.start !== normalized.start || context.end !== normalized.end) return false;
+  const current = history.querySelector("[data-heatflow-chart-current]");
+  const missing = history.querySelector(".heatflow-chart-missing");
+  if (!current || !missing) return false;
+  const layout = frameLayout(dataset, normalized);
+  const selected = finite(frameIndex) && frameIndex >= layout.start && frameIndex <= layout.end ? Math.floor(frameIndex) : null;
+  const categories = dataset.categories || [];
+  const legendNodes = [...history.querySelectorAll("[data-heatflow-chart-legend]")];
+  const cursors = [...history.querySelectorAll(".heatflow-cursor")];
+  if (legendNodes.length !== categories.length || cursors.length !== history.querySelectorAll("[data-heatflow-chart-panel]").length) return false;
+  const legendUpdates = legendNodes.map(node => {
+    const index = categories.findIndex(category => category.id === node.dataset.heatflowChartLegend);
+    return { node, index, valueNode: node.querySelector("[data-heatflow-legend-value]") };
+  });
+  const cursorUpdates = cursors.map(cursor => {
+    const svg = cursor.closest("svg"), hit = svg?.querySelector("[data-heatflow-chart]");
+    return { cursor, svg, left: Number(hit?.getAttribute("x")), width: Number(hit?.getAttribute("width")) };
+  });
+  if (legendUpdates.some(item => item.index < 0 || !item.valueNode)
+    || cursorUpdates.some(item => !finite(item.left) || !finite(item.width) || item.width <= 0
+      || Number(item.svg?.dataset.heatflowChartStart) !== layout.start || Number(item.svg?.dataset.heatflowChartEnd) !== layout.end)) return false;
+  current.textContent = selected == null ? "" : String(dataset.labels?.[selected] || `#${selected + 1}`);
+  missing.hidden = !selectedFrameMissing(dataset, zoneSeries, selected);
+  for (const { cursor, left, width } of cursorUpdates) {
+    const x = selected == null ? left : left + layout.ratio(selected) * width;
+    cursor.setAttribute("x1", number(x));
+    cursor.setAttribute("x2", number(x));
+    cursor.dataset.heatflowChartFrame = selected ?? "";
+    cursor.style.display = selected == null ? "none" : "";
+  }
+  for (const { node, index, valueNode } of legendUpdates) {
+    const value = selected == null ? NaN : heatFlowCategoryValue(zoneSeries, index, selected);
+    node.title = `${heatFlowCategoryLabel(categories[index])}: ${heatFlowExactWatts(value)}`;
+    valueNode.dataset.heatflowLegendValue = finite(value) ? value : "";
+    valueNode.textContent = formatHeatFlowWatts(value);
+  }
+  return true;
+}
+
+function selectedFrameMissing(dataset, zoneSeries, selected) {
+  return selected != null && (!heatFlowBalance(dataset, zoneSeries, selected).complete
+    || (dataset.categories || []).some((_category, index) => !finite(heatFlowCategoryValue(zoneSeries, index, selected))));
+}
+
+function rememberRenderContext(dataset, context) {
+  let contexts = renderContexts.get(dataset);
+  if (!contexts) { contexts = new Map(); renderContexts.set(dataset, contexts); }
+  const token = String(++renderSequence);
+  contexts.set(token, context);
+  while (contexts.size > cacheLimit) contexts.delete(contexts.keys().next().value);
+  return token;
 }
 
 function renderPanel(group, { zoneSeries, start, end, selected, extent, unit, divisor, label, layout }) {
@@ -130,11 +196,27 @@ export function heatFlowChartFrameFromRatio(dataset, range, ratio) {
   return selected;
 }
 
-function frameLayout(dataset, { start = 0, end } = {}) {
+function normalizedRange(dataset, { start = 0, end } = {}) {
   const count = Math.max(Number(dataset?.frameCount) || 0, dataset?.labels?.length || 0);
   if (!count) return null;
   start = Math.max(0, Math.min(count - 1, Math.floor(Number(start) || 0)));
   end = Math.max(start, Math.min(count - 1, end == null ? count - 1 : Math.floor(Number(end) || 0)));
+  return { start, end };
+}
+
+function frameLayout(dataset, range = {}) {
+  const normalized = normalizedRange(dataset, range);
+  if (!normalized) return null;
+  const { start, end } = normalized;
+  let layouts = layoutCache.get(dataset);
+  if (!layouts) { layouts = new Map(); layoutCache.set(dataset, layouts); }
+  const key = `${start}:${end}`;
+  if (layouts.has(key)) {
+    const cached = layouts.get(key);
+    layouts.delete(key);
+    layouts.set(key, cached);
+    return cached;
+  }
   const times = [];
   let elapsed = true, minGap = Infinity;
   for (let frame = start; frame <= end; frame++) {
@@ -147,7 +229,10 @@ function frameLayout(dataset, { start = 0, end } = {}) {
   const cadence = elapsed ? Math.min(minGap, 3600000) : 1;
   const low = coordinates[0] - cadence / 2;
   const span = coordinates.at(-1) - coordinates[0] + cadence;
-  return { start, end, elapsed, coordinates, cadence, span, ratio: frame => (coordinates[frame - start] - low) / span };
+  const layout = { start, end, elapsed, coordinates, cadence, span, ratio: frame => (coordinates[frame - start] - low) / span };
+  layouts.set(key, layout);
+  while (layouts.size > cacheLimit) layouts.delete(layouts.keys().next().value);
+  return layout;
 }
 
 function niceExtent(value) {

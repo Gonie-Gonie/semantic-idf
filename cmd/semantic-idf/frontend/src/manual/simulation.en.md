@@ -138,9 +138,11 @@ long previews can be sampled. Requested HVAC/Comfort observations and Energy
 Path source traces are read separately beyond those preview limits.
 A small preview does not prove the original run has few observations.
 
-Heat Flow can also report sampled displayed frames and the original frame
-count. A playback frame is not necessarily every native reporting interval.
-Preserve this distinction when interpreting peaks or exporting trace data.
+Heat Flow preserves every source frame from SQL, CSV or ESO, including a
+timestamp whose selected values are all unavailable. Missing timestamps are
+not invented, and recorded design-day/calendar order is preserved. Previously
+saved sampled results still show their displayed/original counts; regenerate
+the result to recover the source frames discarded by the older reader.
 
 ## Energy, rates, and units {#energy-and-rates}
 
@@ -298,12 +300,19 @@ Sparse observations do not fill the unobserved intervals.
 the selected timestamp. They stay within one continuous calendar sequence;
 unusable dates or a backward date boundary do not fall back to frame counts.
 
-The history renders every supplied frame without additional stride sampling
-or averaging. Long runs are already sampled by the backend around its 720-frame
-limit; the retained last frame can affect that count. Check shown/original
-frame counts and timestamps. Twenty-four displayed frames need not mean one
-day, and adding sampled W readings cannot produce annual kWh. Use actual
-timestamp ranges and the integrated energy results for those quantities.
+**Play** advances through every source frame in the selected range, then loops
+to its first frame. Hourly data advances one hour at a time; a genuine gap in
+the source remains a gap. **Slow / Normal / Fast** set the delay between frames
+to 900 / 420 / 160 ms without skipping observations. Pausing or changing speed
+keeps the current frame; moving the time slider resumes from its selected
+source frame. Leaving Heat Flow stops playback. The history paths stay in
+place during playback while cursors,
+floor colours, bars, arrows and exact values update together.
+
+The history renders all source frames without stride sampling or averaging.
+Check timestamps as well as frame counts: twenty-four records need not mean
+one day. W readings require their actual intervals to integrate energy; use
+the integrated energy results for annual kWh.
 
 Static Topology UA is conductance in W/K. It has no weather, operating time,
 or temperature difference. For illustration, UA = 100 W/K and a steady
