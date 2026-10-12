@@ -20,7 +20,8 @@ func TestFrontendEnergyPathDriverTaxonomyOrderAndZeroGuard(t *testing.T) {
 		`"internal.equipment": 10`,
 		`"balance.storage_other": 12`,
 		`compareEnergyPathStageNodes(stage, left, right)`,
-		`stage.level !== "driver" || Math.abs(Number(node.value) || 0) > 0`,
+		`stage.level !== "driver" || energyPathDriverIsVisible(node)`,
+		`Math.abs(energyPathGrossHeatValue(node) || 0) > 0`,
 	} {
 		if !strings.Contains(view, required) {
 			t.Fatalf("Energy Path driver display contract missing %q", required)

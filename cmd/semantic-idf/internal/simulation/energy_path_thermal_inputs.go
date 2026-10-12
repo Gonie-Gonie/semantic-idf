@@ -19,16 +19,17 @@ type energyPathThermalInputDefinition struct {
 	incident, internal    bool
 	category, objectType  string
 	contextOnly, optional bool
+	bidirectional         bool
 }
 
 var energyPathThermalInputDefinitions = []energyPathThermalInputDefinition{
 	{kind: "input.solar_incident", label: "Incident solar at exterior surfaces", variable: "Surface Outside Face Incident Solar Radiation Rate per Area", incident: true},
-	{kind: "input.exterior_convection", label: "Exterior surface convection", variable: "Surface Outside Face Convection Heat Gain Energy"},
-	{kind: "input.exterior_longwave", label: "Exterior net longwave exchange", variable: "Surface Outside Face Net Thermal Radiation Heat Gain Energy"},
+	{kind: "input.exterior_convection", label: "Exterior surface convection", variable: "Surface Outside Face Convection Heat Gain Energy", bidirectional: true},
+	{kind: "input.exterior_longwave", label: "Exterior net longwave exchange", variable: "Surface Outside Face Net Thermal Radiation Heat Gain Energy", bidirectional: true},
 	// These remain readable, requested source context. They describe a building
 	// response, not an imposed boundary source, and do not create input nodes.
 	{kind: "input.solar_absorbed", label: "Solar absorbed at exterior surfaces", variable: "Surface Outside Face Solar Radiation Heat Gain Energy", contextOnly: true},
-	{kind: "input.surface_storage", label: "Envelope surface heat storage (context)", variable: "Surface Heat Storage Energy", contextOnly: true},
+	{kind: "input.surface_storage", label: "Envelope surface heat storage (context)", variable: "Surface Heat Storage Energy", contextOnly: true, bidirectional: true},
 	{kind: "input.internal_gains", label: "Reported total internal gains", variable: "Zone Total Internal Total Heating Energy", internal: true, contextOnly: true},
 	{kind: "input.people", label: "People", variable: "Zone People Total Heating Energy", internal: true, category: energyDriverCategoryPeople, objectType: "People", optional: true},
 	{kind: "input.lighting", label: "Lighting", variable: "Zone Lights Total Heating Energy", internal: true, category: energyDriverCategoryLighting, objectType: "Lights", optional: true},
@@ -113,6 +114,9 @@ func (builder *purposePlanBuilder) addEnergyPathThermalInputOutputs(zoneKeys []s
 				continue
 			}
 			builder.addVariableWithReason(SimulationPurposeBasicEnergy, surface.name, definition.variable, frequency, "medium", "Measured exterior/envelope boundary context; not a conserved driver allocation.", "Basic Energy Path")
+			if definition.bidirectional {
+				builder.addVariableWithReason(SimulationPurposeBasicEnergy, surface.name, definition.variable, "Timestep", "medium", "Separate native interval heat gain and heat loss before time or surface aggregation; Monthly output remains signed net evidence.", "Basic Energy Path")
+			}
 		}
 	}
 	builder.addObject(PurposeOutputObject{ObjectType: "Output:Diagnostics", Fields: []idf.OutputFieldValue{{Name: "Key 1", Value: "DisplayAdvancedReportVariables"}},
@@ -166,30 +170,32 @@ func energyPathThermalInputSurfaceRoster(geometry *idf.GeometryReport) map[strin
 }
 
 type energyPathThermalInputTime struct {
-	id    int64
-	month int
-	end   time.Time
-	hours float64
-	valid bool
+	id                int64
+	month             int
+	day, hour, minute int
+	end               time.Time
+	hours             float64
+	valid             bool
 }
 
 type energyPathThermalInputAxes struct {
 	monthly    map[int]energyPathThermalInputTime
 	daily      map[int][]energyPathThermalInputTime
 	hourly     map[int][]energyPathThermalInputTime
+	timestep   map[int][]energyPathThermalInputTime
 	weatherIDs map[int64]bool
 }
 
 // Each month is a native SQL report period, rather than a calendar-duration
 // estimate. Duplicate month/year aliases and invalid native timestamps fail shut.
 func readEnergyPathThermalInputAxes(db *sql.DB) (energyPathThermalInputAxes, error) {
-	axes := energyPathThermalInputAxes{monthly: map[int]energyPathThermalInputTime{}, daily: map[int][]energyPathThermalInputTime{}, hourly: map[int][]energyPathThermalInputTime{}, weatherIDs: map[int64]bool{}}
+	axes := energyPathThermalInputAxes{monthly: map[int]energyPathThermalInputTime{}, daily: map[int][]energyPathThermalInputTime{}, hourly: map[int][]energyPathThermalInputTime{}, timestep: map[int][]energyPathThermalInputTime{}, weatherIDs: map[int64]bool{}}
 	var count, environment int
 	if err := db.QueryRow(`SELECT COUNT(*),COALESCE(MIN(EnvironmentPeriodIndex),0) FROM EnvironmentPeriods WHERE EnvironmentType=3`).Scan(&count, &environment); err != nil || count != 1 {
 		return axes, fmt.Errorf("thermal input context requires one weather-run environment")
 	}
 	rows, err := db.Query(`SELECT TimeIndex,Year,Month,Day,Hour,Minute,"Interval",IntervalType FROM "Time"
-WHERE EnvironmentPeriodIndex=? AND (WarmupFlag=0 OR WarmupFlag IS NULL) AND IntervalType IN (1,2,3) ORDER BY TimeIndex`, environment)
+WHERE EnvironmentPeriodIndex=? AND (WarmupFlag=0 OR WarmupFlag IS NULL) AND IntervalType IN (0,1,2,3) ORDER BY TimeIndex`, environment)
 	if err != nil {
 		return axes, err
 	}
@@ -206,13 +212,27 @@ WHERE EnvironmentPeriodIndex=? AND (WarmupFlag=0 OR WarmupFlag IS NULL) AND Inte
 		}
 		m := int(month.Int64)
 		axes.weatherIDs[id] = true
-		t := energyPathThermalInputTime{id: id, month: m}
-		t.valid = year.Valid && year.Int64 > 0 && day.Valid && hour.Valid && minute.Valid && minute.Int64 == 0 && hour.Int64 >= 1 && hour.Int64 <= 24 &&
+		t := energyPathThermalInputTime{id: id, month: m, day: int(day.Int64), hour: int(hour.Int64), minute: int(minute.Int64)}
+		t.valid = year.Valid && year.Int64 > 0 && day.Valid && hour.Valid && minute.Valid && hour.Int64 >= 0 && hour.Int64 <= 24 &&
 			day.Int64 >= 1 && day.Int64 <= int64(time.Date(int(year.Int64), time.Month(m)+1, 0, 0, 0, 0, 0, time.UTC).Day())
+		if intervalType.Int64 == 0 {
+			t.valid = t.valid && minute.Int64 >= 0 && minute.Int64 < 60 && (hour.Int64 < 24 || minute.Int64 == 0) && interval.Valid && interval.Float64 > 0 && interval.Float64 <= 60 && energyPathFinite(interval.Float64)
+		} else {
+			t.valid = t.valid && hour.Int64 >= 1 && minute.Int64 == 0
+		}
 		if t.valid {
-			t.end = time.Date(int(year.Int64), time.Month(m), int(day.Int64), int(hour.Int64), 0, 0, 0, time.UTC)
+			endHour, endMinute := int(hour.Int64), 0
+			if intervalType.Int64 == 0 {
+				// Native SQLite already shifts sub-hour timestamps: 00:15 is
+				// Hour=0/Minute=15, while 01:00 is Hour=1/Minute=0.
+				endMinute = int(minute.Int64)
+			}
+			t.end = time.Date(int(year.Int64), time.Month(m), int(day.Int64), endHour, endMinute, 0, 0, time.UTC)
 		}
 		switch intervalType.Int64 {
+		case 0:
+			t.hours = interval.Float64 / 60
+			axes.timestep[m] = append(axes.timestep[m], t)
 		case 3:
 			if _, duplicate := axes.monthly[m]; duplicate {
 				t.valid = false
@@ -233,7 +253,7 @@ WHERE EnvironmentPeriodIndex=? AND (WarmupFlag=0 OR WarmupFlag IS NULL) AND Inte
 	}
 	// Global native axes detect a missing report row; individual dictionaries
 	// must match every retained native row in their selected frequency/month.
-	for _, axis := range []map[int][]energyPathThermalInputTime{axes.daily, axes.hourly} {
+	for _, axis := range []map[int][]energyPathThermalInputTime{axes.daily, axes.hourly, axes.timestep} {
 		for month, times := range axis {
 			if _, present := axes.monthly[month]; !present {
 				return axes, fmt.Errorf("missing native Monthly weather-run period")
@@ -241,7 +261,7 @@ WHERE EnvironmentPeriodIndex=? AND (WarmupFlag=0 OR WarmupFlag IS NULL) AND Inte
 			valid := len(times) > 0
 			for i, t := range times {
 				valid = valid && t.valid
-				if i > 0 && t.end.Sub(times[i-1].end) != time.Duration(t.hours)*time.Hour {
+				if i > 0 && t.end.Sub(times[i-1].end) != time.Duration(t.hours*float64(time.Hour)) {
 					valid = false
 				}
 			}
@@ -250,8 +270,15 @@ WHERE EnvironmentPeriodIndex=? AND (WarmupFlag=0 OR WarmupFlag IS NULL) AND Inte
 			// full calendar month even when a weather run stops early. It must
 			// not be used as the observed Daily/Hourly coverage endpoint.
 			valid = valid && present && period.valid
-			if len(times) > 0 && times[0].hours == 1 {
-				valid = valid && times[0].end.Hour() == 1 && times[len(times)-1].end.Hour() == 0
+			if len(times) > 0 && times[0].hours <= 1 {
+				start := times[0].end.Add(-time.Duration(times[0].hours * float64(time.Hour)))
+				valid = valid && start.Hour() == 0 && start.Minute() == 0 && times[len(times)-1].end.Hour() == 0 && times[len(times)-1].end.Minute() == 0
+				if daily := axes.daily[month]; len(daily) > 0 {
+					valid = valid && start.Equal(daily[0].end.Add(-24*time.Hour)) && times[len(times)-1].end.Equal(daily[len(daily)-1].end)
+				}
+				if hourly := axes.hourly[month]; len(hourly) > 0 {
+					valid = valid && start.Equal(hourly[0].end.Add(-time.Hour)) && times[len(times)-1].end.Equal(hourly[len(hourly)-1].end)
+				}
 			}
 			if !valid {
 				for i := range times {
@@ -279,11 +306,13 @@ type energyPathThermalInputSeries struct {
 	dictionary                         int
 	area, multiplier                   float64
 	values                             map[int]float64
+	gains, losses                      map[int]float64
 	observed                           map[int]bool
 }
 
 type energyPathThermalInputValue struct {
 	kind, label, zone, category string
+	direction, directionBasis   string
 	month                       int
 	raw, effective              float64
 	sourceIDs                   []string
@@ -306,11 +335,16 @@ func attachEnergyPathThermalInputs(result *EnergyExplanationResult, files []Simu
 		result.Sources = append(result.Sources, sources...)
 		appendEnergyPathThermalInputGraphs(result, values, months)
 		missing := false
+		netOnly := false
 		for _, value := range values {
 			missing = missing || !value.observed
+			netOnly = netOnly || value.observed && value.directionBasis == "net_only" && !energyPathThermalInputIsResponseContext(value.kind)
 		}
 		if missing || len(values) == 0 {
 			result.Warnings = appendEnergyDriverWarning(result.Warnings, EnergyWarning{Severity: "warning", Code: "energy_path_thermal_inputs_incomplete", Message: "Some measured thermal input context is unavailable. Missing native observations, unverified surface ownership/area, or incomplete periods are not replaced with estimates or zero; a new run may be required."})
+		}
+		if netOnly {
+			result.Warnings = appendEnergyDriverWarning(result.Warnings, EnergyWarning{Severity: "info", Code: "energy_path_thermal_inputs_net_only", Message: "Some reversible boundary observations contain only Monthly net energy. Their within-month heat gains and losses cannot be reconstructed; rerun Basic Energy Path for separate native-interval directions."})
 		}
 		return
 	}
@@ -449,7 +483,7 @@ func readEnergyPathThermalInputDictionaries(db *sql.DB, axes energyPathThermalIn
 				continue
 			}
 			item := energyPathThermalInputSeries{definition: definition, dictionary: index, id: fmt.Sprintf("sql-input-rdd-%d", index), key: key,
-				frequency: frequency, values: map[int]float64{}, observed: map[int]bool{}}
+				frequency: frequency, values: map[int]float64{}, gains: map[int]float64{}, losses: map[int]float64{}, observed: map[int]bool{}}
 			if definition.internal {
 				item.zone = zoneNames[normalizePurposeToken(key)]
 				item.category = definition.category
@@ -476,7 +510,7 @@ func readEnergyPathThermalInputDictionaries(db *sql.DB, axes energyPathThermalIn
 				if !strings.EqualFold(units, "W/m2") && !strings.EqualFold(units, "W/m²") || !strings.EqualFold(frequency, "Daily") && !strings.EqualFold(frequency, "Hourly") {
 					continue
 				}
-			} else if !strings.EqualFold(units, "J") || !strings.EqualFold(frequency, "Monthly") {
+			} else if !strings.EqualFold(units, "J") || !strings.EqualFold(frequency, "Monthly") && !(definition.bidirectional && (energyPathThermalInputFrequency(frequency) == "timestep" || strings.EqualFold(frequency, "Hourly"))) {
 				continue
 			}
 			series = append(series, item)
@@ -497,11 +531,11 @@ func readEnergyPathThermalInputSeries(db *sql.DB, series []energyPathThermalInpu
 	if len(series) == 0 {
 		return nil
 	}
-	expected := map[string]map[int64]energyPathThermalInputTime{"monthly": {}, "daily": {}, "hourly": {}}
-	counts := map[string]map[int]int{"monthly": {}, "daily": {}, "hourly": {}}
-	valid := map[string]map[int]bool{"monthly": {}, "daily": {}, "hourly": {}}
+	expected := map[string]map[int64]energyPathThermalInputTime{"monthly": {}, "daily": {}, "hourly": {}, "timestep": {}}
+	counts := map[string]map[int]int{"monthly": {}, "daily": {}, "hourly": {}, "timestep": {}}
+	valid := map[string]map[int]bool{"monthly": {}, "daily": {}, "hourly": {}, "timestep": {}}
 	for month, period := range axes.monthly {
-		for frequency, times := range map[string][]energyPathThermalInputTime{"monthly": {period}, "daily": axes.daily[month], "hourly": axes.hourly[month]} {
+		for frequency, times := range map[string][]energyPathThermalInputTime{"monthly": {period}, "daily": axes.daily[month], "hourly": axes.hourly[month], "timestep": axes.timestep[month]} {
 			valid[frequency][month] = period.valid && len(times) > 0
 			for _, t := range times {
 				expected[frequency][t.id] = t
@@ -523,7 +557,7 @@ func readEnergyPathThermalInputSeries(db *sql.DB, series []energyPathThermalInpu
 		if _, duplicate := byID[item.dictionary]; duplicate {
 			return fmt.Errorf("ambiguous thermal input dictionary index %d", item.dictionary)
 		}
-		frequency := strings.ToLower(item.frequency)
+		frequency := energyPathThermalInputFrequency(item.frequency)
 		for month := range axes.monthly {
 			item.observed[month] = valid[frequency][month]
 		}
@@ -543,7 +577,7 @@ func readEnergyPathThermalInputSeries(db *sql.DB, series []energyPathThermalInpu
 			return nil
 		}
 		item := state.item
-		frequency := strings.ToLower(item.frequency)
+		frequency := energyPathThermalInputFrequency(item.frequency)
 		t, exists := expected[frequency][row.TimeIndex]
 		if !exists {
 			for month := range item.observed {
@@ -555,13 +589,9 @@ func readEnergyPathThermalInputSeries(db *sql.DB, series []energyPathThermalInpu
 		// while failing the native SQL Time join. The shared walker preserves
 		// that distinction as absent joined metadata; never reinterpret it as
 		// the valid weather observation having the same decoded integer.
-		hour := t.end.Hour()
-		if hour == 0 {
-			hour = 24
-		}
 		if !row.Month.Valid || !row.Day.Valid || !row.Hour.Valid || !row.Minute.Valid ||
-			int(row.Month.Int64) != t.month || int(row.Day.Int64) != t.end.Add(-time.Nanosecond).Day() || int(row.Hour.Int64) != hour || row.Minute.Int64 != 0 ||
-			strings.TrimSpace(row.IntervalType) != map[string]string{"monthly": "3", "daily": "2", "hourly": "1"}[frequency] {
+			int(row.Month.Int64) != t.month || int(row.Day.Int64) != t.day || int(row.Hour.Int64) != t.hour || int(row.Minute.Int64) != t.minute ||
+			strings.TrimSpace(row.IntervalType) != map[string]string{"monthly": "3", "daily": "2", "hourly": "1", "timestep": "0"}[frequency] {
 			item.observed[t.month] = false
 			return nil
 		}
@@ -581,6 +611,10 @@ func readEnergyPathThermalInputSeries(db *sql.DB, series []energyPathThermalInpu
 			converted = value.Float64 * item.area * t.hours / 1000
 		}
 		item.values[t.month] += converted
+		if item.definition.bidirectional && frequency != "monthly" {
+			item.gains[t.month] += math.Max(converted, 0)
+			item.losses[t.month] += math.Min(converted, 0)
+		}
 		state.seen[t.month]++
 		return nil
 	})
@@ -589,9 +623,9 @@ func readEnergyPathThermalInputSeries(db *sql.DB, series []energyPathThermalInpu
 	}
 	for _, state := range byID {
 		item := state.item
-		frequency := strings.ToLower(item.frequency)
+		frequency := energyPathThermalInputFrequency(item.frequency)
 		for month, observed := range item.observed {
-			item.observed[month] = observed && counts[frequency][month] > 0 && counts[frequency][month] == state.seen[month] && energyPathFinite(item.values[month])
+			item.observed[month] = observed && counts[frequency][month] > 0 && counts[frequency][month] == state.seen[month] && energyPathFinite(item.values[month]) && energyPathFinite(item.gains[month]) && energyPathFinite(item.losses[month])
 		}
 	}
 	return nil
@@ -599,9 +633,13 @@ func readEnergyPathThermalInputSeries(db *sql.DB, series []energyPathThermalInpu
 
 func collectEnergyPathThermalInputValues(series []energyPathThermalInputSeries, roster map[string]energyPathThermalInputSurface, zones map[string]string, months []int, owners map[string]map[string]bool) ([]energyPathThermalInputValue, []EnergyDataSource) {
 	byIdentity := map[string][]energyPathThermalInputSeries{}
+	fineCategories := map[string]bool{}
 	for _, item := range series {
 		key := item.definition.kind + "|" + normalizePurposeToken(item.key)
 		byIdentity[key] = append(byIdentity[key], item)
+		if item.definition.bidirectional && !strings.EqualFold(item.frequency, "Monthly") {
+			fineCategories[item.definition.kind+"|"+item.category] = true
+		}
 	}
 	var values []energyPathThermalInputValue
 	used := map[string]energyPathThermalInputSeries{}
@@ -636,39 +674,59 @@ func collectEnergyPathThermalInputValues(series []energyPathThermalInputSeries, 
 		}
 		for group, keys := range groups {
 			parts := strings.SplitN(group, "|", 2)
+			directions := []string{""}
+			if definition.bidirectional && fineCategories[definition.kind+"|"+parts[1]] {
+				directions = []string{"gain", "loss"}
+			}
 			for _, month := range months {
-				value := energyPathThermalInputValue{kind: definition.kind, label: definition.label, zone: parts[0], category: parts[1], month: month}
-				complete := len(keys) > 0
-				for _, key := range keys {
-					candidates := byIdentity[definition.kind+"|"+key]
-					if definition.incident {
-						var daily []energyPathThermalInputSeries
-						for _, candidate := range candidates {
-							if strings.EqualFold(candidate.frequency, "Daily") {
-								daily = append(daily, candidate)
+				for _, direction := range directions {
+					value := energyPathThermalInputValue{kind: definition.kind, label: definition.label, zone: parts[0], category: parts[1], month: month, direction: direction}
+					if definition.bidirectional {
+						value.directionBasis = "net_only"
+						if direction != "" {
+							value.directionBasis = "native_interval"
+						}
+					}
+					complete := len(keys) > 0
+					for _, key := range keys {
+						candidates := byIdentity[definition.kind+"|"+key]
+						if definition.incident {
+							var daily []energyPathThermalInputSeries
+							for _, candidate := range candidates {
+								if strings.EqualFold(candidate.frequency, "Daily") {
+									daily = append(daily, candidate)
+								}
 							}
+							if len(daily) > 0 {
+								candidates = daily
+							}
+						} else if definition.bidirectional && direction != "" {
+							candidates = preferredEnergyPathThermalInputIntervals(candidates)
 						}
-						if len(daily) > 0 {
-							candidates = daily
+						if len(candidates) != 1 || !candidates[0].observed[month] || direction != "" && strings.EqualFold(candidates[0].frequency, "Monthly") {
+							complete = false
+							break
 						}
+						item := candidates[0]
+						quantity := item.values[month]
+						if direction == "gain" {
+							quantity = item.gains[month]
+						} else if direction == "loss" {
+							quantity = item.losses[month]
+						}
+						value.raw += quantity
+						value.effective += quantity * item.multiplier
+						value.sourceIDs = append(value.sourceIDs, item.id)
+						used[item.id] = item
 					}
-					if len(candidates) != 1 || !candidates[0].observed[month] {
-						complete = false
-						break
+					value.observed = complete
+					if complete {
+						sort.Strings(value.sourceIDs)
+					} else {
+						value.raw, value.effective, value.sourceIDs = 0, 0, nil
 					}
-					item := candidates[0]
-					value.raw += item.values[month]
-					value.effective += item.values[month] * item.multiplier
-					value.sourceIDs = append(value.sourceIDs, item.id)
-					used[item.id] = item
+					values = append(values, value)
 				}
-				value.observed = complete
-				if complete {
-					sort.Strings(value.sourceIDs)
-				} else {
-					value.raw, value.effective, value.sourceIDs = 0, 0, nil
-				}
-				values = append(values, value)
 			}
 		}
 	}
@@ -683,6 +741,8 @@ func collectEnergyPathThermalInputValues(series []energyPathThermalInputSeries, 
 		formula := "native Monthly energy [J] / 3600000; effective = raw × Zone multiplier × ZoneGroup multiplier"
 		if item.definition.incident {
 			formula = "sum(native full-interval solar [W/m2] × executed SQL Surfaces.Area [m2] × observed hours / 1000); effective = raw × Zone multiplier × ZoneGroup multiplier"
+		} else if item.definition.bidirectional && !strings.EqualFold(item.frequency, "Monthly") {
+			formula = "sum(native interval energy [J] / 3600000); positive and negative observations are accumulated separately before surface, zone and period aggregation; effective = raw × Zone multiplier × ZoneGroup multiplier"
 		}
 		sources = append(sources, EnergyDataSource{ID: item.id, SourceType: "sql_report_data", KeyValue: item.key, Name: item.definition.variable,
 			Units: "kWh", SourceUnit: map[bool]string{true: "W/m2", false: "J"}[item.definition.incident], NormalizedUnit: "kWh", ReportingFrequency: item.frequency,
@@ -694,10 +754,41 @@ func collectEnergyPathThermalInputValues(series []energyPathThermalInputSeries, 
 	}
 	sort.Slice(values, func(i, j int) bool {
 		a, b := values[i], values[j]
-		return fmt.Sprintf("%s|%s|%s|%02d", a.zone, a.kind, a.category, a.month) < fmt.Sprintf("%s|%s|%s|%02d", b.zone, b.kind, b.category, b.month)
+		return fmt.Sprintf("%s|%s|%s|%s|%02d", a.zone, a.kind, a.category, a.direction, a.month) < fmt.Sprintf("%s|%s|%s|%s|%02d", b.zone, b.kind, b.category, b.direction, b.month)
 	})
 	sort.Slice(sources, func(i, j int) bool { return sources[i].ID < sources[j].ID })
 	return values, sources
+}
+
+// The finest native interval dictionary is the sole authority for each physical
+// source. An incomplete finer source cannot borrow rounded Monthly net energy
+// or an unrelated coarser series to masquerade as a complete gross observation.
+func preferredEnergyPathThermalInputIntervals(candidates []energyPathThermalInputSeries) []energyPathThermalInputSeries {
+	best := 3
+	var selected []energyPathThermalInputSeries
+	for _, item := range candidates {
+		rank := 2
+		if energyPathThermalInputFrequency(item.frequency) == "timestep" {
+			rank = 0
+		} else if strings.EqualFold(item.frequency, "Hourly") {
+			rank = 1
+		}
+		if rank < best {
+			best, selected = rank, nil
+		}
+		if rank == best {
+			selected = append(selected, item)
+		}
+	}
+	return selected
+}
+
+func energyPathThermalInputFrequency(frequency string) string {
+	frequency = strings.ToLower(strings.TrimSpace(frequency))
+	if frequency == "zone timestep" {
+		return "timestep"
+	}
+	return frequency
 }
 
 func energyPathThermalInputExplanation(kind string) string {
@@ -730,8 +821,12 @@ func appendEnergyPathThermalInputGraphs(result *EnergyExplanationResult, values 
 			// Period lives in metadata, not identity: an Annual selection must
 			// find the same physical input in every native Monthly graph.
 			id := "input:" + value.kind + ":" + value.category + ":" + normalizePurposeToken(zone)
+			if value.direction != "" {
+				id += ":" + value.direction
+			}
 			node := EnergyExplanationNode{ID: id, Level: "input", Kind: value.kind, Label: value.label, Value: math.Abs(value.effective),
 				SignedValue: value.effective, RawValue: value.raw, EffectiveValue: value.effective, Unit: "kWh", ScaleDomain: "boundary", Period: period,
+				HeatDirection: value.direction, HeatDirectionBasis: value.directionBasis,
 				ZoneName: zone, DriverCategory: value.category, Basis: "reported_boundary", AggregationBasis: "sum_complete_zone_month_boundary_inputs", SourceIDs: value.sourceIDs,
 				AllocationExplanation: energyPathThermalInputExplanation(value.kind)}
 			var associated []EnergyPathLink
@@ -827,12 +922,18 @@ func filterEnergyPathThermalInputLinks(nodes []EnergyExplanationNode, links []En
 			continue
 		}
 		variable := ""
+		bidirectional := false
 		for _, definition := range energyPathThermalInputDefinitions {
 			if input.Kind == definition.kind {
 				variable = definition.variable
+				bidirectional = definition.bidirectional
 			}
 		}
 		valid := variable != ""
+		if input.HeatDirection != "" {
+			valid = valid && bidirectional && input.HeatDirectionBasis == "native_interval" &&
+				(input.HeatDirection == "gain" && input.SignedValue >= 0 || input.HeatDirection == "loss" && input.SignedValue <= 0)
+		}
 		union := map[string]bool{}
 		for _, id := range input.SourceIDs {
 			source := bySource[id]
@@ -841,6 +942,9 @@ func filterEnergyPathThermalInputLinks(nodes []EnergyExplanationNode, links []En
 				energyDataSourceValueKnown(source, energySourceObservedRaw) && energyDataSourceValueKnown(source, energySourceObservedEffective) &&
 				energyPathFinite(source.RawValue) && energyPathFinite(source.EffectiveValue) && energyPathPositiveFinite(source.EffectiveMultiplier) &&
 				(scope.Kind != "zone" || strings.EqualFold(source.ZoneName, scope.ZoneName))
+			if input.HeatDirection != "" {
+				valid = valid && (energyPathThermalInputFrequency(source.ReportingFrequency) == "timestep" || strings.EqualFold(source.ReportingFrequency, "Hourly"))
+			}
 			union[id] = true
 		}
 		for _, id := range driver.SourceIDs {
@@ -874,7 +978,7 @@ func energyPathThermalInputGraphValues(values []energyPathThermalInputValue, mon
 		if zone != "" && !strings.EqualFold(zone, value.zone) || month != 0 && month != value.month {
 			continue
 		}
-		key := value.kind + "|" + value.category
+		key := value.kind + "|" + value.category + "|" + value.direction
 		groups[key] = append(groups[key], value)
 	}
 	completed := []energyPathThermalInputValue{}
@@ -911,7 +1015,7 @@ func energyPathThermalInputGraphValues(values []energyPathThermalInputValue, mon
 	}
 	merged := map[string]energyPathThermalInputValue{}
 	for _, value := range completed {
-		key := value.kind + "|" + value.category
+		key := value.kind + "|" + value.category + "|" + value.direction
 		current, exists := merged[key]
 		if !exists {
 			current = value
@@ -927,6 +1031,8 @@ func energyPathThermalInputGraphValues(values []energyPathThermalInputValue, mon
 		sort.Strings(value.sourceIDs)
 		result = append(result, value)
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].kind+result[i].category < result[j].kind+result[j].category })
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].kind+result[i].category+result[i].direction < result[j].kind+result[j].category+result[j].direction
+	})
 	return result
 }

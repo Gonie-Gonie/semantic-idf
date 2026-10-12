@@ -2846,6 +2846,9 @@ func (builder *purposePlanBuilder) addBasicEnergyPath() {
 			for _, target := range surfaceTargets {
 				for _, variable := range aliases {
 					builder.addVariableWithReason(SimulationPurposeBasicEnergy, target.Name, variable, "Monthly", "medium", "Monthly surface-to-zone-air convection for the four-stage Energy Path.", "Basic Energy Path")
+					if energyPathNeedsDirectionalHeatOutput(definition, variable) {
+						builder.addVariableWithReason(SimulationPurposeBasicEnergy, target.Name, variable, "Timestep", "heavy", "Native interval heat gain/loss is separated before surface and Monthly aggregation.", "Basic Energy Path")
+					}
 				}
 			}
 			continue
@@ -2861,10 +2864,34 @@ func (builder *purposePlanBuilder) addBasicEnergyPath() {
 		for _, key := range zoneKeys {
 			for _, variable := range aliases {
 				builder.addVariableWithReason(SimulationPurposeBasicEnergy, key, variable, "Monthly", "medium", "Monthly zone heat-driver and reconciliation output for the four-stage Energy Path.", "Basic Energy Path")
+				if energyPathNeedsDirectionalHeatOutput(definition, variable) {
+					builder.addVariableWithReason(SimulationPurposeBasicEnergy, key, variable, "Timestep", "heavy", "Native interval heat gain/loss and storage/release are separated before Monthly aggregation.", "Basic Energy Path")
+				}
 			}
 		}
 	}
 	builder.addEnergyPathThermalInputOutputs(zoneKeys)
+}
+
+func energyPathNeedsDirectionalHeatOutput(definition energyHeatAliasDefinition, variable string) bool {
+	if energyHeatAliasExplicitSign(variable) != "" {
+		return false
+	}
+	if strings.HasSuffix(strings.TrimSpace(variable), " Rate") {
+		for _, alias := range definition.Aliases {
+			if strings.HasSuffix(strings.TrimSpace(alias), " Energy") && energyHeatAliasExplicitSign(alias) == "" {
+				return false
+			}
+		}
+	}
+	policy := energyDriverSourcePolicyFor(variable, definition.Kind)
+	if policy.Role == energyDriverSourceRoleMainFlow {
+		return true
+	}
+	// The receiving-Zone interzone aggregate has a native interval boundary;
+	// its Zone-only fallback may retain gross directions without assigning a
+	// fictitious pairwise transfer or inflating Building totals.
+	return definition.Kind == "heat.interzone_air"
 }
 
 type purposeOutputKeyTarget struct {
@@ -3933,7 +3960,7 @@ func (builder *purposePlanBuilder) addObject(object PurposeOutputObject) {
 		}
 		object.ObjectIndex = existing.ObjectIndex
 	} else if conflict, ok := builder.existingBase[purposeOutputBaseSignature(object.ObjectType, object.Fields)]; ok {
-		if object.Reason == "Basic Energy Path" && (strings.EqualFold(object.ReportingFrequency, "Monthly") || strings.EqualFold(object.ReportingFrequency, "Hourly") || strings.EqualFold(object.ReportingFrequency, "Daily")) && purposeObjectIsSeries(object.ObjectType) {
+		if object.Reason == "Basic Energy Path" && (strings.EqualFold(object.ReportingFrequency, "Monthly") || strings.EqualFold(object.ReportingFrequency, "Hourly") || strings.EqualFold(object.ReportingFrequency, "Daily") || strings.EqualFold(object.ReportingFrequency, "Timestep")) && purposeObjectIsSeries(object.ObjectType) {
 			object.State = purposeTemporaryState(builder.request)
 			object.ObjectIndex = nil
 			builder.warn("info", "energy_path_"+strings.ToLower(object.ReportingFrequency)+"_added", fmt.Sprintf("%s exists at %s frequency; adding the %s Energy Path series without changing it.", purposeOutputLabel(conflict), conflict.ReportingFrequency, object.ReportingFrequency), firstPurposeID(object.PurposeIDs), object.Signature)

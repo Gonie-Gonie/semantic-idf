@@ -1546,7 +1546,7 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 	driverPresentation := buildEnergyDriverPresentationPlan(scopedLegacyNodes, scope)
 	for _, legacy := range scopedLegacyNodes {
 		legacy = driverPresentation.apply(legacy)
-		if energyDriverNodeUsesCanonicalTaxonomy(legacy) && legacy.AllocationApplied && legacy.AllocatedValue == 0 {
+		if energyDriverNodeUsesCanonicalTaxonomy(legacy) && legacy.AllocationApplied && legacy.AllocatedValue == 0 && !(legacy.HeatDirectionBasis == "native_interval" || legacy.HeatDirectionBasis == "native_direction") {
 			// Explicitly allocated-zero drivers remain in Sources for inspection,
 			// but must not merge their raw/effective values or provenance into a
 			// visible canonical driver that shares the same presentation category.
@@ -1758,7 +1758,7 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 	outNodes := make([]EnergyExplanationNode, 0, len(canonicalNodes))
 	visibleNodeIDs := make(map[string]bool, len(canonicalNodes))
 	for _, node := range canonicalNodes {
-		if node.Level == "driver" && energyExplanationEffectiveNodeValue(*node) == 0 {
+		if node.Level == "driver" && energyExplanationEffectiveNodeValue(*node) == 0 && node.HeatDirection == "" {
 			continue
 		}
 		if node.Level == "end_use" && energyExplanationEffectiveNodeValue(*node) == 0 {
@@ -3210,6 +3210,9 @@ func upgradeEnergyExplanationNode(input EnergyExplanationNode, scope EnergyExpla
 		}
 		out.ThermalComponent = energyExplanationThermalComponent(input)
 		out.ID = strings.Join([]string{"driver", canonicalEnergyPathCategory(out.DriverCategory), canonicalEnergyPathPart(firstNonEmpty(input.ServiceKind, "all")), scopeToken}, ".")
+		if (input.HeatDirectionBasis == "native_interval" || input.HeatDirectionBasis == "native_direction") && (input.HeatDirection == "gain" || input.HeatDirection == "loss") {
+			out.ID += "." + input.HeatDirection
+		}
 	case "load":
 		out.Level = "load"
 		out.ScaleDomain = "thermal"
@@ -5389,6 +5392,7 @@ func sanitizeEnergyExplanationV2Graph(nodes []EnergyExplanationNode, links []Ene
 	originalReconciliation := reconciliation
 	nodes = normalizeLegacyEnergyExplanationNodes(nodes)
 	normalizeEnergyExplanationV2Nodes(nodes, scope)
+	qualifyStoredEnergyDriverDirectionSources(nodes, sources)
 	links = normalizeEnergyExplanationV2Links(links)
 	links = filterEnergyPathStorageChargeLinks(links, energyPathStorageChargeNodeBoundaries(nodes))
 	reconciliation = normalizeLegacyEnergyExplanationReconciliation(reconciliation)
@@ -5670,5 +5674,6 @@ func normalizeEnergyExplanationV2Nodes(nodes []EnergyExplanationNode, scope Ener
 			}
 		}
 		sanitizeEnergyExplanationDriverComponents(node)
+		normalizeEnergyDriverDirectionMetadata(node)
 	}
 }

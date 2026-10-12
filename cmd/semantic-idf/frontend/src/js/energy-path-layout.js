@@ -68,7 +68,14 @@ function flowIsValid(link, from, to) {
 export function energyPathLayout(nodes = [], links = [], options = {}) {
   const hasInputs = (nodes || []).some((node) => layoutLevel(node || {}) === "input");
   const levels = hasInputs ? LEVELS : LEVELS.slice(1);
-  const width = dimension(options?.width, hasInputs ? 1250 : 1000), height = dimension(options?.height, 420);
+  const drivers = (Array.isArray(nodes) ? nodes : []).filter((node) => layoutLevel(node || {}) === "driver");
+  const directionalDrivers = drivers.filter((node) => ["gain", "loss"].includes(node.heatDirection));
+  const driverRows = drivers.length;
+  const width = dimension(options?.width, hasInputs ? 1250 : 1000);
+  // Directional cards expose both physical exchange and allocated contribution.
+  // Reserve readable rows instead of compressing either quantity out of view.
+  const driverHeight = directionalDrivers.length ? 64 : 32;
+  const height = Math.max(dimension(options?.height, 420), directionalDrivers.length ? driverRows * driverHeight + Math.max(0, driverRows - 1) * 3 : 0);
   const columns = levels.map((level, index) => ({ level, x: index * width / levels.length, width: width / levels.length }));
   const byLevel = new Map(columns.map((column) => [column.level, column]));
   const seen = new Set();
@@ -86,7 +93,7 @@ export function energyPathLayout(nodes = [], links = [], options = {}) {
   const directLabelHeight = direct.length ? Math.min(20, directHeight * 0.2) : 0;
   const positioned = [
     ...placeRows(group("input"), byLevel.get("input"), 0, height, 40, 8),
-    ...placeRows(group("driver"), byLevel.get("driver"), 0, height, 32, 3),
+    ...placeRows(group("driver"), byLevel.get("driver"), 0, height, driverHeight, 3),
     ...placeRows(group("load"), byLevel.get("load"), 0, mainHeight, 52, 8),
     ...placeRows(group("end_use", "main"), byLevel.get("end_use"), 0, mainHeight, 52, 8),
     ...placeRows(direct, byLevel.get("end_use"), directY + directLabelHeight, directHeight - directLabelHeight, 30, 4),

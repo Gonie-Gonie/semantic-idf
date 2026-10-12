@@ -135,12 +135,10 @@ func TestBuildPurposeRunPlanBasicEnergyDefaultsToEnergyPath(t *testing.T) {
 		if purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) && object.Reason != "Basic Energy Path" {
 			t.Fatalf("Energy Path output reason = %q for %+v", object.Reason, object)
 		}
-		if purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) && purposeObjectIsSeries(object.ObjectType) && object.ReportingFrequency != "Monthly" && object.ReportingFrequency != "Hourly" {
-			t.Fatalf("Energy Path output frequency = %q for %+v", object.ReportingFrequency, object)
-		}
 	}
-	if plan.EstimatedFrames != 8760 {
-		t.Fatalf("estimated frames = %d, want hourly Energy Path chart frames", plan.EstimatedFrames)
+	assertBasicEnergyPathOutputFrequencies(t, plan)
+	if plan.EstimatedFrames != 35040 {
+		t.Fatalf("estimated frames = %d, want native Timestep Energy Path heat frames", plan.EstimatedFrames)
 	}
 }
 
@@ -219,14 +217,7 @@ func TestBuildPurposeRunPlanBasicEnergyWithZoneHeatFlowKeepsEnergyMonthly(t *tes
 		},
 	})
 
-	for _, object := range plan.OutputObjects {
-		if !purposeObjectIsSeries(object.ObjectType) {
-			continue
-		}
-		if purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) && object.ReportingFrequency != "Monthly" && object.ReportingFrequency != "Hourly" {
-			t.Fatalf("Basic Energy needs Monthly accounting and Hourly source-chart outputs: %+v", object)
-		}
-	}
+	assertBasicEnergyPathOutputFrequencies(t, plan)
 
 	var monthlyEnergyPath, hourlyDrilldown *PurposeOutputObject
 	for index := range plan.OutputObjects {
@@ -247,8 +238,8 @@ func TestBuildPurposeRunPlanBasicEnergyWithZoneHeatFlowKeepsEnergyMonthly(t *tes
 	if hourlyDrilldown == nil || !purposeIDsContain(hourlyDrilldown.PurposeIDs, SimulationPurposeZoneHeatFlow) || !purposeIDsContain(hourlyDrilldown.PurposeIDs, SimulationPurposeBasicEnergy) {
 		t.Fatalf("hourly heat-flow drilldown output = %+v", hourlyDrilldown)
 	}
-	if plan.EstimatedFrames != 8760 {
-		t.Fatalf("estimated frames = %d, want hourly Zone Heat Flow frames", plan.EstimatedFrames)
+	if plan.EstimatedFrames != 35040 {
+		t.Fatalf("estimated frames = %d, want native Timestep Energy Path heat frames alongside Hourly Zone Heat Flow", plan.EstimatedFrames)
 	}
 }
 
@@ -1186,6 +1177,44 @@ Output:Variable,
 	}
 	if !purposePlanHasWarning(plan, "frequency_preserved") {
 		t.Fatalf("expected frequency preserved warning in %#v", plan.Warnings)
+	}
+}
+
+func TestEnergyPathDirectionalTimestepCompanionsPreserveExistingMonthly(t *testing.T) {
+	baselineDoc := parsePurposePlanFixture(t, energyPathScopeFixtureIDF)
+	baseline := BuildPurposeRunPlan(baselineDoc, SimulationPurposeRequest{Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy}, BasicEnergyDetail: PurposeBasicEnergyDetailEnergyPath})
+	targets := []PurposeOutputObject{}
+	for _, output := range baseline.OutputObjects {
+		if output.ReportingFrequency == "Timestep" && (output.VariableName == "Surface Inside Face Convection Heat Gain Energy" || output.VariableName == "Surface Outside Face Convection Heat Gain Energy" || output.VariableName == "Zone Air Heat Balance Air Energy Storage Rate") {
+			targets = append(targets, output)
+		}
+	}
+	if len(targets) == 0 {
+		t.Fatal("no native reversible heat observations requested")
+	}
+	for _, policy := range []string{"", PurposeFrequencyPolicyPreserve} {
+		for _, target := range targets {
+			t.Run(policy+"/"+target.KeyValue+"/"+target.VariableName, func(t *testing.T) {
+				doc := parsePurposePlanFixture(t, energyPathScopeFixtureIDF+fmt.Sprintf("\nOutput:Variable,%s,%s,Monthly;\n", target.KeyValue, target.VariableName))
+				plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy}, BasicEnergyDetail: PurposeBasicEnergyDetailEnergyPath, FrequencyPolicy: policy})
+				var monthly, timestep *PurposeOutputObject
+				for index := range plan.OutputObjects {
+					output := &plan.OutputObjects[index]
+					if output.ObjectType != target.ObjectType || output.KeyValue != target.KeyValue || output.VariableName != target.VariableName {
+						continue
+					}
+					if output.ReportingFrequency == "Monthly" {
+						monthly = output
+					}
+					if output.ReportingFrequency == "Timestep" {
+						timestep = output
+					}
+				}
+				if monthly == nil || monthly.State != PurposeOutputStateExisting || monthly.ObjectIndex == nil || timestep == nil || timestep.State != PurposeOutputStateTemporary || timestep.ObjectIndex != nil {
+					t.Fatalf("native fine companion changed or collapsed existing Monthly request: monthly=%#v timestep=%#v", monthly, timestep)
+				}
+			})
+		}
 	}
 }
 

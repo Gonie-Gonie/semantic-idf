@@ -1741,6 +1741,53 @@
   white-space: nowrap;
 }
 
+.energy-path-node.energy-path-directional-driver {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  align-content: center;
+}
+
+.energy-path-node > .energy-path-node-quantities {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  overflow: visible;
+  font-size: 12px;
+  line-height: 14px;
+  white-space: normal;
+}
+
+.energy-path-stage-grid .energy-path-directional-driver > .energy-path-node-copy {
+  font-size: 12px;
+}
+
+.energy-path-directional-driver .energy-path-node-label {
+  line-height: 14px;
+}
+
+.energy-path-node-quantities > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+}
+
+.energy-path-node-quantities > span > span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-soft);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.energy-path-node-quantities strong {
+  flex-shrink: 0;
+  color: var(--ink);
+  font-size: inherit;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
 .energy-path-stage-grid .energy-path-node:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;

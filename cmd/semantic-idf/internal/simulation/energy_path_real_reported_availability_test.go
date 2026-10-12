@@ -272,12 +272,29 @@ func TestEnergyPathRealReportedAvailabilityPrecedesGraphSelection(t *testing.T) 
 		t.Fatal("fixture failed to exercise derived driver provenance")
 	}
 
-	// The fix changes availability input only. The same runtime builder with its
-	// legacy completeness mode has identical graph/source payloads. Frozen v1
-	// reconciliation rows/source-ID sets originate from maps, so sort those sets.
+	// Availability cannot change physical graph/source payloads. Energy Path
+	// additionally discloses that these Monthly-only observations are net-only;
+	// they must not acquire native gross direction evidence. Normalize only that
+	// optional disclosure before comparing the frozen legacy graph. Reconciliation
+	// rows/source-ID sets originate from maps, so sort those sets.
 	series, sources, legacyPlan, context := epathRealReportedAvailabilityFixture(t)
 	legacyPlan.BasicEnergyDetail = ""
 	prior := buildEnergyExplanationResultWithDriverContext(series, sources, legacyPlan, context)
+	withoutNetOnlyDisclosure := func(nodes []EnergyExplanationNode) []EnergyExplanationNode {
+		copy := append([]EnergyExplanationNode(nil), nodes...)
+		for index := range copy {
+			node := &copy[index]
+			if node.HeatDirection != "" || node.HeatDirectionBasis != "" && (node.HeatDirectionBasis != "net_only" || node.Level != "heat" && node.Level != "driver") {
+				t.Fatalf("Monthly-only availability invented native gross direction evidence: %#v", node)
+			}
+			node.HeatDirectionBasis = ""
+		}
+		return copy
+	}
+	got.Nodes = withoutNetOnlyDisclosure(got.Nodes)
+	for index := range got.Periods {
+		got.Periods[index].Nodes = withoutNetOnlyDisclosure(got.Periods[index].Nodes)
+	}
 	for _, periods := range [][]EnergyPeriod{got.Periods, prior.Periods} {
 		for i := range periods {
 			periods[i].Reconciliation = append([]EnergyReconciliation(nil), periods[i].Reconciliation...)

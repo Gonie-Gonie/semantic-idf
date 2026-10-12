@@ -219,13 +219,48 @@ DistrictHeating:Steam,
   Purchased Steam;
 `
 
+func assertBasicEnergyPathOutputFrequencies(t *testing.T, plan PurposeRunPlan) {
+	t.Helper()
+	energyPath := plan
+	energyPath.OutputObjects = nil
+	for _, output := range plan.OutputObjects {
+		if !purposeIDsContain(output.PurposeIDs, SimulationPurposeBasicEnergy) {
+			continue
+		}
+		energyPath.OutputObjects = append(energyPath.OutputObjects, output)
+		if !purposeObjectIsSeries(output.ObjectType) {
+			continue
+		}
+		switch output.ReportingFrequency {
+		case "Monthly", "Hourly":
+		case "Daily":
+			if output.ObjectType != "Output:Variable" || output.VariableName != "Surface Outside Face Incident Solar Radiation Rate per Area" {
+				t.Fatalf("unexpected Daily Energy Path output: %#v", output)
+			}
+		case "Timestep":
+			boundary := output.VariableName == "Surface Outside Face Convection Heat Gain Energy" ||
+				output.VariableName == "Surface Outside Face Net Thermal Radiation Heat Gain Energy" ||
+				output.VariableName == "Surface Heat Storage Energy"
+			definition, supported := energyHeatAliasDefinitionForName(output.VariableName)
+			if output.ObjectType != "Output:Variable" || !boundary && !(supported && energyPathNeedsDirectionalHeatOutput(definition, output.VariableName)) {
+				t.Fatalf("unexpected Timestep Energy Path output: %#v", output)
+			}
+		default:
+			t.Fatalf("unexpected Energy Path reporting frequency: %#v", output)
+		}
+	}
+	// Filtering only the other purposes leaves every Energy Path identity and
+	// owner intact, including Hourly observations shared with heat-flow drilldown.
+	assertEnergyPathMonthlyHourlyRequestPairs(t, energyPath)
+}
+
 func TestEPATH040BasicEnergyPathMonthlyFourStageOutputContract(t *testing.T) {
 	doc := parsePurposePlanFixture(t, energyPathScopeFixtureIDF)
 	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
 		Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy},
 	})
 
-	if plan.BasicEnergyDetail != PurposeBasicEnergyDetailEnergyPath || plan.EstimatedFrames != 8760 {
+	if plan.BasicEnergyDetail != PurposeBasicEnergyDetailEnergyPath || plan.EstimatedFrames != 35040 {
 		t.Fatalf("default Basic Energy contract = detail %q / frames %d", plan.BasicEnergyDetail, plan.EstimatedFrames)
 	}
 	if !plan.RequiresDiscovery || findPurposeOutput(plan, "Output:VariableDictionary", "", "") == nil {
@@ -238,14 +273,8 @@ func TestEPATH040BasicEnergyPathMonthlyFourStageOutputContract(t *testing.T) {
 		if object.Reason != "Basic Energy Path" {
 			t.Errorf("reason for %s/%s/%s = %q", object.ObjectType, object.KeyValue, object.VariableName, object.Reason)
 		}
-		if frequency, thermalInput := energyPathExpectedThermalInputFrequency(object.VariableName); thermalInput {
-			if object.ObjectType != "Output:Variable" || object.ReportingFrequency != frequency {
-				t.Errorf("native thermal input frequency for %s/%s = %q, want %s", object.KeyValue, object.VariableName, object.ReportingFrequency, frequency)
-			}
-		} else if purposeObjectIsSeries(object.ObjectType) && object.ReportingFrequency != "Monthly" && object.ReportingFrequency != "Hourly" {
-			t.Errorf("frequency for %s/%s/%s = %q", object.ObjectType, object.KeyValue, object.VariableName, object.ReportingFrequency)
-		}
 	}
+	assertBasicEnergyPathOutputFrequencies(t, plan)
 
 	requiredZoneVariables := []string{
 		"Zone Gas Equipment NaturalGas Energy",
@@ -483,6 +512,8 @@ func TestEPATH042EnergyPathScopeKeysAndHourlyDrilldownIsolation(t *testing.T) {
 	if zone.ZoneMode != "selected" || len(zone.ZoneNames) != 1 || zone.ZoneNames[0] != "Office" {
 		t.Fatalf("selected plan scope metadata = %q / %#v", zone.ZoneMode, zone.ZoneNames)
 	}
+	assertBasicEnergyPathOutputFrequencies(t, building)
+	assertBasicEnergyPathOutputFrequencies(t, zone)
 	for _, variable := range []string{"Zone Lights Electricity Energy", "Zone Gas Equipment NaturalGas Energy", "Zone Gas Equipment Gas Energy", "Zone Air System Sensible Cooling Energy", "Zone People Latent Gain Energy"} {
 		if findPurposeOutput(zone, "Output:Variable", "Office", variable) == nil {
 			t.Errorf("selected zone plan omitted Office / %s", variable)
@@ -527,8 +558,8 @@ func TestEPATH042EnergyPathScopeKeysAndHourlyDrilldownIsolation(t *testing.T) {
 			hourly++
 		}
 	}
-	if monthly != 1 || hourly != 1 || zone.EstimatedFrames != 8760 {
-		t.Fatalf("monthly Energy Path/hourly drilldown = %d/%d, frames=%d", monthly, hourly, zone.EstimatedFrames)
+	if monthly != 1 || hourly != 1 || zone.EstimatedFrames != 35040 {
+		t.Fatalf("monthly Energy Path/hourly drilldown with native Timestep heat = %d/%d, frames=%d", monthly, hourly, zone.EstimatedFrames)
 	}
 }
 
@@ -853,16 +884,33 @@ func TestEPATH041LargeModelWeightCountsMonthlySurfaceKeys(t *testing.T) {
 	doc := parsePurposePlanFixture(t, source.String())
 	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy}})
 
-	surfaceSeries := 0
+	surfaceSeries, hourlySurfaceSeries, timestepSurfaceSeries := 0, 0, 0
 	for _, object := range plan.OutputObjects {
-		if object.ObjectType == "Output:Variable" && object.ReportingFrequency == "Monthly" && strings.HasPrefix(object.KeyValue, "Wall ") && strings.Contains(object.VariableName, "Surface Inside Face Convection") {
+		if object.ObjectType != "Output:Variable" || !strings.HasPrefix(object.KeyValue, "Wall ") || !strings.Contains(object.VariableName, "Surface Inside Face Convection") {
+			continue
+		}
+		switch object.ReportingFrequency {
+		case "Monthly":
 			surfaceSeries++
+		case "Hourly":
+			hourlySurfaceSeries++
+		case "Timestep":
+			if object.VariableName != "Surface Inside Face Convection Heat Transfer Energy" && object.VariableName != "Surface Inside Face Convection Heat Gain Energy" {
+				t.Fatalf("unexpected native Timestep surface alias: %#v", object)
+			}
+			timestepSurfaceSeries++
+		default:
+			t.Fatalf("unexpected surface reporting frequency: %#v", object)
 		}
 	}
 	if surfaceSeries != surfaceCount*4 {
 		t.Fatalf("monthly surface series = %d, want %d", surfaceSeries, surfaceCount*4)
 	}
-	if plan.EstimatedFrames != 8760 || plan.EstimatedSeries < surfaceSeries*2 || plan.EstimatedWeight != "Very Heavy" {
+	if hourlySurfaceSeries != surfaceSeries || timestepSurfaceSeries != surfaceCount*2 {
+		t.Fatalf("surface source rosters = Monthly %d / Hourly %d / Timestep %d, want %d / %d / %d", surfaceSeries, hourlySurfaceSeries, timestepSurfaceSeries, surfaceCount*4, surfaceCount*4, surfaceCount*2)
+	}
+	assertBasicEnergyPathOutputFrequencies(t, plan)
+	if plan.EstimatedFrames != 35040 || plan.EstimatedSeries < surfaceSeries*2+timestepSurfaceSeries || plan.EstimatedWeight != "Very Heavy" {
 		t.Fatalf("large Energy Path estimate = weight %q / series %d / frames %d", plan.EstimatedWeight, plan.EstimatedSeries, plan.EstimatedFrames)
 	}
 }

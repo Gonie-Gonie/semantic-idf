@@ -214,6 +214,8 @@ type EnergyExplanationNode struct {
 	DriverCategory        string                             `json:"driverCategory,omitempty"`
 	ThermalComponent      string                             `json:"thermalComponent,omitempty"`
 	ThermalBoundary       string                             `json:"thermalBoundary,omitempty"`
+	HeatDirection         string                             `json:"heatDirection,omitempty"`
+	HeatDirectionBasis    string                             `json:"heatDirectionBasis,omitempty"`
 	LoadBreakdown         []EnergyExplanationLoadComponent   `json:"loadBreakdown,omitempty"`
 	DriverBreakdown       []EnergyExplanationDriverComponent `json:"driverBreakdown,omitempty"`
 	OffsetEffects         []EnergyExplanationOffsetEffect    `json:"offsetEffects,omitempty"`
@@ -654,6 +656,7 @@ type energyExplanationSeriesBuilder struct {
 	selectedRange       float64
 	hasSelectedRange    bool
 	driverMonthlyShadow *energyDriverMonthlyShadow
+	driverDirections    *energyDriverDirectionalValues
 }
 
 type energyExplanationCategorySeriesBuilder struct {
@@ -674,6 +677,7 @@ type energySurfacePeriodSelection struct {
 	daily         bool
 	hourly        bool
 	selectedRange bool
+	directional   bool
 }
 
 type energyExplanationSeries struct {
@@ -749,6 +753,9 @@ type energyExplanationSeries struct {
 	directComponentID            string
 	loadBreakdown                []energyLoadBreakdownSeries
 	driverMonthlyShadow          *energyDriverMonthlyShadow
+	driverDirections             *energyDriverDirectionalValues
+	heatDirection                string
+	heatDirectionBasis           string
 	storageChargeBoundary        *energyPathStorageChargeBoundary
 	storageChargeSelectionSuffix string
 }
@@ -893,11 +900,13 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 			monthlyTimeAxis := energyPathObservedMonthlyTimeAxis(db)
 			vrfLoadCollector := newEnergyPathVRFLoadCollector(dictionaries, driverContext.VRFSystems, plan, monthlyTimeAxis)
 			hourlyEnergy := newEnergySourceHourlyCollector(db)
+			driverDirections := newEnergyDriverDirectionalCollector(db, driverContext.Enabled && energyExplanationPlanUsesEnergyPath(plan))
 			surfaceCategories, surfaceCategoryEligible := energyExplanationSurfaceCategoriesForDictionaries(dictionaries, driverContext)
 			categoryBuilders := map[string]*energyExplanationCategorySeriesBuilder{}
 			categoryByDictionary := map[int]*energyExplanationCategorySeriesBuilder{}
 			if err := walkReportDataCompact(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
 				hourlyEnergy.observe(row, byID[row.DictionaryIndex])
+				driverDirections.observe(row, byID[row.DictionaryIndex])
 				vrfLoadCollector.observe(row)
 				if vrfCollector.observe(row) {
 					return nil
@@ -1015,6 +1024,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 				}
 			}
 			invalidateMissingEnergyDriverMonthlySurfaceShadows(db, dictionaries, surfaceCategories, driverContext, categoryBuilders)
+			attachEnergyDriverCategoryDirections(dictionaries, surfaceCategories, categoryBuilders, driverDirections)
 
 			for _, dictionary := range dictionaries {
 				builder := builders[dictionary.row.index]
@@ -1063,6 +1073,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 					continue
 				}
 				item := energyExplanationSeriesForBuilder(builder, source.ID)
+				item.driverDirections = driverDirections.values(dictionary)
 				item.parseCategorySource = surfaceCategoryEligible[dictionary.row.index]
 				if scopeZoneName != "" {
 					item.ZoneName = scopeZoneName
@@ -1227,6 +1238,22 @@ func energyExplanationSurfaceCategoriesForDictionaries(dictionaries []energyExpl
 			selection.selectedRange = true
 		})
 		selectCandidate(energyExplanationSupportsHourlyPeriods, func(selection *energySurfacePeriodSelection) { selection.hourly = true })
+		var finest selectedDictionary
+		found := false
+		for _, candidate := range candidates {
+			rank := energyHeatDirectionFrequencyRank(candidate.dictionary.reportingFrequency)
+			if rank < 0 {
+				continue
+			}
+			if !found || rank < energyHeatDirectionFrequencyRank(finest.dictionary.reportingFrequency) || rank == energyHeatDirectionFrequencyRank(finest.dictionary.reportingFrequency) && energyExplanationSeriesSourcePreferred(candidate.series, finest.series) {
+				finest, found = candidate, true
+			}
+		}
+		if found {
+			selection := selected[finest.dictionary.row.index]
+			selection.category, selection.directional = finest.category, true
+			selected[finest.dictionary.row.index] = selection
+		}
 	}
 	return selected, eligible
 }
@@ -1313,6 +1340,7 @@ func energyExplanationCategorySeries(builders map[string]*energyExplanationCateg
 		item.sourceIsRate = false
 		item.sourceKeyValue = ""
 		item.parseCategoryAggregate = true
+		item.driverDirections = aggregate.seriesBuilder.driverDirections
 		out = append(out, canonicalEnergyExplanationSeries(item))
 	}
 	return out
@@ -1454,6 +1482,7 @@ func preferredEnergyExplanationSeries(series []energyExplanationSeries) []energy
 			selected.SourceIDs = appendUniqueStrings(selected.SourceIDs, rangeItem.SourceIDs...)
 		}
 		selected.storageChargeBoundary = energyPathStorageChargePreferredBoundary(selected, items)
+		selected.driverDirections = preferredEnergyDriverDirections(items)
 		out = append(out, selected)
 	}
 	return out
@@ -1909,6 +1938,9 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 		}
 		sources = annotateEnergyExplanationLoadSources(loadCandidates, series, sources)
 		series, sources, multiplierWarnings = finalizeEnergyDriverMappings(series, sources, driverContext)
+		if energyExplanationPlanUsesEnergyPath(plan) {
+			series = splitEnergyDriverDirectionalSeries(series, sources)
+		}
 		driverWarnings = append(driverWarnings, multiplierWarnings...)
 		sources = qualifyEnergyPathPoolSurfaceSources(sources, driverContext.PoolInventory)
 	}
@@ -2857,7 +2889,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 	heatDeviationByZoneService := map[string]float64{}
 	internalGainTargetByHeatNode := map[string]energyExplanationInternalGainTarget{}
 	addNode := func(node EnergyExplanationNode) {
-		if node.ID == "" || node.Value == 0 {
+		if node.ID == "" || node.Value == 0 && node.HeatDirection == "" {
 			return
 		}
 		node.Value = roundedEnergyNumber(node.Value)
@@ -2905,7 +2937,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 	for _, item := range series {
 		item = canonicalEnergyExplanationSeries(item)
 		value := valueFor(item)
-		if value == 0 {
+		if value == 0 && !energyDriverDirectionHasObservedZero(item, period) {
 			continue
 		}
 		rawValue, effectiveValue, effectiveMultiplier := energyExplanationNodeAccounting(item, value)
@@ -3001,7 +3033,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			displayValue := math.Abs(signedValue)
 			sign := "positive"
 			serviceKind := "cooling"
-			if signedValue < 0 {
+			if signedValue < 0 || item.heatDirection == "loss" {
 				sign = "negative"
 				serviceKind = "heating"
 			}
@@ -3015,6 +3047,11 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			}
 			if item.DriverCategory != "" && item.HeatSign == "" {
 				nodeID += "." + sign
+			}
+			if item.heatDirectionBasis == "native_interval" {
+				nodeID += ".interval_" + item.heatDirection
+			} else if item.heatDirectionBasis == "native_direction" {
+				nodeID += ".native_" + item.heatDirection
 			}
 			addNode(EnergyExplanationNode{
 				ID:                  nodeID,
@@ -3034,6 +3071,8 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				DriverCategory:      item.DriverCategory,
 				DriverBreakdown:     energyDriverComponentBreakdownForSeries(item, math.Abs(rawValue), displayValue),
 				ThermalComponent:    item.ThermalComponent,
+				HeatDirection:       item.heatDirection,
+				HeatDirectionBasis:  item.heatDirectionBasis,
 				HeatCategory:        item.HeatCategory,
 				Sign:                sign,
 				Basis:               "derived_balance",
@@ -6010,7 +6049,7 @@ func energyExplanationMonths(series []energyExplanationSeries) []int {
 	seen := map[int]bool{}
 	for _, item := range series {
 		for month, value := range item.Monthly {
-			if value == 0 {
+			if value == 0 && item.heatDirectionBasis != "native_interval" {
 				continue
 			}
 			seen[month] = true

@@ -41,7 +41,7 @@ function accountingField(item, key, period, context) {
   const valueOf = (member) => {
     const value = field(member, key);
     if (value === null || member?.level !== "driver" || !["rawValue", "effectiveValue"].includes(key) || value < 0) return value;
-    return field(member, "signedValue") < 0 || token(member.sign) === "negative" ? -value : value;
+    return token(member.heatDirection) === "loss" || field(member, "signedValue") < 0 || token(member.sign) === "negative" ? -value : value;
   };
   return list(item.groupedMembers).length ? sum(originals.map((member) => member && periodOK(member, period, context) && token(member.scaleDomain) === token(item.scaleDomain) && unitOK(member.unit, token(item.scaleDomain)) ? valueOf(member) : null)) : valueOf(item);
 }
@@ -65,13 +65,13 @@ function driverDirection(item, key) {
   if (item.level !== "driver") return "";
   const states = members(item).map((member) => {
     const value = field(member, key);
-    return value === null ? "unknown" : value === 0 ? "zero" : value < 0 || field(member, "signedValue") !== null && field(member, "signedValue") !== 0 || ["positive", "negative"].includes(token(member?.sign)) ? "signed" : "magnitude";
+    return value === null ? "unknown" : value === 0 ? "zero" : value < 0 || ["gain", "loss"].includes(token(member.heatDirection)) || field(member, "signedValue") !== null && field(member, "signedValue") !== 0 || ["positive", "negative"].includes(token(member?.sign)) ? "signed" : "magnitude";
   }).filter((state) => state !== "zero");
   return states.every((state) => state === "signed") ? "signed" : states.every((state) => state === "magnitude") ? "magnitude" : "unknown";
 }
 
 function nodeIdentity(node) {
-  return JSON.stringify([node?.level, node?.driverCategory, node?.thermalComponent, node?.serviceKind, node?.endUse, node?.carrier, node?.unit, node?.scaleDomain, node?.period, node?.zoneName,
+  return JSON.stringify([node?.level, node?.driverCategory, node?.thermalComponent, node?.heatDirection, node?.heatDirectionBasis, node?.serviceKind, node?.endUse, node?.carrier, node?.unit, node?.scaleDomain, node?.period, node?.zoneName,
     node?.value, node?.rawValue, node?.effectiveValue, node?.allocatedValue, node?.loadBreakdown, unique(list(node?.sourceIds))]);
 }
 

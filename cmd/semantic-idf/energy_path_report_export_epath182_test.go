@@ -21,7 +21,7 @@ func epath182BackendFixture(t *testing.T) EnergyPathReportXLSXExportRequest {
 	quality := json.RawMessage(`{"drivers":{"status":"partial","found":0,"total":2},"loads":{"status":"complete","found":2,"total":2},"endUses":{"status":"unavailable","found":0,"total":0},"carriers":{"status":"not_requested","found":0,"total":0},"ratios":{"status":"unavailable","found":0,"total":0},"driverToLoadClosedPct":0,"endUseToCarrierClosedPct":null,"zoneAllocatedPct":null,"unassignedPct":null,"driverToLoadStatus":"partial","endUseToCarrierStatus":"unavailable","zoneAllocationStatus":"unavailable"}`)
 	summary := json.RawMessage(`{"schema":"semantic-idf.energy-explanation-summary/v2","period":"annual","scope":{"kind":"building"},"drivers":[{"id":"PRIVATE_DRIVER","label":"Exterior walls","value":0,"rawValue":0,"unit":"kWh thermal","basis":"heat_balance_share"}],"loads":[{"id":"PRIVATE_LOAD","label":"Cooling load","value":400,"unit":"kWh thermal","basis":"reported_variable","serviceKind":"cooling"}],"endUses":[{"id":"PRIVATE_END_USE","label":"Cooling","value":100,"unit":"kWh","basis":"reported_meter"},{"id":"PRIVATE_UNKNOWN","label":"Unknown use","value":null,"unit":"kWh","basis":"reported_meter"}],"carriers":[],"ratios":[],"residuals":[]}`)
 	trace := EnergyPathReportTrace{
-		Nodes:          []json.RawMessage{json.RawMessage(`{"id":"PRIVATE_LOAD","level":"load","period":"annual","value":400,"rawValue":null,"unit":"kWh thermal","unknownNodeMetadata":{"keep":null}}`), json.RawMessage(`{"id":"PRIVATE_END_USE","level":"end_use","period":"annual","value":100,"unit":"kWh"}`)},
+		Nodes:          []json.RawMessage{json.RawMessage(`{"id":"PRIVATE_LOAD","level":"load","period":"annual","value":400,"rawValue":null,"unit":"kWh thermal","unknownNodeMetadata":{"keep":null}}`), json.RawMessage(`{"id":"PRIVATE_END_USE","level":"end_use","period":"annual","value":100,"unit":"kWh"}`), json.RawMessage(`{"id":"PRIVATE_DRIVER","level":"driver","period":"annual","value":0,"unit":"kWh thermal","signedValue":-105,"rawValue":105,"effectiveValue":105,"allocatedValue":0,"heatDirection":"loss","heatDirectionBasis":"native_interval"}`)},
 		Links:          []json.RawMessage{json.RawMessage(`{"id":"PRIVATE_LINK","fromId":"PRIVATE_LOAD","toId":"PRIVATE_END_USE","relation":"load_to_end_use","fromValue":400,"fromUnit":"kWh thermal","toValue":100,"toUnit":"kWh","ratio":4,"ratioKind":"cop","period":"annual","sourceIds":["PRIVATE_SOURCE"],"unknownLink":null}`)},
 		Sources:        []json.RawMessage{json.RawMessage(`{"id":"PRIVATE_SOURCE","name":"Cooling meter","sourceType":"sql_meter","sourceUnit":"J","normalizedUnit":"kWh","rawValue":null,"effectiveValue":0,"unknownSource":false}`)},
 		Reconciliation: []json.RawMessage{json.RawMessage(`{"id":"PRIVATE_ACCOUNTING","level":"allocation","label":"Zone HVAC coverage","period":"annual","directValue":0,"allocatedValue":10,"unassignedValue":null,"expectedValue":10,"unit":"kWh","basis":"by_service_path_load_share","status":"partial"}`)},
@@ -92,6 +92,13 @@ func TestEPATH182BackendTraceXLSXPreservesUnitsDualValuesAndOriginalJSON(t *test
 	}
 	if len(sheets) != 6 {
 		t.Fatalf("trace sheet count=%d", len(sheets))
+	}
+	nodeSection := sheets[1].Sections[0]
+	if !reflect.DeepEqual(nodeSection.Headers[14:], []string{"Signed", "Heat direction", "Heat direction basis"}) || !reflect.DeepEqual(nodeSection.Rows[2][14:], []string{"-105", "loss", "native_interval"}) || nodeSection.Rows[2][6] != "0" {
+		t.Fatalf("signed gross direction or explicit zero allocation lost: %+v", nodeSection)
+	}
+	if nodeSection.Rows[0][14] != "" || nodeSection.Rows[0][15] != "" || nodeSection.Rows[0][16] != "" {
+		t.Fatal("legacy node acquired invented directional evidence")
 	}
 	source := sheets[2].Sections[0].Rows[0]
 	if source[4] != "J" || source[5] != "kWh" || source[7] != "" || source[8] != "0" {

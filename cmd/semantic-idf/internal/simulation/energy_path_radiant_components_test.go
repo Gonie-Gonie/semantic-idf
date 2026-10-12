@@ -335,29 +335,37 @@ func energyPathExpectedThermalInputFrequency(name string) (string, bool) {
 	return "", false
 }
 
-// Hourly charts add one frequency for each existing paired Energy Path identity,
-// without changing its owner. Boundary context retains its exact native Daily/
-// Monthly contract; original requests at other frequencies stay intact.
+// Hourly charts retain the Monthly/Hourly pair for each Energy Path identity.
+// Reversible heat adds an exact Timestep companion with the same owner; boundary
+// context retains its native Daily/Monthly roster and its three reversible
+// Timestep companions. Original requests at other frequencies stay intact.
 func assertEnergyPathMonthlyHourlyRequestPairs(t *testing.T, plan PurposeRunPlan) {
 	t.Helper()
 	pairs := map[string]map[string]PurposeOutputObject{}
-	boundary := map[string]bool{}
+	boundary := map[string]map[string]PurposeOutputObject{}
+	directional := map[string]PurposeOutputObject{}
 	nativeFanPools := map[string]bool{}
 	for _, output := range plan.OutputObjects {
 		if !purposeObjectIsSeries(output.ObjectType) {
 			continue
 		}
 		if frequency, thermalInput := energyPathExpectedThermalInputFrequency(output.VariableName); thermalInput {
-			if output.ObjectType != "Output:Variable" || output.ReportingFrequency != frequency || output.KeyValue == "" || output.KeyValue == "*" ||
+			reversible := output.VariableName == "Surface Outside Face Convection Heat Gain Energy" ||
+				output.VariableName == "Surface Outside Face Net Thermal Radiation Heat Gain Energy" ||
+				output.VariableName == "Surface Heat Storage Energy"
+			if output.ObjectType != "Output:Variable" || (output.ReportingFrequency != frequency && !(reversible && output.ReportingFrequency == "Timestep")) || output.KeyValue == "" || output.KeyValue == "*" ||
 				!purposeIDsContain(output.PurposeIDs, SimulationPurposeBasicEnergy) || output.Reason != "Basic Energy Path" ||
 				strings.TrimSpace(purposeFieldValue(output.Fields, "Schedule Name")) != "" {
 				t.Fatalf("thermal input lost exact native frequency/key/purpose coverage: %#v; want %s", output, frequency)
 			}
 			key := strings.ToLower(strings.Join([]string{output.ObjectType, output.KeyValue, output.VariableName}, "|"))
-			if boundary[key] {
-				t.Fatalf("duplicate boundary request %s", key)
+			if boundary[key] == nil {
+				boundary[key] = map[string]PurposeOutputObject{}
 			}
-			boundary[key] = true
+			if _, duplicate := boundary[key][output.ReportingFrequency]; duplicate {
+				t.Fatalf("duplicate boundary %s request %s", output.ReportingFrequency, key)
+			}
+			boundary[key][output.ReportingFrequency] = output
 			continue
 		}
 		// Native AirLoop fan pools are a separate, Hourly-only allocation
@@ -375,6 +383,26 @@ func assertEnergyPathMonthlyHourlyRequestPairs(t *testing.T, plan PurposeRunPlan
 				t.Fatalf("duplicate native Hourly fan pool request: %#v", output)
 			}
 			nativeFanPools[key] = true
+			continue
+		}
+		if output.ReportingFrequency == "Timestep" {
+			definition, supported := energyHeatAliasDefinitionForName(output.VariableName)
+			if !supported || !energyPathNeedsDirectionalHeatOutput(definition, output.VariableName) {
+				if output.State == PurposeOutputStateExisting {
+					continue
+				}
+				t.Fatalf("added an unrequested directional Energy Path variable: %#v", output)
+			}
+			if output.ObjectType != "Output:Variable" || output.KeyValue == "" || output.KeyValue == "*" ||
+				!purposeIDsContain(output.PurposeIDs, SimulationPurposeBasicEnergy) || output.Reason != "Basic Energy Path" ||
+				strings.TrimSpace(purposeFieldValue(output.Fields, "Schedule Name")) != "" {
+				t.Fatalf("directional Timestep output lost exact key/purpose coverage: %#v", output)
+			}
+			key := strings.ToLower(strings.Join([]string{output.ObjectType, output.KeyValue, output.VariableName}, "|"))
+			if _, duplicate := directional[key]; duplicate {
+				t.Fatalf("duplicate directional Timestep request %s", key)
+			}
+			directional[key] = output
 			continue
 		}
 		if output.ReportingFrequency != "Monthly" && output.ReportingFrequency != "Hourly" {
@@ -397,6 +425,30 @@ func assertEnergyPathMonthlyHourlyRequestPairs(t *testing.T, plan PurposeRunPlan
 		hourly, hasHourly := frequencies["Hourly"]
 		if !hasMonthly || !hasHourly || monthly.ScopeZoneName != hourly.ScopeZoneName {
 			t.Fatalf("request %s must have one Monthly/Hourly pair with the same owner: %#v", key, frequencies)
+		}
+	}
+	for key, timestep := range directional {
+		monthly, hasMonthly := pairs[key]["Monthly"]
+		hourly, hasHourly := pairs[key]["Hourly"]
+		if !hasMonthly || !hasHourly || timestep.ScopeZoneName != monthly.ScopeZoneName || timestep.ScopeZoneName != hourly.ScopeZoneName {
+			t.Fatalf("directional request %s must retain its Monthly/Hourly pair with the same owner: %#v; Timestep=%#v", key, pairs[key], timestep)
+		}
+	}
+	for key, frequencies := range boundary {
+		for _, output := range frequencies {
+			frequency, _ := energyPathExpectedThermalInputFrequency(output.VariableName)
+			if _, exists := frequencies[frequency]; !exists {
+				t.Fatalf("boundary request %s lost native %s observation: %#v", key, frequency, frequencies)
+			}
+			if output.VariableName == "Surface Outside Face Convection Heat Gain Energy" ||
+				output.VariableName == "Surface Outside Face Net Thermal Radiation Heat Gain Energy" ||
+				output.VariableName == "Surface Heat Storage Energy" {
+				timestep, exists := frequencies["Timestep"]
+				if !exists || timestep.ScopeZoneName != frequencies[frequency].ScopeZoneName {
+					t.Fatalf("reversible boundary request %s lost Timestep companion with the same owner: %#v", key, frequencies)
+				}
+			}
+			break
 		}
 	}
 }

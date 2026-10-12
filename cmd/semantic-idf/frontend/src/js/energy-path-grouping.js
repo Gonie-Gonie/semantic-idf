@@ -70,7 +70,7 @@ function isOther(node) {
 
 function isCandidate(node) {
   return token(node.level) === "driver"
-    ? DRIVER_CANDIDATES.has(category(node))
+    ? !["gain", "loss"].includes(node.heatDirection) && DRIVER_CANDIDATES.has(category(node))
     : token(node.level) === "end_use" && END_USE_CANDIDATES.has(category(node));
 }
 
@@ -122,7 +122,8 @@ export function energyPathGroupSmallNodes(nodes = [], links = []) {
     const total = denominators.get(bucket.denominatorKey) || 0;
     const boundary = total * 0.01;
     const tolerance = total * Number.EPSILON * 16;
-    const eligible = bucket.nodes.filter((node) => !protectedIDs.has(node.id));
+    const eligible = bucket.nodes.filter((node) => !protectedIDs.has(node.id) &&
+      !(token(node.level) === "driver" && ["gain", "loss"].includes(node.heatDirection)));
     const candidates = eligible.filter((node) => isCandidate(node) && Number(node.value) < boundary - tolerance);
     const existingOther = eligible.filter(isOther);
     if (!candidates.length || (candidates.length < 2 && !existingOther.length)) continue;

@@ -45,12 +45,12 @@ func TestEnergyPathDistrictPlanKeepsMonthlyLedgerAndAddsHourlyCharts(t *testing.
 	} {
 		t.Run(scope.ZoneMode, func(t *testing.T) {
 			plan := epathDistrictPurposePlan(doc, scope)
-			if !plan.RequiresSQL || !plan.RequiresDiscovery || plan.EstimatedFrames != 8760 {
-				t.Fatalf("Monthly ledger/Hourly chart SQL contract changed: SQL=%t discovery=%t frames=%d", plan.RequiresSQL, plan.RequiresDiscovery, plan.EstimatedFrames)
+			if !plan.RequiresSQL || !plan.RequiresDiscovery || plan.EstimatedFrames != 35040 {
+				t.Fatalf("Monthly ledger/Hourly chart/native Timestep heat SQL contract changed: SQL=%t discovery=%t frames=%d", plan.RequiresSQL, plan.RequiresDiscovery, plan.EstimatedFrames)
 			}
 			assertEnergyPathMonthlyHourlyRequestPairs(t, plan)
 			counts, monthlyCounts, hourlyCounts := map[string]int{}, map[string]int{}, map[string]int{}
-			boundaryCount, diagnosticsCount := 0, 0
+			boundaryCount, diagnosticsCount, directionalCount := 0, 0, 0
 			meters, signatures := map[string]bool{}, map[string]bool{}
 			for _, output := range plan.OutputObjects {
 				if signatures[output.Signature] || output.Signature == "" {
@@ -60,6 +60,8 @@ func TestEnergyPathDistrictPlanKeepsMonthlyLedgerAndAddsHourlyCharts(t *testing.
 				_, thermalInput := energyPathExpectedThermalInputFrequency(output.VariableName)
 				if thermalInput {
 					boundaryCount++
+				} else if output.ReportingFrequency == "Timestep" {
+					directionalCount++ // Exact reversible aliases/owners are checked by the shared helper.
 				} else if output.ObjectType == "Output:Diagnostics" {
 					diagnosticsCount++
 					if len(output.Fields) != 1 || output.Fields[0].Value != "DisplayAdvancedReportVariables" {
@@ -102,6 +104,10 @@ func TestEnergyPathDistrictPlanKeepsMonthlyLedgerAndAddsHourlyCharts(t *testing.
 					if output.Weight != "heavy" || output.Reason != "Basic Energy Path" {
 						t.Fatalf("Hourly source chart lost its explicit purpose/weight: %#v", output)
 					}
+				case "Timestep":
+					if output.Weight != "heavy" || output.Reason != "Basic Energy Path" {
+						t.Fatalf("native directional heat lost its explicit purpose/weight: %#v", output)
+					}
 				default:
 					t.Fatalf("Energy Path added an unsupported chart/ledger frequency: %#v", output)
 				}
@@ -133,8 +139,8 @@ func TestEnergyPathDistrictPlanKeepsMonthlyLedgerAndAddsHourlyCharts(t *testing.
 				wantSeries := map[string]int{"Output:Meter": 15, "Output:Variable": 952}
 				wantCounts := map[string]int{"Output:Meter": 30, "Output:Variable": 1904, "Output:SQLite": 1, "Output:VariableDictionary": 1}
 				if !reflect.DeepEqual(monthlyCounts, wantSeries) || !reflect.DeepEqual(hourlyCounts, wantSeries) ||
-					len(plan.OutputObjects) != 1936+boundaryCount+diagnosticsCount || !reflect.DeepEqual(counts, wantCounts) || boundaryCount == 0 || diagnosticsCount != 1 {
-					t.Fatalf("District must keep 967 Monthly/Hourly pairs plus native boundary context: total=%d / %v; Monthly=%v Hourly=%v; boundary=%d diagnostics=%d", len(plan.OutputObjects), counts, monthlyCounts, hourlyCounts, boundaryCount, diagnosticsCount)
+					len(plan.OutputObjects) != 1936+boundaryCount+diagnosticsCount+directionalCount || !reflect.DeepEqual(counts, wantCounts) || boundaryCount == 0 || diagnosticsCount != 1 || directionalCount == 0 {
+					t.Fatalf("District must keep 967 Monthly/Hourly pairs plus native boundary/directional context: total=%d / %v; Monthly=%v Hourly=%v; boundary=%d diagnostics=%d directional=%d", len(plan.OutputObjects), counts, monthlyCounts, hourlyCounts, boundaryCount, diagnosticsCount, directionalCount)
 				}
 			}
 			for _, name := range []string{"Zone Air System Sensible Cooling Energy", "Zone Air System Sensible Heating Energy"} {

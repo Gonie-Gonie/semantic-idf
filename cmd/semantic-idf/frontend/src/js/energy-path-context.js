@@ -19,6 +19,7 @@ export function energyPathInputSignedValue(node = {}) {
 const unique = (values) => [...new Set((values || []).filter(Boolean))].sort();
 const inputKinds = new Set(["input.solar_incident", "input.exterior_convection", "input.exterior_longwave", "input.people", "input.lighting", "input.equipment", "input.internal_gains", "input.solar_absorbed", "input.surface_storage"]);
 const inputKind = (value) => token(value).startsWith("input.equipment.") ? "input.equipment" : token(value);
+const heatDirection = (node) => ["gain", "loss"].includes(node.heatDirection) ? node.heatDirection : "";
 
 /** Group surface observations by their reported physical quantity, never by
  * magnitude. Member identities remain available for Monthly/Hourly inspection. */
@@ -30,11 +31,12 @@ export function energyPathGroupInputs(nodes = [], links = [], labelForKind = (_,
       others.push(node);
       continue;
     }
-    const key = [kind, token(node.period) || "annual", token(node.zoneName), token(node.unit)].join("|");
+    const direction = heatDirection(node);
+    const key = [kind, direction, token(node.period) || "annual", token(node.zoneName), token(node.unit)].join("|");
     let group = groups.get(key);
     if (!group) {
       const signed = energyPathInputSignedValue(node);
-      const identity = [kind, token(node.zoneName), token(node.unit)].join("|");
+      const identity = [kind, ...(direction ? [direction] : []), token(node.zoneName), token(node.unit)].join("|");
       group = { ...energyPathWithOriginalMembers(node), kind, id: `group.input.${encodeURIComponent(identity)}`, label: labelForKind(kind, node.label || kind), signedValue: signed, value: signed === null ? null : Math.abs(signed) };
       groups.set(key, group);
     } else {
@@ -47,6 +49,7 @@ export function energyPathGroupInputs(nodes = [], links = [], labelForKind = (_,
       }
       for (const field of ["sourceIds", "relatedEntityIds", "relatedPathIds"]) group[field] = unique([...(group[field] || []), ...(node[field] || [])]);
       if (group.basis !== node.basis) group.basis = "grouped_presentation";
+      if (group.heatDirectionBasis !== node.heatDirectionBasis) group.heatDirectionBasis = "mixed";
     }
     replacements.set(node.id, group.id);
   }

@@ -413,6 +413,18 @@ func TestEnergyPathThermalInputStoredContextGuards(t *testing.T) {
 			i.SignedValue = 0
 			l.FromValue = 0
 		}},
+		{"forged gain direction", func(i, d *EnergyExplanationNode, s *EnergyDataSource, l *EnergyPathLink) {
+			i.HeatDirection, i.HeatDirectionBasis = "gain", "native_interval"
+			s.ReportingFrequency = "Timestep"
+		}},
+		{"Monthly net cannot prove gross loss", func(i, d *EnergyExplanationNode, s *EnergyDataSource, l *EnergyPathLink) {
+			i.HeatDirection, i.HeatDirectionBasis = "loss", "native_interval"
+			s.ReportingFrequency = "Monthly"
+		}},
+		{"unsupported direction basis", func(i, d *EnergyExplanationNode, s *EnergyDataSource, l *EnergyPathLink) {
+			i.HeatDirection, i.HeatDirectionBasis = "loss", "net_only"
+			s.ReportingFrequency = "Timestep"
+		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			i, d, s, l := input, driver, source, valid
@@ -426,6 +438,12 @@ func TestEnergyPathThermalInputStoredContextGuards(t *testing.T) {
 	got := filterEnergyPathThermalInputLinks([]EnergyExplanationNode{input, driver}, []EnergyPathLink{valid, other}, []EnergyDataSource{source, {ID: "core"}}, scope, "annual")
 	if len(got) != 2 || got[0].FromValue != -6 {
 		t.Fatalf("valid signed context lost: %+v", got)
+	}
+	input.HeatDirection, input.HeatDirectionBasis = "loss", "native_interval"
+	source.ReportingFrequency = "Timestep"
+	got = filterEnergyPathThermalInputLinks([]EnergyExplanationNode{input, driver}, []EnergyPathLink{valid, other}, []EnergyDataSource{source, {ID: "core"}}, scope, "annual")
+	if len(got) != 2 || got[0].FromValue != -6 {
+		t.Fatalf("valid native-interval loss context lost: %+v", got)
 	}
 	got = filterEnergyPathThermalInputLinks([]EnergyExplanationNode{input, driver}, []EnergyPathLink{valid, valid}, []EnergyDataSource{source, {ID: "core"}}, scope, "annual")
 	if len(got) != 0 {
@@ -455,6 +473,219 @@ func TestEnergyPathThermalInputsHourlyFallbackAndDailyAuthority(t *testing.T) {
 	db.Close()
 	values, _, months = f.read(t)
 	thermalInputAssertValue(t, values, months, "Office", "M2", "input.solar_incident", energyDriverCategoryExteriorWalls, 0, false)
+
+	t.Run("gross directions retain equal-net differences and native zero", func(t *testing.T) {
+		for _, gain := range []float64{10, 110} {
+			f := newThermalInputFixture(t)
+			addThermalInputDirectionalFixture(t, f, "Hourly", gain, gain-5)
+			values, sources, months := f.read(t)
+			assertThermalInputDirection(t, values, months, "Office", "M1", "gain", gain*6, true)
+			assertThermalInputDirection(t, values, months, "Office", "M1", "loss", -(gain-5)*6, true)
+			assertThermalInputDirection(t, values, months, "Office", "Annual", "gain", gain*6+24, true)
+			assertThermalInputDirection(t, values, months, "Office", "Annual", "loss", -(gain-5)*6-12, true)
+			assertThermalInputDirection(t, values, months, "Lab", "M1", "gain", 0, true)
+			assertThermalInputDirection(t, values, months, "Lab", "M1", "loss", 0, true)
+			// Original source identity and native signed net remain inspectable;
+			// they are not replaced by invented direction dictionaries.
+			for _, source := range sources {
+				if source.ID == "sql-input-rdd-201" && (source.RawValue != 7 || source.EffectiveValue != 42 || source.ReportingFrequency != "Hourly") {
+					t.Fatalf("signed native source evidence changed: %+v", source)
+				}
+			}
+			result := EnergyExplanationResult{Schema: energyExplanationSchema, Scope: EnergyExplanationScope{Kind: "building"}, Periods: []EnergyPeriod{{ID: "M1"}, {ID: "M2"}}}
+			appendEnergyPathThermalInputGraphs(&result, values, months)
+			for _, direction := range []string{"gain", "loss"} {
+				annual, total := 0.0, 0.0
+				id := ""
+				for _, node := range result.Nodes {
+					if node.Kind == "input.exterior_convection" && node.HeatDirection == direction {
+						annual, id = node.SignedValue, node.ID
+						if node.HeatDirectionBasis != "native_interval" {
+							t.Fatalf("lost interval split basis: %+v", node)
+						}
+					}
+				}
+				for _, period := range result.Periods {
+					for _, node := range period.Nodes {
+						if node.ID == id {
+							total += node.SignedValue
+						}
+					}
+				}
+				if id == "" || math.Abs(annual-total) > 1e-9 {
+					t.Fatalf("direction %s changed identity or annual sum: annual=%g monthly=%g", direction, annual, total)
+				}
+			}
+		}
+	})
+	t.Run("Timestep wins before Hourly net cancellation", func(t *testing.T) {
+		f := newThermalInputFixture(t)
+		addThermalInputDirectionalFixture(t, f, "Hourly", 10, 5)
+		addThermalInputDirectionalFixture(t, f, "Timestep", 110, 105)
+		db, err := sql.Open("sqlite", f.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Detailed system timesteps can share native timestamps with Zone
+		// Timestep rows. Their −1 axis must not inflate the required roster.
+		if _, err := db.Exec(`INSERT INTO Time SELECT TimeIndex+100000,Year,Month,Day,Hour,Minute,Interval,-1,EnvironmentPeriodIndex,WarmupFlag FROM Time WHERE IntervalType=0;
+INSERT INTO ReportDataDictionary VALUES(221,'Office Wall','Surface Outside Face Convection Heat Gain Energy','J','HVAC System Timestep',0);
+INSERT INTO ReportData SELECT TimeIndex,221,999999 FROM Time WHERE IntervalType=-1`); err != nil {
+			t.Fatal(err)
+		}
+		db.Close()
+		values, _, months := f.read(t)
+		assertThermalInputDirection(t, values, months, "Office", "M1", "gain", 660, true)
+		assertThermalInputDirection(t, values, months, "Office", "M1", "loss", -630, true)
+	})
+	t.Run("opposing surfaces do not cancel before category gross sums", func(t *testing.T) {
+		f := newThermalInputFixture(t)
+		addThermalInputDirectionalFixture(t, f, "Hourly", 110, 105)
+		f.geometry.Surfaces = append(f.geometry.Surfaces, idf.GeometrySurface{ID: "s6", Name: "Second Office Wall", ZoneName: "Office", SurfaceType: "Wall", OutsideBoundary: "Outdoors"})
+		f.context = newEnergyDriverBuildContext(f.geometry, f.doc)
+		db, err := sql.Open("sqlite", f.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO Surfaces VALUES(7,'Second Office Wall',10,1,0,1);
+INSERT INTO ReportDataDictionary VALUES(203,'Second Office Wall','Surface Outside Face Convection Heat Gain Energy','J','Hourly',0);
+INSERT INTO ReportData SELECT TimeIndex,203,CASE WHEN TimeIndex=1001 THEN -360000000 ELSE 0 END FROM Time WHERE IntervalType=1 AND EnvironmentPeriodIndex=3`); err != nil {
+			t.Fatal(err)
+		}
+		db.Close()
+		values, _, months := f.read(t)
+		assertThermalInputDirection(t, values, months, "Office", "M1", "gain", 660, true)
+		assertThermalInputDirection(t, values, months, "Office", "M1", "loss", -1230, true)
+	})
+	t.Run("native Timestep holes cannot borrow complete Hourly data", func(t *testing.T) {
+		for _, mutation := range []string{
+			`DELETE FROM Time WHERE TimeIndex=20002`,
+			`DELETE FROM ReportData WHERE ReportDataDictionaryIndex=211 AND TimeIndex=20002`,
+			`UPDATE Time SET Hour=1 WHERE TimeIndex=20001`,
+			`UPDATE Time SET Interval=10 WHERE TimeIndex=20002`,
+		} {
+			f := newThermalInputFixture(t)
+			addThermalInputDirectionalFixture(t, f, "Hourly", 10, 5)
+			addThermalInputDirectionalFixture(t, f, "Timestep", 110, 105)
+			db, err := sql.Open("sqlite", f.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(mutation); err != nil {
+				t.Fatal(err)
+			}
+			db.Close()
+			values, _, months := f.read(t)
+			assertThermalInputDirection(t, values, months, "Office", "M1", "gain", 0, false)
+			assertThermalInputDirection(t, values, months, "", "Annual", "loss", 0, false)
+		}
+	})
+	t.Run("missing interval cannot acquire Monthly zero authority", func(t *testing.T) {
+		for _, mutation := range []string{
+			`DELETE FROM ReportData WHERE ReportDataDictionaryIndex=201 AND TimeIndex=1001`,
+			`UPDATE ReportData SET Value=NULL WHERE ReportDataDictionaryIndex=201 AND TimeIndex=1001`,
+			`INSERT INTO ReportData VALUES(1001,201,0)`,
+			`DELETE FROM ReportDataDictionary WHERE ReportDataDictionaryIndex=202`,
+		} {
+			f := newThermalInputFixture(t)
+			addThermalInputDirectionalFixture(t, f, "Hourly", 10, 5)
+			db, err := sql.Open("sqlite", f.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(mutation); err != nil {
+				t.Fatal(err)
+			}
+			db.Close()
+			values, _, months := f.read(t)
+			zone := "Office"
+			if strings.Contains(mutation, "DELETE FROM ReportDataDictionary ") {
+				zone = "Lab"
+			}
+			assertThermalInputDirection(t, values, months, zone, "M1", "gain", 0, false)
+			assertThermalInputDirection(t, values, months, "", "M1", "loss", 0, false)
+		}
+	})
+}
+
+func assertThermalInputDirection(t *testing.T, values []energyPathThermalInputValue, months []int, zone, period, direction string, want float64, observed bool) {
+	t.Helper()
+	for _, value := range energyPathThermalInputGraphValues(values, months, zone, period) {
+		if value.kind == "input.exterior_convection" && value.category == energyDriverCategoryExteriorWalls && value.direction == direction {
+			if !observed || math.Abs(value.effective-want) > 1e-9 || value.directionBasis != "native_interval" {
+				t.Fatalf("%s/%s/%s=%g (%s), want %g observed=%v", zone, period, direction, value.effective, value.directionBasis, want, observed)
+			}
+			return
+		}
+	}
+	if observed {
+		t.Fatalf("missing %s/%s/%s, want %g", zone, period, direction, want)
+	}
+}
+
+func addThermalInputDirectionalFixture(t *testing.T, f thermalInputFixture, frequency string, gain, loss float64) {
+	t.Helper()
+	db, err := sql.Open("sqlite", f.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	exec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := tx.Exec(query, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	base := 201
+	steps := 1
+	nativeFrequency := frequency
+	if frequency == "Timestep" {
+		base, steps = 211, 4
+		nativeFrequency = "Zone Timestep"
+	}
+	for i, key := range []string{"Office Wall", "Lab Wall"} {
+		exec(`INSERT INTO ReportDataDictionary VALUES(?,?,'Surface Outside Face Convection Heat Gain Energy','J',?,0)`, base+i, key, nativeFrequency)
+	}
+	exec(`UPDATE ReportData SET Value=18000000 WHERE ReportDataDictionaryIndex=12 AND TimeIndex=101`)
+	exec(`UPDATE ReportData SET Value=7200000 WHERE ReportDataDictionaryIndex=12 AND TimeIndex=102`)
+	exec(`UPDATE ReportData SET Value=0 WHERE ReportDataDictionaryIndex=13`)
+	start := time.Date(2017, 1, 31, 0, 0, 0, 0, time.UTC)
+	for day := 0; day < 3; day++ {
+		date := start.AddDate(0, 0, day)
+		for hour := 1; hour <= 24; hour++ {
+			for step := 1; step <= steps; step++ {
+				index := 1000 + day*24 + hour
+				if steps > 1 {
+					index = 20000 + (day*24+hour-1)*steps + step
+					nativeHour, nativeMinute := hour-1, step*15
+					if nativeMinute == 60 {
+						nativeHour, nativeMinute = hour, 0
+					}
+					exec(`INSERT INTO Time VALUES(?,2017,?,?,?,?,15,0,3,0)`, index, int(date.Month()), date.Day(), nativeHour, nativeMinute)
+				}
+				value := 0.0
+				if day == 0 && hour == 1 && step == 1 {
+					value = gain
+				} else if day == 0 && (steps == 1 && hour == 2 || steps > 1 && hour == 1 && step == 2) {
+					value = -loss
+				} else if day == 1 && hour == 1 && step == 1 {
+					value = 4
+				} else if day == 1 && (steps == 1 && hour == 2 || steps > 1 && hour == 1 && step == 2) {
+					value = -2
+				}
+				exec(`INSERT INTO ReportData VALUES(?,?,?)`, index, base, value*3.6e6)
+				exec(`INSERT INTO ReportData VALUES(?,?,0)`, index, base+1)
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestEnergyPathThermalInputRequestsUseNativeDailyAndMonthlyOnly(t *testing.T) {
@@ -463,7 +694,7 @@ func TestEnergyPathThermalInputRequestsUseNativeDailyAndMonthlyOnly(t *testing.T
 	builder.geometry = f.geometry
 	builder.addEnergyPathThermalInputOutputs([]string{"Office", "Lab"})
 	builder.addEnergyPathHourlyOutputs()
-	incident, internal, storage := 0, 0, 0
+	incident, internal, storage, directional := 0, 0, 0, 0
 	for _, object := range builder.objects {
 		if !energyPathThermalInputVariable(object.VariableName) {
 			continue
@@ -476,8 +707,13 @@ func TestEnergyPathThermalInputRequestsUseNativeDailyAndMonthlyOnly(t *testing.T
 			if object.ReportingFrequency != "Daily" {
 				t.Fatal("unsafe monthly solar average")
 			}
+		} else if object.ReportingFrequency == "Timestep" {
+			directional++
+			if object.VariableName != "Surface Outside Face Convection Heat Gain Energy" && object.VariableName != "Surface Outside Face Net Thermal Radiation Heat Gain Energy" && object.VariableName != "Surface Heat Storage Energy" {
+				t.Fatalf("non-reversible input gained an unnecessary fine roster: %+v", object)
+			}
 		} else if object.ReportingFrequency != "Monthly" {
-			t.Fatal("expected native Monthly energy")
+			t.Fatal("expected Monthly net energy or reversible Timestep companion")
 		}
 		if strings.Contains(object.VariableName, "Internal Total") {
 			internal++
@@ -489,8 +725,8 @@ func TestEnergyPathThermalInputRequestsUseNativeDailyAndMonthlyOnly(t *testing.T
 			t.Fatalf("non-exterior thermal input requested: %+v", object)
 		}
 	}
-	if incident != 3 || internal != 2 || storage != 2 {
-		t.Fatalf("roster incident=%d internal=%d storage=%d", incident, internal, storage)
+	if incident != 3 || internal != 2 || storage != 4 || directional != 6 {
+		t.Fatalf("roster incident=%d internal=%d storage=%d directional=%d", incident, internal, storage, directional)
 	}
 	for _, existing := range []string{"", "Output:Diagnostics,DisplayExtraWarnings;"} {
 		doc := parsePurposePlanFixture(t, f.doc.String()+existing)

@@ -1,6 +1,7 @@
 import { t } from "./i18n.js";
 import { escapeHTML } from "./state.js";
 import { energyPathDisplayUnit, formatEnergyPathDisplayValue } from "./energy-path-display.js";
+import { energyPathHeatDirection, energyPathGrossHeatValue } from "./energy-path-driver-presentation.js";
 
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const copy = (key, fallback, values = {}) => t(`simulation.energyPathChart${key}`, values, fallback);
@@ -12,10 +13,12 @@ let chartLabelContext = null;
 // Missing observations remain gaps; an annual total never supplies monthly values.
 export function energyPathMonthlyChartSeries(item = {}, kind = "node", graphs = [], endpointLabels = {}) {
   const wanted = new Set(members(item).map((member) => member.id));
-  const fields = kind === "link" ? ["fromValue", "toValue"] : ["value"];
+  const directionalDriver = kind === "node" && item.level === "driver" && energyPathHeatDirection(item);
+  const fields = kind === "link" ? ["fromValue", "toValue"] : directionalDriver ? ["effectiveValue", "value"] : ["value"];
   return fields.map((field) => ({
     id: field,
-    label: kind === "link" ? endpointLabels[field === "fromValue" ? "from" : "to"] || monthlyLinkLabel(item, field) : item.label || item.id || "",
+    label: kind === "link" ? endpointLabels[field === "fromValue" ? "from" : "to"] || monthlyLinkLabel(item, field)
+      : directionalDriver ? t(field === "effectiveValue" ? "simulation.energyPathGrossHeatExchange" : "simulation.energyPathLoadContribution", {}, field === "effectiveValue" ? "Heat exchange" : "Load contribution") : item.label || item.id || "",
     unit: kind === "link" ? item[field === "fromValue" ? "fromUnit" : "toUnit"] || "kWh" : item.unit || "kWh",
     points: Array.from({ length: 12 }, (_, month) => {
       const graph = graphs[month] || {};
@@ -28,8 +31,8 @@ export function energyPathMonthlyChartSeries(item = {}, kind = "node", graphs = 
       for (const record of records) {
         for (const member of members(record)) {
           if (!wanted.has(member.id)) continue;
-          const value = kind === "node" && member.level === "input" && finite(member.signedValue)
-            ? member.signedValue : member[field];
+          const value = directionalDriver && field === "effectiveValue" ? energyPathGrossHeatValue(member)
+            : kind === "node" && member.level === "input" && finite(member.signedValue) ? member.signedValue : member[field];
           found.set(member.id, kind === "link" ? member : value);
         }
       }
@@ -181,6 +184,11 @@ function contextMonthlyValue(relation, field, links, records, wanted) {
 }
 
 export function energyPathHourlyChartSeries(item = {}, sources = [], viewState = {}, hourlyLabels = []) {
+  // Directional totals are split before native intervals are aggregated. A
+  // stored native Hourly net curve cannot recover those gross observations.
+  const direction = ["input", "driver"].includes(item.level) ? energyPathHeatDirection(item) : "";
+  const nativeDirection = direction && item.heatDirectionBasis === "native_direction";
+  if (direction && !nativeDirection) return [];
   if (!Array.isArray(hourlyLabels) || !hourlyLabels.length) return [];
   const leap = hourlyLabels.some((label) => String(label || "").startsWith("02-29")), seenHours = new Set();
   const selectedMonth = /^M([1-9]|1[0-2])$/i.exec(viewState.simulationEnergyPeriod || "");
@@ -232,7 +240,7 @@ export function energyPathHourlyChartSeries(item = {}, sources = [], viewState =
   for (const trace of observed.values()) {
     const values = trace.hourly.values;
     const valid = Array.isArray(values) && values.length === hourlyLabels.length &&
-      values.every((value) => finite(value) && finite(value * trace.multiplier));
+      values.every((value) => finite(value) && finite(value * trace.multiplier) && (!nativeDirection || value >= 0));
     // Native observations with unproven multipliers remain separate curves.
     const key = trace.metric + (trace.nativeBasis ? `|native:${trace.id}` : "|model");
     const group = groups.get(key) || { label: trace.label, members: [], valid: !missingMetrics.has(trace.metric) };
@@ -244,7 +252,7 @@ export function energyPathHourlyChartSeries(item = {}, sources = [], viewState =
     return {
       id: group.members.map((member) => member.id).join("|"), label: group.label, unit: "kWh",
       points: axis.map(({ index, x, label }) => {
-        const value = group.members.reduce((sum, member) => sum + member.values[index] * member.multiplier, 0);
+        const value = (nativeDirection && direction === "loss" ? -1 : 1) * group.members.reduce((sum, member) => sum + member.values[index] * member.multiplier, 0);
         return { x, label, value: finite(value) ? value : null };
       }),
     };
@@ -307,9 +315,12 @@ export function renderEnergyPathComponentChart({ item = {}, kind = "node", label
     (!display?.perArea || finite(display.areaM2) && display.areaM2 > 0);
   const heading = label || item.label || item.id || "";
   const validatedConversion = token(item.relation) === "load_to_end_use" ? conversionRatio : null;
-  const quantities = available ? renderPlot(series, frequency, display, item.level === "input") : `<div class="energy-path-chart-empty" data-energy-path-chart-empty>${escapeHTML(display?.perArea && !(display.areaM2 > 0)
+  const directionalDriver = kind === "node" && item.level === "driver" && energyPathHeatDirection(item);
+  const quantities = available ? renderPlot(series, frequency, display, item.level === "input" || Boolean(directionalDriver)) : `<div class="energy-path-chart-empty" data-energy-path-chart-empty>${escapeHTML(display?.perArea && !(display.areaM2 > 0)
     ? copy("AreaUnavailable", "Floor area is unavailable for this result.")
-    : frequency === "hourly" ? copy("HourlyUnavailable", "Hourly data is unavailable for this component.") : copy("MonthlyUnavailable", "Monthly data is unavailable for this component."))}</div>`;
+    : frequency === "hourly" && ["input", "driver"].includes(item.level) && energyPathHeatDirection(item) && item.heatDirectionBasis !== "native_direction"
+      ? t("simulation.energyPathDirectionalHourlyUnavailable", {}, "Separate hourly gains and losses are unavailable. Native hourly net values cannot reproduce the collected gross heat quantities.")
+      : frequency === "hourly" ? copy("HourlyUnavailable", "Hourly data is unavailable for this component.") : copy("MonthlyUnavailable", "Monthly data is unavailable for this component."))}</div>`;
   const ratio = kind === "link" ? energyPathLinkRatioChartSeries(item, frequency === "monthly" ? monthly : [], validatedConversion) : [];
   const ratioAvailable = ratio.some((trace) => trace.points.some((point) => finite(point.value)));
   const ratioPanel = kind === "link" ? `<section class="energy-path-chart-panel" data-energy-path-chart-panel="ratio"><h4>${escapeHTML(ratio[0]?.label || copy("Ratio", "From / to ratio"))}</h4>
@@ -320,9 +331,18 @@ export function renderEnergyPathComponentChart({ item = {}, kind = "node", label
       <option value="monthly"${frequency === "monthly" ? " selected" : ""}>${escapeHTML(copy("Monthly", "Monthly"))}</option>
       <option value="hourly"${frequency === "hourly" ? " selected" : ""}>${escapeHTML(copy("Hourly", "Hourly"))}</option>
     </select></header>
-    ${kind === "link" ? renderLinkQuantities(item, endpointLabels, display, validatedConversion, ratio[0]) : ""}
+    ${kind === "link" ? renderLinkQuantities(item, endpointLabels, display, validatedConversion, ratio[0]) : directionalDriver ? renderDirectionalQuantities(item, display) : ""}
     <div class="energy-path-chart-panels${kind === "link" ? " has-ratio" : ""}"><section class="energy-path-chart-panel" data-energy-path-chart-panel="quantities">${kind === "link" ? `<h4>${escapeHTML(copy("Quantities", "Endpoint quantities"))}</h4>` : ""}${quantities}</section>${ratioPanel}</div>
   </aside>`;
+}
+
+function renderDirectionalQuantities(item, display) {
+  const gross = energyPathGrossHeatValue(item);
+  const values = [
+    [t("simulation.energyPathGrossHeatExchange", {}, "Heat exchange"), gross],
+    [t("simulation.energyPathLoadContribution", {}, "Load contribution"), item.value],
+  ];
+  return `<dl class="energy-path-chart-quantities" data-energy-path-directional-quantities>${values.map(([label, value]) => `<div><dt>${escapeHTML(label)}</dt><dd>${escapeHTML(formatEnergyPathDisplayValue(value, item.unit || "kWh", display))}</dd></div>`).join("")}</dl>`;
 }
 
 function renderLinkQuantities(item, labels, display, conversionRatio, ratio) {

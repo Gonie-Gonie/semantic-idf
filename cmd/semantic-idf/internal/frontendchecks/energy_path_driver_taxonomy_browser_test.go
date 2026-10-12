@@ -52,6 +52,7 @@ func TestEnergyPathAllServiceDriverProjectionBrowser(t *testing.T) {
 	if document := string(output); !strings.Contains(document, `data-energy-path-driver-taxonomy-status="passed"`) {
 		t.Fatalf("Energy Path driver projection contract failed in browser:\n%s", document)
 	}
+
 }
 
 const energyPathDriverTaxonomyHarnessHTML = `<!doctype html>
@@ -161,7 +162,67 @@ try {
   const monthZero=module.energyPathGraphForState({...explained,nodes:[zeroParent,load],links:[{...parentLink,fromValue:0,toValue:0}]},allState);
   const zeroSeries=energyPathMonthlyChartSeries(selected,"node",[monthZero]);
   assert(zeroSeries[0].points[0].value===0 && zeroSeries[0].points[1].value===null,"Known-zero monthly component became missing or filled an absent month");
+  const directionalExplanation = (gain, loss) => {
+    const directionalNodes = [
+      ...["gain", "loss"].map((direction, index) => ({id:"driver.surface.exterior_walls." + (index ? "heating" : "cooling") + ".building." + direction,
+        level:"driver",kind:"driver.surface.exterior_walls",driverCategory:"surface.exterior_walls",label:"Wall heat exchange",
+        serviceKind:index ? "heating" : "cooling",heatDirection:direction,heatDirectionBasis:"native_interval",unit:"kWh",scaleDomain:"thermal",
+        value:index ? 2 : 4,allocatedValue:index ? 2 : 4,rawValue:index ? loss : gain,effectiveValue:index ? loss : gain,
+        signedValue:index ? -loss : gain,sourceIds:["wall." + direction]})),
+      {id:"load.cooling.building",level:"load",serviceKind:"cooling",value:4,unit:"kWh",scaleDomain:"thermal"},
+      {id:"load.heating.building",level:"load",serviceKind:"heating",value:2,unit:"kWh",scaleDomain:"thermal"},
+      ...["gain", "loss"].map((direction, index) => ({id:"input.convection." + direction,level:"input",kind:"input.exterior_convection",
+        label:"Exterior convection",heatDirection:direction,heatDirectionBasis:"native_interval",value:index ? loss : gain,
+        signedValue:index ? -loss : gain,rawValue:index ? -loss : gain,effectiveValue:index ? -loss : gain,unit:"kWh",scaleDomain:"boundary",sourceIds:["outside." + direction]})),
+      {id:"driver.balance.storage_other.heating.building.loss",level:"driver",kind:"driver.balance.storage_other",driverCategory:"balance.storage_other",
+        label:"Storage",heatDirection:"loss",heatDirectionBasis:"native_interval",serviceKind:"heating",value:0,allocatedValue:0,rawValue:5,effectiveValue:5,
+        signedValue:-5,unit:"kWh",scaleDomain:"thermal",sourceIds:["air.loss"],driverBreakdown:[{component:"air_storage",value:0,rawValue:5,effectiveValue:5,sourceIds:["air.loss"]}]},
+    ];
+    const directionalLinks = directionalNodes.filter(node => node.level === "driver" && node.value > 0).map(node => ({
+      id:"link." + node.id,fromId:node.id,toId:"load." + node.serviceKind + ".building",relation:"driver_to_load",serviceKind:node.serviceKind,
+      fromValue:node.value,toValue:node.value,fromUnit:"kWh",toUnit:"kWh",sourceIds:node.sourceIds}));
+    return {...explanation,nodes:directionalNodes,links:directionalLinks,periods:[{id:"M1",nodes:directionalNodes.map(node => ({...node,period:"M1"})),links:directionalLinks.map(link => ({...link,period:"M1"}))}]};
+  };
+  const firstDirectional = directionalExplanation(10, 5), secondDirectional = directionalExplanation(110, 105);
+  const firstGraph = module.energyPathGraphForState(firstDirectional, allState), secondGraph = module.energyPathGraphForState(secondDirectional, allState);
+  const wallDirections = firstGraph.nodes.filter(node => node.driverCategory === "surface.exterior_walls");
+  assert(wallDirections.length === 2 && wallDirections.every(node => node.id.endsWith(".all.building")), "Gain/loss cards merged or directional ID suffix corrupted scope");
+  const gainNamedScope = module.energyPathMergeAllServiceDrivers([{...firstDirectional.nodes[0],id:"driver.surface.exterior_walls.cooling.gain",zoneName:"gain",heatDirectionBasis:"native_direction"}],[]);
+  assert(gainNamedScope.nodes[0].id.endsWith(".all.gain"), "A legacy native-direction Zone named gain was mistaken for an appended direction suffix");
+  const nativeDirectionScope = module.energyPathMergeAllServiceDrivers([{...firstDirectional.nodes[0],heatDirectionBasis:"native_direction"}],[],{kind:"building"});
+  assert(nativeDirectionScope.nodes[0].id.endsWith(".all.building"), "New native-direction suffix replaced the explicit Building scope");
+  const lossNamedScope = module.energyPathMergeAllServiceDrivers([{...firstDirectional.nodes[1],id:"driver.surface.exterior_walls.heating.loss.loss",zoneName:"loss",heatDirectionBasis:"native_direction"}],[],{kind:"zone",zoneName:"loss"});
+  assert(lossNamedScope.nodes[0].id.endsWith(".all.loss"), "New directional suffix corrupted a Zone literally named loss");
+  assert(wallDirections.find(node => node.heatDirection === "gain").effectiveValue === 10 && wallDirections.find(node => node.heatDirection === "loss").effectiveValue === 5, "Directional gross wall quantities were netted");
+  assert(secondGraph.nodes.find(node => node.driverCategory === "surface.exterior_walls" && node.heatDirection === "gain").effectiveValue === 110, "Equal net heat erased distinct gross exchange");
+  const inputDirections = firstGraph.nodes.filter(node => node.level === "input");
+  assert(inputDirections.length === 2 && inputDirections.some(node => node.signedValue === 10) && inputDirections.some(node => node.signedValue === -5), "Boundary input grouping cancelled opposite directions");
+  const storedAir = firstGraph.nodes.find(node => node.driverCategory === "balance.air_storage");
+  assert(storedAir?.label === "Zone-air heat storage" && storedAir.heatDirection === "loss" && storedAir.value === 0 && storedAir.effectiveValue === 5, "Storage physical direction or zero-allocation observation was lost");
+  assert(firstGraph.links.reduce((sum, link) => sum + link.fromValue, 0) === 6, "Gross directional observations changed the allocated load budget");
+  const directionalScene = module.prepareEnergyPathScene(firstDirectional, {...allState});
+  assert(directionalScene.visibleNodes.some(node => node.id === storedAir.id) && !directionalScene.drawing.ribbons.some(link => link.fromId === storedAir.id), "Observed storage without a load allocation disappeared or acquired a fabricated ribbon");
+  assert(directionalScene.layout.nodes.filter(node => node.level === "driver").every(node => node.height >= 64), "Directional quantities were compressed into unreadable card rows");
+  const directionalHTML = module.renderEnergyPathView(firstDirectional, {...allState});
+  const directionalHost = document.createElement("div");directionalHost.innerHTML = directionalHTML;
+  assert(directionalHost.querySelector('[data-energy-path-gross-heat="10"]') && directionalHost.querySelector('[data-energy-path-gross-heat="-5"]') && directionalHost.querySelector('[data-energy-path-load-contribution="4"]'), "Cards do not distinguish physical heat exchange from load contribution");
+  assert(!directionalHost.querySelector("[data-energy-path-net-only]"), "Proven directional observations were labelled net-only");
+  const monthlyDirectional = module.energyPathGraphForState(firstDirectional, {...allState,simulationEnergyPeriod:"M1"});
+  const lossDriver = wallDirections.find(node => node.heatDirection === "loss");
+  const lossSeries = energyPathMonthlyChartSeries(lossDriver,"node",[monthlyDirectional]);
+  assert(lossSeries.length === 2 && lossSeries[0].points[0].value === -5 && lossSeries[1].points[0].value === 2 && lossSeries[0].points[1].value === null, "Monthly chart mixed directions, allocation, or absent observations");
+  const observedZeroMonth = {...firstDirectional,periods:[{id:"M2",nodes:firstDirectional.nodes.map(node=>({...node,period:"M2",value:0,allocatedValue:0,rawValue:0,effectiveValue:0,signedValue:0,...(node.driverBreakdown ? {driverBreakdown:node.driverBreakdown.map(part=>({...part,value:0,rawValue:0,effectiveValue:0}))} : {})})),links:firstDirectional.links.map(link=>({...link,period:"M2",fromValue:0,toValue:0}))}]};
+  const zeroDirectionalGraph = module.energyPathGraphForState(observedZeroMonth,{...allState,simulationEnergyPeriod:"M2"});
+  const zeroDirectionalSeries = energyPathMonthlyChartSeries(lossDriver,"node",[monthlyDirectional,zeroDirectionalGraph]);
+  assert(zeroDirectionalSeries[0].points[1].value === 0 && zeroDirectionalSeries[1].points[1].value === 0 && zeroDirectionalSeries[0].points[2].value === null && zeroDirectionalSeries[1].points[2].value === null, "A fully observed zero directional month became a gap, or an absent month became zero");
+  const {energyPathHourlyChartSeries} = await import("/src/js/energy-path-chart.js");
+  assert(energyPathHourlyChartSeries(lossDriver,[{id:"wall.loss",name:"Native net",hourlyEnergy:{basis:"reported_source",unit:"kWh",values:[7]}}],allState,["01-01 01:00"]).length === 0, "Native hourly net masqueraded as directional gross heat");
+  const nativeLoss = {...lossDriver,heatDirectionBasis:"native_direction",sourceIds:["native-loss"]};
+  const nativeLossSource = {id:"native-loss",name:"Zone Mixing Sensible Heat Loss Energy",keyValue:"Office",multiplierApplication:"already_model_total",hourlyEnergy:{basis:"reported_source",unit:"kWh",values:[7]}};
+  assert(energyPathHourlyChartSeries(nativeLoss,[nativeLossSource],allState,["01-01 01:00"])[0]?.points[0].value === -7, "Already separate native Hourly heat loss was removed or its direction reversed");
+  assert(energyPathHourlyChartSeries(nativeLoss,[{...nativeLossSource,hourlyEnergy:{...nativeLossSource.hourlyEnergy,values:[-7]}}],allState,["01-01 01:00"]).length === 0, "Conflicting native directional Hourly sign was silently clipped or inverted");
   const host=document.createElement("div");host.innerHTML=module.renderEnergyPathView(explained,allState);
+  assert(host.querySelector("[data-energy-path-net-only]"), "Legacy net-only results lack a disclosure");
   assert(host.querySelectorAll("[data-energy-path-unit]").length===1 && !host.querySelector("[data-energy-path-stage] header span"),"Units must appear once, without per-stage domain subtitles");
   assert(!host.querySelector("[data-energy-path-divider], [data-energy-path-envelope-context], [data-energy-path-context-metrics]"),"Obsolete dividers or utility context remain");
   const zoned={...explained,availableZones:["Office","building"],zoneResults:["Office","building"].map(zoneName=>({...explained,scope:{kind:"zone",zoneName},periods:[]}))};

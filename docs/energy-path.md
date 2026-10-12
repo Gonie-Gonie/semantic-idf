@@ -95,6 +95,18 @@ entity/path IDs retain separate evidence. Explicit allocated zero must not fall
 back to raw pressure. Missing/null numeric fields remain unknown; pruned zero
 summary categories cannot be treated as reported zero comparison values.
 
+Optional `heatDirection` (`gain` / `loss`) separates reversible thermal
+observations. `heatDirectionBasis` identifies the evidence: `native_interval`
+splits individual native intervals before any time or physical-source sum;
+`native_direction` uses explicitly separate native Gain/Loss outputs;
+`net_only` retains an older or derived net observation without claiming a gross
+split. Directional IDs are stable across Annual/Monthly selections. Direction
+does not change `driverCategory` or the electrical-storage accounting contract.
+Driver `rawValue`/`effectiveValue` retain gross magnitudes; `signedValue` and
+`heatDirection` retain their physical direction. Cards show signed gross Heat
+exchange separately from allocated `value` as Load contribution. A nonzero physical exchange remains
+visible even when actual service load and its allocation are zero.
+
 Use independent linear thermal/site width scales even when both units say kWh.
 A 100 thermal → 25 electricity conversion is valid; its width difference is not
 a 75 kWh reconciliation error and pixel-width ratios are never COP.
@@ -179,8 +191,12 @@ or reported zero. Legacy `input.internal_gains`, `input.solar_absorbed` and
 boundary-input presentation. Incident solar uses native Daily averages, observed
 full-day durations and executed SQL net surface areas, with Hourly fallback for
 compatible stored results. Monthly average irradiance multiplied by calendar
-month duration is forbidden for partial-month runs. Other inputs use native
-Monthly energy. Exact owner, unit, surface roster, calendar coverage and
+month duration is forbidden for partial-month runs. Reversible exterior exchange
+uses Timestep energy, with complete Hourly evidence as a stored-result fallback,
+and separates gain/loss before surface, Zone and month sums. Positive-only inputs
+and explicit native Gain/Loss families retain their supported Monthly energy.
+Monthly-only signed inputs remain labelled net-only: their hidden reversals
+cannot be reconstructed. Exact owner, unit, surface roster, calendar coverage and
 Zone/Group factors must be proven; incomplete categories remain unavailable.
 
 Input observations are not additional driver pressure. Absorbed solar overlaps
@@ -256,14 +272,33 @@ Hourly conversion pairs.
 
 ### Driver allocation and multipliers
 
-For each Zone-month and service, let `L` be actual canonical load and `H_i` an
-effective signed heat-balance driver pressure:
+For each source interval, first apply its native sign convention and eligible
+Zone/Group factor to signed heat `h_it`. Split before summing intervals, surfaces
+or Zones. For each Zone-month and service, let `L` be actual canonical load:
 
 ```text
-Cooling pressure P_i = max(H_i, 0)
-Heating pressure P_i = max(-H_i, 0)
+Gross gain G_i = sum(max(h_it, 0))
+Gross loss D_i = sum(min(h_it, 0))
+Cooling pressure P_i = G_i
+Heating pressure P_i = -D_i
 Allocated contribution A_i = L * P_i / sum(P_j)
 ```
+
+Thus +10/−5 and +110/−105 retain different gross observations despite the same
+net +5. Native inside-face convection is inverted into the Zone-air direction.
+Positive native air storage means charging, so its Zone-air pressure is negative;
+release is positive. Fine observations use Timestep preferentially, otherwise
+Hourly, with complete applicable interval coverage and native rate integration.
+Do not round individual small intervals before their sums. Monthly energy remains
+available for signed net reconciliation; aliases and frequency variants are never
+added twice. Native separate Gain/Loss outputs need no artificial second split.
+
+Old Monthly-only observations and derived balance differences keep net-only
+pressure (`max(H_i, 0)` / `max(-H_i, 0)`) with explicit evidence metadata. Missing
+fine observations do not prove zero or a recovered gross split. Derived residuals
+subtract compatible signed nets rather than separately clipped streams. Matched
+Building-internal interzone exchange still cancels instead of becoming new gross
+external input. Surface/air storage is distinct from electrical storage.
 
 `basis=heat_balance_share` is deterministic and non-causal. Synthetic closure
 terms do not enter the pressure denominator. Positive load without positive
@@ -283,7 +318,9 @@ be manufactured between different Zones or months. Annual-only site energy can
 remain when no monthly counterpart exists.
 
 Source scalars retain signed annual net, including seasonal cancellation to zero.
-Directional drivers are gross service contributions and do not replace that net.
+Directional drivers retain gross physical exchange and allocated service
+contributions as separate quantities; they do not replace the net source scalar
+or increase actual delivered loads, site consumption, or conversion ratios.
 A source solely owning each directional allocation receives their summed
 `allocatedValue` and an identifying `allocationFormula`; its `allocationFactor`
 is category context rather than a ratio against net zero. Shared-category

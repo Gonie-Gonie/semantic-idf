@@ -77,7 +77,7 @@ func (node EnergyExplanationNode) MarshalJSON() ([]byte, error) {
 			SignedValue    *float64 `json:"signedValue,omitempty"`
 		}{plainNode(node), known(node.RawValue, 1), known(node.EffectiveValue, 2), known(node.SignedValue, 8)})
 	}
-	if node.Level != "driver" || !node.AllocationApplied {
+	if node.Level != "driver" || !node.AllocationApplied && node.HeatDirection == "" {
 		if len(node.serviceBoundaryRestrictions) == 0 && len(node.storageChargeBoundaries) == 0 {
 			return json.Marshal(plainNode(node))
 		}
@@ -93,14 +93,23 @@ func (node EnergyExplanationNode) MarshalJSON() ([]byte, error) {
 		}
 		return nil
 	}
+	signed := value(node.SignedValue, 8)
+	if node.HeatDirection == "" && node.SignedValue == 0 {
+		signed = nil
+	}
+	allocated := value(node.AllocatedValue, 4)
+	if !node.AllocationApplied && node.AllocatedValue == 0 {
+		allocated = nil
+	}
 	return json.Marshal(struct {
 		plainNode
 		RawValue                    *float64                               `json:"rawValue,omitempty"`
 		EffectiveValue              *float64                               `json:"effectiveValue,omitempty"`
+		SignedValue                 *float64                               `json:"signedValue,omitempty"`
 		AllocatedValue              *float64                               `json:"allocatedValue,omitempty"`
 		ServiceBoundaryRestrictions []energyPathServiceBoundaryRestriction `json:"serviceBoundaryRestrictions,omitempty"`
 		StorageChargeBoundaries     []energyPathStorageChargeBoundary      `json:"storageChargeBoundaries,omitempty"`
-	}{plainNode(node), value(node.RawValue, 1), value(node.EffectiveValue, 2), value(node.AllocatedValue, 4), unionEnergyPathServiceBoundaryRestrictions(node.serviceBoundaryRestrictions), unionEnergyPathStorageChargeBoundaries(nil, node.storageChargeBoundaries)})
+	}{plainNode(node), value(node.RawValue, 1), value(node.EffectiveValue, 2), signed, allocated, unionEnergyPathServiceBoundaryRestrictions(node.serviceBoundaryRestrictions), unionEnergyPathStorageChargeBoundaries(nil, node.storageChargeBoundaries)})
 }
 
 func (node *EnergyExplanationNode) UnmarshalJSON(data []byte) error {

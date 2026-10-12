@@ -167,6 +167,10 @@ func TestEnergyPathHourlyRequestsRetainEveryMonthlyInputAndExistingOutputs(t *te
 			monthly[key] = output
 		} else if output.ReportingFrequency == "Hourly" {
 			hourly[key] = output
+		} else if output.ReportingFrequency == "Timestep" {
+			// The shared helper checks exact reversible aliases and their
+			// unchanged Monthly/Hourly owners; this roster still compares pairs.
+			continue
 		} else {
 			t.Fatalf("unexpected Energy Path frequency %s", output.ReportingFrequency)
 		}

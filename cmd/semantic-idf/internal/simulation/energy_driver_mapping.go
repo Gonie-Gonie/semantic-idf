@@ -170,6 +170,7 @@ type energyDriverVector struct {
 	hasSelectedRange bool
 	monthlyShadow    *energyDriverMonthlyShadow
 	shadowHasTerms   bool
+	directions       *energyDriverDirectionalValues
 }
 
 func energyDriverSignedVector(item energyExplanationSeries) energyDriverVector {
@@ -196,10 +197,18 @@ func energyDriverScaledVector(item energyExplanationSeries, multiplier float64) 
 		monthlyShadow:    signedEnergyDriverMonthlyShadow(item, multiplier),
 		shadowHasTerms:   true,
 	}
+	if item.driverDirections != nil && multiplier == energyExplanationHeatSeriesSignMultiplier(item) {
+		vector.directions = &energyDriverDirectionalValues{gain: scaledEnergyExplanationPeriodValues(item.driverDirections.gain, item.EffectiveMultiplier), loss: scaledEnergyExplanationPeriodValues(item.driverDirections.loss, item.EffectiveMultiplier), observed: item.driverDirections.observed, sourceIDs: item.driverDirections.sourceIDs, effective: true}
+	}
 	return vector
 }
 
 func (vector *energyDriverVector) add(next energyDriverVector) {
+	if !vector.shadowHasTerms {
+		vector.directions = next.directions
+	} else {
+		vector.directions = nil
+	}
 	vector.monthlyShadow = combineEnergyDriverMonthlyShadow(vector.monthlyShadow, next.monthlyShadow, !vector.shadowHasTerms, 1)
 	vector.shadowHasTerms = true
 	vector.total += next.total
@@ -213,6 +222,7 @@ func (vector *energyDriverVector) add(next energyDriverVector) {
 }
 
 func (vector *energyDriverVector) subtract(next energyDriverVector) {
+	vector.directions = nil
 	vector.monthlyShadow = combineEnergyDriverMonthlyShadow(vector.monthlyShadow, next.monthlyShadow, !vector.shadowHasTerms, -1)
 	vector.shadowHasTerms = true
 	vector.total -= next.total
@@ -238,6 +248,13 @@ func addEnergyDriverPeriodMap(target *map[int]float64, values map[int]float64, m
 }
 
 func energyDriverVectorHasValue(vector energyDriverVector) bool {
+	if vector.directions != nil {
+		for month, observed := range vector.directions.observed {
+			if observed && (vector.directions.gain[month] > 0 || vector.directions.loss[month] > 0) {
+				return true
+			}
+		}
+	}
 	if math.Abs(vector.total) > 1e-9 || vector.hasSelectedRange && math.Abs(vector.selectedRange) > 1e-9 {
 		return true
 	}
@@ -773,6 +790,7 @@ func appendDerivedEnergyDriverSeries(sources []EnergyDataSource, idSuffix string
 		sourceName:             label,
 		sourceFrequency:        "Monthly",
 		heatSignMultiplier:     1,
+		driverDirections:       vector.directions,
 		driverZoneOnly:         zoneOnly,
 		driverMonthlyShadow:    cloneEnergyDriverMonthlyShadow(vector.monthlyShadow),
 	}

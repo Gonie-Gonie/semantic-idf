@@ -596,10 +596,10 @@ func energyPathReportAccountingSection(rows []json.RawMessage, trace bool) tabul
 }
 
 func energyPathReportTraceSheets(report EnergyPathReportDTO) []tabular.WorkbookSheet {
-	nodes := tabular.Section{Title: "Node trace", Headers: []string{"ID", "Level", "Category", "Value", "Raw", "Effective", "Allocated", "Unit", "Basis", "Allocation applied", "Period", "Zone", "Service", "Source IDs"}}
+	nodes := tabular.Section{Title: "Node trace", Headers: []string{"ID", "Level", "Category", "Value", "Raw", "Effective", "Allocated", "Unit", "Basis", "Allocation applied", "Period", "Zone", "Service", "Source IDs", "Signed", "Heat direction", "Heat direction basis"}}
 	for _, raw := range report.Trace.Nodes {
 		n := energyPathReportObject(raw)
-		nodes.Rows = append(nodes.Rows, []string{energyPathReportText(n["id"]), energyPathReportText(n["level"]), energyPathReportText(n["label"]), energyPathReportNumber(n["value"]), energyPathReportNumber(n["rawValue"]), energyPathReportNumber(n["effectiveValue"]), energyPathReportNumber(n["allocatedValue"]), energyPathReportText(n["unit"]), energyPathReportText(n["basis"]), string(n["allocationApplied"]), energyPathReportText(n["period"]), energyPathReportText(n["zoneName"]), energyPathReportText(n["serviceKind"]), string(n["sourceIds"])})
+		nodes.Rows = append(nodes.Rows, []string{energyPathReportText(n["id"]), energyPathReportText(n["level"]), energyPathReportText(n["label"]), energyPathReportNumber(n["value"]), energyPathReportNumber(n["rawValue"]), energyPathReportNumber(n["effectiveValue"]), energyPathReportNumber(n["allocatedValue"]), energyPathReportText(n["unit"]), energyPathReportText(n["basis"]), string(n["allocationApplied"]), energyPathReportText(n["period"]), energyPathReportText(n["zoneName"]), energyPathReportText(n["serviceKind"]), string(n["sourceIds"]), energyPathReportNumber(n["signedValue"]), energyPathReportText(n["heatDirection"]), energyPathReportText(n["heatDirectionBasis"])})
 	}
 	sources := tabular.Section{Title: "Source trace", Headers: []string{"ID", "Name", "Type", "Key", "Source unit", "Normalized unit", "Frequency", "Raw", "Effective", "Allocated", "Aggregation basis"}}
 	for _, raw := range report.Trace.Sources {

@@ -19,6 +19,35 @@ export function energyPathDriverPresentationLabel(category, fallback = category)
   return definition ? t(`simulation.energyPathDriver${definition[0]}`, {}, definition[1]) : fallback;
 }
 
+// Direction is a backend observation contract, never inferred from a service,
+// an annual net sign, a label, or an opaque source ID.
+export function energyPathHeatDirection(node = {}) {
+  return ["gain", "loss"].includes(node.heatDirection) ? node.heatDirection : "";
+}
+
+export function energyPathDirectionalLabel(node = {}, fallback = node.label || node.kind || "") {
+  const direction = energyPathHeatDirection(node);
+  if (!direction) return fallback;
+  if (node.driverCategory === "balance.air_storage") {
+    return direction === "gain"
+      ? t("simulation.energyPathAirHeatRelease", {}, "Zone-air heat release")
+      : t("simulation.energyPathAirHeatStorage", {}, "Zone-air heat storage");
+  }
+  const namedCategories = ["surface.exterior_walls", "surface.roofs", "surface.ground_floors", "surface.windows_doors", "surface.interzone",
+    "air.infiltration", "air.mechanical_ventilation", "air.interzone", "interzone.transfer"];
+  if (node.level === "driver" && namedCategories.includes(node.driverCategory)) {
+    fallback = t(`simulation.energyPathDriverCategory.${node.driverCategory}`, {}, fallback);
+  }
+  return t(`simulation.energyPathHeat${direction === "gain" ? "Gain" : "Loss"}Label`, { label: fallback },
+    `${fallback} · ${direction === "gain" ? "heat gain" : "heat loss"}`);
+}
+
+export function energyPathGrossHeatValue(node = {}) {
+  const direction = energyPathHeatDirection(node);
+  return direction && finite(node.effectiveValue) && node.effectiveValue >= 0
+    ? (direction === "loss" ? -1 : 1) * node.effectiveValue : null;
+}
+
 /** Project the backend's additive, within-parent allocation breakdown. Native
  * parent accounting and opaque source identities remain in the saved result.
  * Older results without evidence retain one explicitly unresolved component. */
@@ -52,7 +81,7 @@ export function energyPathProjectDriverBreakdown(nodes = [], links = []) {
         kind: `driver.balance.${part.component}`, driverCategory: `balance.${part.component}`,
         label: energyPathDriverPresentationLabel(`balance.${part.component}`, part.label),
         value: part.value, allocatedValue: part.value, displayValue: part.value,
-        signedValue: (node.signedValue < 0 || node.serviceKind === "heating" ? -1 : 1) * part.effectiveValue,
+        signedValue: (energyPathHeatDirection(node) === "loss" || !energyPathHeatDirection(node) && (node.signedValue < 0 || node.serviceKind === "heating") ? -1 : 1) * part.effectiveValue,
         rawValue: part.rawValue, effectiveValue: part.effectiveValue,
         sourceIds: [...(part.sourceIds || [])], basis: node.basis,
       };
