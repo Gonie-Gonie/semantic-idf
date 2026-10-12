@@ -110,30 +110,30 @@ The packaged executable opens the desktop app when run without arguments. It als
 
 ```powershell
 # Metrics / diagnostics / full analysis
-.\build\bin\semantic-idf-v0.5.0.exe cli metrics -format text .\model.idf
-.\build\bin\semantic-idf-v0.5.0.exe cli metrics -format json -o .\metrics.json .\model.idf
-.\build\bin\semantic-idf-v0.5.0.exe cli metrics -format xlsx -o .\metrics.xlsx .\model.idf
-.\build\bin\semantic-idf-v0.5.0.exe cli diagnostics -format csv -o .\diagnostics.csv .\model.idf
-.\build\bin\semantic-idf-v0.5.0.exe cli analyze -format json -o .\report.json .\model.idf
+.\build\bin\semantic-idf-v0.5.1.exe cli metrics -format text .\model.idf
+.\build\bin\semantic-idf-v0.5.1.exe cli metrics -format json -o .\metrics.json .\model.idf
+.\build\bin\semantic-idf-v0.5.1.exe cli metrics -format xlsx -o .\metrics.xlsx .\model.idf
+.\build\bin\semantic-idf-v0.5.1.exe cli diagnostics -format csv -o .\diagnostics.csv .\model.idf
+.\build\bin\semantic-idf-v0.5.1.exe cli analyze -format json -o .\report.json .\model.idf
 
 # Batch metrics
-.\build\bin\semantic-idf-v0.5.0.exe cli batch-metrics -format csv -o .\compare.csv .\a.idf .\b.epjson
-.\build\bin\semantic-idf-v0.5.0.exe cli batch-metrics -format xlsx -orientation files -o .\compare.xlsx .\a.idf .\b.idf
+.\build\bin\semantic-idf-v0.5.1.exe cli batch-metrics -format csv -o .\compare.csv .\a.idf .\b.epjson
+.\build\bin\semantic-idf-v0.5.1.exe cli batch-metrics -format xlsx -orientation files -o .\compare.xlsx .\a.idf .\b.idf
 
 # Existing simulation Energy Path (read-only; no new simulation)
-.\build\bin\semantic-idf-v0.5.0.exe energy-path .\run --input .\run\model.idf --format json
-.\build\bin\semantic-idf-v0.5.0.exe energy-path .\run --scope zone --zone Core_bottom --format csv --include-trace
+.\build\bin\semantic-idf-v0.5.1.exe energy-path .\run --input .\run\model.idf --format json
+.\build\bin\semantic-idf-v0.5.1.exe energy-path .\run --scope zone --zone Core_bottom --format csv --include-trace
 
 # Cleanup
-.\build\bin\semantic-idf-v0.5.0.exe cli clean --dry-run .\model.idf
-.\build\bin\semantic-idf-v0.5.0.exe cli clean -rules all --compact -o .\cleaned.idf .\model.idf
-.\build\bin\semantic-idf-v0.5.0.exe cli clean -rules none --semantic-duplicates -o .\semantic-fixed.idf .\model.idf
+.\build\bin\semantic-idf-v0.5.1.exe cli clean --dry-run .\model.idf
+.\build\bin\semantic-idf-v0.5.1.exe cli clean -rules all --compact -o .\cleaned.idf .\model.idf
+.\build\bin\semantic-idf-v0.5.1.exe cli clean -rules none --semantic-duplicates -o .\semantic-fixed.idf .\model.idf
 
 # Conversion
-.\build\bin\semantic-idf-v0.5.0.exe cli convert -to idf -o .\model.idf .\model.epjson
-.\build\bin\semantic-idf-v0.5.0.exe cli convert -to json -o .\model.epjson .\model.idf
-.\build\bin\semantic-idf-v0.5.0.exe cli convert -to semantic-yaml -o .\model.semantic.yaml .\model.idf
-.\build\bin\semantic-idf-v0.5.0.exe cli convert -to table -o .\model.tables.xlsx .\model.idf
+.\build\bin\semantic-idf-v0.5.1.exe cli convert -to idf -o .\model.idf .\model.epjson
+.\build\bin\semantic-idf-v0.5.1.exe cli convert -to json -o .\model.epjson .\model.idf
+.\build\bin\semantic-idf-v0.5.1.exe cli convert -to semantic-yaml -o .\model.semantic.yaml .\model.idf
+.\build\bin\semantic-idf-v0.5.1.exe cli convert -to table -o .\model.tables.xlsx .\model.idf
 ```
 
 `convert -to semantic-yaml` writes a one-way semantic YAML projection for inspection and token editing. `-to yaml`
