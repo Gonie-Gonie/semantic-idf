@@ -51,6 +51,14 @@ Permanent output editing is a separate explicit operation available to
 automation. See [Automation](./automation.en.md). Do not confuse source editing
 with the temporary output preparation performed by Run & Inspect.
 
+IDF models containing `HVACTemplate:*` or `GroundHeatTransfer:*` objects need
+the EnergyPlus `ExpandObjects` preprocessor. The runner enables it automatically
+for these models. The prepared IDF remains in the run directory; when expansion
+produces a valid new `eplusout.expidf`, result inspection uses that expanded model
+so HVAC connections describe the equipment actually simulated. The editable
+source stays unchanged. ExpandObjects requires IDF input; a template-based
+epJSON model must first be converted to IDF. Ordinary epJSON runs need no expansion.
+
 ## Choose purposes {#purposes}
 
 | Purpose | Main question | Typical observations |
@@ -442,6 +450,16 @@ run can take additional time to read SQL, build accounting, transfer data,
 and prepare graphs. A receiving or display problem must be investigated
 separately from an engine error.
 
+On failure, the status shows the native EnergyPlus cause. Hover over the top
+status or the Simulation status to see diagnostic context; open **Failure
+details** in Simulation for selectable text. Batch rows provide the same hover
+and disclosure. Details include Severe/Fatal messages and their continuation
+lines, available process output, exit code, engine version/executable, weather,
+executed input, output directory, and ERR path. Native messages and paths stay
+in their original wording. The on-screen messages are bounded; the ERR file in
+the run directory retains the complete engine log. A new run clears the previous
+failure disclosure.
+
 Review ERR severity and the completion state together. Warnings can identify
 unavailable requests or modeling concerns. Severe/Fatal issues and incomplete
 execution require attention before using quantities as a complete experiment.
@@ -470,6 +488,8 @@ cannot explain which outputs, units, or assumptions produced them.
 | Symptom | First checks |
 | --- | --- |
 | Run unavailable | Compatible engine registration, detected input version, weather requirements. |
+| Run fails or only an exit code was shown by an older version | Hover over the status and open Failure details. Check the first Severe message and its following lines in ERR. |
+| HVACTemplate needs ExpandObjects | Use IDF input and a complete EnergyPlus installation containing ExpandObjects. Expansion is automatic for supported IDF models. |
 | Engine completed but view is still busy | Current reading/building/receiving stage; do not assume the engine is still executing. |
 | Energy component lacks Hourly chart | Actual Hourly request, exact key/frequency, complete calendar, usable floor area. |
 | HVAC property is absent | Whether the executed run reported it and whether values align with frames. |

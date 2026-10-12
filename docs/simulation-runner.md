@@ -12,6 +12,27 @@ apply missing outputs to a run copy, execute EnergyPlus, read results, and build
 a `PurposeResultBundle`. The source document changes only through an explicit
 permanent Output apply API call.
 
+For IDF input containing real `HVACTemplate:*` or `GroundHeatTransfer:*` objects,
+the runner supplies EnergyPlus `-x` to execute ExpandObjects before simulation.
+Comments alone do not enable preprocessing. Keep the prepared source copy, and
+adopt a newly generated, regular, parseable `eplusout.expidf` without template
+objects as the result's `inputPath` before reading/building results. This keeps
+executed HVAC topology, service allocation and the manifest input hash tied to
+the expanded equipment. A pre-existing stale expanded file cannot become the
+executed model. Template epJSON receives an actionable IDF-conversion error;
+ordinary IDF/epJSON execution is unchanged.
+
+Failed results retain the existing wire shape. `error` contains a bounded native
+Severe/Fatal cause when available, with process-output/startup-error fallback;
+`exitCode` keeps the process status. `err.issues` retains bounded continuation
+lines and separate Warning/Severe/Fatal budgets so warning floods cannot hide
+fatal diagnostics. Counts still cover the complete ERR stream. Original ERR and
+run files are not rewritten. The top status and single/batch Simulation views
+share diagnostic hover text and an escaped, keyboard-accessible disclosure with
+native messages and run context. Status timing/language refreshes preserve the
+diagnostics; subsequent status/run changes clear them. App cleanup protects the
+current failed result directory through the existing storage reference contract.
+
 | API | Role |
 | --- | --- |
 | `BuildSimulationRunPlan` | Preview the backend plan without executing EnergyPlus. |

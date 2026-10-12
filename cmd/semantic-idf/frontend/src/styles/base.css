@@ -215,6 +215,19 @@ button:disabled:hover {
   letter-spacing: 0;
 }
 
+.topbar > :first-child {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
+}
+
+#runtimeStatus {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .app-title-line {
   display: flex;
   align-items: baseline;

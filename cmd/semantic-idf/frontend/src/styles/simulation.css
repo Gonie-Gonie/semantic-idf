@@ -661,6 +661,40 @@
   font-variant-numeric: tabular-nums;
 }
 
+.simulation-failure-diagnostics {
+  margin-top: 10px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 400;
+  text-align: left;
+}
+
+.simulation-failure-diagnostics > summary {
+  width: fit-content;
+  color: var(--amber);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.simulation-failure-diagnostics > pre {
+  max-height: 360px;
+  max-width: 100%;
+  overflow: auto;
+  margin: 8px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.tool-table .simulation-failure-diagnostics > pre { min-width: 280px; }
+
 .simulation-result-tabs {
   display: flex;
   flex-wrap: wrap;

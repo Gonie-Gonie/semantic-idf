@@ -3,6 +3,7 @@ package simulation
 import (
 	"database/sql"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,16 @@ import (
 // parsing; it does not require an installed EnergyPlus engine.
 func TestMain(m *testing.M) {
 	if os.Getenv("SEMANTIC_IDF_TEST_PURPOSE_ENGINE") == "1" && len(os.Args) > 2 && os.Args[1] == "-d" {
+		if path := os.Getenv("SEMANTIC_IDF_TEST_ENGINE_ARGUMENTS_PATH"); path != "" {
+			payload, _ := json.Marshal(os.Args[1:])
+			_ = os.WriteFile(path, payload, 0o644)
+		}
+		if expanded := os.Getenv("SEMANTIC_IDF_TEST_ENGINE_EXPANDED_INPUT"); expanded != "" {
+			_ = os.WriteFile(filepath.Join(os.Args[2], "eplusout.expidf"), []byte(expanded), 0o644)
+		}
+		if code, err := strconv.Atoi(os.Getenv("SEMANTIC_IDF_TEST_ENGINE_EXIT_CODE")); err == nil {
+			os.Exit(code)
+		}
 		os.Exit(0)
 	}
 	// Cross-process storage tests deliberately share the parent's isolated app

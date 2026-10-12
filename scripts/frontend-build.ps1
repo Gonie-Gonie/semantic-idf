@@ -59,6 +59,7 @@ $modules = @(
     "sample.js",
     "simulation-result-transport.js",
     "simulation-progress.js",
+    "simulation-diagnostics.js",
     "selection-controller.js",
     "semantic-navigation-cache.js",
     "settings-client.js",

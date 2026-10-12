@@ -1,6 +1,7 @@
 package simulation
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,6 +33,11 @@ func TestExternalEnergyPlusSmoke(t *testing.T) {
 			t.Skipf("required EnergyPlus smoke-test file is unavailable: %s", path)
 		}
 	}
+	originalInput, err := os.ReadFile(example)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expandsTemplates, _ := simulationNeedsExpandObjects(example)
 
 	result, err := RunSimulation(SimulationRunRequest{
 		RunID:                    "external-smoke",
@@ -47,6 +53,25 @@ func TestExternalEnergyPlusSmoke(t *testing.T) {
 	}
 	if result.Status != "succeeded" {
 		t.Fatalf("simulation status = %s, error = %s, stdout = %s, stderr = %s", result.Status, result.Error, result.Stdout, result.Stderr)
+	}
+	inputAfterRun, err := os.ReadFile(example)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(originalInput, inputAfterRun) {
+		t.Fatal("EnergyPlus run changed the source input")
+	}
+	if expandsTemplates {
+		if filepath.Base(result.InputPath) != "eplusout.expidf" {
+			t.Fatalf("template run input = %s, want the expanded IDF", result.InputPath)
+		}
+		doc, err := simulationDocumentFromInput(result.InputPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if docHasObjectTypePrefix(doc, "HVACTemplate:") || docHasObjectTypePrefix(doc, "GroundHeatTransfer:") {
+			t.Fatal("result readers still receive unexpanded template objects")
+		}
 	}
 	if result.ERR.Path == "" {
 		t.Fatalf("ERR summary was not parsed: %+v", result.Files)

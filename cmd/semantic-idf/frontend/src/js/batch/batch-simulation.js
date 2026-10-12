@@ -4,6 +4,7 @@ import { ENERGY_PATH_BATCH_STAGES, energyPathBatchSummary, energyPathBatchCompar
 import { energyPathBatchExport } from "../energy-path-batch-export.js";
 import { batchEnergyPathDetailAvailable, createBatchEnergyPathDetail } from "./batch-energy-path-detail.js";
 import { createSimulationProgressPoller, simulationProgressPresentation } from "../simulation-progress.js";
+import { isSimulationFailure, simulationFailureSummary, simulationFailureHover, renderSimulationFailureDetails } from "../simulation-diagnostics.js";
 
 export function initializeMultiSimulationTool(context) {
   const { state, elements, waitForAppAPI, waitForProgressRuntime, escapeHTML, postJSON, t, downloadCSV } = context;
@@ -323,9 +324,10 @@ export function initializeMultiSimulationTool(context) {
                   <td><input data-multi-sim-row="${escapeHTML(id)}" type="checkbox" aria-label="${escapeHTML(t("batch.energyPathSelectRun", { name: item.filename || fileName(item.inputPath) }, `Select ${item.filename || fileName(item.inputPath)}`))}" ${state.multiSimulation.selectedRows.has(id) ? "checked" : ""} ${item.series?.length || item.purposeMetrics?.length || energyPathBatchSummary(item).status === "ready" || batchEnergyPathDetailAvailable(item) ? "" : "disabled"} />${renderEnergyPathOpenButton(item, "row")}</td>
                   <th class="tool-sticky-col">
                     <strong>${escapeHTML(item.filename || fileName(item.inputPath))}</strong>
-                    <span title="${escapeHTML(item.outputDirectory || "")}">${escapeHTML(item.error || item.outputDirectory || "")}</span>
+                    <span title="${escapeHTML(simulationFailureHover(item) || item.outputDirectory || "")}">${escapeHTML(isSimulationFailure(item) ? simulationFailureSummary(item) : item.outputDirectory || "")}</span>
+                    ${renderSimulationFailureDetails(item, escapeHTML)}
                   </th>
-                  <td class="tool-value ${escapeHTML(item.status || "")}">${escapeHTML(t(`batch.runStatus.${item.status || ""}`, {}, item.status || ""))}</td>
+                  <td class="tool-value ${escapeHTML(item.status || "")}" title="${escapeHTML(simulationFailureHover(item))}" ${isSimulationFailure(item) ? 'tabindex="0"' : ""}>${escapeHTML(t(`batch.runStatus.${item.status || ""}`, {}, item.status || ""))}</td>
                   <td>${escapeHTML(item.err?.warnings || 0)}</td>
                   <td>${escapeHTML((item.err?.severe || 0) + (item.err?.fatal || 0))}</td>
                   <td>${escapeHTML(primaryPurposeMetric(item))}</td>

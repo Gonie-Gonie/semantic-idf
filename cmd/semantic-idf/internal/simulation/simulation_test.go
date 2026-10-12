@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/idf"
 )
@@ -36,6 +37,153 @@ EnergyPlus Terminated--Fatal Error Detected. 1 Warning; 1 Severe Errors; Elapsed
 	if summary.Completed {
 		t.Fatalf("fatal run should not be marked completed")
 	}
+
+	t.Run("native continuations and bounded late fatal", func(t *testing.T) {
+		text := "Program Version,EnergyPlus, Version 24.2.0\n" + strings.Repeat("** Warning ** Repeated warning\n", maxERRWarningIssues+20) +
+			"** Severe ** HVACTemplate:* objects found. These objects are not supported directly by EnergyPlus.\n" +
+			"**   ~~~   ** You must run the ExpandObjects program on this input.\n" +
+			"**   ~~~   ** " + strings.Repeat("설명", 40000) + "\n" +
+			"** Fatal ** Errors found in processing input file. Preceding condition(s) cause termination.\n"
+		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		summary := parseERRFile(path)
+		if summary.Warnings != maxERRWarningIssues+20 || summary.Severe != 1 || summary.Fatal != 1 || len(summary.Issues) != maxERRWarningIssues+2 {
+			t.Fatalf("bounded summary lost counts or serious native cause: %#v", summary)
+		}
+		severe := summary.Issues[len(summary.Issues)-2]
+		if !strings.Contains(severe.Message, "\nYou must run the ExpandObjects") || len([]rune(severe.Message)) > maxERRIssueCharacters {
+			t.Fatalf("native continuation was missing or unbounded: %s", severe.Message)
+		}
+		result := &SimulationRunResult{Status: "failed", ExitCode: 1, Error: "exit status 1", ERR: summary, Stderr: "Program terminated"}
+		message := simulationFailureMessage(result)
+		if !strings.Contains(message, "HVACTemplate:*") || !strings.Contains(message, "ExpandObjects") || strings.Contains(message, "exit status") || len([]rune(message)) > maxSimulationErrorCharacters+len("EnergyPlus: ") {
+			t.Fatalf("short cause did not prefer Severe with actionable context: %q", message)
+		}
+		original, err := os.ReadFile(path)
+		if err != nil || string(original) != text {
+			t.Fatal("ERR parsing changed original native evidence", err)
+		}
+	})
+
+	t.Run("process fallback and cancellation", func(t *testing.T) {
+		for _, item := range []struct {
+			result SimulationRunResult
+			want   string
+		}{
+			{SimulationRunResult{Status: "failed", Error: "exit status 1", Stderr: "Unable to open weather file: missing.epw"}, "missing.epw"},
+			{SimulationRunResult{Status: "failed", Error: "exit status 1", Stdout: "EnergyPlus Starting\nFatal: dictionary file not found\n"}, "dictionary file not found"},
+			{SimulationRunResult{Status: "failed", Error: "exec: permission denied"}, "permission denied"},
+			{SimulationRunResult{Status: "canceled", Error: "User canceled", Stderr: "Fatal stale message"}, "User canceled"},
+		} {
+			if message := simulationFailureMessage(&item.result); !strings.Contains(message, item.want) {
+				t.Fatalf("failure cause = %q, want %q", message, item.want)
+			}
+		}
+	})
+
+	t.Run("runner native failure instead of process code", func(t *testing.T) {
+		executable, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("SEMANTIC_IDF_TEST_PURPOSE_ENGINE", "1")
+		t.Setenv("SEMANTIC_IDF_TEST_ENGINE_EXIT_CODE", "1")
+		directory := t.TempDir()
+		native := "** Severe ** Test schedule is not defined.\n** ~~~ ** Schedule Name=Missing Schedule\n** Fatal ** Input processing stopped.\n"
+		if err := os.WriteFile(filepath.Join(directory, "eplusout.err"), []byte(native), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		var terminal SimulationProgress
+		result, err := RunSimulation(SimulationRunRequest{RunID: "native-failure", Text: "Version,24.2;", Filename: "source.idf", OutputDirectory: directory, EnergyPlusExecutablePath: executable}, func(item SimulationProgress) { terminal = item }, SimulationSettings{})
+		if err != nil || result == nil || result.Status != "failed" || result.ExitCode != 1 || !strings.Contains(result.Error, "Missing Schedule") || terminal.Message != result.Error || result.ERR.Fatal != 1 {
+			t.Fatalf("runner lost native failure: result=%#v progress=%#v err=%v", result, terminal, err)
+		}
+	})
+
+	t.Run("ExpandObjects selection and executed input", func(t *testing.T) {
+		executable, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("SEMANTIC_IDF_TEST_PURPOSE_ENGINE", "1")
+		t.Setenv("SEMANTIC_IDF_TEST_ENGINE_EXIT_CODE", "0")
+		for _, item := range []struct {
+			name, text string
+			want       bool
+		}{
+			{"template", "Version,24.2; HVACTemplate:Zone:IdealLoadsAirSystem, Zone;", true},
+			{"ground", "Version,24.2; GroundHeatTransfer:Control, Yes, No;", true},
+			{"ordinary", "Version,24.2; Zone,Office;", false},
+			{"comment and name", "Version,24.2; ! HVACTemplate:Zone:IdealLoadsAirSystem\nZone,HVACTemplate:Named Zone;", false},
+		} {
+			t.Run(item.name, func(t *testing.T) {
+				directory := t.TempDir()
+				argumentPath := filepath.Join(directory, "engine-arguments.json")
+				t.Setenv("SEMANTIC_IDF_TEST_ENGINE_ARGUMENTS_PATH", argumentPath)
+				expanded := "Version,24.2; Zone,Office; ZoneHVAC:IdealLoadsAirSystem,Generated equipment;"
+				t.Setenv("SEMANTIC_IDF_TEST_ENGINE_EXPANDED_INPUT", expanded)
+				result, err := RunSimulation(SimulationRunRequest{RunID: "expansion-" + item.name, Text: item.text, Filename: "original.idf", OutputDirectory: directory, EnergyPlusExecutablePath: executable}, nil, SimulationSettings{})
+				if err != nil || result == nil || result.Status != "succeeded" {
+					t.Fatalf("run failed: %#v %v", result, err)
+				}
+				var arguments []string
+				payload, err := os.ReadFile(argumentPath)
+				if err != nil || json.Unmarshal(payload, &arguments) != nil {
+					t.Fatal("missing child arguments", err)
+				}
+				hasExpansion := false
+				for _, argument := range arguments {
+					hasExpansion = hasExpansion || argument == "-x"
+				}
+				if hasExpansion != item.want || (filepath.Ext(result.InputPath) == ".expidf") != item.want {
+					t.Fatalf("expansion selection/executed input mismatch: args=%q result=%#v", arguments, result)
+				}
+				original, err := os.ReadFile(filepath.Join(directory, "original.idf"))
+				if err != nil || string(original) != item.text {
+					t.Fatal("original prepared input changed", err)
+				}
+				var manifest SimulationRunManifest
+				payload, err = os.ReadFile(filepath.Join(directory, "semantic-idf-run.json"))
+				if err != nil || json.Unmarshal(payload, &manifest) != nil || manifest.InputPath != result.InputPath || manifest.InputHash != fileSHA256(result.InputPath) {
+					t.Fatalf("manifest does not identify the actual executed model: %#v %v", manifest, err)
+				}
+			})
+		}
+		stale := filepath.Join(t.TempDir(), "eplusout.expidf")
+		if err := os.WriteFile(stale, []byte("Version,24.2; Zone,Office;"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		previous, _ := os.Lstat(stale)
+		if simulationExpandedInputIsFresh(stale, previous) {
+			t.Fatal("stale expansion was adopted")
+		}
+		if err := os.Chtimes(stale, time.Now(), previous.ModTime().Add(time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		if !simulationExpandedInputIsFresh(stale, previous) {
+			t.Fatal("fresh valid expansion was rejected")
+		}
+		for _, content := range []string{"", "Version,24.2; HVACTemplate:Thermostat,Unexpanded;"} {
+			if err := os.WriteFile(stale, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if simulationExpandedInputIsFresh(stale, nil) {
+				t.Fatalf("invalid or unexpanded model adopted: %q", content)
+			}
+		}
+		jsonPath := filepath.Join(t.TempDir(), "template.epjson")
+		if err := os.WriteFile(jsonPath, []byte(`{"Version":{"Version 1":{"version_identifier":"24.2"}},"HVACTemplate:Thermostat":{"Thermostat 1":{}}}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if expand, reason := simulationNeedsExpandObjects(jsonPath); expand || !strings.Contains(reason, "IDF") {
+			t.Fatalf("unsafe epJSON template conversion: %t %q", expand, reason)
+		}
+		result, err := RunSimulation(SimulationRunRequest{RunID: "epjson-template", InputPath: jsonPath, Filename: "template.epjson", OutputDirectory: t.TempDir(), EnergyPlusExecutablePath: executable}, nil, SimulationSettings{})
+		if err != nil || result == nil || result.Status != "failed" || result.ExitCode != -1 || !strings.Contains(result.Error, "Convert this model to IDF") {
+			t.Fatalf("preparation failure was represented as an executed process: %#v %v", result, err)
+		}
+	})
 }
 
 func TestParseSimulationCSVBuildsSummariesAndSeries(t *testing.T) {

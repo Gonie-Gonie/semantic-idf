@@ -29,6 +29,11 @@ const (
 	maxSQLSeriesColumns             = 256
 	maxCSVSeriesPoints              = 1200
 	maxCapturedOutputBytes          = 16000
+	maxERRWarningIssues             = 24
+	maxERRSevereIssues              = 32
+	maxERRFatalIssues               = 8
+	maxERRIssueCharacters           = 1600
+	maxSimulationErrorCharacters    = 360
 	simulationProgressTotal         = 9
 )
 
@@ -803,12 +808,26 @@ func runSimulationWithConcurrency(request SimulationRunRequest, progress func(Si
 	if result.Filename == "" {
 		result.Filename = filepath.Base(inputPath)
 	}
+	expandObjects, expansionError := simulationNeedsExpandObjects(inputPath)
+	if expansionError != "" {
+		result.Status = "failed"
+		result.Error = expansionError
+		finishSimulationResult(result, started)
+		writeSimulationRunManifest(result, request)
+		emitSimulationProgress(progress, request.RunID, "complete", result.Status, result.Error, simulationProgressTotal, simulationProgressTotal, result.InputPath)
+		return result, nil
+	}
+	expandedInput := filepath.Join(outputDir, "eplusout.expidf")
+	previousExpandedInput, _ := os.Lstat(expandedInput)
 	if request.PurposeRunPlan != nil {
 		emitSimulationProgress(progress, request.RunID, "apply_temporary_outputs", "running", "Temporary purpose outputs applied to run copy", 3, simulationProgressTotal, result.InputPath)
 	}
 
 	emitSimulationProgress(progress, request.RunID, "execute", "running", "EnergyPlus is running", 4, simulationProgressTotal, result.InputPath)
 	args := []string{"-d", outputDir, "-p", "eplus"}
+	if expandObjects {
+		args = append(args, "-x")
+	}
 	if simulationUsesReadVarsESO(request) {
 		args = append(args, "-r")
 	}
@@ -824,6 +843,12 @@ func runSimulationWithConcurrency(request SimulationRunRequest, progress func(Si
 	result.ExitCode = exitCode
 	if runErr != nil {
 		result.Error = runErr.Error()
+	}
+	if expandObjects && simulationExpandedInputIsFresh(expandedInput, previousExpandedInput) {
+		// Readers and the manifest must describe the actual equipment generated
+		// by ExpandObjects. The original prepared input remains beside this file,
+		// and the desktop workspace retains the user's unexpanded source.
+		result.InputPath = expandedInput
 	}
 
 	if request.PurposeRunPlan != nil {
@@ -841,6 +866,7 @@ func runSimulationWithConcurrency(request SimulationRunRequest, progress func(Si
 	}
 	if result.Error != "" || result.ExitCode != 0 || result.ERR.Fatal > 0 || result.ERR.Severe > 0 {
 		result.Status = "failed"
+		result.Error = simulationFailureMessage(result)
 	} else {
 		result.Status = "succeeded"
 	}
@@ -848,6 +874,38 @@ func runSimulationWithConcurrency(request SimulationRunRequest, progress func(Si
 	writeSimulationRunManifest(result, request)
 	emitSimulationProgress(progress, request.RunID, "complete", result.Status, simulationCompletionMessage(result), simulationProgressTotal, simulationProgressTotal, result.InputPath)
 	return result, nil
+}
+
+func simulationNeedsExpandObjects(inputPath string) (bool, string) {
+	doc, err := simulationDocumentFromInput(inputPath)
+	if err != nil {
+		// Leave malformed/unreadable input validation to EnergyPlus so that its
+		// native diagnostic is retained instead of replacing it with our parser.
+		return false, ""
+	}
+	if !docHasObjectTypePrefix(doc, "HVACTemplate:") && !docHasObjectTypePrefix(doc, "GroundHeatTransfer:") {
+		return false, ""
+	}
+	if strings.EqualFold(filepath.Ext(inputPath), ".epjson") || strings.EqualFold(filepath.Ext(inputPath), ".json") {
+		return false, "EnergyPlus ExpandObjects requires IDF input for HVACTemplate and GroundHeatTransfer objects. Convert this model to IDF before running."
+	}
+	return true, ""
+}
+
+func simulationExpandedInputIsFresh(path string, previous os.FileInfo) bool {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+		return false
+	}
+	if previous != nil && previous.Size() == info.Size() && previous.ModTime().Equal(info.ModTime()) {
+		return false
+	}
+	// The existing loader recognizes the .expidf output's IDF content.
+	doc, err := simulationDocumentFromInput(path)
+	if err != nil || len(doc.Objects) == 0 {
+		return false
+	}
+	return !docHasObjectTypePrefix(doc, "HVACTemplate:") && !docHasObjectTypePrefix(doc, "GroundHeatTransfer:")
 }
 
 func RunMultipleSimulations(request MultiSimulationRequest, progress func(SimulationProgress), settings SimulationSettings) (*MultiSimulationResult, error) {
@@ -1138,6 +1196,61 @@ func simulationCompletionMessage(result *SimulationRunResult) string {
 	return "Simulation finished with errors"
 }
 
+// Keep the process exit code in ExitCode and use native evidence for the short
+// user-facing cause. The ERR file and captured streams remain available for the
+// detailed diagnostic view; none of the original output files are rewritten.
+func simulationFailureMessage(result *SimulationRunResult) string {
+	if result == nil {
+		return "Simulation finished with errors"
+	}
+	if result.Status == "canceled" || result.Status == "cancelled" {
+		return result.Error
+	}
+	for _, severity := range []string{"severe", "fatal"} {
+		for _, issue := range result.ERR.Issues {
+			if issue.Severity == severity && strings.TrimSpace(issue.Message) != "" {
+				return "EnergyPlus: " + boundedDiagnosticText(strings.Join(strings.Fields(issue.Message), " "), maxSimulationErrorCharacters)
+			}
+		}
+	}
+	for _, stream := range []string{result.Stderr, result.Stdout} {
+		lines := strings.Split(strings.ReplaceAll(stream, "\r", "\n"), "\n")
+		for index := len(lines) - 1; index >= 0; index-- {
+			line := strings.TrimSpace(lines[index])
+			lower := strings.ToLower(line)
+			if line == "" || strings.Contains(lower, "0 errors") || strings.Contains(lower, "0 severe") {
+				continue
+			}
+			for _, marker := range []string{"fatal", "severe", "error", "terminate", "invalid", "not found", "cannot", "could not", "failed", "permission", "exception"} {
+				if strings.Contains(lower, marker) {
+					return "EnergyPlus: " + boundedDiagnosticText(line, maxSimulationErrorCharacters)
+				}
+			}
+		}
+		// A failed child may write an OS/runtime explanation without EnergyPlus
+		// severity markers. Stderr still takes precedence over progress stdout.
+		if stream == result.Stderr {
+			for index := len(lines) - 1; index >= 0; index-- {
+				if line := strings.TrimSpace(lines[index]); line != "" {
+					return "EnergyPlus: " + boundedDiagnosticText(line, maxSimulationErrorCharacters)
+				}
+			}
+		}
+	}
+	if strings.TrimSpace(result.Error) != "" {
+		return boundedDiagnosticText(result.Error, maxSimulationErrorCharacters)
+	}
+	return fmt.Sprintf("EnergyPlus finished with errors (exit code %d; %d Severe, %d Fatal).", result.ExitCode, result.ERR.Severe, result.ERR.Fatal)
+}
+
+func boundedDiagnosticText(text string, limit int) string {
+	characters := []rune(text)
+	if len(characters) <= limit {
+		return text
+	}
+	return strings.TrimSpace(string(characters[:limit-1])) + "…"
+}
+
 func runCommandCaptured(command *exec.Cmd) (string, string, int, error) {
 	return runCommandCapturedWithProgress(command, nil)
 }
@@ -1416,7 +1529,11 @@ func parseERRFile(path string) ERRSummary {
 	}
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 4096), 1024*1024)
 	lineNo := 0
+	lastIssue := -1
+	retained := map[string]int{}
+	limits := map[string]int{"warning": maxERRWarningIssues, "severe": maxERRSevereIssues, "fatal": maxERRFatalIssues}
 	for scanner.Scan() {
 		lineNo++
 		line := strings.TrimSpace(scanner.Text())
@@ -1424,28 +1541,53 @@ func parseERRFile(path string) ERRSummary {
 		if strings.Contains(lower, "energyplus completed successfully") {
 			summary.Completed = true
 		}
-		severity := ""
-		switch {
-		case strings.Contains(line, "** Warning **"):
-			severity = "warning"
+		severity, message := errLineSeverityAndMessage(line)
+		switch severity {
+		case "warning":
 			summary.Warnings++
-		case strings.Contains(line, "** Severe  **"), strings.Contains(line, "** Severe **"):
-			severity = "severe"
+		case "severe":
 			summary.Severe++
-		case strings.Contains(line, "** Fatal  **"), strings.Contains(line, "** Fatal **"):
-			severity = "fatal"
+		case "fatal":
 			summary.Fatal++
+		case "~~~":
+			if lastIssue >= 0 {
+				issue := &summary.Issues[lastIssue]
+				issue.Message = boundedDiagnosticText(issue.Message+"\n"+message, maxERRIssueCharacters)
+			}
+			continue
 		}
-		if severity != "" {
+		lastIssue = -1
+		limit := limits[severity]
+		if limit > 0 && retained[severity] < limit {
 			summary.Issues = append(summary.Issues, ERRIssue{
 				Severity: severity,
-				Message:  strings.TrimSpace(strings.ReplaceAll(line, "**", "")),
+				Message:  boundedDiagnosticText(strings.TrimSpace(strings.ReplaceAll(line, "**", "")), maxERRIssueCharacters),
 				Line:     lineNo,
 			})
+			lastIssue = len(summary.Issues) - 1
+			retained[severity]++
 		}
 	}
 	summary.Total = summary.Warnings + summary.Severe + summary.Fatal
 	return summary
+}
+
+func errLineSeverityAndMessage(line string) (string, string) {
+	if !strings.HasPrefix(line, "**") {
+		return "", ""
+	}
+	content := line[2:]
+	end := strings.Index(content, "**")
+	if end < 0 {
+		return "", ""
+	}
+	severity := strings.ToLower(strings.TrimSpace(content[:end]))
+	switch severity {
+	case "warning", "severe", "fatal", "~~~":
+		return severity, strings.TrimSpace(content[end+2:])
+	default:
+		return "", ""
+	}
 }
 
 func parseSimulationCSV(path string) (CSVSummary, []SimulationSeries, error) {

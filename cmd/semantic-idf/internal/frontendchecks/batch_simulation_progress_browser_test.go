@@ -174,7 +174,11 @@ try{
  check(percent.textContent==="33%"&&status.classList.contains("status-loading")&&run.disabled,"one failed item stopped whole batch progress or changed measured file count");
  emit({sequence:4,phase:"complete",completed:3,total:3,status:"complete"});
  check(status.textContent.includes("결과 수신 중")&&run.disabled,"backend complete claimed installed Batch result before response");
- first.resolve({runId:first.request.runId,total:3,completed:3,succeeded:0,failed:3,results:[]});await until(()=>!run.disabled,"native typed response");i18n.setLanguage("en");await tick();
+ const batchCause='GetSurfaceData: invalid Construction "<unknown>"';
+ first.resolve({runId:first.request.runId,total:3,completed:3,succeeded:0,failed:3,results:[{runId:"failed-alpha",status:"failed",inputPath:"C:/fixtures/Alpha.idf",filename:"Alpha.idf",outputDirectory:"C:/managed/alpha",error:"exit status 1",exitCode:1,energyPlusVersion:"24.2",stderr:'native <img src=x onerror="window.__batchDiagnosticInjected=true">',err:{path:"C:/managed/alpha/eplusout.err",warnings:48,severe:1,fatal:1,issues:[{severity:"Warning",message:"older warning",line:2},{severity:"Severe",message:batchCause+"\n** ~~~ ** Object=alpha",line:140}]}}]});await until(()=>!run.disabled,"native typed response");i18n.setLanguage("en");await tick();
+ const failedTable=document.getElementById("multiSimulationTable"),failedStatus=failedTable.querySelector("td.failed"),failedDisclosure=failedTable.querySelector(".simulation-failure-diagnostics");
+ check(failedStatus?.title.includes(batchCause)&&failedStatus.title.includes("eplusout.err")&&failedStatus.title.includes("** ~~~ ** Object=alpha")&&failedStatus.tabIndex===0,"batch failed status hover omitted actionable native evidence");
+ check(failedDisclosure?.querySelector("pre").textContent.includes(batchCause)&&!failedTable.querySelector("img")&&!window.__batchDiagnosticInjected,"batch failure disclosure hid native cause or executed log markup");
  const completedStatus=status.textContent;emit({sequence:5,message:"late progress"});check(status.textContent===completedStatus,"late batch event overwrote final typed result");
  check((await serverState()).polls===0,"native batch started unnecessary HTTP polling");
  api.RunMultipleSimulations=undefined;run.click();await until(async()=>(await serverState()).polls>=1,"HTTP-only child telemetry");

@@ -372,9 +372,11 @@ export function backend() {
 }
 
 let currentStatusMessage = null;
+let currentStatusDetails = null;
 
-export function setStatus(message, tone = "muted") {
+export function setStatus(message, tone = "muted", { details } = {}) {
   currentStatusMessage = message;
+  currentStatusDetails = details ?? (["warn", "error"].includes(tone) ? message : null);
   if (!elements.runtimeStatus) return;
   delete elements.runtimeStatus.dataset.i18n;
   delete elements.runtimeStatus.dataset.i18nParams;
@@ -403,6 +405,8 @@ export function refreshStatusTitle() {
     return;
   }
   const details = [];
+  const diagnostic = resolveLocalizedText(currentStatusDetails);
+  if (diagnostic) details.push(diagnostic);
   const analysis = formatAnalysisTiming();
   if (analysis) {
     details.push(analysis);
@@ -412,6 +416,8 @@ export function refreshStatusTitle() {
     details.push(t("status.lastRender", { tab: render.tab, duration: formatMS(render.ms) }));
   }
   elements.runtimeStatus.title = details.join("\n");
+  if (diagnostic) elements.runtimeStatus.setAttribute("tabindex", "0");
+  else elements.runtimeStatus.removeAttribute("tabindex");
 }
 
 function formatAnalysisTiming() {

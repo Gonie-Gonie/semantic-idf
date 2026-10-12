@@ -36,6 +36,7 @@ import { renderHVACInspection, handleHVACInspectionEvent } from "./hvac-inspecti
 import { renderComfortInspection, handleComfortInspectionEvent, renderComfortInspectionReport } from "./comfort-inspection-view.js";
 import { decodeSimulationResultTransfer, simulationResultTransferMediaType } from "../simulation-result-transport.js";
 import { createSimulationProgress, readSimulationJSONResponse } from "../simulation-progress.js";
+import { isSimulationFailure, simulationFailureSummary, simulationFailureDetails, simulationFailureHover, renderSimulationFailureDetails } from "../simulation-diagnostics.js";
 import { heatFlowBalance, heatFlowPresentationExtents, heatFlowPresentationRatio, heatFlowCategoryKind, heatFlowCategoryLabel, heatFlowCategoryValue as heatFlowObservedValue,
   heatFlowZoneTemperature as heatFlowObservedTemperature, formatHeatFlowWatts, heatFlowExactWatts, heatFlowFrameTime } from "../heat-flow-data.js";
 import { renderHeatFlowStackChart, updateHeatFlowStackChart, heatFlowChartFrameFromRatio } from "./heat-flow-chart.js";
@@ -44,6 +45,7 @@ import { heatFlowLedgerMaximum, renderHeatFlowLedgerAxis, renderHeatFlowLedgerRo
 
 let progressListenerRegistered = false;
 let simulationPendingResponseRunID = "";
+const simulationFailureMarkup = new WeakMap();
 const simulationProgressUI = createSimulationProgress({
   state, elements, getPendingRunID: () => simulationPendingResponseRunID,
   getCompletionLabel: () => simulationDoneMessage(state.simulationResult), getStatusLabel: statusText,
@@ -5408,6 +5410,23 @@ function recommendedEnergyPlusInstallPath(installs, currentPath) {
 }
 
 function renderSimulationProgress() {
+  const failure = !state.simulationRunning && (state.simulationProgress?.failure || state.simulationResult);
+  const diagnostic = simulationFailureDetails(failure);
+  const card = elements.simulationProgressBar?.closest(".simulation-progress-card");
+  if (card) {
+    let host = card.querySelector("[data-simulation-failure]");
+    if (!host && diagnostic) { host = document.createElement("div"); host.dataset.simulationFailure = ""; card.append(host); }
+    if (host) {
+      const markup = renderSimulationFailureDetails(failure, escapeHTML);
+      if (simulationFailureMarkup.get(host) !== markup) { host.innerHTML = markup; simulationFailureMarkup.set(host, markup); }
+      host.hidden = !diagnostic;
+    }
+  }
+  if (elements.simulationStatus) {
+    elements.simulationStatus.title = simulationFailureHover(failure);
+    if (diagnostic) elements.simulationStatus.setAttribute("tabindex", "0");
+    else elements.simulationStatus.removeAttribute("tabindex");
+  }
   if (!state.simulationProgress || !elements.simulationProgressBar) {
     simulationProgressUI.stop();
     updateSimulationProgressClasses(false);
@@ -5422,6 +5441,10 @@ function renderSimulationProgress() {
     return;
   }
   simulationProgressUI.render();
+  if (diagnostic && elements.simulationStatus) {
+    elements.simulationStatus.title = simulationFailureHover(failure);
+    elements.simulationStatus.setAttribute("tabindex", "0");
+  } else elements.simulationStatus?.removeAttribute("tabindex");
 }
 
 function updateSimulationProgressUI() {
@@ -7979,10 +8002,12 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
     if (state.simulationActiveRunID !== runID) return null;
     simulationPendingResponseRunID = "";
     state.simulationRunning = false;
-    state.simulationProgress = { runId: runID, phase: "request_failed", percent: 100, message: error.message || String(error), status: "failed" };
+    const failure = { runId: runID, status: "failed", error: error.message || String(error), inputPath: request.inputPath,
+      filename: request.filename, energyPlusExecutablePath: installPath, weatherPath: request.weatherPath };
+    state.simulationProgress = { runId: runID, phase: "request_failed", percent: 100, message: simulationFailureSummary(failure), status: "failed", failure };
     syncSimulationRunSetup(state.simulationResult);
     updateSimulationProgressUI();
-    if (!silent) setStatus(error.message || String(error), "error");
+    setStatus(() => simulationFailureSummary(failure), "error", { details: () => simulationFailureHover(failure) });
     return null;
   }
   stopSimulationProgressClock(runID);
@@ -8011,7 +8036,9 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
   }
   state.simulationProgress = { runId: runID, phase: "complete", percent: 100, message: simulationDoneMessage(result), status: result.status };
   updateSimulationProgressUI();
-  if (!silent) setStatus(() => simulationDoneMessage(result), result.status === "succeeded" ? "ok" : "warn");
+  if (!silent || isSimulationFailure(result)) setStatus(() => simulationDoneMessage(result), result.status === "succeeded" ? "ok" : "warn", {
+    details: isSimulationFailure(result) ? () => simulationFailureHover(result) : null,
+  });
   return result;
 }
 
@@ -8184,7 +8211,7 @@ function simulationDoneMessage(result) {
   if (result?.status === "succeeded") {
     return t("simulation.complete", { warnings: result.err?.warnings || 0 }, `Simulation complete (${result.err?.warnings || 0} warnings)`);
   }
-  return result?.error || t("simulation.finishedWithIssues", {}, "Simulation finished with issues");
+  return simulationFailureSummary(result);
 }
 
 function formatNumber(value) {
