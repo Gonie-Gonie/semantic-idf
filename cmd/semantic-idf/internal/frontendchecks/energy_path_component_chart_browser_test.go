@@ -46,7 +46,7 @@ func TestEnergyPathComponentChartDataBrowser(t *testing.T) {
 				for _, capture := range []struct {
 					frequency, theme, language string
 					font, width                int
-				}{{"monthly", "dark", "ko", 12, 740}, {"monthly", "dark", "ko", 18, 740}, {"hourly", "light", "en", 12, 1140}} {
+				}{{"monthly", "dark", "ko", 12, 740}, {"monthly", "dark", "ko", 18, 740}, {"hourly", "light", "en", 12, 1140}, {"outlier", "dark", "en", 12, 740}} {
 					browser.call("Emulation.setDeviceMetricsOverride", map[string]any{"width": 1200, "height": 700, "deviceScaleFactor": 1, "mobile": false}, nil)
 					browser.evaluate(fmt.Sprintf(`(async()=>{window.energyPathComponentReview(%q,%q,%q,%d,%d);await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));})()`, capture.frequency, capture.theme, capture.language, capture.font, capture.width))
 					var screenshot struct {
@@ -98,6 +98,10 @@ try {
  const actualRatio=validateRatio(pair,pairGraph.nodes,pairGraph.links),pairMonths=monthly(pair,'link',[pairGraph,{...pairGraph,links:[{...pair,fromValue:30,toValue:10,ratio:3}]},{...pairGraph,links:[{...pair,fromValue:0,toValue:10,ratio:0}]},{...pairGraph,links:[{...pair,toValue:0,ratio:0}]}],ratioOptions);
  const actualSeries=ratioModel(pair,pairMonths,actualRatio)[0];
  check(actualSeries.label==='COP'&&actualSeries.points[0].value===4&&actualSeries.points[1].value===3&&actualSeries.points[2].value===null&&actualSeries.points[3].value===null&&actualSeries.points[11].value===null,'COP chart invented monthly ratio evidence, zero-denominator values or missing-month observations');
+ check(actualSeries.points[2].unavailableReason==='unverified_pair'&&actualSeries.points[3].unavailableReason==='zero_denominator'&&actualSeries.points[11].unavailableReason==='missing_pair','ratio chart collapsed unverified boundaries, actual zero denominators and missing observations into one reason');
+ const smallDenominatorMonths=[{id:'fromValue',label:'Cooling load',unit:'kWh',points:[{x:0,label:'Jan',value:4,ratioKind:actualRatio.kind},{x:1,label:'Feb',value:1.8503,ratioKind:actualRatio.kind},{x:2,label:'Mar',value:10,ratioKind:actualRatio.kind}]},{id:'toValue',label:'Cooling equipment',unit:'kWh',points:[{x:0,label:'Jan',value:1,ratioKind:actualRatio.kind},{x:1,label:'Feb',value:.0001,ratioKind:actualRatio.kind},{x:2,label:'Mar',value:2,ratioKind:actualRatio.kind}]}];
+ const smallDenominatorRatio=ratioModel(pair,smallDenominatorMonths,actualRatio)[0];
+ check(smallDenominatorRatio.points[1].value===18503&&smallDenominatorRatio.points[1].toValue===.0001&&smallDenominatorRatio.points[1].unavailableReason==='','tiny but nonzero denominator was capped, discarded or replaced with a zero-denominator gap');
  check(pairMonths[0].label==='Cooling load'&&pairMonths[1].label==='Cooling equipment','paired quantity legends lost actual endpoint names');
  const references={id:'reference',relation:'input_to_driver',fromUnit:'kWh',toUnit:'kWh',fromValue:-20,toValue:5,ratioKind:'coefficient_of_performance'};
  const referenceMonths=monthly(references,'link',[{links:[references]},{links:[{...references,fromValue:0,toValue:5}]},{links:[{...references,fromValue:9,toValue:0}]}]);
@@ -154,11 +158,45 @@ try {
  mount.innerHTML=render({item,monthly:months,display:{perArea:true,areaM2:null}});check(mount.querySelector('[data-energy-path-chart-empty]'),'missing area produced a false intensity');
  mount.innerHTML=render({item:pair,kind:'link',monthly:pairMonths,display,endpointLabels:ratioOptions,conversionRatio:actualRatio});
  check(mount.querySelector('[data-energy-path-current-ratio]')?.textContent==='4.00'&&[...mount.querySelectorAll('[data-energy-path-chart-ratio]')].map(mark=>mark.dataset.energyPathChartRatio).join(',')==='4,3','selected relation omitted current ratio or plotted source quantities as COP');
+ check(mount.querySelector('[data-energy-path-chart-panel="ratio"] svg')?.dataset.energyPathChartScale==='linear'&&!mount.querySelector('[data-energy-path-chart-scale-note]'),'ordinary COP values acquired an undisclosed or unnecessary nonlinear scale');
+ check(mount.querySelector('[data-energy-path-chart-gap="zero_denominator"] title')?.textContent.includes('denominator is zero')&&mount.querySelector('[data-energy-path-chart-gap="unverified_pair"] title')?.textContent.includes('not verified')&&mount.querySelector('[data-energy-path-chart-gap="missing_pair"] title')?.textContent.includes('missing')&&mount.querySelector('[data-energy-path-chart-gap-note]')?.textContent.includes('not zero'),'unavailable ratio points disappeared or their reason was shown as numeric zero');
  const ratioGeometry=mount.querySelector('[data-energy-path-chart-ratio]').getAttribute('cy');
  mount.innerHTML=render({item:pair,kind:'link',monthly:pairMonths,display:{perArea:true,areaM2:1000},conversionRatio:actualRatio});
  check(mount.querySelector('[data-energy-path-current-ratio]')?.textContent==='4.00'&&mount.querySelector('[data-energy-path-chart-ratio]')?.getAttribute('cy')===ratioGeometry,'area normalization changed the dimensionless ratio');
+ mount.innerHTML=render({item:pair,kind:'link',monthly:smallDenominatorMonths,display,conversionRatio:actualRatio});
+ const outlierPanel=mount.querySelector('[data-energy-path-chart-panel="ratio"]'),outlierMarks=[...outlierPanel.querySelectorAll('[data-energy-path-chart-ratio]')];
+ check(outlierPanel.querySelector('svg')?.dataset.energyPathChartScale==='linear'&&outlierPanel.querySelector('svg')?.dataset.energyPathChartYMax==='5'&&mount.querySelector('[data-energy-path-chart-panel="quantities"] svg')?.dataset.energyPathChartScale==='linear'&&outlierMarks.map(mark=>mark.dataset.energyPathChartRatio).join(',')==='4,18503,5','large-ratio display changed raw observations, flattened ordinary values or changed the endpoint energy axis');
+ check(outlierPanel.querySelector('[data-energy-path-chart-scale-note]')?.textContent.includes('10× the median')&&outlierPanel.querySelector('[data-energy-path-chart-denominator-note]')?.textContent.includes('fan/pump')&&outlierMarks[1].dataset.energyPathChartOutlier==='upper'&&outlierMarks[1].querySelector('title')?.textContent.includes('Cooling equipment: 1e-5 kWh/m²')&&outlierPanel.querySelector('[data-energy-path-chart-outlier-summary]')?.textContent.includes('Feb: 18,503.00'),'large ratio lacks a disclosed linear outlier policy, break marker, actual-value summary or precise tiny denominator');
+ check(!outlierPanel.querySelector('.energy-path-chart-line').getAttribute('d').includes('L'),'ordinary ratio line connected through an excluded spike');
+ const outlierBaseline=Number(outlierPanel.querySelector('.energy-path-chart-axis').getAttribute('y1'));
+ check(outlierBaseline-Number(outlierMarks[0].getAttribute('cy'))>20,'large monthly ratio flattened all ordinary COP values to the baseline');
+ const ratioMarkGeometry=()=>[...mount.querySelectorAll('[data-energy-path-chart-ratio]')].map(mark=>mark.getAttribute('cy')||mark.getAttribute('transform')).join(',');
+ const outlierGeometry=ratioMarkGeometry();
+ mount.innerHTML=render({item:pair,kind:'link',monthly:smallDenominatorMonths,display:{perArea:true,areaM2:1000},conversionRatio:actualRatio});
+ check(ratioMarkGeometry()===outlierGeometry,'area normalization changed the linear ratio geometry or off-scale marker');
+ const area100Monthly=smallDenominatorMonths.map(trace=>({...trace,points:trace.points.map(point=>({...point,value:point.value*10}))}));
+ mount.innerHTML=render({item:pair,kind:'link',monthly:area100Monthly,display:{perArea:true,areaM2:100},conversionRatio:actualRatio});
+ check(mount.querySelector('[data-energy-path-chart-ratio="18503"] title')?.textContent.includes('Cooling equipment: 1e-5 kWh/m²')&&mount.querySelector('[data-energy-path-chart-denominator-note]')?.textContent.includes('not the equipment\'s rated COP'),'ratio tooltip lost scoped intensity or large delivered-load ratio was presented as rated equipment COP');
+ for(const areaM2 of[null,0]){
+  mount.innerHTML=render({item:pair,kind:'link',monthly:smallDenominatorMonths,display:{perArea:true,areaM2},conversionRatio:actualRatio});
+  const tooltip=mount.querySelector('[data-energy-path-chart-ratio="18503"] title')?.textContent;
+  check(tooltip?.includes('Cooling equipment: — kWh/m²')&&!tooltip.includes('1e-4 kWh/m²')&&ratioMarkGeometry()===outlierGeometry,'missing/zero floor area relabelled raw tiny energy as intensity or changed dimensionless ratio geometry');
+ }
+ const missingEndpointMonths=smallDenominatorMonths.map(trace=>({...trace,points:trace.points.map(point=>({...point,value:trace.id==='toValue'&&point.x===1?null:point.value}))}));
+ mount.innerHTML=render({item:pair,kind:'link',monthly:missingEndpointMonths,display,conversionRatio:actualRatio});
+ check(mount.querySelector('[data-energy-path-chart-gap="missing_pair"]')?.getAttribute('aria-label').includes('Cooling equipment has no monthly observation'),'ratio gap did not identify the missing endpoint');
+ const signedMonths=[{id:'fromValue',label:'Input',unit:'kWh',points:[{x:0,label:'Jan',value:-4},{x:1,label:'Feb',value:0},{x:2,label:'Mar',value:18503}]},{id:'toValue',label:'Driver',unit:'kWh',points:[{x:0,label:'Jan',value:1},{x:1,label:'Feb',value:1},{x:2,label:'Mar',value:1}]}];
+ mount.innerHTML=render({item:references,kind:'link',monthly:signedMonths,display});
+ check([...mount.querySelectorAll('[data-energy-path-chart-ratio]')].map(mark=>mark.dataset.energyPathChartRatio).join(',')==='-4,0,18503'&&mount.querySelector('[data-energy-path-chart-panel="ratio"] svg')?.dataset.energyPathChartScale==='linear'&&!mount.querySelector('[data-energy-path-chart-gap]')&&!mount.querySelector('[data-energy-path-chart-outlier]'),'insufficient observations triggered automatic outlier classification or lost signed values/known zero');
+ const negativeSpike=signedMonths.map(trace=>({...trace,points:[...trace.points.slice(0,2),{x:2,label:'Mar',value:trace.id==='fromValue'?5:1},{x:3,label:'Apr',value:trace.id==='fromValue'?-18503:1}]}));
+ mount.innerHTML=render({item:references,kind:'link',monthly:negativeSpike,display});
+ check([...mount.querySelectorAll('[data-energy-path-chart-ratio]')].map(mark=>mark.dataset.energyPathChartRatio).join(',')==='-4,0,5,-18503'&&mount.querySelector('[data-energy-path-chart-outlier]')?.dataset.energyPathChartOutlier==='lower'&&mount.querySelector('[data-energy-path-chart-panel="ratio"] svg')?.dataset.energyPathChartYMin==='-4'&&mount.querySelector('[data-energy-path-chart-panel="ratio"] svg')?.dataset.energyPathChartYMax==='5'&&!mount.querySelector('[data-energy-path-chart-gap]'),'negative off-scale spike removed an observation, changed its sign or confused real zero with a missing ratio');
+ const measuredRatios=[488.79,18503,48.55,30.91,17.25,8.54,6.59,7.41,11.67,31.93,97.58,145.97];
+ const measuredMonths=smallDenominatorMonths.map(trace=>({...trace,points:measuredRatios.map((value,x)=>({x,label:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][x],value:trace.id==='fromValue'?value:1,ratioKind:actualRatio.kind}))}));
+ mount.innerHTML=render({item:pair,kind:'link',monthly:measuredMonths,display,conversionRatio:actualRatio});
+ check([...mount.querySelectorAll('[data-energy-path-chart-ratio]')].map(mark=>Number(mark.dataset.energyPathChartRatio)).join(',')===measuredRatios.join(',')&&[...mount.querySelectorAll('[data-energy-path-chart-outlier]')].map(mark=>mark.dataset.energyPathChartRatio).join(',')==='488.79,18503'&&mount.querySelector('[data-energy-path-chart-panel="ratio"] svg')?.dataset.energyPathChartYMax==='145.97','actual monthly COP pattern lost its chronological observations or failed to exclude only the two spikes from the linear axis range');
  mount.innerHTML=render({item:references,kind:'link',monthly:referenceMonths,display,conversionRatio:actualRatio});
- check(mount.querySelector('.energy-path-chart-note')?.textContent.includes('not a conversion efficiency')&&mount.querySelector('[data-energy-path-chart-panel="ratio"] h4')?.textContent==='Reference quantity ratio','reference relation ratio lacks physical-boundary explanation');
+ check(mount.querySelector('[data-energy-path-reference-note]')?.textContent.includes('not a conversion efficiency')&&mount.querySelector('[data-energy-path-chart-panel="ratio"] h4')?.textContent==='Reference quantity ratio','reference relation ratio lacks physical-boundary explanation');
  mount.innerHTML=render({item:pair,kind:'link',frequency:'hourly',hourly:hours,display,conversionRatio:actualRatio});
  check(mount.querySelector('[data-energy-path-ratio-empty]')&&!mount.querySelector('[data-energy-path-chart-ratio]'),'native source traces acquired an unproven Hourly endpoint ratio');
  const appearance=[],conversion={...link,label:'Cooling demand from occupied perimeter rooms and adjoining internal zones'},appearanceHours=hourly({sourceIds:['gain','loss']},[gain,loss]);
@@ -190,11 +228,11 @@ try {
  window.energyPathComponentReview=(frequency,theme,language,font,width=740)=>{
   setLanguage(language);document.documentElement.dataset.theme=theme;document.documentElement.style.setProperty('--graph-label-font-size',font+'px');mount.style.width=width+'px';
   const reviewLabels={...ratioOptions,from:language==='ko'?'냉방부하':'Cooling load',to:language==='ko'?'냉방기기 에너지':'Cooling equipment energy'};
-  const previewGraphs=[42,38,35,28,24,30,47,55,43,31,37,46].map((value,index)=>({...pairGraph,links:[{...pair,fromValue:value,toValue:value/(3+index%5*.4),ratio:3+index%5*.4}]}));
+  const previewGraphs=[42,38,35,28,24,30,47,55,43,31,37,46].map((value,index)=>{const ratio=frequency==='outlier'?measuredRatios[index]:3+index%5*.4,toValue=value/ratio;return {...pairGraph,links:[{...pair,fromValue:value,toValue,ratio}]};});
   const previewMonths=monthly(pair,'link',previewGraphs,reviewLabels),labels=Array.from({length:24},(_value,index)=>'01-01 '+String(index+1).padStart(2,'0')+':00');
   const fromValue=previewGraphs.reduce((sum,graph)=>sum+graph.links[0].fromValue,0),toValue=previewGraphs.reduce((sum,graph)=>sum+graph.links[0].toValue,0),previewItem={...pair,fromValue,toValue,ratio:fromValue/toValue};
   const previewSources=[gain,loss].map((source,trace)=>({...source,hourlyEnergy:{...source.hourlyEnergy,values:labels.map((_label,index)=>Math.round((3+trace+2*Math.sin(index/4+trace))*100)/100)}}));
-  mount.innerHTML=render({item:previewItem,label:reviewLabels.from+' → '+reviewLabels.to,kind:'link',frequency,monthly:previewMonths,hourly:hourly({sourceIds:['gain','loss']},previewSources,{},labels),display,endpointLabels:reviewLabels,conversionRatio:validateRatio(previewItem,pairGraph.nodes,pairGraph.links)});
+  mount.innerHTML=render({item:previewItem,label:reviewLabels.from+' → '+reviewLabels.to,kind:'link',frequency:frequency==='outlier'?'monthly':frequency,monthly:previewMonths,hourly:hourly({sourceIds:['gain','loss']},previewSources,{},labels),display,endpointLabels:reviewLabels,conversionRatio:validateRatio(previewItem,pairGraph.nodes,pairGraph.links)});
  };
  check(JSON.stringify({item,graphs})===original&&JSON.stringify(sources)===sourceJSON,'chart changed original observations or accounting data');
  document.body.dataset.componentChartStatus='passed';document.getElementById('result').textContent=JSON.stringify({status:'passed',appearance});

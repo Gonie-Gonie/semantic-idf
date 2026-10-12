@@ -195,7 +195,7 @@
           "tier": "browser"
         },
         {
-          "files": ["energy_path_context_ribbon_geometry_browser_test.go"],
+          "files": ["energy_path_context_ribbon_geometry_browser_test.go", "energy_path_context_monthly_browser_test.go"],
           "areas": ["energy-path", "batch", "simulation"],
           "tier": "browser"
         },

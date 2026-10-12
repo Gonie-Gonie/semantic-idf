@@ -33,6 +33,12 @@
 .energy-path-chart-quantities dt { margin: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .energy-path-chart-quantities dd { margin: 2px 0 0; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .energy-path-chart-note { display: block; margin-top: 7px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.energy-path-chart-gap path { fill: none; stroke: var(--muted); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.energy-path-chart-gap:focus { outline: 2px solid var(--focus); }
+.energy-path-chart-hit { fill: transparent; stroke: none; }
+.energy-path-chart-outlier-symbol { fill: var(--chart-color); font-weight: 600; }
+.energy-path-chart-outlier:focus { outline: 2px solid var(--focus); }
+.energy-path-chart-outlier-summary { margin-top: 5px; color: var(--ink); font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.45; overflow-wrap: anywhere; }
 
 @container (min-width: 680px) {
   .energy-path-chart-panels.has-ratio { grid-template-columns: repeat(2, minmax(0, 1fr)); }

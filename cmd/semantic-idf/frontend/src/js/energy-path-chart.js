@@ -20,6 +20,10 @@ export function energyPathMonthlyChartSeries(item = {}, kind = "node", graphs = 
     points: Array.from({ length: 12 }, (_, month) => {
       const graph = graphs[month] || {};
       const records = kind === "link" ? [...(graph.links || []), ...(graph.relations || [])] : graph.nodes || [];
+      if (kind === "link" && item.relation === "input_to_driver") {
+        const reference = inputContextMonthlyReference(item, field, graph, records, wanted, endpointLabels.fromNode);
+        if (reference !== undefined) return { x: month, label: t(`simulation.month.${month + 1}`, {}, `M${month + 1}`), value: reference };
+      }
       const found = new Map();
       for (const record of records) {
         for (const member of members(record)) {
@@ -62,9 +66,14 @@ export function energyPathLinkRatioChartSeries(item = {}, series = [], conversio
     points: (from?.points || []).map((point) => {
       const other = toPoints.get(point.x);
       const validated = !kind || point.ratioKind === kind && other?.ratioKind === kind;
-      const value = validated && fromFactor !== null && toFactor !== null && finite(point.value) && finite(other?.value) && other.value !== 0
+      const paired = finite(point.value) && finite(other?.value);
+      const value = validated && fromFactor !== null && toFactor !== null && paired && other.value !== 0
         ? point.value * fromFactor / (other.value * toFactor) : null;
-      return { x: point.x, label: point.label, value: finite(value) ? value : null };
+      const unavailableReason = !paired ? "missing_pair" : other.value === 0 ? "zero_denominator"
+        : !validated || fromFactor === null || toFactor === null ? "unverified_pair" : !finite(value) ? "non_finite" : "";
+      return { x: point.x, label: point.label, value: finite(value) ? value : null,
+        fromValue: point.value, toValue: other?.value, fromUnit: from?.unit, toUnit: to?.unit,
+        fromLabel: from?.label, toLabel: to?.label, unavailableReason };
     }),
   }];
 }
@@ -79,6 +88,58 @@ function monthlyLinkLabel(item, field) {
   if (item.relation === "input_to_driver") return t(`simulation.energyPathContext${from ? "FromInput" : "ToDriver"}`, {}, from ? "Reported observation" : "Allocated load-driver reference");
   if (item.relation === "load_to_auxiliary") return t(`simulation.energyPathContext${from ? "FromThermal" : "ToAuxiliary"}`, {}, from ? "Served thermal reference" : "Allocated auxiliary site energy");
   return from ? copy("From", "From") : copy("To", "To");
+}
+
+function inputContextMonthlyReference(item, field, graph, records, wanted, selectedInput) {
+  if (!item.id || !item.fromId || !item.toId) return undefined;
+  const sameScope = (record) => token(record.zoneName) === token(item.zoneName);
+  const candidates = records.filter((record) => record.relation === item.relation && record.id === item.id &&
+    record.fromId === item.fromId && record.toId === item.toId && sameScope(record));
+  if (candidates.length > 1) return null;
+  const record = candidates[0];
+  // Annual signed surface exchange can contain cooling and heating drivers,
+  // while a native month contains only one of them. The stable projected pair
+  // identifies that month's complete reference; absent annual service branches
+  // must not erase it. Reject any unrelated original relation joining the pair.
+  if (record && !members(record).every((member) => wanted.has(member.id))) return null;
+  if (field === "fromValue" && selectedInput) {
+    // A context relation can reference the whole Solar/Equipment input card,
+    // including native inputs not associated with this particular driver.
+    // Compare that selected card's full roster before accepting a monthly sum.
+    const inputs = (graph.nodes || []).filter((node) => node.id === item.fromId && node.level === "input" &&
+      token(node.scaleDomain) === "boundary" && sameScope(node));
+    if (inputs.length !== 1 || selectedInput.id !== item.fromId || !sameScope(selectedInput)) return null;
+    const expected = new Set(members(selectedInput).map((member) => member.id));
+    const observed = new Set(members(inputs[0]).map((member) => member.id));
+    if (!expected.size || expected.size !== observed.size || ![...expected].every((id) => observed.has(id))) return null;
+  }
+  if (record && finite(record[field])) return record[field];
+  if (!record && field === "toValue") {
+    // Known-zero drivers stay ungrouped in the visible graph. Their original
+    // endpoint observations still prove zero; the lack of a display-group ID
+    // cannot turn that explicit value into a missing month.
+    const related = records.filter((entry) => entry.relation === item.relation && sameScope(entry) &&
+      members(entry).some((member) => wanted.has(member.id)));
+    if (!related.every((entry) => members(entry).every((member) => wanted.has(member.id)))) return null;
+    const observations = new Map();
+    for (const entry of related) for (const member of members(entry)) {
+      if (!member.toId || !finite(member.toValue) || observations.has(member.toId) && observations.get(member.toId) !== member.toValue) return null;
+      observations.set(member.toId, member.toValue);
+    }
+    const total = [...observations.values()].reduce((sum, value) => sum + value, 0);
+    return observations.size && finite(total) ? total : null;
+  }
+  if (field !== "fromValue") return null;
+  // An observed input remains useful when no room-driver reference exists in
+  // that month. It cannot establish a zero driver or supply a missing ratio.
+  const inputs = (graph.nodes || []).filter((node) => node.id === item.fromId && node.level === "input" &&
+    token(node.scaleDomain) === "boundary" && sameScope(node));
+  if (inputs.length !== 1) return null;
+  const input = inputs[0], inputIDs = new Set(members(input).map((member) => member.id));
+  const selectedInputIDs = new Set(members(item).map((member) => member.fromId).filter(Boolean));
+  if (!selectedInputIDs.size || ![...selectedInputIDs].every((id) => inputIDs.has(id))) return null;
+  const value = Object.hasOwn(input, "signedValue") ? input.signedValue : input.value;
+  return finite(value) ? value : null;
 }
 
 // Context endpoints retain independent reference quantities. Repeated input
@@ -252,8 +313,8 @@ export function renderEnergyPathComponentChart({ item = {}, kind = "node", label
   const ratio = kind === "link" ? energyPathLinkRatioChartSeries(item, frequency === "monthly" ? monthly : [], validatedConversion) : [];
   const ratioAvailable = ratio.some((trace) => trace.points.some((point) => finite(point.value)));
   const ratioPanel = kind === "link" ? `<section class="energy-path-chart-panel" data-energy-path-chart-panel="ratio"><h4>${escapeHTML(ratio[0]?.label || copy("Ratio", "From / to ratio"))}</h4>
-    ${ratioAvailable ? renderPlot(ratio, frequency, null, false, true) : `<div class="energy-path-chart-empty" data-energy-path-ratio-empty>${escapeHTML(copy("RatioUnavailable", "A ratio requires paired data and a nonzero denominator."))}</div>`}
-    ${ratio[0]?.reference ? `<small class="energy-path-chart-note">${escapeHTML(copy("ReferenceRatioNote", "Reference quantities have different physical boundaries; this ratio is not a conversion efficiency."))}</small>` : ""}</section>` : "";
+    ${ratioAvailable ? renderPlot(ratio, frequency, display, false, true) : `<div class="energy-path-chart-empty" data-energy-path-ratio-empty>${escapeHTML(chartRatioEmptyMessage(ratio))}</div>`}
+    ${ratio[0]?.reference ? `<small class="energy-path-chart-note" data-energy-path-reference-note>${escapeHTML(copy("ReferenceRatioNote", "Reference quantities have different physical boundaries; this ratio is not a conversion efficiency."))}</small>` : ""}</section>` : "";
   return `<aside class="energy-path-component-chart" data-energy-path-component-chart="${escapeHTML(item.id || "")}" data-energy-path-inspector="${escapeHTML(item.id || "")}"${kind === "link" ? ` data-energy-path-link-inspector="${escapeHTML(item.id || "")}"` : ""} data-energy-path-chart-kind="${kind}" data-energy-path-chart-mode="${frequency}">
     <header><strong>${escapeHTML(heading)}</strong><select data-energy-path-chart-frequency aria-label="${escapeHTML(copy("Frequency", "Chart frequency"))}">
       <option value="monthly"${frequency === "monthly" ? " selected" : ""}>${escapeHTML(copy("Monthly", "Monthly"))}</option>
@@ -277,12 +338,58 @@ function chartRatioValue(value) {
   return finite(value) ? value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
 }
 
+function chartRatioGapMessage(reason, point = {}) {
+  if (reason === "missing_pair" && finite(point.fromValue) !== finite(point.toValue)) {
+    const endpoint = finite(point.fromValue) ? point.toLabel || copy("To", "To") : point.fromLabel || copy("From", "From");
+    return copy("GapMissingEndpoint", "{endpoint} has no monthly observation.", { endpoint });
+  }
+  return {
+    missing_pair: copy("GapMissing", "Paired monthly data is missing."),
+    zero_denominator: copy("GapZeroDenominator", "The ratio is undefined because its denominator is zero."),
+    unverified_pair: copy("GapUnverified", "The conversion boundary is not verified for this month."),
+    non_finite: copy("GapNonFinite", "The ratio is outside the numeric range."),
+  }[reason] || copy("RatioUnavailable", "A ratio requires paired data and a nonzero denominator.");
+}
+
+function chartRatioEmptyMessage(series) {
+  const reasons = new Set(series.flatMap((trace) => trace.points || []).filter((point) => point.unavailableReason).map((point) => chartRatioGapMessage(point.unavailableReason, point)));
+  return reasons.size ? [...reasons].join(" ")
+    : copy("RatioUnavailable", "A ratio requires paired data and a nonzero denominator.");
+}
+
+function chartTooltipEnergyValue(value, unit, display) {
+  const factor = chartEnergyUnitFactor(unit);
+  if (display?.perArea && factor !== null && (!finite(display.areaM2) || display.areaM2 <= 0)) {
+    return formatEnergyPathDisplayValue(value, unit || "kWh", display);
+  }
+  const displayed = finite(value) && display?.perArea && factor !== null && display.areaM2 > 0 ? value * factor / display.areaM2 : value;
+  // A rounded 0.00 must not imply that a tiny but positive denominator was zero.
+  return finite(displayed) && displayed !== 0 && Math.abs(displayed) < .005
+    ? `${displayed.toExponential()} ${energyPathDisplayUnit(unit || "kWh", display)}`
+    : formatEnergyPathDisplayValue(value, unit || "kWh", display);
+}
+
+// A few ratio spikes must not flatten the ordinary observations. This only
+// chooses the linear display range; every original value remains inspectable.
+function chartRatioOutlierLimit(points) {
+  const magnitudes = points.map((point) => Math.abs(point.value)).filter((value) => finite(value) && value > 0).sort((left, right) => left - right);
+  if (magnitudes.length < 3) return Infinity;
+  const middle = Math.floor(magnitudes.length / 2);
+  const median = magnitudes.length % 2 ? magnitudes[middle] : magnitudes[middle - 1] / 2 + magnitudes[middle] / 2;
+  const limit = median * 10;
+  return magnitudes.filter((value) => value <= limit).length >= 2 ? limit : Infinity;
+}
+
 function renderPlot(series, frequency, display, boundaryInput = false, ratio = false) {
   const width = 1000, height = 340, right = 42, top = 52, bottom = 81;
   const traces = series.map((trace) => ({ ...trace, points: trace.points || [] }));
   // Both thermal and site traces are canonical kWh, divided by one scope area.
   const points = traces.flatMap((trace) => trace.points).filter((point) => finite(point.value));
-  const minimum = points.reduce((value, point) => Math.min(value, point.value), 0), maximum = points.reduce((value, point) => Math.max(value, point.value), 0);
+  const outlierLimit = ratio ? chartRatioOutlierLimit(points) : Infinity;
+  const isOutlier = (point) => finite(point.value) && Math.abs(point.value) > outlierLimit;
+  const axisPoints = points.filter((point) => !isOutlier(point));
+  const outliers = points.filter(isOutlier);
+  const minimum = axisPoints.reduce((value, point) => Math.min(value, point.value), 0), maximum = axisPoints.reduce((value, point) => Math.max(value, point.value), 0);
   const low = minimum, high = maximum > minimum ? maximum : minimum + 1;
   const number = (value, unit = "kWh") => ratio ? chartRatioValue(value) : formatEnergyPathDisplayValue(value, unit, display, { includeUnit: false });
   const yTicks = Array.from({ length: 5 }, (_, index) => {
@@ -311,7 +418,8 @@ function renderPlot(series, frequency, display, boundaryInput = false, ratio = f
   }).join("");
   const marks = traces.map((trace, traceIndex) => {
     const color = traceIndex % 6;
-    const title = (point) => `${point.label} · ${trace.label}: ${ratio ? chartRatioValue(point.value) : formatEnergyPathDisplayValue(point.value, trace.unit || "kWh", display)}`;
+    const title = (point) => `${point.label} · ${trace.label}: ${ratio ? chartRatioValue(point.value) : formatEnergyPathDisplayValue(point.value, trace.unit || "kWh", display)}` +
+      (ratio ? ` · ${point.fromLabel || copy("From", "From")}: ${chartTooltipEnergyValue(point.fromValue, point.fromUnit, display)} · ${point.toLabel || copy("To", "To")}: ${chartTooltipEnergyValue(point.toValue, point.toUnit, display)}` : "");
     if (frequency === "monthly" && !ratio) {
       const barWidth = plotWidth / 12 * .68 / traces.length;
       return trace.points.filter((point) => finite(point.value)).map((point) => `<rect class="energy-path-chart-mark energy-path-chart-color-${color}" data-energy-path-chart-${ratio ? "ratio" : "value"}="${point.value}" x="${x(point.x) - barWidth * traces.length / 2 + traceIndex * barWidth}" y="${Math.min(y(point.value), baseline)}" width="${barWidth}" height="${Math.max(1, Math.abs(y(point.value) - baseline))}" tabindex="0"><title>${escapeHTML(title(point))}</title></rect>`).join("");
@@ -319,17 +427,31 @@ function renderPlot(series, frequency, display, boundaryInput = false, ratio = f
     let previous = null;
     const drawn = hourlyPlotPoints(trace.points, Math.max(48, Math.floor(2400 / traces.length)));
     const path = drawn.map((point) => {
-      if (!finite(point.value)) { previous = null; return ""; }
+      if (!finite(point.value) || isOutlier(point)) { previous = null; return ""; }
       const command = previous !== null && point.segment === previous ? "L" : "M";
       previous = point.segment;
       return `${command}${x(point.x)},${y(point.value)}`;
     }).join(" ");
-    return `<path class="energy-path-chart-line energy-path-chart-color-${color}" d="${path}"/>` + drawn.filter((point) => finite(point.value)).map((point) => `<circle class="energy-path-chart-mark energy-path-chart-color-${color}" data-energy-path-chart-${ratio ? "ratio" : "value"}="${point.value}" cx="${x(point.x)}" cy="${y(point.value)}" r="${ratio ? 4 : 2.5}"><title>${escapeHTML(title(point))}</title></circle>`).join("");
+    const gaps = ratio && frequency === "monthly" ? trace.points.filter((point) => !finite(point.value)).map((point) => {
+      const gapTitle = `${point.label} · ${chartRatioGapMessage(point.unavailableReason, point)}`;
+      return `<g class="energy-path-chart-gap" data-energy-path-chart-gap="${escapeHTML(point.unavailableReason || "missing_pair")}" transform="translate(${x(point.x)},${baseline - 8})" tabindex="0" role="img" aria-label="${escapeHTML(gapTitle)}"><title>${escapeHTML(gapTitle)}</title><circle class="energy-path-chart-hit" r="12"/><path d="M-6,-6L6,6M-6,6L6,-6"/></g>`;
+    }).join("") : "";
+    return `<path class="energy-path-chart-line energy-path-chart-color-${color}" d="${path}"/>` + drawn.filter((point) => finite(point.value)).map((point) => {
+      if (isOutlier(point)) {
+        const side = point.value > high ? "upper" : "lower", position = side === "upper" ? top + 14 : height - bottom - 16;
+        const outlierTitle = `${title(point)} · ${copy("OutlierPoint", "Outside the automatic axis range; actual value is preserved.")}`;
+        return `<g class="energy-path-chart-outlier energy-path-chart-color-${color}" data-energy-path-chart-ratio="${point.value}" data-energy-path-chart-outlier="${side}" transform="translate(${x(point.x)},${position})" tabindex="0" role="img" aria-label="${escapeHTML(outlierTitle)}"><title>${escapeHTML(outlierTitle)}</title><circle class="energy-path-chart-hit" r="18"/><text class="energy-path-chart-tick energy-path-chart-outlier-symbol" text-anchor="middle" dominant-baseline="central">≈</text></g>`;
+      }
+      return `${ratio ? `<circle class="energy-path-chart-hit" cx="${x(point.x)}" cy="${y(point.value)}" r="12"><title>${escapeHTML(title(point))}</title></circle>` : ""}<circle class="energy-path-chart-mark energy-path-chart-color-${color}" data-energy-path-chart-${ratio ? "ratio" : "value"}="${point.value}" cx="${x(point.x)}" cy="${y(point.value)}" r="${ratio ? 4 : 2.5}"${ratio ? ` tabindex="0"` : ""}><title>${escapeHTML(title(point))}</title></circle>`;
+    }).join("") + gaps;
   }).join("");
-  return `<div class="energy-path-chart-plot"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(copy(frequency === "hourly" ? "Hourly" : "Monthly", frequency === "hourly" ? "Hourly" : "Monthly"))}">
+  const scaleNote = outliers.length ? `<small class="energy-path-chart-note" data-energy-path-chart-scale-note>${escapeHTML(copy("OutlierNote", "Linear axis · ≈ marks values >10× the median magnitude. Original values are preserved."))}</small><div class="energy-path-chart-outlier-summary" data-energy-path-chart-outlier-summary>${escapeHTML(copy("OffScale", "Off scale"))}: ${outliers.map((point) => escapeHTML(`${point.label}: ${chartRatioValue(point.value)}`)).join(" · ")}</div>` : "";
+  const gapNote = ratio && traces.some((trace) => trace.points.some((point) => !finite(point.value))) ? `<small class="energy-path-chart-note" data-energy-path-chart-gap-note>${escapeHTML(copy("GapNote", "× marks an unavailable ratio, not zero. Hover or focus each mark for its reason."))}</small>` : "";
+  const denominatorNote = outliers.length && traces[0]?.ratioKind === "coefficient_of_performance" ? `<small class="energy-path-chart-note" data-energy-path-chart-denominator-note>${escapeHTML(copy("SmallDenominatorNote", "A very small equipment-energy denominator can produce a large ratio. This delivered-load/equipment-energy comparison is not the equipment's rated COP; separately shown fan/pump energy is excluded."))}</small>` : "";
+  return `<div class="energy-path-chart-plot"><svg viewBox="0 0 ${width} ${height}" data-energy-path-chart-scale="linear" data-energy-path-chart-y-min="${low}" data-energy-path-chart-y-max="${high}" role="img" aria-label="${escapeHTML(copy(frequency === "hourly" ? "Hourly" : "Monthly", frequency === "hourly" ? "Hourly" : "Monthly"))}">
     <text class="energy-path-chart-axis-label" data-energy-path-chart-axis="y" x="${left}" y="40">${escapeHTML(ratio ? traces[0]?.label || copy("Ratio", "From / to ratio") : `${boundaryInput ? copy("Boundary", "Reported boundary energy") : frequency === "hourly" ? copy("Measured", "Measured energy") : copy("Component", "Component energy")} (${energyPathDisplayUnit("kWh", display)})`)}</text>
     <text class="energy-path-chart-axis-label" data-energy-path-chart-axis="x" x="${left + plotWidth / 2}" y="${height - 16}" text-anchor="middle">${escapeHTML(frequency === "hourly" ? copy("DateHour", "Date & hour") : copy("Month", "Month"))}</text>${grid}${labels}<line class="energy-path-chart-axis" x1="${left}" x2="${width - right}" y1="${baseline}" y2="${baseline}"/>${marks}
-  </svg></div>${traces.length > 1 || frequency === "hourly" ? `<div class="energy-path-chart-legend">${traces.map((trace, index) => `<span><i class="energy-path-chart-color-${index % 6}"></i>${escapeHTML(trace.label)}</span>`).join("")}</div>` : ""}`;
+  </svg></div>${scaleNote}${gapNote}${denominatorNote}${traces.length > 1 || frequency === "hourly" ? `<div class="energy-path-chart-legend">${traces.map((trace, index) => `<span><i class="energy-path-chart-color-${index % 6}"></i>${escapeHTML(trace.label)}</span>`).join("")}</div>` : ""}`;
 }
 
 // Minimum chart widths bound corrected tick fonts to 34 SVG units. Reserve a

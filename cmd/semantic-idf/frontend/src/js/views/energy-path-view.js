@@ -479,6 +479,7 @@ export function renderEnergyPathInspector(scene, viewState = {}, options = {}) {
     conversionRatio: selectedLink ? energyPathConversionRatio(item, scene.allGraphNodes, scene.graph.links) : null,
     monthly: energyPathMonthlyChartSeries(item, kind, scene.monthlyChartGraphs, {
       ...endpointLabels,
+      fromNode: nodeByID.get(item.fromId),
       ratioForLink: (link, graph) => energyPathConversionRatio(link, graph.nodes || [], graph.links || []),
     }),
     hourly: viewState.simulationEnergyChartFrequency === "hourly" ? energyPathHourlyChartSeries(item,

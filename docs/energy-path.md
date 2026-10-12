@@ -199,18 +199,36 @@ unassigned. Fan and pump references may cover overlapping served loads, so keep
 their associations separate even when their display nodes are grouped.
 Context associations render as closed ribbons with independent reference scales
 and separate visual lanes. They never consume accounting ribbon ports, alter
-thermal/site scales or closure, or enter a coil-only COP denominator. Their paired
+thermal/site scales or closure, or enter the cooling-equipment energy denominator. Their paired
 quantities are independently inspectable. A displayed reference quantity ratio
 is not a conversion efficiency. People/Lighting/Equipment links retain their
 matched original driver subset after Internal gains grouping; repeated references
 to the same original driver are counted once.
 
 The browser groups inputs by physical quantity while retaining original member
-and source identities. Monthly charts preserve signed input values, served-load
-subtotals and actual auxiliary slices; unavailable months and Hourly sources
-remain gaps. App and batch detail use the same presentation logic. File/API
+and source identities. Monthly input relations follow the selected physical
+input/driver pair and permit the month's original cooling/heating members to be a
+subset of the selected Annual relation. They reject unrelated members, conflicting
+observations and scope changes. The inspector supplies the selected input node's
+original member roster so an incomplete monthly input group cannot masquerade as
+the full reference quantity. One endpoint may remain observed when the other
+is unavailable; missing members alone do not prove zero. Monthly charts preserve
+signed input values, served-load subtotals and actual auxiliary slices; unavailable
+months and Hourly sources remain gaps. App and batch detail use the same presentation logic. File/API
 projections and trace exports preserve the optional input nodes and relations;
 the existing accounting summary categories remain unchanged.
+
+Ratio plots preserve paired numeric values and distinguish missing, zero-denominator
+and unverified-boundary gaps. Tiny nonzero endpoint quantities retain extra precision
+in tooltips. Ratio axes remain linear. With at least three finite nonzero values,
+magnitudes greater than ten times their median are excluded from automatic axis
+limits only when at least two nonzero observations remain. Off-scale break marks
+and tooltips retain the month and original values; the line does not connect
+through those points. Zero and missing observations remain distinct, and energy
+quantity axes are unaffected. Zone-delivered
+cooling divided by cooling electricity is a service load/site comparison and can
+be very large with little compressor operation; it does not establish a rated
+equipment COP. Auxiliary energy enters only when included in the selected endpoint.
 
 `energy_path_driver_presentation.js` groups original internal driver members into
 one Internal gains card. Optional `nodes[].driverBreakdown[]` retains additive

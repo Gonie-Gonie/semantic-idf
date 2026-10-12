@@ -100,6 +100,29 @@ denominator or missing endpoint leaves a gap. Dividing both energies by the same
 floor area does not change the ratio. Raw Hourly source traces cannot establish
 an allocated hourly endpoint pair, so no hourly conversion ratio is invented.
 
+For input ribbons, the monthly chart follows the same physical input and driver
+category even when cooling and heating members change between months. Each
+endpoint uses that month's observation independently: a missing driver does not
+erase an available incident-solar observation. Missing observations remain
+unknown; an absent member is not automatically a reported zero.
+
+Ratio gaps distinguish missing paired data, a zero denominator and an unverified
+conversion boundary. A small nonzero denominator still gives a finite ratio;
+point tooltips show the paired quantities with extra precision when two decimal
+places would hide that nonzero value. Delivered Zone cooling and cooling-equipment
+electricity can have different boundaries, so a very large winter load/electricity
+ratio is not a rated equipment COP. Fans and pumps are excluded unless they are
+part of the selected denominator.
+
+Ratio graphs always use a linear axis. With at least three finite nonzero
+observations, values whose magnitude exceeds ten times the median magnitude are
+excluded from automatic Y-axis limits, provided at least two nonzero observations
+remain. These values retain their original sign and quantity; a break marker at
+the plot edge and its tooltip identify the month and actual value. The line does
+not connect through a value outside the axis range. This display rule keeps a
+near-zero denominator from flattening ordinary months without changing the data.
+Zero and missing values remain distinct; missing ratios use the separate × mark.
+
 A shared component can have a reported Building Hourly source while its
 Monthly Zone contribution is allocated. These charts need not sum to the same
 value. Do not interpret the Hourly source as newly measured Zone consumption.
