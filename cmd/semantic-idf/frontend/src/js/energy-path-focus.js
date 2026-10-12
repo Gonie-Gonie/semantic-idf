@@ -1,10 +1,12 @@
 const token = (value) => String(value ?? "").trim().toLowerCase();
 const LEVELS = ["input", "driver", "load", "end_use", "carrier"];
-const INPUT_ORDER = ["input.solar_incident", "input.exterior_convection", "input.exterior_longwave", "input.internal_gains", "input.solar_absorbed", "input.surface_storage"];
+const INPUT_ORDER = ["input.solar_incident", "input.exterior_convection", "input.exterior_longwave", "input.people", "input.lighting", "input.equipment", "input.internal_gains", "input.solar_absorbed", "input.surface_storage"];
 const DRIVER_ORDER = [
   "surface.exterior_walls", "surface.roofs", "surface.ground_floors", "surface.windows_doors", "surface.interzone",
   "air.infiltration", "air.mechanical_ventilation", "air.interzone",
-  "internal.people", "internal.lighting", "internal.equipment", "interzone.transfer", "balance.storage_other",
+  "internal.gains", "internal.people", "internal.lighting", "internal.equipment", "interzone.transfer",
+  "balance.air_storage", "balance.surface_balance", "balance.outdoor_air_balance", "balance.interzone_balance",
+  "balance.internal_gain_balance", "balance.surface_exchange", "balance.unresolved_balance", "balance.storage_other",
 ];
 const END_USE_ORDER = ["cooling", "heating", "fans_pumps", "hvac_auxiliaries", "lighting", "equipment", "water_systems", "refrigeration", "other"];
 const CARRIER_ORDER = [
@@ -22,7 +24,7 @@ const nodeLevel = (node) => token(node?.presentationLevel || node?.level);
 const compareID = (left, right) => { const a = String(left?.id ?? ""), b = String(right?.id ?? ""); return a < b ? -1 : a > b ? 1 : 0; };
 
 function taxonomyRank(level, node) {
-  if (level === "input") return rank(INPUT_ORDER, token(node.kind));
+  if (level === "input") return rank(INPUT_ORDER, token(node.kind).startsWith("input.equipment.") ? "input.equipment" : token(node.kind));
   if (level === "driver") return rank(DRIVER_ORDER, token(node.driverCategory) === "internal.other" ? "balance.storage_other" : token(node.driverCategory));
   if (level === "load") return rank(["cooling", "heating"], token(node.serviceKind));
   if (level === "end_use") {

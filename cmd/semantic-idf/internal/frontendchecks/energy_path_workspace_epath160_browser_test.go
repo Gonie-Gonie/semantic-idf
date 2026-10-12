@@ -277,7 +277,7 @@ try{
   assertPrimary(phase);
   if(phase==="initial"){
    assertResult("initial cache load");
-   change("[data-simulation-energy-scope]","zone");change("[data-simulation-energy-zone-name]","Office");change("[data-simulation-energy-path-period]","M2");
+   change("[data-simulation-energy-scope]","zone:Office");change("[data-simulation-energy-path-period]","M2");
    const use=view.energyPathGraphForState(state.simulationResult.purposeResults.energyExplanation,state).nodes.find(node=>node.level==="end_use"&&node.endUse==="cooling");
    click(host.querySelector('[data-energy-path-layout-node="'+CSS.escape(use.id)+'"]'));
    check(host.querySelector("[data-energy-path-inspector]"),"real selected node did not open its inspector");

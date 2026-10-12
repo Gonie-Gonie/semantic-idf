@@ -46,7 +46,7 @@ function qualifiedResidual(node = {}) {
 
 function nodeColor(node) {
   const level = token(node.level);
-  if (level === "input") return token(node.kind) === "input.internal_gains" ? "driver-internal"
+  if (level === "input") return ["input.people", "input.lighting", "input.equipment", "input.internal_gains"].includes(token(node.kind)) || token(node.kind).startsWith("input.equipment.") ? "driver-internal"
     : ["input.solar_incident", "input.exterior_convection", "input.exterior_longwave"].includes(token(node.kind)) ? "driver-envelope" : "neutral";
   if (level === "driver") {
     const category = token(node.driverCategory);
@@ -86,6 +86,10 @@ export function energyPathLinkAppearance(link = {}, nodes = []) {
   const allocationLabelKind = residual ? "" : allocationKind(link);
   let colorKey = "neutral";
   if (residual) colorKey = "residual";
+  else if (relation === "input_to_driver" && token(from?.level) === "input" && token(to?.level) === "driver") colorKey = nodeColor(from);
+  else if (relation === "load_to_auxiliary" && token(from?.level) === "load" && token(to?.level) === "end_use") {
+    colorKey = ["cooling", "heating"].includes(token(link.serviceKind)) ? token(link.serviceKind) : "direct-auxiliary";
+  }
   else if (["driver_to_load", "load_to_end_use"].includes(relation)) {
     colorKey = ["cooling", "heating"].includes(token(link.serviceKind)) ? token(link.serviceKind) : "neutral";
   } else if (["end_use_to_carrier", "direct_end_use_to_carrier"].includes(relation) && token(to?.level) === "carrier") {

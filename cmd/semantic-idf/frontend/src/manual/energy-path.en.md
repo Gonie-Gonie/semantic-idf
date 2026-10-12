@@ -1,6 +1,6 @@
 # Energy Path
 
-Energy Path reads left to right: **Reported inputs → Load drivers → Thermal loads → End-use energy → Energy sources** for a saved simulation. The input stage appears when its observations are available. It combines actual observations with
+Energy Path reads left to right: **Boundary inputs → Load drivers → Thermal loads → End-use energy → Energy sources** for a saved simulation. The input stage appears when its observations are available. It combines actual observations with
 explicitly labelled allocations. It is a load explanation and energy-accounting
 view, not a calculation of savings caused by a model change.
 
@@ -12,7 +12,7 @@ Use [Tools](./tools.en.md) for Building/Annual comparisons and
 
 | Stage | Quantity | Domain | Example |
 | --- | --- | --- | --- |
-| Inputs | Reported exterior/internal heat and envelope process observations. | Boundary context, independently scaled. | Incident solar, exterior convection, internal gains, surface storage. |
+| Inputs | External conditions and prescribed internal heat sources. | Boundary context, independently scaled. | Incident solar, exterior exchange, People, Lighting, Equipment. |
 | Drivers | Contribution allocated to actual cooling or heating load. | Thermal energy. | Exterior-wall cooling contribution. |
 | Loads | Observed thermal service at its declared boundary. | Thermal energy. | Zone sensible cooling. |
 | End uses | Consumption by equipment or direct uses. | Site energy. | Coil electricity, lighting, gas heating. |
@@ -35,17 +35,25 @@ People gains do not imply a purchased People-energy end use.
 ## Inputs, insulation, storage, and auxiliaries {#inputs-and-auxiliaries}
 
 The first stage shows solar arriving at exterior surfaces, signed exterior
-convection and longwave exchange, and total internal gains. Absorbed solar and
-surface storage describe the envelope process. They overlap other observations
-and must not be added into one input total. Positive exterior exchange enters
-the outside face; positive storage enters envelope mass. Negative values retain
-their reported direction.
+convection and longwave exchange, and the reported heat from prescribed People,
+Lighting and Equipment activity. Equipment combines the supported electric, gas,
+other, hot-water and steam heat-source families. Its input is reported heat,
+including radiant, convective and latent components, rather than purchased
+electricity or fuel. Heat lost outside the zone is excluded from this quantity.
+These source observations lead to **Internal gains** in Load Drivers, which
+retains the separately allocated People/Lighting/Equipment members.
 
-Between these observations and room Drivers, insulation, absorption and thermal
-storage affect how much heat reaches the room and when. The process caption is
-not a calculated insulation rating, thermal capacity or savings estimate.
-Thin dashed associations identify related observations; their endpoint values
-need not balance and their widths do not express heat transfer.
+Insulation, absorption and thermal storage affect how much heat reaches the room
+and when. Absorbed solar, total internal gains and envelope storage are building
+responses rather than independent boundary sources; they are not cards in the
+first stage. Exterior-face exchange remains a reported boundary observation,
+not an independent weather-only quantity. It also depends on the surface response.
+Positive exterior exchange enters the outside face; negative values retain their
+reported direction. Input observations must not be summed into one load total.
+
+All displayed connections use ribbons. Reference ribbons retain independent
+endpoint scales and the matching driver subset; their different physical
+boundaries mean their widths do not establish a conserved transfer or efficiency.
 
 Cooling/heating loads also connect to fan, pump and auxiliary consumption when
 the system path and allocation budget are supported. A connection retains the
@@ -62,8 +70,8 @@ executed surface area and actual reported days, including short runs.
 
 ## Scope, period, and component charts {#scope-and-period}
 
-Scope and Period default to Building and Annual. Choose **Scope** and **Period**
-for the saved result. Building and Zone results
+Scope and Period default to **All** (Building) and Annual. The single **Scope**
+list switches directly between All and each saved Zone. Building and Zone results
 already have their own accounting. A Zone is not necessarily one physical
 copy: its model-total quantities can include Zone/Group multipliers.
 
@@ -81,6 +89,16 @@ Monthly or Hourly graph:
 
 Monthly and Hourly charts follow Settings' **Graph label font size** and scroll
 horizontally within the chart in narrow panels.
+
+Selecting a ribbon shows paired endpoint quantities and a **from / to** ratio
+chart side by side in normal panels; narrow panels stack the charts. Monthly
+ratios use the paired monthly quantities, without averaging component ratios.
+Validated cooling conversions use COP and validated heating conversions use
+their declared efficiency or load/energy comparison. Other relations use a quantity ratio; boundary
+and auxiliary references are explicitly labelled reference ratios. A zero
+denominator or missing endpoint leaves a gap. Dividing both energies by the same
+floor area does not change the ratio. Raw Hourly source traces cannot establish
+an allocated hourly endpoint pair, so no hourly conversion ratio is invented.
 
 A shared component can have a reported Building Hourly source while its
 Monthly Zone contribution is allocated. These charts need not sum to the same
@@ -123,10 +141,17 @@ surface, zone, and boundary relationships.
 | --- | --- |
 | Exterior walls, roofs, ground, windows | Source-supported surface exchange or window-related heat. |
 | Interzone surfaces and air | Exchange between model zones; internal Building transfer is not a new external input. |
-| People, lighting, equipment | Reported internal gains. |
+| Internal gains | Allocated People, Lighting, Equipment and other internal heat effects, retained as original members. |
 | Infiltration, mechanical ventilation | Distinct outdoor-air gain/loss observations. |
 | Fan or other HVAC-related heat | Heat entering the thermal balance, separate from consumed fan electricity. |
-| Other/storage | Remaining supported load explanation; can include unresolved balance/storage rather than a measured battery. |
+| Zone-air storage | Air energy storage contribution retained from the native heat balance. |
+| Surface / outdoor-air / interzone / internal-gain balance differences | Separately identified reconciliation components within the original allocated driver budget. |
+| Other surface exchange | Supported surface exchange without a more specific surface category. |
+| Unresolved heat balance | Remaining or legacy unsplit explanation; it is not a measured storage quantity. |
+
+These detailed residual groups retain the original parent allocation exactly.
+Annual groups sum monthly values. Older results without a recorded component
+breakdown remain unresolved; raw source pressures are not used to invent a split.
 
 A surface can participate in active radiant or pool heat exchange. Its
 reported convection is not automatically an isolated passive-envelope effect.
@@ -169,8 +194,9 @@ The -30 kWh remains offset evidence. The raw signed balance is 70 kWh, but
 the actual cooling load remains 120 kWh.
 
 Zero actual load gives zero allocation even if pressure exists.
-Positive load without positive eligible pressure is assigned to Other/storage
-with zero raw pressure. This establishes an unexplained/storage contribution;
+Positive load without positive eligible pressure is assigned to the legacy
+Other/storage category, displayed as Unresolved heat balance when no recorded
+breakdown is available, with zero raw pressure. This establishes an unexplained/storage contribution;
 it does not invent a physical heat source.
 
 Missing observations cannot be turned into the exact-zero proof needed for

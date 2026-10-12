@@ -128,11 +128,11 @@ try{
  check(!host.querySelector(".simulation-energy-subnav,[data-simulation-energy-view],.energy-path-summary-overview,[data-energy-path-summary-group]"),"single Energy dashboard still exposes old subnav or duplicate summary tables");
  check(host.querySelectorAll(".energy-path-controls select").length===2,"default Energy controls are not Scope / Period only");
  check(!host.querySelector("[data-energy-path-inspector-actions]"),"unselected graph rendered unrelated Series/HVAC actions");
- change("[data-simulation-energy-scope]","zone");
- change("[data-simulation-energy-zone-name]","Office");
+ change("[data-simulation-energy-scope]","zone:Office");
  change("[data-simulation-energy-path-period]","M1");
  check(state.simulationEnergyScopeKind==="zone"&&state.simulationEnergyZoneName==="Office"&&state.simulationEnergyPeriod==="M1"&&state.simulationEnergyService==="all","actual control handlers did not retain selected scope / month / service");
- for(const[selector,label]of[["[data-simulation-energy-scope]","Scope"],["[data-simulation-energy-path-period]","Period"],["[data-simulation-energy-zone-name]","Zone"]]){
+ check(!host.querySelector("[data-simulation-energy-zone-name],#simulationEnergyPathZones"),"single-step Scope retained a separate Zone control");
+ for(const[selector,label]of[["[data-simulation-energy-scope]","Scope"],["[data-simulation-energy-path-period]","Period"]]){
   check(host.querySelector(selector)?.getAttribute("aria-label")===label,"selected Zone value contaminated accessible control name: "+label);
  }
  check(host.querySelector('[data-energy-explanation-node="load.heating.office"]'),"graph omitted heating after Service dropdown removal");

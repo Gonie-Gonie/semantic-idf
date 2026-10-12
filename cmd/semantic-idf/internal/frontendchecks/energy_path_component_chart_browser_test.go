@@ -45,10 +45,10 @@ func TestEnergyPathComponentChartDataBrowser(t *testing.T) {
 				}
 				for _, capture := range []struct {
 					frequency, theme, language string
-					font                       int
-				}{{"monthly", "dark", "ko", 18}, {"hourly", "light", "en", 12}} {
+					font, width                int
+				}{{"monthly", "dark", "ko", 12, 740}, {"monthly", "dark", "ko", 18, 740}, {"hourly", "light", "en", 12, 1140}} {
 					browser.call("Emulation.setDeviceMetricsOverride", map[string]any{"width": 1200, "height": 700, "deviceScaleFactor": 1, "mobile": false}, nil)
-					browser.evaluate(fmt.Sprintf(`(async()=>{window.energyPathComponentReview(%q,%q,%q,%d);await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));})()`, capture.frequency, capture.theme, capture.language, capture.font))
+					browser.evaluate(fmt.Sprintf(`(async()=>{window.energyPathComponentReview(%q,%q,%q,%d,%d);await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));})()`, capture.frequency, capture.theme, capture.language, capture.font, capture.width))
 					var screenshot struct {
 						Data string `json:"data"`
 					}
@@ -57,7 +57,7 @@ func TestEnergyPathComponentChartDataBrowser(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					path := filepath.Join(directory, capture.frequency+"-"+capture.theme+"-"+capture.language+".png")
+					path := filepath.Join(directory, fmt.Sprintf("%s-%s-%s-%d-%d.png", capture.frequency, capture.theme, capture.language, capture.font, capture.width))
 					if err := os.WriteFile(path, data, 0o644); err != nil {
 						t.Fatal(err)
 					}
@@ -78,7 +78,8 @@ const energyPathComponentChartHTML = `<!doctype html><html><head><meta charset="
 const check=(value,message)=>{if(!value)throw new Error(message);};
 const tick=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 try {
- const {energyPathMonthlyChartSeries:monthly,energyPathHourlyChartSeries:hourlyModel,renderEnergyPathComponentChart:render}=await import('/src/js/energy-path-chart.js');
+ const {energyPathMonthlyChartSeries:monthly,energyPathHourlyChartSeries:hourlyModel,energyPathLinkRatioChartSeries:ratioModel,renderEnergyPathComponentChart:render}=await import('/src/js/energy-path-chart.js');
+ const {energyPathConversionRatio:validateRatio}=await import('/src/js/views/energy-path-view.js');
  const {setLanguage}=await import('/src/js/i18n.js');setLanguage('en');
  const hourlyLabels=['01-01 01:00','01-01 02:00','02-01 01:00'];
  const hourly=(item,sources,state={},labels=hourlyLabels)=>hourlyModel(item,sources,state,labels);
@@ -91,6 +92,26 @@ try {
  const link={id:'conversion',fromUnit:'kWh thermal',toUnit:'kWh site'};
  const links=monthly(link,'link',[{links:[{...link,fromValue:40,toValue:10}]}]);
  check(links.length===2&&links[0].points[0].value===40&&links[1].points[0].value===10,'conversion chart conflated thermal and site values');
+ const pair={...link,relation:'load_to_end_use',serviceKind:'cooling',ratioKind:'coefficient_of_performance',ratio:4,fromId:'load.cooling',toId:'end_use.cooling',fromValue:100,toValue:25};
+ const pairGraph={nodes:[{id:pair.fromId,level:'load',serviceKind:'cooling'},{id:pair.toId,level:'end_use',endUse:'cooling'},{id:'carrier.electricity',level:'carrier',carrier:'electricity'}],links:[pair,{id:'carrier-branch',fromId:pair.toId,toId:'carrier.electricity',relation:'end_use_to_carrier'}]};
+ const ratioOptions={from:'Cooling load',to:'Cooling equipment',ratioForLink:(record,graph)=>validateRatio(record,graph.nodes,graph.links)};
+ const actualRatio=validateRatio(pair,pairGraph.nodes,pairGraph.links),pairMonths=monthly(pair,'link',[pairGraph,{...pairGraph,links:[{...pair,fromValue:30,toValue:10,ratio:3}]},{...pairGraph,links:[{...pair,fromValue:0,toValue:10,ratio:0}]},{...pairGraph,links:[{...pair,toValue:0,ratio:0}]}],ratioOptions);
+ const actualSeries=ratioModel(pair,pairMonths,actualRatio)[0];
+ check(actualSeries.label==='COP'&&actualSeries.points[0].value===4&&actualSeries.points[1].value===3&&actualSeries.points[2].value===null&&actualSeries.points[3].value===null&&actualSeries.points[11].value===null,'COP chart invented monthly ratio evidence, zero-denominator values or missing-month observations');
+ check(pairMonths[0].label==='Cooling load'&&pairMonths[1].label==='Cooling equipment','paired quantity legends lost actual endpoint names');
+ const references={id:'reference',relation:'input_to_driver',fromUnit:'kWh',toUnit:'kWh',fromValue:-20,toValue:5,ratioKind:'coefficient_of_performance'};
+ const referenceMonths=monthly(references,'link',[{links:[references]},{links:[{...references,fromValue:0,toValue:5}]},{links:[{...references,fromValue:9,toValue:0}]}]);
+ const referenceRatio=ratioModel(references,referenceMonths,actualRatio)[0];
+ check(referenceRatio.label==='Reference quantity ratio'&&referenceRatio.ratioKind==='quantity_ratio'&&referenceRatio.points[0].value===-4&&referenceRatio.points[1].value===0&&referenceRatio.points[2].value===null,'boundary reference ratio lost sign/known zero or acquired equipment COP');
+ const merged={id:'merged',fromUnit:'kWh',toUnit:'kWh',groupedMembers:[{id:'small'},{id:'large'}]};
+ const summedRatio=ratioModel(merged,monthly(merged,'link',[{links:[{id:'small',fromValue:10,toValue:5},{id:'large',fromValue:90,toValue:20}]}]))[0];
+ check(summedRatio.points[0].value===4,'grouped ratio averaged individual ratios instead of dividing summed paired quantities');
+ const convertedUnits=ratioModel(pair,[{id:'fromValue',unit:'MWh',points:[{x:0,label:'Jan',value:1}]},{id:'toValue',unit:'kWh',points:[{x:0,label:'Jan',value:250}]}])[0];
+ check(convertedUnits.points[0].value===4,'quantity ratio divided incompatible energy-unit magnitudes');
+ const correspondenceLinks=[{id:'cooling-correspondence',relation:'source_correspondence',fromId:'lighting.cooling',toId:'lighting.site',fromValue:8,toValue:10},{id:'heating-correspondence',relation:'source_correspondence',fromId:'lighting.heating',toId:'lighting.site',fromValue:5,toValue:10}],correspondence={id:'grouped-correspondence',relation:'source_correspondence',fromUnit:'kWh',toUnit:'kWh',groupedMembers:correspondenceLinks};
+ const correspondenceMonths=monthly(correspondence,'link',[{relations:correspondenceLinks},{relations:[correspondenceLinks[0],{...correspondenceLinks[1],toValue:11}]},{relations:[{...correspondence,groupedMembers:[...correspondenceLinks,{id:'unrelated-correspondence',fromId:'equipment.cooling',toId:'lighting.site',fromValue:99,toValue:10}]}]}]);
+ check(correspondenceMonths[0].points[0].value===13&&correspondenceMonths[1].points[0].value===10&&ratioModel(correspondence,correspondenceMonths)[0].points[0].value===1.3,'service correspondences counted a repeated direct-use endpoint twice or used the whole grouped Internal gains value');
+ check(correspondenceMonths[1].points[1].value===null&&correspondenceMonths.every(trace=>trace.points[2].value===null),'conflicting correspondence endpoint values or an unrelated group member produced a quantity/ratio');
  const sources=[{id:'derived',inputSourceIds:['hourly','hourly','missing'],allocationFactor:.05},{id:'hourly',name:'Cooling energy',keyValue:'Office',multiplierApplication:'requires_zone_multiplier',effectiveMultiplier:2,hourlyEnergy:{basis:'reported_source',unit:'kWh',values:[2,0,9]}},{id:'missing',name:'No canonical hourly data'}];
  const sourceJSON=JSON.stringify(sources),hours=hourly(item,sources,{simulationEnergyPeriod:'M1'});
  check(hours.length===1&&hours[0].points.length===2&&hours[0].points[0].value===4&&hours[0].points[1].value===0,'hourly source tracing lost identities, real zero, month filter or proven multiplier');
@@ -131,16 +152,25 @@ try {
  check(!mount.textContent.includes('Office')&&!mount.textContent.includes('Cooling energy')&&!mount.querySelector('p'),'chart lists source objects, raw variable names or old explanatory text');
  mount.innerHTML=render({item,frequency:'hourly',hourly:[],display});check(mount.querySelector('[data-energy-path-chart-empty]')&&!mount.querySelector('svg'),'missing hourly data fabricated a chart');
  mount.innerHTML=render({item,monthly:months,display:{perArea:true,areaM2:null}});check(mount.querySelector('[data-energy-path-chart-empty]'),'missing area produced a false intensity');
+ mount.innerHTML=render({item:pair,kind:'link',monthly:pairMonths,display,endpointLabels:ratioOptions,conversionRatio:actualRatio});
+ check(mount.querySelector('[data-energy-path-current-ratio]')?.textContent==='4.00'&&[...mount.querySelectorAll('[data-energy-path-chart-ratio]')].map(mark=>mark.dataset.energyPathChartRatio).join(',')==='4,3','selected relation omitted current ratio or plotted source quantities as COP');
+ const ratioGeometry=mount.querySelector('[data-energy-path-chart-ratio]').getAttribute('cy');
+ mount.innerHTML=render({item:pair,kind:'link',monthly:pairMonths,display:{perArea:true,areaM2:1000},conversionRatio:actualRatio});
+ check(mount.querySelector('[data-energy-path-current-ratio]')?.textContent==='4.00'&&mount.querySelector('[data-energy-path-chart-ratio]')?.getAttribute('cy')===ratioGeometry,'area normalization changed the dimensionless ratio');
+ mount.innerHTML=render({item:references,kind:'link',monthly:referenceMonths,display,conversionRatio:actualRatio});
+ check(mount.querySelector('.energy-path-chart-note')?.textContent.includes('not a conversion efficiency')&&mount.querySelector('[data-energy-path-chart-panel="ratio"] h4')?.textContent==='Reference quantity ratio','reference relation ratio lacks physical-boundary explanation');
+ mount.innerHTML=render({item:pair,kind:'link',frequency:'hourly',hourly:hours,display,conversionRatio:actualRatio});
+ check(mount.querySelector('[data-energy-path-ratio-empty]')&&!mount.querySelector('[data-energy-path-chart-ratio]'),'native source traces acquired an unproven Hourly endpoint ratio');
  const appearance=[],conversion={...link,label:'Cooling demand from occupied perimeter rooms and adjoining internal zones'},appearanceHours=hourly({sourceIds:['gain','loss']},[gain,loss]);
  const markGeometry=()=>JSON.stringify([...mount.querySelectorAll('[data-energy-path-chart-value],.energy-path-chart-line')].map(mark=>[mark.dataset.energyPathChartValue,...['d','x','y','width','height','cx','cy'].map(name=>mark.getAttribute(name))]));
  const physicalFont=element=>parseFloat(getComputedStyle(element).fontSize)*element.getScreenCTM().a;
  const boundsCheck=label=>{
-  const svg=mount.querySelector('svg'),viewBox=svg.viewBox.baseVal;
+  for(const svg of mount.querySelectorAll('svg')){const viewBox=svg.viewBox.baseVal;
   for(const text of svg.querySelectorAll('text')){const bounds=text.getBBox();check(bounds.x>=-.1&&bounds.y>=-.1&&bounds.x+bounds.width<=viewBox.width+.1&&bounds.y+bounds.height<=viewBox.height+.1,'component chart text clips outside SVG '+JSON.stringify({label,text:text.textContent,x:bounds.x,y:bounds.y,width:bounds.width,height:bounds.height}));}
   const ticks=[...svg.querySelectorAll('[data-energy-path-chart-tick="x"]')].map(text=>text.getBoundingClientRect());
-  check(ticks.every((box,index)=>!index||ticks[index-1].right+2<=box.left),'component chart date/month labels overlap '+label);
+  check(ticks.every((box,index)=>!index||ticks[index-1].right+2<=box.left),'component chart date/month labels overlap '+label);}
  };
- for(const frequency of['monthly','hourly'])for(const [language,theme,font,width]of[['en','light',11,320],['ko','dark',12,720],['en','dark',18,350],['ko','light',18,1423]]){
+ for(const frequency of['monthly','hourly'])for(const [language,theme,font,width]of[['en','light',11,320],['ko','dark',12,740],['en','light',12,500],['en','dark',18,350],['ko','light',18,1423]]){
   setLanguage(language);mount.innerHTML=render({item:conversion,kind:'link',frequency,monthly:links,hourly:appearanceHours,display});
   const mark=mount.querySelector('[data-energy-path-chart-value]'),geometry=markGeometry();document.documentElement.dataset.theme=theme;document.documentElement.style.setProperty('--graph-label-font-size',font+'px');mount.style.width=width+'px';await tick();
   const panel=mount.querySelector('[data-energy-path-component-chart]'),plot=panel.querySelector('.energy-path-chart-plot'),family=getComputedStyle(document.body).fontFamily,caption=panel.querySelector('header strong'),control=panel.querySelector('select'),legend=panel.querySelector('.energy-path-chart-legend');
@@ -150,16 +180,21 @@ try {
   for(const element of[caption,control,legend,panel.querySelector('.energy-path-chart-tick'),panel.querySelector('.energy-path-chart-axis-label')])check(getComputedStyle(element).fontFamily===family,'component chart font family differs from app family');
   check(parseFloat(getComputedStyle(caption).fontSize)>parseFloat(getComputedStyle(control).fontSize)&&Number(getComputedStyle(caption).fontWeight)>Number(getComputedStyle(control).fontWeight)&&parseFloat(getComputedStyle(legend).fontSize)===Math.max(12,font),'component title/control/legend typography hierarchy is inconsistent');
   boundsCheck(JSON.stringify({frequency,language,theme,font,width}));
-  check(frequency!=='monthly'||panel.querySelectorAll('[data-energy-path-chart-tick="x"]').length===12,'monthly appearance correction discarded original month labels');
+  check(frequency!=='monthly'||panel.querySelector('[data-energy-path-chart-panel="quantities"]').querySelectorAll('[data-energy-path-chart-tick="x"]').length===12,'monthly appearance correction discarded original month labels');
+  const quantityPanel=panel.querySelector('[data-energy-path-chart-panel="quantities"]'),ratioPanel=panel.querySelector('[data-energy-path-chart-panel="ratio"]');
+  check(ratioPanel&&(width>=740?Math.abs(quantityPanel.getBoundingClientRect().top-ratioPanel.getBoundingClientRect().top)<1:ratioPanel.getBoundingClientRect().top>=quantityPanel.getBoundingClientRect().bottom),'relation plots do not use responsive two-panel layout '+JSON.stringify({frequency,width}));
   appearance.push({frequency,language,theme,font,width});
  }
  const largeMonthly=links.map(trace=>({...trace,points:trace.points.map(point=>({...point,value:point.value===null?null:point.value*1000000}))}));
  mount.innerHTML=render({item:conversion,kind:'link',monthly:largeMonthly,display});mount.style.width='350px';await tick();boundsCheck('large reported monthly totals');check([...mount.querySelectorAll('[data-energy-path-chart-value]')].map(mark=>mark.dataset.energyPathChartValue).join(',')==='40000000,10000000','large monthly axis padding changed actual reported values');
- window.energyPathComponentReview=(frequency,theme,language,font)=>{
-  setLanguage(language);document.documentElement.dataset.theme=theme;document.documentElement.style.setProperty('--graph-label-font-size',font+'px');mount.style.width='1140px';
-  const previewMonths=monthly(link,'link',[42,38,35,28,24,30,47,55,43,31,37,46].map(value=>({links:[{...link,fromValue:value,toValue:value/4}]}))),labels=Array.from({length:24},(_value,index)=>'01-01 '+String(index+1).padStart(2,'0')+':00');
+ window.energyPathComponentReview=(frequency,theme,language,font,width=740)=>{
+  setLanguage(language);document.documentElement.dataset.theme=theme;document.documentElement.style.setProperty('--graph-label-font-size',font+'px');mount.style.width=width+'px';
+  const reviewLabels={...ratioOptions,from:language==='ko'?'냉방부하':'Cooling load',to:language==='ko'?'냉방기기 에너지':'Cooling equipment energy'};
+  const previewGraphs=[42,38,35,28,24,30,47,55,43,31,37,46].map((value,index)=>({...pairGraph,links:[{...pair,fromValue:value,toValue:value/(3+index%5*.4),ratio:3+index%5*.4}]}));
+  const previewMonths=monthly(pair,'link',previewGraphs,reviewLabels),labels=Array.from({length:24},(_value,index)=>'01-01 '+String(index+1).padStart(2,'0')+':00');
+  const fromValue=previewGraphs.reduce((sum,graph)=>sum+graph.links[0].fromValue,0),toValue=previewGraphs.reduce((sum,graph)=>sum+graph.links[0].toValue,0),previewItem={...pair,fromValue,toValue,ratio:fromValue/toValue};
   const previewSources=[gain,loss].map((source,trace)=>({...source,hourlyEnergy:{...source.hourlyEnergy,values:labels.map((_label,index)=>Math.round((3+trace+2*Math.sin(index/4+trace))*100)/100)}}));
-  mount.innerHTML=render({item:conversion,kind:'link',frequency,monthly:previewMonths,hourly:hourly({sourceIds:['gain','loss']},previewSources,{},labels),display});
+  mount.innerHTML=render({item:previewItem,label:reviewLabels.from+' → '+reviewLabels.to,kind:'link',frequency,monthly:previewMonths,hourly:hourly({sourceIds:['gain','loss']},previewSources,{},labels),display,endpointLabels:reviewLabels,conversionRatio:validateRatio(previewItem,pairGraph.nodes,pairGraph.links)});
  };
  check(JSON.stringify({item,graphs})===original&&JSON.stringify(sources)===sourceJSON,'chart changed original observations or accounting data');
  document.body.dataset.componentChartStatus='passed';document.getElementById('result').textContent=JSON.stringify({status:'passed',appearance});

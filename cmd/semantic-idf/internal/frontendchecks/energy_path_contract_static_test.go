@@ -18,15 +18,12 @@ func TestFrontendEnergyPathV2HeaderAndControlContract(t *testing.T) {
 		`label: "Energy Source"`,
 		`scaleDomain: "thermal"`,
 		`scaleDomain: "site"`,
-		`unitLabel: "kWh thermal"`,
-		`unitLabel: "kWh site"`,
+		`data-energy-path-unit`,
 		`Load drivers → Thermal load → End-use energy → Energy sources`,
 		`data-simulation-energy-scope`,
 		`data-simulation-energy-path-period`,
-		`viewState.simulationEnergyScopeKind === "zone"`,
-		`type="search"`,
-		`list="simulationEnergyPathZones"`,
-		`data-simulation-energy-zone-name`,
+		`energyPathScopeControlValue`,
+		"escapeHTML(`zone:${zone}`)",
 		`["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]`,
 		"value: `M${index + 1}`",
 		`value: "all"`,
@@ -34,7 +31,6 @@ func TestFrontendEnergyPathV2HeaderAndControlContract(t *testing.T) {
 		`value: "heating"`,
 		`energyPathServiceOptions`,
 		`energyPathItemService(link) === service`,
-		`class="energy-path-conversion-divider"`,
 		`class="energy-path-domain-legend"`,
 		`export function renderEnergyPathNodeInspector`,
 		`function renderEnergyPathInspectorValues(values, attribute = "data-energy-path-inspector-value")`,
@@ -83,6 +79,8 @@ func TestFrontendEnergyPathV2HeaderAndControlContract(t *testing.T) {
 
 	controls := sliceBetween(view, "function renderEnergyPathControls", "function renderEnergyPathStage")
 	for _, legacy := range []string{
+		"data-simulation-energy-zone-name",
+		"simulationEnergyPathZones",
 		"data-simulation-energy-service",
 		"sankey-mode",
 		"sign-mode",
@@ -95,6 +93,9 @@ func TestFrontendEnergyPathV2HeaderAndControlContract(t *testing.T) {
 		if strings.Contains(controls, legacy) {
 			t.Fatalf("Energy Path v2 primary controls retain legacy control %q", legacy)
 		}
+	}
+	if strings.Contains(view, `class="energy-path-conversion-divider"`) || strings.Contains(view, `data-energy-path-divider`) {
+		t.Fatal("Energy Path retains a removed vertical process divider")
 	}
 }
 
@@ -161,9 +162,13 @@ func TestFrontendEnergyPathNamingDocumentationAndStyles(t *testing.T) {
 	}
 	guide := readTestFile(t, "frontend/src/manual/energy-path.en.md")
 	for _, required := range []string{
-		`Load drivers → Thermal loads → End-use energy → Energy sources`,
-		`Scope and Period default to Building and Annual`,
+		`Boundary inputs → Load drivers → Thermal loads → End-use energy → Energy sources`,
+		`Scope and Period default to **All** (Building) and Annual`,
+		`list switches directly between All and each saved Zone`,
 		`Monthly or Hourly graph`,
+		`**from / to** ratio`,
+		`All displayed connections use ribbons.`,
+		`Unresolved heat balance`,
 		`kWh/m² with two decimal places`,
 	} {
 		if !strings.Contains(guide, required) {
@@ -178,14 +183,25 @@ func TestFrontendEnergyPathNamingDocumentationAndStyles(t *testing.T) {
 		`.energy-path-controls`,
 		`.energy-path-stage-grid`,
 		`.energy-path-stage-grid .energy-path-node`,
-		`.energy-path-plot-divider`,
-		`.energy-path-conversion-divider`,
+		`.energy-path-unit`,
 		`.energy-path-domain-legend`,
 		`.energy-path-node-inspector`,
 		`grid-template-columns: repeat(5, minmax(110px, 1fr))`,
 	} {
 		if !strings.Contains(styles, required) {
 			t.Fatalf("Energy Path style contract missing %q", required)
+		}
+	}
+
+	view := readTestFile(t, "frontend/src/js/views/energy-path-view.js")
+	for _, removed := range []string{
+		"energy-path-plot-divider",
+		"energy-path-conversion-divider",
+		"energy-path-envelope-context",
+		"data-energy-path-divider",
+	} {
+		if strings.Contains(styles, removed) || strings.Contains(view, removed) {
+			t.Fatalf("Energy Path retains removed divider CSS or markup %q", removed)
 		}
 	}
 

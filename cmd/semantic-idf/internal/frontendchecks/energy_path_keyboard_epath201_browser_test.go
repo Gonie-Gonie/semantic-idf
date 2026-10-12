@@ -158,7 +158,7 @@ func TestEPATH201ActualGraphTrustedKeyboardBrowser(t *testing.T) {
 		activate(index, "Enter")
 		activate(index, " ")
 	}
-	lighting := find("node", "internal.lighting")
+	lighting := find("node", "internal.gains")
 	move(lighting, "")
 	browser.key("Enter", false)
 	move(find("node", "carrier.electricity"), targets[lighting].ID)
@@ -343,7 +343,7 @@ try {
  const unchanged=()=>host.querySelector('[data-energy-path-canvas]')===canvas&&JSON.stringify(state.simulationResult)===original&&JSON.stringify(__epath201Calls)===counts&&analyze===0&&run===0&&context===JSON.stringify([state.simulationEnergyScopeKind,state.simulationEnergyZoneName,state.simulationEnergyPeriod,state.simulationEnergyService])&&geometryElements.every((element,index)=>element.isConnected&&JSON.stringify(geometry(element))===JSON.stringify(geometryValues[index]))&&controls.every((element,index)=>element.isConnected&&key(element)===targets[index].key);
  const focused=(expected,selection)=>activeKey()===expected&&state.simulationEnergySelection===selection&&visible(document.activeElement)&&Boolean(document.activeElement.getAttribute('aria-label'))&&unchanged();
  const selected=(id,kind)=>state.simulationEnergySelection===id&&document.activeElement.getAttribute('aria-pressed')==='true'&&Boolean(host.querySelector('[data-energy-path-component-chart="'+CSS.escape(id)+'"]'))&&Boolean(host.querySelector('[data-energy-path-chart-frequency]'))&&!host.querySelector('[data-energy-path-detail-section]')&&unchanged();
- const focusReadability=()=>{const element=document.activeElement,id=element.dataset.energyPathLayoutNode,bars=[...host.querySelectorAll('[data-energy-path-bar]')].filter(bar=>bar.dataset.energyPathBar===id);return element.matches(':focus-visible')&&Number(getComputedStyle(element).opacity)===1&&element.dataset.energyPathFocus==='dimmed'&&bars.length>0&&bars.every(bar=>Number(getComputedStyle(bar).opacity)===.25)&&state.simulationEnergySelection.includes('internal.lighting')&&unchanged();};
+ const focusReadability=()=>{const element=document.activeElement,id=element.dataset.energyPathLayoutNode,bars=[...host.querySelectorAll('[data-energy-path-bar]')].filter(bar=>bar.dataset.energyPathBar===id);return element.matches(':focus-visible')&&Number(getComputedStyle(element).opacity)===1&&element.dataset.energyPathFocus==='dimmed'&&bars.length>0&&bars.every(bar=>Number(getComputedStyle(bar).opacity)===.25)&&state.simulationEnergySelection.includes('internal.gains')&&unchanged();};
  const tooltipVisible=()=>{const element=document.activeElement,tooltip=document.getElementById(element.getAttribute('aria-describedby'));return element.dataset.energyPathBridgeRatio&&visible(tooltip)&&tooltip.getAttribute('role')==='tooltip'&&tooltip.textContent===element.getAttribute('aria-label')&&tooltip.textContent.includes('kWh')&&state.simulationEnergySelection===''&&unchanged();};
  const nodeStages=controls.filter(element=>element.dataset.energyPathLayoutNode).map(element=>element.closest('[data-energy-path-stage]').dataset.energyPathStage);
  const stageOrder=[...new Set(nodeStages)],kinds=targets.map(target=>target.kind),kindOrder=[...new Set(kinds)];

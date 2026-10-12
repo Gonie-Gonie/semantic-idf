@@ -95,7 +95,7 @@ try{
  const host=document.getElementById("simulationEnergyDashboard"),result=state.simulationResult,raw=JSON.stringify(result);
  const api=window.go.main.App,originalAPI={...api};let forbiddenCalls=0;
  for(const method of["AnalyzeInputText","AnalyzeInputDiagnosticsText","RunSimulation","RunSimulationText","RunPurposeSimulationText"]){api[method]=()=>{forbiddenCalls++;throw new Error("control interaction called backend "+method);};}
- const selectors={scope:"[data-simulation-energy-scope]",zone:"[data-simulation-energy-zone-name]",period:"[data-simulation-energy-path-period]"};
+ const selectors={scope:"[data-simulation-energy-scope]",period:"[data-simulation-energy-path-period]"};
  const control=kind=>host.querySelector(selectors[kind]);
  const visible=element=>Boolean(element&&element.getClientRects().length&&getComputedStyle(element).visibility!=="hidden");
  const ids=level=>[...host.querySelectorAll('[data-energy-path-stage="'+level+'"] [data-energy-path-layout-node]')].map(node=>node.dataset.energyPathLayoutNode);
@@ -103,11 +103,12 @@ try{
  const assertControls=(zone,label)=>{
   const controls=host.querySelector(".energy-path-controls");
   check(controls?.querySelectorAll("select").length===2,label+": primary selects are not exactly Scope / Period");
-  check(controls?.querySelectorAll("input").length===(zone?1:0),label+": unexpected primary input count");
-  check(host.querySelectorAll(selectors.zone).length===(zone?1:0),label+": Zone input presence differs from scope");
-  check(host.querySelectorAll("#simulationEnergyPathZones").length===(zone?1:0),label+": Zone datalist presence differs from scope");
+  check(controls?.querySelectorAll("input").length===0,label+": single-step scope retained an extra primary input");
+  check(!host.querySelector("[data-simulation-energy-zone-name],#simulationEnergyPathZones"),label+": separate Zone selector/datalist remains");
+  check(control("scope")?.value===(zone?"zone:Office":"building"),label+": selected Scope does not identify its exact Zone");
+  check([...control("scope").options].map(option=>option.value).join("|")==="building|zone:Office",label+": Scope does not offer All plus each exact Zone once");
+  check([...control("scope").options].map(option=>option.textContent.trim()).join("|")==="All|Office",label+": Scope labels are not All / actual Zone name");
   for(const kind of["scope","period"]){check(visible(control(kind)),label+": hidden "+kind);check(control(kind)?.getAttribute("aria-label")===({scope:"Scope",period:"Period"})[kind],label+": inaccessible "+kind+" label");}
-  if(zone){check(control("zone")?.type==="search"&&control("zone")?.list===host.querySelector("#simulationEnergyPathZones")&&visible(control("zone")),label+": Zone is not a visible search input bound to its datalist");check(control("zone")?.getAttribute("aria-label")==="Zone",label+": Zone has no distinct accessible name");}
   check(!host.querySelector(".simulation-energy-subnav,[data-simulation-energy-view],.energy-path-summary-overview,[data-energy-path-summary-group]"),label+": old Energy subview / summary controls remain");
   for(const token of["service","sankey-mode","sign-mode","node-limit","focus-mode","allocation-policy","period-kind","period-index","end-use-node-limit"]){check(!host.querySelector('[data-simulation-energy-'+token+']'),label+": removed control remains: "+token);}
   check(host.querySelectorAll(".energy-path-view").length===1,label+": missing / duplicate primary view");
@@ -119,9 +120,7 @@ try{
  const expectedPeriods=["annual",...Array.from({length:12},(_,index)=>"M"+(index+1))];
  check(JSON.stringify([...control("period").options].map(option=>option.value))===JSON.stringify(expectedPeriods),"Period does not offer Annual plus each of12 months exactly once");
  check([...control("period").options].every(option=>!option.disabled&&option.textContent.trim()),"Period contains a disabled / unnamed selection");
- change("scope","zone");assertControls(true,"Zone");
- check([...control("zone").list.options].map(option=>option.value).join("|")==="Office","Zone datalist does not expose the actual available Zone");
- change("zone","Office");
+ change("scope","zone:Office");assertControls(true,"Zone");
  check(state.simulationEnergyScopeKind==="zone"&&state.simulationEnergyZoneName==="Office"&&ids("load").includes("load.cooling.office")&&!ids("load").includes("load.cooling.building"),"Zone selection did not bind graph to Office");
  change("scope","building");assertControls(false,"returned Building");
  check(ids("load").includes("load.cooling.building")&&!ids("load").includes("load.cooling.office"),"Building return retained Zone graph");
@@ -132,7 +131,7 @@ try{
  for(const period of expectedPeriods.slice(2)){change("period",period);check(state.simulationEnergyPeriod===period,"month selection failed: "+period);check(ids("load").length===0,"absent "+period+" reused annual / January load nodes");assertControls(false,period);}
  change("period","annual");
  for(const scope of["building","zone"]){
-  if(control("scope").value!==scope)change("scope",scope);
+  const selection=scope==="zone"?"zone:Office":"building";if(control("scope").value!==selection)change("scope",selection);
   const suffix=scope==="zone"?"office":"building";
   assertControls(scope==="zone",scope);
   check(ids("load").length===2&&ids("load").includes("load.cooling."+suffix)&&ids("load").includes("load.heating."+suffix),scope+": graph omitted a thermal service");
@@ -143,7 +142,7 @@ try{
  check(state.simulationResult===result&&JSON.stringify(result)===raw,"control changes mutated the completed result");
  check(forbiddenCalls===0,"controls analyzed / reran the model");
  for(const key of Object.keys(api))if(!(key in originalAPI))delete api[key];Object.assign(api,originalAPI);
- evidence.push("Actual index/CSS/delegated handlers: fresh and rendered Building/Annual; Zone INPUT+datalist absent→present→absent; Annual+12 months; both services remain in Building/Zone graphs; Service and old controls absent; immutable result and0 Analyze/Run calls");
+ evidence.push("Actual index/CSS/delegated handlers: fresh All/Annual; exact All/Office single-step Scope; no separate Zone input/datalist; Annual+12 months; both services remain in Building/Zone graphs; Service and old controls absent; immutable result and0 Analyze/Run calls");
 }catch(error){failures.push(error.stack||String(error));}
 document.body.dataset.epath200Status=failures.length?"failed":"passed";
 document.getElementById("epath200-result").textContent=JSON.stringify({failures,evidence});

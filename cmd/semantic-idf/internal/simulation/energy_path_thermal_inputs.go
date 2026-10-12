@@ -17,15 +17,26 @@ import (
 type energyPathThermalInputDefinition struct {
 	kind, label, variable string
 	incident, internal    bool
+	category, objectType  string
+	contextOnly, optional bool
 }
 
 var energyPathThermalInputDefinitions = []energyPathThermalInputDefinition{
 	{kind: "input.solar_incident", label: "Incident solar at exterior surfaces", variable: "Surface Outside Face Incident Solar Radiation Rate per Area", incident: true},
 	{kind: "input.exterior_convection", label: "Exterior surface convection", variable: "Surface Outside Face Convection Heat Gain Energy"},
 	{kind: "input.exterior_longwave", label: "Exterior net longwave exchange", variable: "Surface Outside Face Net Thermal Radiation Heat Gain Energy"},
-	{kind: "input.solar_absorbed", label: "Solar absorbed at exterior surfaces", variable: "Surface Outside Face Solar Radiation Heat Gain Energy"},
-	{kind: "input.surface_storage", label: "Envelope surface heat storage (context)", variable: "Surface Heat Storage Energy"},
-	{kind: "input.internal_gains", label: "Reported total internal gains", variable: "Zone Total Internal Total Heating Energy", internal: true},
+	// These remain readable, requested source context. They describe a building
+	// response, not an imposed boundary source, and do not create input nodes.
+	{kind: "input.solar_absorbed", label: "Solar absorbed at exterior surfaces", variable: "Surface Outside Face Solar Radiation Heat Gain Energy", contextOnly: true},
+	{kind: "input.surface_storage", label: "Envelope surface heat storage (context)", variable: "Surface Heat Storage Energy", contextOnly: true},
+	{kind: "input.internal_gains", label: "Reported total internal gains", variable: "Zone Total Internal Total Heating Energy", internal: true, contextOnly: true},
+	{kind: "input.people", label: "People", variable: "Zone People Total Heating Energy", internal: true, category: energyDriverCategoryPeople, objectType: "People", optional: true},
+	{kind: "input.lighting", label: "Lighting", variable: "Zone Lights Total Heating Energy", internal: true, category: energyDriverCategoryLighting, objectType: "Lights", optional: true},
+	{kind: "input.equipment.electric", label: "Electric equipment", variable: "Zone Electric Equipment Total Heating Energy", internal: true, category: energyDriverCategoryEquipment, objectType: "ElectricEquipment", optional: true},
+	{kind: "input.equipment.gas", label: "Gas equipment", variable: "Zone Gas Equipment Total Heating Energy", internal: true, category: energyDriverCategoryEquipment, objectType: "GasEquipment", optional: true},
+	{kind: "input.equipment.other", label: "Other equipment", variable: "Zone Other Equipment Total Heating Energy", internal: true, category: energyDriverCategoryEquipment, objectType: "OtherEquipment", optional: true},
+	{kind: "input.equipment.hot_water", label: "Hot water equipment", variable: "Zone Hot Water Equipment Total Heating Energy", internal: true, category: energyDriverCategoryEquipment, objectType: "HotWaterEquipment", optional: true},
+	{kind: "input.equipment.steam", label: "Steam equipment", variable: "Zone Steam Equipment Total Heating Energy", internal: true, category: energyDriverCategoryEquipment, objectType: "SteamEquipment", optional: true},
 }
 
 func energyPathThermalInputVariable(name string) bool {
@@ -65,6 +76,7 @@ func mergeEnergyPathDiagnosticsAdditions(additions []idf.OutputObjectRequest) []
 }
 
 func (builder *purposePlanBuilder) addEnergyPathThermalInputOutputs(zoneKeys []string) {
+	owners := energyPathInternalInputOwners(builder.geometry, builder.doc)
 	selected := map[string]bool{}
 	for _, zone := range zoneKeys {
 		selected[normalizePurposeToken(zone)] = true
@@ -76,6 +88,9 @@ func (builder *purposePlanBuilder) addEnergyPathThermalInputOutputs(zoneKeys []s
 	}
 	sort.Strings(surfaceKeys)
 	for _, definition := range energyPathThermalInputDefinitions {
+		if definition.optional && !docHasObject(builder.doc, definition.objectType) {
+			continue
+		}
 		frequency := "Monthly"
 		if definition.incident {
 			// Native monthly averages carry full-calendar-month Interval in some
@@ -85,6 +100,9 @@ func (builder *purposePlanBuilder) addEnergyPathThermalInputOutputs(zoneKeys []s
 		}
 		if definition.internal {
 			for _, zone := range zoneKeys {
+				if definition.optional && !owners[definition.kind][normalizePurposeToken(zone)] {
+					continue
+				}
 				builder.addVariableWithReason(SimulationPurposeBasicEnergy, zone, definition.variable, frequency, "medium", "Measured thermal input context; never added to allocated heat-driver pressure.", "Basic Energy Path")
 			}
 			continue
@@ -332,11 +350,11 @@ func readEnergyPathThermalInputs(path string, plan *PurposeRunPlan, context ener
 		}
 	}
 	verifiedZones := verifiedEnergyPathThermalInputZones(db, zoneNames, context)
-	series, err := readEnergyPathThermalInputDictionaries(db, axes, roster, zoneNames, verifiedZones)
+	series, err := readEnergyPathThermalInputDictionaries(db, axes, roster, zoneNames, verifiedZones, context.ThermalInputOwners)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	values, sources := collectEnergyPathThermalInputValues(series, roster, zoneNames, months)
+	values, sources := collectEnergyPathThermalInputValues(series, roster, zoneNames, months, context.ThermalInputOwners)
 	return values, sources, months, nil
 }
 
@@ -413,7 +431,7 @@ FROM Surfaces s JOIN Zones z ON z.ZoneIndex=s.ZoneIndex`)
 	}
 }
 
-func readEnergyPathThermalInputDictionaries(db *sql.DB, axes energyPathThermalInputAxes, roster map[string]energyPathThermalInputSurface, zoneNames map[string]string, verifiedZones map[string]float64) ([]energyPathThermalInputSeries, error) {
+func readEnergyPathThermalInputDictionaries(db *sql.DB, axes energyPathThermalInputAxes, roster map[string]energyPathThermalInputSurface, zoneNames map[string]string, verifiedZones map[string]float64, owners map[string]map[string]bool) ([]energyPathThermalInputSeries, error) {
 	rows, err := db.Query(`SELECT ReportDataDictionaryIndex,KeyValue,Name,Units,ReportingFrequency FROM ReportDataDictionary WHERE IsMeter=0 ORDER BY ReportDataDictionaryIndex`)
 	if err != nil {
 		return nil, err
@@ -434,6 +452,10 @@ func readEnergyPathThermalInputDictionaries(db *sql.DB, axes energyPathThermalIn
 				frequency: frequency, values: map[int]float64{}, observed: map[int]bool{}}
 			if definition.internal {
 				item.zone = zoneNames[normalizePurposeToken(key)]
+				item.category = definition.category
+				if definition.optional && owners != nil && !owners[definition.kind][normalizePurposeToken(item.zone)] {
+					continue
+				}
 				factor, proven := verifiedZones[normalizePurposeToken(item.zone)]
 				if item.zone == "" || !proven {
 					continue
@@ -575,7 +597,7 @@ func readEnergyPathThermalInputSeries(db *sql.DB, series []energyPathThermalInpu
 	return nil
 }
 
-func collectEnergyPathThermalInputValues(series []energyPathThermalInputSeries, roster map[string]energyPathThermalInputSurface, zones map[string]string, months []int) ([]energyPathThermalInputValue, []EnergyDataSource) {
+func collectEnergyPathThermalInputValues(series []energyPathThermalInputSeries, roster map[string]energyPathThermalInputSurface, zones map[string]string, months []int, owners map[string]map[string]bool) ([]energyPathThermalInputValue, []EnergyDataSource) {
 	byIdentity := map[string][]energyPathThermalInputSeries{}
 	for _, item := range series {
 		key := item.definition.kind + "|" + normalizePurposeToken(item.key)
@@ -584,10 +606,24 @@ func collectEnergyPathThermalInputValues(series []energyPathThermalInputSeries, 
 	var values []energyPathThermalInputValue
 	used := map[string]energyPathThermalInputSeries{}
 	for _, definition := range energyPathThermalInputDefinitions {
+		if definition.optional && owners == nil {
+			present := false
+			for _, item := range series {
+				present = present || item.definition.kind == definition.kind
+			}
+			if !present {
+				// No native dictionary is absent evidence, not a measured zero.
+				// Optional equipment families need not exist in every model.
+				continue
+			}
+		}
 		groups := map[string][]string{}
 		if definition.internal {
 			for key, name := range zones {
-				groups[name+"|"] = []string{key}
+				if definition.optional && owners != nil && !owners[definition.kind][key] {
+					continue
+				}
+				groups[name+"|"+definition.category] = []string{key}
 			}
 		} else {
 			for key, surface := range roster {
@@ -674,7 +710,12 @@ func energyPathThermalInputExplanation(kind string) string {
 		return "Reported exterior absorbed solar, distinct from incident solar. This context is not a conserved allocation into the room or an insulation saving."
 	case "input.internal_gains":
 		return "Native total internal heat gain, before convective/radiant/latent paths and time shifts. Association with allocated internal drivers is contextual, not a causal allocation."
+	case "input.people", "input.lighting":
+		return "Native prescribed internal-source total heat (including its reported radiant, convective and latent paths). The resulting allocated internal-gain driver is a separate room-response quantity; the pair is not an equipment efficiency."
 	default:
+		if strings.HasPrefix(kind, "input.equipment.") {
+			return "Native equipment-family total heat gain (radiant, convective and latent; lost heat is excluded). Separate equipment families retain distinct native observations. Association with the resulting internal-gain driver is contextual, not a conserved causal split or equipment efficiency."
+		}
 		return "Native signed exterior surface exchange; positive heat enters the outside face. Boundary context and allocated room heat drivers have different physical boundaries and need not balance."
 	}
 }
@@ -683,6 +724,9 @@ func appendEnergyPathThermalInputGraphs(result *EnergyExplanationResult, values 
 	appendGraph := func(nodes *[]EnergyExplanationNode, links *[]EnergyPathLink, zone, period string) {
 		selected := energyPathThermalInputGraphValues(values, months, zone, period)
 		for _, value := range selected {
+			if energyPathThermalInputIsResponseContext(value.kind) {
+				continue
+			}
 			// Period lives in metadata, not identity: an Annual selection must
 			// find the same physical input in every native Monthly graph.
 			id := "input:" + value.kind + ":" + value.category + ":" + normalizePurposeToken(zone)
@@ -721,6 +765,15 @@ func appendEnergyPathThermalInputGraphs(result *EnergyExplanationResult, values 
 			appendGraph(&period.Nodes, &period.Links, zoneResult.Scope.ZoneName, period.ID)
 		}
 	}
+}
+
+func energyPathThermalInputIsResponseContext(kind string) bool {
+	for _, definition := range energyPathThermalInputDefinitions {
+		if definition.kind == kind {
+			return definition.contextOnly
+		}
+	}
+	return false
 }
 
 func energyPathThermalInputMatchesDriver(value energyPathThermalInputValue, driver EnergyExplanationNode) bool {

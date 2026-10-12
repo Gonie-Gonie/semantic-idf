@@ -326,7 +326,10 @@ func energyPathExpectedThermalInputFrequency(name string) (string, bool) {
 	case "Surface Outside Face Convection Heat Gain Energy",
 		"Surface Outside Face Net Thermal Radiation Heat Gain Energy",
 		"Surface Outside Face Solar Radiation Heat Gain Energy",
-		"Surface Heat Storage Energy", "Zone Total Internal Total Heating Energy":
+		"Surface Heat Storage Energy", "Zone Total Internal Total Heating Energy",
+		"Zone People Total Heating Energy", "Zone Lights Total Heating Energy",
+		"Zone Electric Equipment Total Heating Energy", "Zone Gas Equipment Total Heating Energy", "Zone Other Equipment Total Heating Energy",
+		"Zone Hot Water Equipment Total Heating Energy", "Zone Steam Equipment Total Heating Energy":
 		return "Monthly", true
 	}
 	return "", false

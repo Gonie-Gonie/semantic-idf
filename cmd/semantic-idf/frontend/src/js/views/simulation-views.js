@@ -11,6 +11,7 @@ import {
   energyPathResultForState,
   energyPathInspectorSources,
   energyPathZoneNames,
+  energyPathScopeControlValue,
   energyPathHasPayload,
   isEnergyPathV2,
   normalizeEnergyPathViewState,
@@ -71,7 +72,7 @@ let simulationEnergyDrawer = { tab: "data", stage: "", outputSource: "" };
 const simulationEnergySceneSlot = createEnergyPathSceneSlot();
 const simulationEnergyPrimaryKeys = Object.keys(migrateEnergyPathState().primary);
 const simulationEnergyControls = Object.freeze({
-  scope: { attribute: "data-simulation-energy-scope", key: "simulationEnergyScopeKind", values: ["building", "zone"] },
+  scope: { attribute: "data-simulation-energy-scope", key: "simulationEnergyScopeKind" },
   zone: { attribute: "data-simulation-energy-zone-name", key: "simulationEnergyZoneName" },
   period: { attribute: "data-simulation-energy-path-period", key: "simulationEnergyPeriod", values: ENERGY_PATH_PERIODS.map((period) => period.value) },
 });
@@ -5157,13 +5158,14 @@ export function handleSimulationEnergyDashboardChange(event) {
   // native focus, current graph, selection and Back/Forward stacks untouched.
   if (kind === "zone" && event.type === "input") return;
   let value = target.value;
+  const currentValue = kind === "scope" ? energyPathScopeControlValue(state) : state[control.key];
   const valid = !target.disabled && (kind === "zone"
     ? Boolean(value = energyPathZoneNames(explanation).find((name) => name.toLowerCase() === String(value || "").trim().toLowerCase()))
-    : control.values.includes(value) && [...(target.options || [])].some((option) => option.value === value && !option.disabled && !option.closest("optgroup")?.disabled));
+    : (kind === "scope" || control.values.includes(value)) && [...(target.options || [])].some((option) => option.value === value && !option.disabled && !option.closest("optgroup")?.disabled));
   // Reject invalid / disabled values before the presentation helper's legacy
   // fallback defaults can change a valid Zone, month or service context.
-  if (!valid || value === state[control.key]) {
-    target.value = state[control.key] || "";
+  if (!valid || value === currentValue) {
+    target.value = currentValue || "";
     return;
   }
   target.value = value;
@@ -5171,7 +5173,7 @@ export function handleSimulationEnergyDashboardChange(event) {
   const update = updateEnergyPathControlState(event, next, explanation);
   if (!update.handled || !update.render) return;
   if (Object.values(simulationEnergyControls).every(({ key }) => next[key] === state[key])) {
-    target.value = state[control.key] || "";
+    target.value = currentValue || "";
     return;
   }
   // One shared history point before any primary mutation. A select's following

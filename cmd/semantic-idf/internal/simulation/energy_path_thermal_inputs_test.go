@@ -24,7 +24,7 @@ type thermalInputFixture struct {
 // calendar months. Monthly SQL Interval deliberately retains calendar lengths.
 func newThermalInputFixture(t *testing.T) thermalInputFixture {
 	t.Helper()
-	doc := parsePurposePlanFixture(t, "Version,25.1; Zone,Office,0,0,0,0,1,2; Zone,Lab,0,0,0,0,1,1; ZoneList,Repeated,Office; ZoneGroup,Repeat,Repeated,3;")
+	doc := parsePurposePlanFixture(t, "Version,25.1; Zone,Office,0,0,0,0,1,2; Zone,Lab,0,0,0,0,1,1; ZoneList,Repeated,Office; ZoneGroup,Repeat,Repeated,3; ZoneList,AllInputZones,Office,Lab; People,Occupants,AllInputZones; Lights,Lighting,AllInputZones; ElectricEquipment,Electric,AllInputZones; GasEquipment,Gas,AllInputZones; OtherEquipment,Other,None,AllInputZones; HotWaterEquipment,HotWater,AllInputZones; SteamEquipment,Steam,AllInputZones;")
 	geometry := idf.GeometryReport{
 		Zones: []idf.GeometryZone{{ID: "z1", Name: "Office"}, {ID: "z2", Name: "Lab"}},
 		Surfaces: []idf.GeometrySurface{

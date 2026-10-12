@@ -10,12 +10,12 @@ let chartLabelContext = null;
 
 // Keep the selected group's original members fixed while monthly grouping changes.
 // Missing observations remain gaps; an annual total never supplies monthly values.
-export function energyPathMonthlyChartSeries(item = {}, kind = "node", graphs = []) {
+export function energyPathMonthlyChartSeries(item = {}, kind = "node", graphs = [], endpointLabels = {}) {
   const wanted = new Set(members(item).map((member) => member.id));
   const fields = kind === "link" ? ["fromValue", "toValue"] : ["value"];
   return fields.map((field) => ({
     id: field,
-    label: kind === "link" ? monthlyLinkLabel(item, field) : item.label || item.id || "",
+    label: kind === "link" ? endpointLabels[field === "fromValue" ? "from" : "to"] || monthlyLinkLabel(item, field) : item.label || item.id || "",
     unit: kind === "link" ? item[field === "fromValue" ? "fromUnit" : "toUnit"] || "kWh" : item.unit || "kWh",
     points: Array.from({ length: 12 }, (_, month) => {
       const graph = graphs[month] || {};
@@ -29,18 +29,49 @@ export function energyPathMonthlyChartSeries(item = {}, kind = "node", graphs = 
           found.set(member.id, kind === "link" ? member : value);
         }
       }
-      if (kind === "link" && ["input_to_driver", "load_to_auxiliary"].includes(item.relation)) {
+      if (kind === "link" && ["input_to_driver", "load_to_auxiliary", "source_correspondence"].includes(item.relation)) {
         return { x: month, label: t(`simulation.month.${month + 1}`, {}, `M${month + 1}`),
           value: found.size === wanted.size ? contextMonthlyValue(item.relation, field, [...found.values()], records, wanted) : null };
       }
       const values = [...found.values()].map((value) => kind === "link" ? value[field] : value);
+      const ratios = kind === "link" && endpointLabels.ratioForLink
+        ? [...found.values()].map((record) => endpointLabels.ratioForLink(record, graph)) : [];
+      const ratioKind = ratios.length && ratios.every((ratio) => ratio?.kind && ratio.kind === ratios[0].kind) ? ratios[0].kind : "";
       return {
         x: month,
         label: t(`simulation.month.${month + 1}`, {}, `M${month + 1}`),
         value: found.size === wanted.size && values.every(finite) ? values.reduce((sum, value) => sum + value, 0) : null,
+        ...(kind === "link" ? { ratioKind } : {}),
       };
     }),
   }));
+}
+
+// Ratios use paired observations on one calendar, never averages of component
+// ratios or pixel widths. A validated conversion kind is supplied by the graph's
+// existing carrier/service validator; independent references retain a generic
+// quantity-ratio label. Missing pairs and zero denominators remain gaps.
+export function energyPathLinkRatioChartSeries(item = {}, series = [], conversionRatio = null) {
+  const from = series.find((trace) => trace.id === "fromValue"), to = series.find((trace) => trace.id === "toValue");
+  const reference = ["input_to_driver", "load_to_auxiliary", "source_correspondence"].includes(token(item.relation));
+  const kind = token(item.relation) === "load_to_end_use" && conversionRatio?.kind ? conversionRatio.kind : "";
+  const label = kind ? conversionRatio.label : copy(reference ? "ReferenceRatio" : "Ratio", reference ? "Reference quantity ratio" : "From / to ratio");
+  const toPoints = new Map((to?.points || []).map((point) => [point.x, point]));
+  const fromFactor = chartEnergyUnitFactor(from?.unit), toFactor = chartEnergyUnitFactor(to?.unit);
+  return [{ id: "ratio", label, unit: "", ratio: true, ratioKind: kind || "quantity_ratio", reference,
+    points: (from?.points || []).map((point) => {
+      const other = toPoints.get(point.x);
+      const validated = !kind || point.ratioKind === kind && other?.ratioKind === kind;
+      const value = validated && fromFactor !== null && toFactor !== null && finite(point.value) && finite(other?.value) && other.value !== 0
+        ? point.value * fromFactor / (other.value * toFactor) : null;
+      return { x: point.x, label: point.label, value: finite(value) ? value : null };
+    }),
+  }];
+}
+
+function chartEnergyUnitFactor(unit) {
+  const match = /^(j|kj|mj|gj|wh|kwh|mwh)(?:\s+(?:thermal|site|boundary))?$/.exec(token(unit));
+  return match ? { j: 1 / 3600000, kj: 1 / 3600, mj: 1 / 3.6, gj: 1000 / 3.6, wh: 1 / 1000, kwh: 1, mwh: 1000 }[match[1]] : null;
 }
 
 function monthlyLinkLabel(item, field) {
@@ -57,6 +88,23 @@ function contextMonthlyValue(relation, field, links, records, wanted) {
     // Fan and pump served-load sets can overlap without being identical.
     // Keep each source attribution separate rather than invent their union.
     return links.length === 1 && finite(links[0][field]) ? links[0][field] : null;
+  }
+  if (relation === "source_correspondence") {
+    // Cooling and heating drivers can reference one measured direct-use total.
+    // Sum distinct original driver endpoints; count that shared site endpoint
+    // once. A changed group may not import an unrelated original member.
+    for (const record of records) {
+      const original = members(record);
+      if (original.some((member) => wanted.has(member.id)) && !original.every((member) => wanted.has(member.id))) return null;
+    }
+    const observations = new Map(), endpointField = field === "fromValue" ? "fromId" : "toId";
+    for (const link of links) {
+      const endpoint = link[endpointField], value = link[field];
+      if (!endpoint || !finite(value) || observations.has(endpoint) && observations.get(endpoint) !== value) return null;
+      observations.set(endpoint, value);
+    }
+    const total = [...observations.values()].reduce((sum, value) => sum + value, 0);
+    return observations.size && finite(total) ? total : null;
   }
   const observations = new Map();
   for (const record of records) {
@@ -191,34 +239,58 @@ function hourlyCalendar(label, leap) {
   return { month, hour: (days.slice(0, month - 1).reduce((sum, count) => sum + count, 0) + day - 1) * 24 + hour };
 }
 
-export function renderEnergyPathComponentChart({ item = {}, kind = "node", label = "", frequency = "monthly", monthly = [], hourly = [], display } = {}) {
+export function renderEnergyPathComponentChart({ item = {}, kind = "node", label = "", frequency = "monthly", monthly = [], hourly = [], display, endpointLabels = {}, conversionRatio = null } = {}) {
   frequency = frequency === "hourly" ? "hourly" : "monthly";
   const series = frequency === "hourly" ? hourly : monthly;
   const available = series.some((trace) => (trace.points || []).some((point) => finite(point.value))) &&
     (!display?.perArea || finite(display.areaM2) && display.areaM2 > 0);
   const heading = label || item.label || item.id || "";
+  const validatedConversion = token(item.relation) === "load_to_end_use" ? conversionRatio : null;
+  const quantities = available ? renderPlot(series, frequency, display, item.level === "input") : `<div class="energy-path-chart-empty" data-energy-path-chart-empty>${escapeHTML(display?.perArea && !(display.areaM2 > 0)
+    ? copy("AreaUnavailable", "Floor area is unavailable for this result.")
+    : frequency === "hourly" ? copy("HourlyUnavailable", "Hourly data is unavailable for this component.") : copy("MonthlyUnavailable", "Monthly data is unavailable for this component."))}</div>`;
+  const ratio = kind === "link" ? energyPathLinkRatioChartSeries(item, frequency === "monthly" ? monthly : [], validatedConversion) : [];
+  const ratioAvailable = ratio.some((trace) => trace.points.some((point) => finite(point.value)));
+  const ratioPanel = kind === "link" ? `<section class="energy-path-chart-panel" data-energy-path-chart-panel="ratio"><h4>${escapeHTML(ratio[0]?.label || copy("Ratio", "From / to ratio"))}</h4>
+    ${ratioAvailable ? renderPlot(ratio, frequency, null, false, true) : `<div class="energy-path-chart-empty" data-energy-path-ratio-empty>${escapeHTML(copy("RatioUnavailable", "A ratio requires paired data and a nonzero denominator."))}</div>`}
+    ${ratio[0]?.reference ? `<small class="energy-path-chart-note">${escapeHTML(copy("ReferenceRatioNote", "Reference quantities have different physical boundaries; this ratio is not a conversion efficiency."))}</small>` : ""}</section>` : "";
   return `<aside class="energy-path-component-chart" data-energy-path-component-chart="${escapeHTML(item.id || "")}" data-energy-path-inspector="${escapeHTML(item.id || "")}"${kind === "link" ? ` data-energy-path-link-inspector="${escapeHTML(item.id || "")}"` : ""} data-energy-path-chart-kind="${kind}" data-energy-path-chart-mode="${frequency}">
     <header><strong>${escapeHTML(heading)}</strong><select data-energy-path-chart-frequency aria-label="${escapeHTML(copy("Frequency", "Chart frequency"))}">
       <option value="monthly"${frequency === "monthly" ? " selected" : ""}>${escapeHTML(copy("Monthly", "Monthly"))}</option>
       <option value="hourly"${frequency === "hourly" ? " selected" : ""}>${escapeHTML(copy("Hourly", "Hourly"))}</option>
     </select></header>
-    ${available ? renderPlot(series, frequency, display, item.level === "input") : `<div class="energy-path-chart-empty" data-energy-path-chart-empty>${escapeHTML(display?.perArea && !(display.areaM2 > 0)
-      ? copy("AreaUnavailable", "Floor area is unavailable for this result.")
-      : frequency === "hourly" ? copy("HourlyUnavailable", "Hourly data is unavailable for this component.") : copy("MonthlyUnavailable", "Monthly data is unavailable for this component."))}</div>`}
+    ${kind === "link" ? renderLinkQuantities(item, endpointLabels, display, validatedConversion, ratio[0]) : ""}
+    <div class="energy-path-chart-panels${kind === "link" ? " has-ratio" : ""}"><section class="energy-path-chart-panel" data-energy-path-chart-panel="quantities">${kind === "link" ? `<h4>${escapeHTML(copy("Quantities", "Endpoint quantities"))}</h4>` : ""}${quantities}</section>${ratioPanel}</div>
   </aside>`;
 }
 
-function renderPlot(series, frequency, display, boundaryInput = false) {
+function renderLinkQuantities(item, labels, display, conversionRatio, ratio) {
+  const from = labels.from || monthlyLinkLabel(item, "fromValue"), to = labels.to || monthlyLinkLabel(item, "toValue");
+  const fromFactor = chartEnergyUnitFactor(item.fromUnit), toFactor = chartEnergyUnitFactor(item.toUnit);
+  const value = fromFactor !== null && toFactor !== null && finite(item.fromValue) && finite(item.toValue) && item.toValue !== 0
+    ? item.fromValue * fromFactor / (item.toValue * toFactor) : null;
+  return `<dl class="energy-path-chart-quantities"><div><dt>${escapeHTML(from)}</dt><dd>${escapeHTML(formatEnergyPathDisplayValue(item.fromValue, item.fromUnit || "kWh", display))}</dd></div><div><dt>${escapeHTML(to)}</dt><dd>${escapeHTML(formatEnergyPathDisplayValue(item.toValue, item.toUnit || "kWh", display))}</dd></div><div><dt>${escapeHTML(conversionRatio?.label || ratio?.label || copy("Ratio", "From / to ratio"))}</dt><dd data-energy-path-current-ratio="${finite(value) ? value : ""}">${escapeHTML(chartRatioValue(value))}</dd></div></dl>`;
+}
+
+function chartRatioValue(value) {
+  if (finite(value) && Math.abs(value) < .005) value = 0;
+  return finite(value) ? value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
+}
+
+function renderPlot(series, frequency, display, boundaryInput = false, ratio = false) {
   const width = 1000, height = 340, right = 42, top = 52, bottom = 81;
   const traces = series.map((trace) => ({ ...trace, points: trace.points || [] }));
   // Both thermal and site traces are canonical kWh, divided by one scope area.
   const points = traces.flatMap((trace) => trace.points).filter((point) => finite(point.value));
   const minimum = points.reduce((value, point) => Math.min(value, point.value), 0), maximum = points.reduce((value, point) => Math.max(value, point.value), 0);
   const low = minimum, high = maximum > minimum ? maximum : minimum + 1;
-  const number = (value, unit = "kWh") => formatEnergyPathDisplayValue(value, unit, display, { includeUnit: false });
+  const number = (value, unit = "kWh") => ratio ? chartRatioValue(value) : formatEnergyPathDisplayValue(value, unit, display, { includeUnit: false });
   const yTicks = Array.from({ length: 5 }, (_, index) => {
     const value = low + (high - low) * index / 4;
-    return { value, label: number(value) };
+    const displayed = !ratio && display?.perArea ? value / display.areaM2 : value;
+    const fullLabel = number(value);
+    const label = Math.abs(displayed) >= 10000 ? displayed.toLocaleString(undefined, { notation: "compact", maximumFractionDigits: 2 }) : fullLabel;
+    return { value, label, fullLabel };
   });
   const left = Math.max(112, ...yTicks.map((tick) => Math.ceil(chartLabelWidth(tick.label) + 18)));
   const plotWidth = width - left - right, plotHeight = height - top - bottom;
@@ -229,7 +301,7 @@ function renderPlot(series, frequency, display, boundaryInput = false) {
   const baseline = y(0);
   const grid = yTicks.map((tick) => {
     const position = y(tick.value);
-    return `<line class="energy-path-chart-grid" x1="${left}" y1="${position}" x2="${width - right}" y2="${position}"/><text class="energy-path-chart-tick" data-energy-path-chart-tick="y" x="${left - 10}" y="${position + 5}" text-anchor="end">${escapeHTML(tick.label)}</text>`;
+    return `<line class="energy-path-chart-grid" x1="${left}" y1="${position}" x2="${width - right}" y2="${position}"/><text class="energy-path-chart-tick" data-energy-path-chart-tick="y" x="${left - 10}" y="${position + 5}" text-anchor="end">${escapeHTML(tick.label)}<title>${escapeHTML(tick.fullLabel)}</title></text>`;
   }).join("");
   const visiblePoints = traces[0]?.points || [];
   const ticks = frequency === "monthly" ? visiblePoints : hourlyChartTicks(visiblePoints, x);
@@ -239,10 +311,10 @@ function renderPlot(series, frequency, display, boundaryInput = false) {
   }).join("");
   const marks = traces.map((trace, traceIndex) => {
     const color = traceIndex % 6;
-    const title = (point) => `${point.label} · ${trace.label}: ${formatEnergyPathDisplayValue(point.value, trace.unit || "kWh", display)}`;
-    if (frequency === "monthly") {
+    const title = (point) => `${point.label} · ${trace.label}: ${ratio ? chartRatioValue(point.value) : formatEnergyPathDisplayValue(point.value, trace.unit || "kWh", display)}`;
+    if (frequency === "monthly" && !ratio) {
       const barWidth = plotWidth / 12 * .68 / traces.length;
-      return trace.points.filter((point) => finite(point.value)).map((point) => `<rect class="energy-path-chart-mark energy-path-chart-color-${color}" data-energy-path-chart-value="${point.value}" x="${x(point.x) - barWidth * traces.length / 2 + traceIndex * barWidth}" y="${Math.min(y(point.value), baseline)}" width="${barWidth}" height="${Math.max(1, Math.abs(y(point.value) - baseline))}" tabindex="0"><title>${escapeHTML(title(point))}</title></rect>`).join("");
+      return trace.points.filter((point) => finite(point.value)).map((point) => `<rect class="energy-path-chart-mark energy-path-chart-color-${color}" data-energy-path-chart-${ratio ? "ratio" : "value"}="${point.value}" x="${x(point.x) - barWidth * traces.length / 2 + traceIndex * barWidth}" y="${Math.min(y(point.value), baseline)}" width="${barWidth}" height="${Math.max(1, Math.abs(y(point.value) - baseline))}" tabindex="0"><title>${escapeHTML(title(point))}</title></rect>`).join("");
     }
     let previous = null;
     const drawn = hourlyPlotPoints(trace.points, Math.max(48, Math.floor(2400 / traces.length)));
@@ -252,20 +324,20 @@ function renderPlot(series, frequency, display, boundaryInput = false) {
       previous = point.segment;
       return `${command}${x(point.x)},${y(point.value)}`;
     }).join(" ");
-    return `<path class="energy-path-chart-line energy-path-chart-color-${color}" d="${path}"/>` + drawn.filter((point) => finite(point.value)).map((point) => `<circle class="energy-path-chart-mark energy-path-chart-color-${color}" data-energy-path-chart-value="${point.value}" cx="${x(point.x)}" cy="${y(point.value)}" r="2.5"><title>${escapeHTML(title(point))}</title></circle>`).join("");
+    return `<path class="energy-path-chart-line energy-path-chart-color-${color}" d="${path}"/>` + drawn.filter((point) => finite(point.value)).map((point) => `<circle class="energy-path-chart-mark energy-path-chart-color-${color}" data-energy-path-chart-${ratio ? "ratio" : "value"}="${point.value}" cx="${x(point.x)}" cy="${y(point.value)}" r="${ratio ? 4 : 2.5}"><title>${escapeHTML(title(point))}</title></circle>`).join("");
   }).join("");
   return `<div class="energy-path-chart-plot"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(copy(frequency === "hourly" ? "Hourly" : "Monthly", frequency === "hourly" ? "Hourly" : "Monthly"))}">
-    <text class="energy-path-chart-axis-label" data-energy-path-chart-axis="y" x="${left}" y="30">${escapeHTML(`${boundaryInput ? copy("Boundary", "Reported boundary energy") : frequency === "hourly" ? copy("Measured", "Measured energy") : copy("Component", "Component energy")} (${energyPathDisplayUnit("kWh", display)})`)}</text>
+    <text class="energy-path-chart-axis-label" data-energy-path-chart-axis="y" x="${left}" y="40">${escapeHTML(ratio ? traces[0]?.label || copy("Ratio", "From / to ratio") : `${boundaryInput ? copy("Boundary", "Reported boundary energy") : frequency === "hourly" ? copy("Measured", "Measured energy") : copy("Component", "Component energy")} (${energyPathDisplayUnit("kWh", display)})`)}</text>
     <text class="energy-path-chart-axis-label" data-energy-path-chart-axis="x" x="${left + plotWidth / 2}" y="${height - 16}" text-anchor="middle">${escapeHTML(frequency === "hourly" ? copy("DateHour", "Date & hour") : copy("Month", "Month"))}</text>${grid}${labels}<line class="energy-path-chart-axis" x1="${left}" x2="${width - right}" y1="${baseline}" y2="${baseline}"/>${marks}
   </svg></div>${traces.length > 1 || frequency === "hourly" ? `<div class="energy-path-chart-legend">${traces.map((trace, index) => `<span><i class="energy-path-chart-color-${index % 6}"></i>${escapeHTML(trace.label)}</span>`).join("")}</div>` : ""}`;
 }
 
-// Minimum chart widths bound corrected tick fonts to 20 SVG units. Reserve a
+// Minimum chart widths bound corrected tick fonts to 34 SVG units. Reserve a
 // little extra for the inherited UI family without measuring the mounted SVG.
 function chartLabelWidth(label) {
   chartLabelContext ||= document.createElement("canvas").getContext("2d");
   if (!chartLabelContext) return String(label).length * 13;
-  chartLabelContext.font = `22px ${getComputedStyle(document.documentElement).fontFamily}`;
+  chartLabelContext.font = `34px ${getComputedStyle(document.documentElement).fontFamily}`;
   return chartLabelContext.measureText(String(label)).width;
 }
 

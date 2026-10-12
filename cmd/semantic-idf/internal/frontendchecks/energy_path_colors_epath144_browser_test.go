@@ -119,7 +119,7 @@ try{
  }else{
  check(innerWidth===1600&&innerHeight===900,"theme acceptance did not use actual1600x900 viewport");
  const originalGeometry=geometry(),paths=[...host.querySelectorAll("[data-energy-path-ribbon]")],nodes=graph().nodes,nodeColorKeys=Object.fromEntries([...host.querySelectorAll("[data-energy-path-layout-node]")].map(node=>[node.dataset.energyPathLayoutNode,node.dataset.energyPathColor]));
- check(paths.length===24&&host.querySelectorAll("[data-energy-path-layout-node]").length===25,"hatch representation duplicated or omitted quantitative nodes/paths");
+ check(paths.length===22&&host.querySelectorAll("[data-energy-path-layout-node]").length===23,"hatch representation duplicated or omitted quantitative nodes/paths after Internal gains grouping");
  const parser=document.createElement("canvas");parser.width=parser.height=1;const context=parser.getContext("2d",{willReadFrequently:true});
  // Canvas normalizes rgb(), color(srgb), color-mix() results and alpha without
  // assuming a particular computed-color serialization or skipping composition.
@@ -185,7 +185,7 @@ try{
  check(hatchShape("allocated").length>0&&hatchShape("residual").length>0&&JSON.stringify(hatchShape("allocated"))!==JSON.stringify(hatchShape("residual")),"allocation and residual use no distinguishable hatch geometry");
  const checkCarrierColors=contextLabel=>{for(const node of graph().nodes.filter(node=>node.level==="carrier")){const expected=themeColors.get("dark")[node.carrier],paint=shapeBase(host.querySelector('[data-energy-path-bar="'+node.id+'"]')).slice(0,3);check(button(node.id).dataset.energyPathColor===expected.key&&JSON.stringify(paint)===JSON.stringify(expected.paint),contextLabel+" changed fixed carrier palette: "+node.carrier);}};
  check(!host.querySelector("[data-simulation-energy-service]"),"removed Service selector is still visible");checkCarrierColors("all services");
- change("[data-simulation-energy-scope]","zone");change("[data-simulation-energy-zone-name]","Office");
+ change("[data-simulation-energy-scope]","zone:Office");
  check(pane.scrollHeight<=pane.clientHeight+1&&pane.scrollWidth<=pane.clientWidth+1,"Zone color encoding introduced scrolling: "+pane.scrollHeight+"/"+pane.clientHeight);
  checkCarrierColors("Zone filter");
  change("[data-simulation-energy-path-period]","M1");checkCarrierColors("month filter");

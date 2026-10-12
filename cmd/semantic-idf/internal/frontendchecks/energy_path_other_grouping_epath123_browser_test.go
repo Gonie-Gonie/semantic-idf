@@ -132,7 +132,7 @@ try {
   check(fansAndPumps?.value===5&&equalSet(fansAndPumps.originalNodeIds,["end_use.fans.building","end_use.pumps.building"]),"existing fans/pumps presentation lost original node IDs");
   check(equalSet((fansAndPumps?.groupedMembers||[]).map(m=>m.id),["end_use.fans.building","end_use.pumps.building"]),"existing fans/pumps presentation lost member snapshots");
   const serviceDrivers=["cooling","heating"].map((service,index)=>({id:"driver.internal.people."+service+".building",level:"driver",driverCategory:"internal.people",serviceKind:service,value:index+2,allocatedValue:index+2,unit:"kWh",scaleDomain:"thermal",sourceIds:["people."+service]}));
-  const mergedPeople=view.energyPathMergeAllServiceDrivers(serviceDrivers,[]).nodes.find(n=>n.driverCategory==="internal.people");
+  const mergedPeople=view.energyPathMergeAllServiceDrivers(serviceDrivers,[]).nodes.find(n=>n.driverCategory==="internal.gains");
   check(mergedPeople?.value===5&&equalSet(mergedPeople.originalNodeIds,serviceDrivers.map(n=>n.id)),"All-service driver projection lost service-specific original IDs");
   check(equalSet((mergedPeople?.groupedMembers||[]).map(m=>m.id),serviceDrivers.map(n=>n.id)),"All-service driver projection lost original allocation members");
 

@@ -43,6 +43,7 @@ type energyDriverBuildContext struct {
 	StorageChargeInventory       energyPathStorageChargeInventory
 	PVElectricalInventory        energyPathPVElectricalInventory
 	CogenerationInventory        energyPathCogenerationInventory
+	ThermalInputOwners           map[string]map[string]bool
 }
 
 func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Document) energyDriverBuildContext {
@@ -89,6 +90,7 @@ func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Doc
 		}
 	}
 	return energyDriverBuildContext{
+		ThermalInputOwners:           energyPathInternalInputOwners(report, documents...),
 		Enabled:                      true,
 		SurfaceCategories:            index,
 		AirCouplings:                 buildEnergyAirCouplingIndex(report.Topology),

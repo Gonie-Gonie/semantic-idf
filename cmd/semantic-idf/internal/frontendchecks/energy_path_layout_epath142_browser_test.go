@@ -161,8 +161,10 @@ try{
  check(!host.querySelector(".energy-path-kpis,[data-energy-path-kpi],[data-simulation-energy-service]"),"removed summary cards or Service dropdown remain in the real result stack");
  check(!host.querySelector(".energy-path-conversion-flow,.energy-path-auxiliary-flow"),"default graph still appends duplicate conversion / auxiliary card lists");
  const projected=graph(),counts=Object.fromEntries(["driver","load","end_use","carrier"].map(level=>[level,projected.nodes.filter(n=>n.level===level).length]));
- check(JSON.stringify(counts)===JSON.stringify({driver:12,load:2,end_use:8,carrier:2}),"material categories disappeared from real graph: "+JSON.stringify(counts));
- check(host.querySelectorAll("[data-energy-path-layout-node]").length===24,"canvas omitted or duplicated graph nodes");
+ check(JSON.stringify(counts)===JSON.stringify({driver:10,load:2,end_use:8,carrier:2}),"material categories or grouped internal gains disappeared from real graph: "+JSON.stringify(counts));
+ check(host.querySelectorAll("[data-energy-path-layout-node]").length===22,"canvas omitted or duplicated graph nodes");
+ const internalGains=projected.nodes.find(node=>node.driverCategory==='internal.gains');
+ check(internalGains?.value===30&&internalGains.groupedMembers.length===3,'Internal gains failed to retain the additive People/Lighting/Equipment contributions');
  const canvas=host.querySelector("[data-energy-path-canvas]"),canvasRect=canvas.getBoundingClientRect(),band=host.querySelector('[data-energy-path-lane-band="direct"]'),bandRect=band?.getBoundingClientRect();
  check(band&&bandRect.height>0,"direct / auxiliary lower lane is absent");
  for(const node of projected.nodes){
@@ -186,24 +188,26 @@ try{
  const pane=document.querySelector("#simulationPane > .simulation-pane");
  check(pane.scrollHeight<=pane.clientHeight+1,"completed default Energy view still requires vertical scroll: "+pane.scrollHeight+"/"+pane.clientHeight);
  for(const selector of[".energy-path-view","[data-energy-path-quality-line]",".energy-path-domain-legend"]){const element=host.querySelector(selector),r=element?.getBoundingClientRect();check(r&&r.top>=0&&r.bottom<=innerHeight+1,"default graph / quality / legend clipped outside viewport: "+selector+" bottom="+r?.bottom);}
- const columns=[...host.querySelectorAll("[data-energy-path-stage]")].map(n=>n.getBoundingClientRect()),divider=host.querySelector("[data-energy-path-divider]");
+ const columns=[...host.querySelectorAll("[data-energy-path-stage]")].map(n=>n.getBoundingClientRect());
  check(columns.every((rect,index)=>index===0||rect.left>columns[index-1].left),"four columns lost left-to-right order");
- check(divider&&/Equipment conversion/i.test(divider.textContent)&&divider.getBoundingClientRect().left>=columns[1].right-1&&divider.getBoundingClientRect().left<=columns[2].left+1,"equipment boundary not between thermal load and end-use columns");
+ check(!host.querySelector('[data-energy-path-divider],[data-energy-path-envelope-context]'),'removed vertical divider remains in the chart');
+ check(host.querySelector('[data-energy-path-unit]')?.textContent==='kWh/m²'&&![...host.querySelectorAll('[data-energy-path-stage] > header')].some(header=>/kWh|reported|thermal/i.test(header.querySelector('small')?.textContent||'')),'chart units were not consolidated in one corner');
+ check(!host.querySelector('[data-energy-path-utility-context]'),'utility context remains above the Energy Path chart');
  check(bandRect.left>=columns[2].left-1,"direct band incorrectly starts in a thermal column");
  const buildingGeometry=geometry();
  evidence.push("viewport "+innerWidth+"x"+innerHeight+", analysis width "+analysis.getBoundingClientRect().width+", canvas "+Math.round(canvasRect.width)+"x"+canvasRect.height+", bottom "+canvasRect.bottom);
  evidence.push([".topbar",".analysis-panel > .tabs",".simulation-run-setup",".simulation-progress-card","#simulationResultTabs","#simulationEnergyDashboard",".energy-path-kpis",".energy-path-controls","[data-energy-path-layout]"].map(selector=>{const r=document.querySelector(selector)?.getBoundingClientRect();return selector+":"+(r?Math.round(r.top)+"+"+Math.round(r.height):"missing");}).join("; "));
  check(projected.relations?.length===2&&!projected.links.some(link=>link.relation==="source_correspondence"),"lighting/equipment correspondence became additive energy flow");
- const lightingDriver=projected.nodes.find(n=>n.driverCategory==="internal.lighting"),lightingUse=projected.nodes.find(n=>n.endUse==="lighting"),equipmentUse=projected.nodes.find(n=>n.endUse==="equipment");
+ const lightingDriver=internalGains,lightingUse=projected.nodes.find(n=>n.endUse==="lighting"),equipmentUse=projected.nodes.find(n=>n.endUse==="equipment");
  button(lightingDriver.id)?.focus();button(lightingDriver.id)?.click();
  check(document.activeElement?.dataset.energyPathLayoutNode===lightingDriver.id&&host.querySelector('[data-energy-path-inspector="'+lightingDriver.id+'"]'),"native focused node activation did not retain focus and open inspector");
- check(button(lightingUse.id)?.dataset.energyPathRelated==="true"&&button(equipmentUse.id)?.dataset.energyPathRelated!=="true","counterpart selection did not highlight only matching lighting source");
- check(host.querySelectorAll("[data-energy-path-layout-node]").length===24,"source correspondence selection changed graph node count");
+ check(button(lightingUse.id)?.dataset.energyPathRelated==="true"&&button(equipmentUse.id)?.dataset.energyPathRelated==="true","grouped Internal gains selection lost one exact source counterpart");
+ check(host.querySelectorAll("[data-energy-path-layout-node]").length===22,"source correspondence selection changed graph node count");
  const cooling=projected.nodes.find(n=>n.level==="load"&&n.serviceKind==="cooling");button(cooling.id)?.click();
  check(host.querySelector('[data-energy-path-inspector="'+cooling.id+'"]')?.textContent.includes(longLabel),"inspector lost full untruncated long load label");
- change("[data-simulation-energy-scope]","zone");change("[data-simulation-energy-zone-name]","Office");
+ change("[data-simulation-energy-scope]","zone:Office");
  const zoneGeometry=geometry();
- check(Object.keys(zoneGeometry).length===24,"Zone dropped equivalent direct categories");
+ check(Object.keys(zoneGeometry).length===22,"Zone dropped equivalent direct categories");
  for(const [id,rect]of Object.entries(buildingGeometry))check(rect&&zoneGeometry[id]&&rect.every((value,index)=>Math.abs(value-zoneGeometry[id][index])<1),"Zone changed category-equivalent geometry: "+id+" "+JSON.stringify([rect,zoneGeometry[id]]));
  check(pane.scrollHeight<=pane.clientHeight+1,"equivalent Zone view requires vertical scroll: "+pane.scrollHeight+"/"+pane.clientHeight);
  evidence.push("Zone "+[".energy-path-kpis",".energy-path-controls","[data-energy-path-layout]","[data-energy-path-quality-line]","[data-energy-path-inspector]",".energy-path-domain-legend"].map(selector=>{const r=host.querySelector(selector)?.getBoundingClientRect();return selector+":"+(r?Math.round(r.top)+"+"+Math.round(r.height):"absent");}).join("; "));

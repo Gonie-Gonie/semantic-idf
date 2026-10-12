@@ -200,13 +200,14 @@ try {
   const pairs = module.energyPathCorrespondencePairs(graph.nodes, graph.relations);
 
   assert(graph.links.every((link) => link.relation !== "source_correspondence"), "non-flow correspondence remained in main flow links");
-  assert(graph.relations.length === 4 && graph.relations.every((relation) => module.isEnergyPathNonFlowRelation(relation)), "payload non-flow relations were not isolated");
+  assert(graph.relations.length === 2 && graph.relations.every((relation) => module.isEnergyPathNonFlowRelation(relation)), "valid non-flow relations were not isolated from malformed original categories");
   assert(pairs.length === 2, "malformed People/crossed correspondence became actionable");
   assert(graph.nodes.some((node) => node.id === "end_use.lighting.building" && node.endUse === "lighting"), "raw lighting taxonomy was not projected");
   assert(graph.nodes.some((node) => node.id === "end_use.equipment.building" && node.endUse === "equipment"), "raw equipment taxonomy was not projected");
   assert(!graph.nodes.some((node) => node.level === "end_use" && (node.endUse === "people" || node.id.includes(".people."))), "People became a direct Stage 3 node");
-  const people = graph.nodes.find((node) => node.driverCategory === "internal.people");
-  assert(people && module.energyPathCorrespondenceCounterparts(graph.nodes, graph.relations, people.id).length === 0, "People acquired a direct-energy counterpart");
+  const people = annual.nodes.find((node) => node.driverCategory === "internal.people");
+  assert(people && module.energyPathCorrespondenceCounterparts(annual.nodes, annual.links, people.id).length === 0, "People acquired a direct-energy counterpart");
+  const internal=graph.nodes.find(node=>node.driverCategory==='internal.gains');assert(internal?.value===16&&internal.groupedMembers.length===3,'Internal gains lost its exact People/Lighting/Equipment budget');
   assertAcyclicForwardFlow(graph);
 
   const lightingPair = pairs.find((pair) => pair.endUseNode.endUse === "lighting");
@@ -263,9 +264,9 @@ try {
   ).filter((pair) => pair.endUseNode.endUse === "lighting");
   assert(multiServiceLightingPairs.length === 1, "all-service projection duplicated the Lighting correspondence action");
   const multiServiceLighting = multiServiceLightingPairs[0];
-  assert(close(multiServiceLighting.driverNode.value, 11), "all-service Lighting driver did not merge cooling and heating values");
+  assert(close(multiServiceLighting.driverNode.value, 19), "all-service Internal gains did not merge the exact cooling/heating source budgets");
   assert(close(multiServiceLighting.endUseNode.value, 10), "all-service Lighting end-use value changed");
-  assert(close(multiServiceLighting.relation.fromValue, multiServiceLighting.driverNode.value), "non-flow fromValue does not match the projected thermal endpoint");
+  assert(close(multiServiceLighting.relation.fromValue, 11), "non-flow Lighting fromValue borrowed unrelated People/Equipment quantities from the Internal gains card");
   assert(close(multiServiceLighting.relation.toValue, multiServiceLighting.endUseNode.value), "non-flow toValue was counted once per service");
   assert(!multiServiceLighting.relation.ratio && !multiServiceLighting.relation.ratioKind && !multiServiceLighting.relation.ratioLabel, "all-service correspondence gained conversion ratio metadata");
   const reversedMultiServiceGraph = module.energyPathGraphForState({

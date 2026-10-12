@@ -130,8 +130,9 @@ try{
  check(number("load.cooling.building")==="0.80"&&number("load.heating.building")==="0.40","building chart uses wrong area/precision");
  check(number("end_use.cooling.building")==="0.20","building site-energy chart did not use executed area");
  energy(node("load.cooling.building")?.title.split(": ").at(-1),"0.80","chart accessible energy value");
- check([...host.querySelectorAll("[data-energy-path-stage] > header")].every(header=>header.textContent.includes("kWh/m²")),"column headers did not display area units");
- check(host.querySelector("[data-energy-path-legend]")?.textContent.includes("kWh/m²"),"graph legend still displays total-energy units");
+ check(host.querySelectorAll('[data-energy-path-unit]').length===1&&host.querySelector('[data-energy-path-unit]')?.textContent==='kWh/m²',"chart did not display one shared intensity unit");
+ check([...host.querySelectorAll("[data-energy-path-stage] > header")].every(header=>!header.querySelector('small')),"column headers repeated units/basis captions");
+ check(host.querySelector('[data-energy-path-legend-item="thermal"]')?.textContent==='Thermal'&&host.querySelector('[data-energy-path-legend-item="site"]')?.textContent==='Site energy'&&!host.querySelector('[data-energy-path-legend]')?.textContent.includes('kWh'),"graph legend lost physical domains or repeated the shared unit");
 
  check(!host.querySelector("[data-simulation-energy-service]"),"removed Service dropdown remains visible");
  const canvas=host.querySelector("[data-energy-path-canvas]"),scene=host.querySelector("[data-energy-path-scene]");
@@ -150,8 +151,7 @@ try{
  check(number("end_use.cooling.building")==="0.05","monthly site-energy chart retained annual values");
  check(number("load.cooling.building")==="0.20"&&scope().areaM2===100,"monthly selection changed building area or retained annual chart values");
 
- change("[data-simulation-energy-scope]","zone");
- change("[data-simulation-energy-zone-name]","Office");
+ change("[data-simulation-energy-scope]","zone:Office");
  change("[data-simulation-energy-path-period]","annual");
  check(scope().areaM2===25,"zone view reused building area");
  check(number("end_use.cooling.office")==="0.40","zone site-energy chart reused building area");

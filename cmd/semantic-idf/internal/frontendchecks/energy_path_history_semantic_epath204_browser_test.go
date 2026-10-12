@@ -111,7 +111,7 @@ try {
  check(selection&&state.simulationEnergyScopeKind==='building'&&state.simulationEnergyPeriod==='annual','fixture must start selected Building/Annual');
  state.navigationUndoStack=[];state.navigationRedoStack=[];
  const beforeScope=context();
- change('data-simulation-energy-scope','zone');
+ change('data-simulation-energy-scope','zone:Office');
  const afterScope=context();
  check(state.simulationEnergyScopeKind==='zone'&&state.navigationUndoStack.length===1,'scope input-first transaction must record once');
  await navigation.undoViewNavigation({quiet:true});

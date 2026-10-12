@@ -90,15 +90,15 @@ const fixture = (scopeToken = "building", zoneName = "", period = "annual") => {
     scaleDomain: "site", period, zoneName,
   };
   const nodes = [lightingDriver, equipmentDriver, peopleDriver, lightingEndUse, equipmentEndUse, carrier];
-  const correspondence = (id, fromId, toId, serviceKind = "cooling") => ({
+  const correspondence = (id, fromId, toId, fromValue, toValue, serviceKind = "cooling") => ({
     id, fromId, toId, relation: "source_correspondence", basis: "derived_ratio",
-    fromValue: 1, toValue: 1, fromUnit: "kWh", toUnit: "kWh", serviceKind, period,
+    fromValue, toValue, fromUnit: "kWh", toUnit: "kWh", serviceKind, period,
   });
   const links = [
-    correspondence("correspondence.lighting." + suffix, lightingDriver.id, lightingEndUse.id),
-    correspondence("correspondence.equipment." + suffix, equipmentDriver.id, equipmentEndUse.id),
+    correspondence("correspondence.lighting." + suffix, lightingDriver.id, lightingEndUse.id, 18, 20),
+    correspondence("correspondence.equipment." + suffix, equipmentDriver.id, equipmentEndUse.id, 12, 14),
     // Deliberately malformed: People must never acquire a direct-energy counterpart in the UI.
-    correspondence("correspondence.people.trap." + suffix, peopleDriver.id, lightingEndUse.id),
+    correspondence("correspondence.people.trap." + suffix, peopleDriver.id, lightingEndUse.id, 9, 20),
     { id: "carrier.lighting." + suffix, fromId: lightingEndUse.id, toId: carrier.id, relation: "direct_end_use_to_carrier", basis: "reported_meter", fromValue: 20, toValue: 20, fromUnit: "kWh", toUnit: "kWh", period },
     { id: "carrier.equipment." + suffix, fromId: equipmentEndUse.id, toId: carrier.id, relation: "direct_end_use_to_carrier", basis: "reported_meter", fromValue: 14, toValue: 14, fromUnit: "kWh", toUnit: "kWh", period },
   ];
@@ -132,16 +132,17 @@ try {
   const pairs = module.energyPathCorrespondencePairs(graph.nodes, graph.relations);
   const lightingEndUse = graph.nodes.find((node) => node.level === "end_use" && node.endUse === "lighting");
   const equipmentEndUse = graph.nodes.find((node) => node.level === "end_use" && node.endUse === "equipment");
-  const lightingDriver = graph.nodes.find((node) => node.level === "driver" && node.driverCategory === "internal.lighting");
-  const equipmentDriver = graph.nodes.find((node) => node.level === "driver" && node.driverCategory === "internal.equipment");
-  const peopleDriver = graph.nodes.find((node) => node.level === "driver" && node.driverCategory === "internal.people");
+  const lightingDriver = graph.nodes.find((node) => node.level === "driver" && node.driverCategory === "internal.gains");
+  const equipmentDriver = lightingDriver;
+  const peopleDriver = annual.nodes.find((node) => node.level === "driver" && node.driverCategory === "internal.people");
 
   assert(graph.links.every((link) => link.relation !== "source_correspondence"), "a non-flow relation remained in graph.links");
-  assert(graph.relations.length === 3 && graph.relations.every((link) => link.relation === "source_correspondence"), "payload correspondence links were not structurally isolated");
+  assert(graph.relations.length === 2 && graph.relations.every((link) => link.relation === "source_correspondence"), "valid correspondence links were not isolated or malformed People relation polluted the merged internal driver");
   assert(pairs.length === 2, "only Lighting and Equipment correspondence pairs should be actionable");
   assert(lightingEndUse?.id === "end_use.lighting.building" && equipmentEndUse?.id === "end_use.equipment.building", "correspondence endpoints did not survive end-use taxonomy projection");
-  assert(lightingDriver?.id === "driver.internal.lighting.all.building" && equipmentDriver?.id === "driver.internal.equipment.all.building", "correspondence driver endpoints did not survive all-service projection");
-  assert(module.energyPathCorrespondenceCounterparts(graph.nodes, graph.relations, peopleDriver.id).length === 0, "People acquired a direct site-energy presentation");
+  assert(lightingDriver?.id === "driver.internal.gains.all.building" && lightingDriver.value === 39 && lightingDriver.groupedMembers.length === 3, "correspondence driver members or exact additive quantity did not survive Internal gains projection");
+  assert(module.energyPathCorrespondenceCounterparts(annual.nodes, annual.links, peopleDriver.id).length === 0, "People acquired a direct site-energy presentation");
+  assert(pairs.find(pair=>pair.endUseNode.endUse==='lighting')?.relation.fromValue===18&&pairs.find(pair=>pair.endUseNode.endUse==='equipment')?.relation.fromValue===12,'correspondence reused the whole Internal gains card instead of its matched original driver');
 
   const stageOrder = { driver: 0, load: 1, end_use: 2, carrier: 3 };
   const nodeByID = new Map(graph.nodes.map((node) => [node.id, node]));

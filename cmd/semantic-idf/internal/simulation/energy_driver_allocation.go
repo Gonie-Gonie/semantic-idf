@@ -312,6 +312,7 @@ func setEnergyDriverAllocatedContribution(node *EnergyExplanationNode, contribut
 	node.Value = contribution
 	node.DisplayValue = contribution
 	node.Basis = "heat_balance_share"
+	allocateEnergyExplanationDriverComponents(node)
 }
 
 func appendEnergyDriverZeroPressureFallback(nodes map[string]*energyExplanationNodeAccumulator, zoneName string, service string, unit string, period string, loadValue float64, sourceIDs []string) {
@@ -340,6 +341,7 @@ func appendEnergyDriverZeroPressureFallback(nodes map[string]*energyExplanationN
 		Basis:                 "heat_balance_share",
 		Multiplier:            1,
 		SourceIDs:             appendUniqueStrings(nil, sourceIDs...),
+		DriverBreakdown:       []EnergyExplanationDriverComponent{{Component: "unresolved_balance", Label: "Unresolved load balance", Value: roundedEnergyNumber(loadValue), SourceIDs: appendUniqueStrings(nil, sourceIDs...)}},
 	}
 	nodes[id] = &energyExplanationNodeAccumulator{node: node}
 }

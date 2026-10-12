@@ -109,14 +109,14 @@ try {
   };
   const graph = module.energyPathGraphForState(explanation, allState);
   const drivers = graph.nodes.filter((node) => node.level === "driver" && Number(node.value));
-  assert(drivers.length === categories.length, "Taxonomy categories at or above 1% must not be removed to meet a node-count limit: " + drivers.length);
+  assert(drivers.length === categories.length - 2, "Internal sources must share one Internal gains driver while all other categories remain: " + drivers.length);
   assert(drivers.every((node) => node.id.includes(".all.building")), "All-services drivers were not projected to virtual all-service IDs");
   const wall = drivers.find((node) => node.driverCategory === "surface.exterior_walls");
   assert(wall && wall.value === 4, "Cooling/heating wall values were not merged");
   assert(wall.sourceIds.includes("surface.exterior_walls.cooling") && wall.sourceIds.includes("surface.exterior_walls.heating"), "Merged wall source provenance was lost");
   assert(wall.relatedEntityIds.length === 2, "Merged wall related entities were lost");
-  const equipment = drivers.find((node) => node.driverCategory === "internal.equipment");
-  assert(equipment && equipment.value === 2, "Equipment above 1% was incorrectly compacted");
+  const internal = drivers.find((node) => node.driverCategory === "internal.gains");
+  assert(internal && internal.value === 44 && internal.groupedMembers.length === 6, "Internal gains lost its People/Lighting/Equipment members or quantities");
   assert(drivers.some((node) => node.driverCategory === "balance.storage_other"), "Original Other / storage node is missing");
   const nodeIDs = new Set(graph.nodes.map((node) => node.id));
   assert(graph.links.every((link) => nodeIDs.has(link.fromId) && nodeIDs.has(link.toId)), "Projected graph has a dangling link endpoint");
@@ -129,6 +129,48 @@ try {
 
   const cooling = module.energyPathGraphForState(explanation, { ...allState, simulationEnergyService: "cooling" });
   assert(cooling.nodes.some((node) => node.id === "driver.surface.exterior_walls.cooling.building"), "Single-service view lost the canonical service node");
+
+  const { energyPathProjectDriverBreakdown } = await import("/src/js/energy-path-driver-presentation.js");
+  const parent = {id:"driver.balance.cooling.building", level:"driver", driverCategory:"balance.storage_other", value:100,
+    serviceKind:"cooling", unit:"kWh", sourceIds:["air","surface","unresolved"],
+    driverBreakdown:[{component:"air_storage",value:30,rawValue:3,effectiveValue:6,sourceIds:["air"]},
+      {component:"surface_balance",value:20,rawValue:2,effectiveValue:4,sourceIds:["surface"]},
+      {component:"unresolved_balance",value:50,rawValue:5,effectiveValue:10,sourceIds:["unresolved"]}]};
+  const load = {id:"load.cooling.building",level:"load",serviceKind:"cooling",value:100,unit:"kWh"};
+  const parentLink = {id:"parent-link",fromId:parent.id,toId:load.id,relation:"driver_to_load",fromValue:100,toValue:100,fromUnit:"kWh",toUnit:"kWh"};
+  const inputs = ["people","lighting","equipment.electric","equipment.gas","surface_storage","solar_absorbed","internal_gains"].map((kind,index)=>
+    ({id:"input."+kind,level:"input",scaleDomain:"boundary",kind:"input."+kind,value:index+1,signedValue:index+1,unit:"kWh"}));
+  const original = JSON.stringify({nodes:[parent,load,...inputs],links:[parentLink]});
+  const explained = {...explanation,nodes:[parent,load,...inputs],links:[parentLink]};
+  const detailed = module.energyPathGraphForState(explained,allState);
+  const components = detailed.nodes.filter(node=>node.level==="driver");
+  assert(components.length===3 && components.reduce((sum,node)=>sum+node.value,0)===100,"Evidence-backed residual children do not conserve parent allocation");
+  assert(components.find(node=>node.driverCategory==="balance.air_storage")?.value===30,"Air storage was mixed with unresolved balance");
+  assert(detailed.links.reduce((sum,link)=>sum+link.fromValue,0)===100 && detailed.links.reduce((sum,link)=>sum+link.toValue,0)===100,"Breakdown changed service budget");
+  const boundary = detailed.nodes.filter(node=>node.level==="input");
+  assert(boundary.length===3 && boundary.find(node=>node.kind==="input.equipment")?.value===7,"People/Lighting/Equipment source hierarchy is incorrect");
+  assert(!boundary.some(node=>["input.surface_storage","input.solar_absorbed","input.internal_gains"].includes(node.kind)),"Building response leaked into Boundary Inputs");
+  assert(JSON.stringify({nodes:[parent,load,...inputs],links:[parentLink]})===original,"Presentation mutated saved source evidence");
+  const invalid = energyPathProjectDriverBreakdown([{...parent,driverBreakdown:[{component:"air_storage",value:99}]},load],[parentLink]);
+  assert(invalid.nodes[0].id===parent.id && invalid.links[0].fromValue===100,"Incomplete breakdown fabricated a split");
+  const zeroParent={...parent,value:0,driverBreakdown:parent.driverBreakdown.map(part=>({...part,value:0}))};
+  const zero=energyPathProjectDriverBreakdown([zeroParent,load],[{...parentLink,fromValue:0,toValue:0}]);
+  assert(zero.nodes.filter(node=>node.level==="driver").length===3 && zero.links.every(link=>link.fromValue===0 && link.toValue===0),"Known-zero components disappeared or acquired invalid link values");
+  const {energyPathMonthlyChartSeries}=await import("/src/js/energy-path-chart.js");
+  const selected=components.find(node=>node.driverCategory==="balance.air_storage");
+  const monthZero=module.energyPathGraphForState({...explained,nodes:[zeroParent,load],links:[{...parentLink,fromValue:0,toValue:0}]},allState);
+  const zeroSeries=energyPathMonthlyChartSeries(selected,"node",[monthZero]);
+  assert(zeroSeries[0].points[0].value===0 && zeroSeries[0].points[1].value===null,"Known-zero monthly component became missing or filled an absent month");
+  const host=document.createElement("div");host.innerHTML=module.renderEnergyPathView(explained,allState);
+  assert(host.querySelectorAll("[data-energy-path-unit]").length===1 && !host.querySelector("[data-energy-path-stage] header span"),"Units must appear once, without per-stage domain subtitles");
+  assert(!host.querySelector("[data-energy-path-divider], [data-energy-path-envelope-context], [data-energy-path-context-metrics]"),"Obsolete dividers or utility context remain");
+  const zoned={...explained,availableZones:["Office","building"],zoneResults:["Office","building"].map(zoneName=>({...explained,scope:{kind:"zone",zoneName},periods:[]}))};
+  host.innerHTML=module.renderEnergyPathControls(zoned,allState);
+  const picker=host.querySelector("[data-simulation-energy-scope]");
+  assert(picker.options[0].value==="building" && picker.options[0].textContent==="All" && picker.options.length===3,"One-step scope options do not expose All and every Zone");
+  assert(!host.querySelector("[data-simulation-energy-zone-name]"),"Two-step Zone control remains");
+  picker.value="zone:building";const switched={...allState};
+  assert(module.updateEnergyPathControlState({target:picker,type:"change"},switched,zoned).render && switched.simulationEnergyScopeKind==="zone" && switched.simulationEnergyZoneName==="building","Zone named building collided with All scope");
   document.body.dataset.energyPathDriverTaxonomyStatus = "passed";
   document.getElementById("result").textContent = "passed";
 } catch (error) {

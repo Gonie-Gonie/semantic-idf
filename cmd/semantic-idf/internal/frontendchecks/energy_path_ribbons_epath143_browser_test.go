@@ -134,7 +134,7 @@ try{
  inspectBounds("Building");
  const current=graph(),svg=host.querySelector("[data-energy-path-graph-underlay]"),paths=[...host.querySelectorAll("[data-energy-path-ribbon]")];
  check(svg?.tagName.toLowerCase()==="svg"&&svg.getAttribute("aria-hidden")==="true","decorative ribbon geometry lost aria-hidden SVG separation");
- check(paths.length===23,"actual SVG omitted/duplicated additive branches: "+paths.length);
+ check(paths.length===21,"actual SVG omitted/duplicated additive branches after Internal gains grouping: "+paths.length);
  check(current.relations.length===2&&!paths.some(path=>current.relations.some(relation=>relation.id===path.dataset.energyPathRibbon)),"source correspondence was drawn as additive energy ribbon");
  // EPATH-145 adds a separate accessible hit layer without changing these
  // quantitative ribbons. Conversion ratio buttons provide the sole tab stop.
@@ -193,7 +193,7 @@ try{
  for(const level of["load","end_use"]){const cooling=current.nodes.find(node=>node.level===level&&(level==="load"?node.serviceKind:node.endUse)==="cooling"),heating=current.nodes.find(node=>node.level===level&&(level==="load"?node.serviceKind:node.endUse)==="heating");check(cooling&&heating&&nodeButton(cooling.id).getBoundingClientRect().top<nodeButton(heating.id).getBoundingClientRect().top,"Cooling-first conversion alignment was replaced by descending load magnitude: "+level);}
  const legend=[...host.querySelectorAll("[data-energy-path-legend-item]")];
  check(legend.length===4&&legend.map(item=>item.dataset.energyPathLegendItem).join(",")==="thermal,site,allocated,residual","legend is not exactly Thermal/Site/Allocated/Residual");
- check(legend.map(item=>item.textContent.trim()).join("|")==="Thermal kWh/m²|Site kWh/m²|Allocated|Residual","legend includes detailed basis/source type clutter or wrong units");
+ check(legend.map(item=>item.textContent.trim()).join("|")==="Thermal|Site energy|Allocated|Residual"&&host.querySelector('[data-energy-path-unit]')?.textContent==='kWh/m²',"legend duplicates chart units or includes detailed basis/source type clutter");
  // Missing request metadata must not be confused with an explicit report that
  // a ratio is unavailable. Both consumers read the same period-local truth.
  const ratioVariant=(status,period="annual")=>{
@@ -221,11 +221,11 @@ try{
  check(localMissing.bridge?.dataset.energyPathRatioKind==="unavailable","selected-month missing ratio reused complete annual ratio metadata");
  check(JSON.stringify(absent.frozen)===absent.snapshot&&JSON.stringify(localMissing.frozen)===localMissing.snapshot,"missing/absent ratio rendering mutated source payload");
  Object.assign(state,{simulationResult:result,simulationEnergyScopeKind:"building",simulationEnergyPeriod:"annual",simulationEnergyService:"all",simulationEnergySelection:""});simulation.renderSimulation();
- const selected=current.nodes.find(node=>node.driverCategory==="internal.lighting");nodeButton(selected.id).focus();nodeButton(selected.id).click();
+ const selected=current.nodes.find(node=>node.driverCategory==="internal.gains");nodeButton(selected.id).focus();nodeButton(selected.id).click();
  check(state.simulationEnergySelection===selected.id&&document.activeElement?.dataset.energyPathLayoutNode===selected.id&&host.querySelector('[data-energy-path-inspector="'+selected.id+'"]'),"SVG ribbons broke native node selection/focus/inspector");
  check(nodeButton(current.nodes.find(node=>node.endUse==="lighting").id)?.dataset.energyPathRelated==="true","SVG rendering removed nonflow lighting counterpart highlight");
- change("[data-simulation-energy-scope]","zone");change("[data-simulation-energy-zone-name]","Office");inspectBounds("Zone");
- check(host.querySelectorAll("[data-energy-path-ribbon]").length===23&&host.querySelectorAll("[data-energy-path-bridge-ratio]").length===2,"Zone equivalent graph lost quantitative ribbons or ratios");
+ change("[data-simulation-energy-scope]","zone:Office");inspectBounds("Zone");
+ check(host.querySelectorAll("[data-energy-path-ribbon]").length===21&&host.querySelectorAll("[data-energy-path-bridge-ratio]").length===2,"Zone equivalent graph lost quantitative ribbons or ratios");
  const finalCanvas=host.querySelector("[data-energy-path-canvas]").getBoundingClientRect();evidence.push("Zone canvas "+finalCanvas.width+"×"+finalCanvas.height+", bottom "+finalCanvas.bottom+", pane "+pane.scrollHeight+"/"+pane.clientHeight);
  check(JSON.stringify(originalResult)===originalJSON&&JSON.stringify(result)===fixtureJSON,"ribbon rendering / tooltip / scope / selection mutated original payload or export input");
  evidence.push("actual viewport "+innerWidth+"×"+innerHeight+", ribbons "+paths.length+", bars "+bars.length+", scales "+JSON.stringify(Object.fromEntries(domains))+", widths "+widthEvidence.join("; "));

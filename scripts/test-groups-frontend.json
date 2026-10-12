@@ -195,6 +195,11 @@
           "tier": "browser"
         },
         {
+          "files": ["energy_path_context_ribbon_geometry_browser_test.go"],
+          "areas": ["energy-path", "batch", "simulation"],
+          "tier": "browser"
+        },
+        {
           "files": ["energy_path_*export*_test.go", "energy_path_report_*_test.go", "energy_path_v1_contract_test.go"],
           "areas": ["export"],
           "tier": "fast"

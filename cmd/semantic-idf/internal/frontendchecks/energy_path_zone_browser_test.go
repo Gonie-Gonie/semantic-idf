@@ -230,19 +230,17 @@ try {
 
   const scope = document.createElement("select");
   scope.setAttribute("data-simulation-energy-scope", "");
-  scope.innerHTML = '<option value="building">Building</option><option value="zone">Zone</option>';
-  scope.value = "zone";
+  scope.innerHTML = '<option value="building">All</option><option value="zone:Alpha Zone">Alpha Zone</option><option value="zone:Beta Zone">Beta Zone</option>';
+  scope.value = "zone:Alpha Zone";
   const scopeUpdate = module.updateEnergyPathControlState({ type: "change", target: scope }, state, explanation);
   assert(scopeUpdate.handled && scopeUpdate.render, "Zone scope change was not handled locally");
-  assert(state.simulationEnergyZoneName === "Alpha Zone", "Zone scope did not select the first available zone result");
+  assert(state.simulationEnergyZoneName === "Alpha Zone", "Scope did not select its explicitly named zone result");
   let graph = module.energyPathGraphForState(explanation, state);
   assert(graph.nodes.length > 0 && graph.nodes.every((node) => node.id.startsWith("alpha.annual")), "Zone scope filtered the Building graph instead of selecting Alpha zoneResult");
   assert(module.energyPathSummaryForState(explanation, buildingSummary, state).carriers[0].value === 10, "Alpha zone graph retained the Building KPI summary");
 
-  const zone = document.createElement("input");
-  zone.setAttribute("data-simulation-energy-zone-name", "");
-  zone.value = "Beta Zone";
-  const zoneUpdate = module.updateEnergyPathControlState({ type: "change", target: zone }, state, explanation);
+  scope.value = "zone:Beta Zone";
+  const zoneUpdate = module.updateEnergyPathControlState({ type: "change", target: scope }, state, explanation);
   assert(zoneUpdate.handled && zoneUpdate.render, "Zone selection was not handled locally");
   graph = module.energyPathGraphForState(explanation, state);
   assert(graph.nodes.length > 0 && graph.nodes.every((node) => node.id.startsWith("beta.annual")), "Zone selection leaked another scope graph");

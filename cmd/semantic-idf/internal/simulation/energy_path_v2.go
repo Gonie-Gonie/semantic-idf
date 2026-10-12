@@ -1171,6 +1171,7 @@ func aggregateEnergyPathV2MonthlyPeriods(periods []EnergyPeriod) ([]EnergyExplan
 			if !exists {
 				node.Period = "annual"
 				node.LoadBreakdown = cloneEnergyExplanationLoadComponents(node.LoadBreakdown)
+				node.DriverBreakdown = cloneEnergyExplanationDriverComponents(node.DriverBreakdown)
 				node.OffsetEffects = cloneEnergyExplanationOffsetEffects(node.OffsetEffects)
 				node.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(node.SimultaneousLoad)
 				node.allocationSourceIDs = appendUniqueStrings(nil, node.allocationSourceIDs...)
@@ -1283,6 +1284,7 @@ func cloneEnergyExplanationNodes(input []EnergyExplanationNode) []EnergyExplanat
 	for index, node := range input {
 		out[index] = node
 		out[index].LoadBreakdown = cloneEnergyExplanationLoadComponents(node.LoadBreakdown)
+		out[index].DriverBreakdown = cloneEnergyExplanationDriverComponents(node.DriverBreakdown)
 		out[index].OffsetEffects = cloneEnergyExplanationOffsetEffects(node.OffsetEffects)
 		out[index].SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(node.SimultaneousLoad)
 		out[index].Badges = appendUniqueStrings(nil, node.Badges...)
@@ -1950,6 +1952,12 @@ func closeBuildingLoadsAfterInterzoneProjection(nodes map[string]*EnergyExplanat
 			}
 			nodes[storageID] = storage
 		}
+		if storage.Value == 0 || len(storage.DriverBreakdown) > 0 {
+			storage.DriverBreakdown = mergeEnergyExplanationDriverComponents(storage.DriverBreakdown, []EnergyExplanationDriverComponent{{
+				Component: "interzone_balance", Label: energyDriverBreakdownLabel("interzone_balance"), Value: foldedValue, RawValue: foldedValue, EffectiveValue: foldedValue,
+				SourceIDs: appendUniqueStrings(trace.sourceIDs, load.SourceIDs...),
+			}})
+		}
 		storage.Value = roundedEnergyNumber(storage.Value + foldedValue)
 		storage.AllocationApplied = true
 		storage.AllocationExplanation = energyDriverAllocationExplanation
@@ -2330,6 +2338,7 @@ func energyExplanationNodeForScope(node EnergyExplanationNode, scope EnergyExpla
 	}
 	node.AllocationApplied = true
 	node.AllocationExplanation = projection.Explanation
+	allocateEnergyExplanationDriverComponents(&node)
 	node.Basis = firstNonEmpty(projection.Basis, node.Basis)
 	// Building end-use paths can span several zones. Once projected, retain only
 	// the selected target paths so the Zone inspector cannot jump to a sibling
@@ -3138,6 +3147,7 @@ func buildEnergyExplanationZoneContributions(nodes []EnergyExplanationNode, edge
 func upgradeEnergyExplanationNode(input EnergyExplanationNode, scope EnergyExplanationScope) EnergyExplanationNode {
 	out := input
 	out.LoadBreakdown = cloneEnergyExplanationLoadComponents(input.LoadBreakdown)
+	out.DriverBreakdown = cloneEnergyExplanationDriverComponents(input.DriverBreakdown)
 	out.OffsetEffects = cloneEnergyExplanationOffsetEffects(input.OffsetEffects)
 	out.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(input.SimultaneousLoad)
 	out.allocationSourceIDs = appendUniqueStrings(nil, input.allocationSourceIDs...)
@@ -3193,6 +3203,11 @@ func upgradeEnergyExplanationNode(input EnergyExplanationNode, scope EnergyExpla
 		out.Level = "driver"
 		out.ScaleDomain = "thermal"
 		out.DriverCategory = energyExplanationDriverCategory(input)
+		if out.DriverCategory != energyDriverCategoryStorageOther {
+			// Detail captured before presentation folding belongs only to the
+			// pooled balance node. Canonical named drivers retain their own node.
+			out.DriverBreakdown = nil
+		}
 		out.ThermalComponent = energyExplanationThermalComponent(input)
 		out.ID = strings.Join([]string{"driver", canonicalEnergyPathCategory(out.DriverCategory), canonicalEnergyPathPart(firstNonEmpty(input.ServiceKind, "all")), scopeToken}, ".")
 	case "load":
@@ -3348,6 +3363,7 @@ func mergeEnergyExplanationV2Node(nodes map[string]*EnergyExplanationNode, next 
 	if current == nil {
 		copy := next
 		copy.LoadBreakdown = cloneEnergyExplanationLoadComponents(next.LoadBreakdown)
+		copy.DriverBreakdown = cloneEnergyExplanationDriverComponents(next.DriverBreakdown)
 		copy.OffsetEffects = cloneEnergyExplanationOffsetEffects(next.OffsetEffects)
 		copy.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(next.SimultaneousLoad)
 		copy.allocationSourceIDs = appendUniqueStrings(nil, next.allocationSourceIDs...)
@@ -3376,6 +3392,7 @@ func mergeEnergyExplanationV2Node(nodes map[string]*EnergyExplanationNode, next 
 	current.serviceBoundaryRestrictions = unionEnergyPathServiceBoundaryRestrictions(current.serviceBoundaryRestrictions, next.serviceBoundaryRestrictions)
 	current.storageChargeBoundaries = unionEnergyPathStorageChargeBoundaries(current.storageChargeBoundaries, next.storageChargeBoundaries)
 	current.LoadBreakdown = mergeEnergyExplanationLoadComponents(current.LoadBreakdown, next.LoadBreakdown)
+	current.DriverBreakdown = mergeEnergyExplanationDriverComponents(current.DriverBreakdown, next.DriverBreakdown)
 	current.OffsetEffects = mergeEnergyExplanationOffsetEffects(current.OffsetEffects, next.OffsetEffects)
 	current.simultaneousLoadContributions = mergeEnergyExplanationSimultaneousLoadContributions(current.simultaneousLoadContributions, next.simultaneousLoadContributions)
 	current.endUseCarriers = appendUniqueStrings(current.endUseCarriers, next.endUseCarriers...)
@@ -4356,6 +4373,7 @@ func normalizeLegacyEnergyExplanationNodes(input []EnergyExplanationNode) []Ener
 		node.AllocatedValue = roundedEnergyNumber(node.AllocatedValue * factor)
 		node.DisplayValue = roundedEnergyNumber(node.DisplayValue * factor)
 		node.Unit = normalizedUnit
+		node.DriverBreakdown = scaleEnergyExplanationDriverComponents(node.DriverBreakdown, factor)
 		node.LoadBreakdown = cloneEnergyExplanationLoadComponents(node.LoadBreakdown)
 		for componentIndex := range node.LoadBreakdown {
 			component := &node.LoadBreakdown[componentIndex]
@@ -5651,5 +5669,6 @@ func normalizeEnergyExplanationV2Nodes(nodes []EnergyExplanationNode, scope Ener
 				node.ScaleDomain = "site"
 			}
 		}
+		sanitizeEnergyExplanationDriverComponents(node)
 	}
 }

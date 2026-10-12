@@ -139,7 +139,7 @@ try{
   const restoredCanvas=host.querySelector("[data-energy-path-canvas]");
   change("[data-energy-path-chart-frequency]","hourly");change("[data-energy-path-chart-frequency]","monthly");check(host.querySelector("[data-energy-path-canvas]")===restoredCanvas,"frequency change rebuilt Energy flow graph");
   check(JSON.stringify([...host.querySelectorAll("[data-energy-path-ribbon]")].map(path=>path.getAttribute("d")))===paths,"chart selection changed quantitative flow paths");
-  for(const scope of["building","zone"]){change("[data-simulation-energy-scope]",scope);if(scope==="zone")change("[data-simulation-energy-zone-name]","Office");change("[data-simulation-energy-path-period]","M1");const id=graph().nodes.find(item=>button(item.id)).id;select(id);checkChart(scope+" January");}
+  for(const scope of["building","zone:Office"]){change("[data-simulation-energy-scope]",scope);change("[data-simulation-energy-path-period]","M1");const id=graph().nodes.find(item=>button(item.id)).id;select(id);checkChart(scope+" January");}
   check(JSON.stringify(result)===rawJSON&&JSON.stringify(state.report)===reportJSON,"component chart mutated result/model data");
   evidence.push("Every visible node/link uses Monthly/Hourly graph; loaded CSS and inherited typography with configured physical graph fonts; reported January values preserved; old details absent; native frequency control and workspace restore; graph retained; scoped immutable results.");
   if(failures.length)throw new Error(failures.join("\n"));document.body.dataset.epath150Status="passed";

@@ -40,7 +40,7 @@ when extending a feature.
 
 The canonical accounting graph explains **load drivers → thermal load → end-use energy →
 energy carrier** using separate thermal and site-energy scales. An optional first
-column adds reported exterior/internal inputs and envelope process observations.
+column adds exterior boundary observations and prescribed internal heat sources.
 It is a measured
 load explanation, not a single-scale Sankey balance or causal savings estimate.
 See [CLI and Python](energy-path.md#cli-and-python) for file/API access and
@@ -81,7 +81,7 @@ Zone, Building or Annual.
 
 | `level` | Meaning | `scaleDomain` | Typical unit |
 | --- | --- | --- | --- |
-| `input` | Reported exterior/internal heat or envelope process context | `boundary` | `kWh` |
+| `input` | Exterior boundary observations and prescribed internal heat sources | `boundary` | `kWh` |
 | `driver` | Allocated contribution to actual service load | `thermal` | `kWh` thermal |
 | `load` | Observed cooling/heating at the declared boundary | `thermal` | `kWh` thermal |
 | `end_use` | Equipment or direct-use site energy | `site` | `kWh` site |
@@ -166,9 +166,17 @@ calendar identity. Input `value` is the absolute magnitude, while `signedValue`
 and `effectiveValue` retain direction and `rawValue` retains the native scope.
 Explicit zero survives JSON; missing data does not become a reported zero.
 
-The supported kinds are `input.solar_incident`, `input.exterior_convection`,
-`input.exterior_longwave`, `input.internal_gains`, `input.solar_absorbed` and
-`input.surface_storage`. Incident solar uses native Daily averages, observed
+Current boundary kinds are `input.solar_incident`, `input.exterior_convection`,
+`input.exterior_longwave`, `input.people`, `input.lighting`, and the
+`input.equipment.electric/.gas/.other/.hot_water/.steam` families. The equipment
+families group into one display card while retaining native members. Native total
+heating energy includes radiant, convective and latent heat, excluding lost heat;
+it is not interchangeable with site electricity/fuel consumption. Typed executed
+Zone/Space/List ownership proves the expected roster independently for each
+family. A Zone with no object of that family contributes no fabricated dictionary
+or reported zero. Legacy `input.internal_gains`, `input.solar_absorbed` and
+`input.surface_storage` remain readable provenance but are excluded from the
+boundary-input presentation. Incident solar uses native Daily averages, observed
 full-day durations and executed SQL net surface areas, with Hourly fallback for
 compatible stored results. Monthly average irradiance multiplied by calendar
 month duration is forbidden for partial-month runs. Other inputs use native
@@ -176,7 +184,7 @@ Monthly energy. Exact owner, unit, surface roster, calendar coverage and
 Zone/Group factors must be proven; incomplete categories remain unavailable.
 
 Input observations are not additional driver pressure. Absorbed solar overlaps
-incident solar; storage is an envelope process rather than an external source.
+incident solar; storage is an envelope response rather than an external source.
 Exterior-face exchange and room heat response have different boundaries and
 timing. The displayed insulation/storage process does not infer a U-value,
 thermal capacity, causal contribution or savings from their difference.
@@ -189,9 +197,13 @@ annual load shares do not redistribute seasonal consumption. Unsupported
 ventilation, mixed-service pumps and unknown opposite-service loads remain
 unassigned. Fan and pump references may cover overlapping served loads, so keep
 their associations separate even when their display nodes are grouped.
-These thin context connectors never consume ribbon ports, alter thermal/site
-scales or closure, or enter a coil-only COP denominator. Their paired quantities
-are independently inspectable and carry no conversion ratio.
+Context associations render as closed ribbons with independent reference scales
+and separate visual lanes. They never consume accounting ribbon ports, alter
+thermal/site scales or closure, or enter a coil-only COP denominator. Their paired
+quantities are independently inspectable. A displayed reference quantity ratio
+is not a conversion efficiency. People/Lighting/Equipment links retain their
+matched original driver subset after Internal gains grouping; repeated references
+to the same original driver are counted once.
 
 The browser groups inputs by physical quantity while retaining original member
 and source identities. Monthly charts preserve signed input values, served-load
@@ -199,6 +211,30 @@ subtotals and actual auxiliary slices; unavailable months and Hourly sources
 remain gaps. App and batch detail use the same presentation logic. File/API
 projections and trace exports preserve the optional input nodes and relations;
 the existing accounting summary categories remain unchanged.
+
+`energy_path_driver_presentation.js` groups original internal driver members into
+one Internal gains card. Optional `nodes[].driverBreakdown[]` retains additive
+subdivisions of `balance.storage_other`: `component`, `label`, `value`, `rawValue`,
+`effectiveValue`, `sourceIds`. Components are `air_storage`, `surface_balance`,
+`outdoor_air_balance`, `internal_gain_balance`, `other_internal_gains`, `interzone_balance`,
+`surface_exchange`, `unresolved_balance`. `value` subdivides the fixed parent
+allocation using its same-service component pressures. Raw/effective fields retain
+those pressures. Annual detail sums Monthly children. Original parent IDs,
+allocations, source budgets and fixture quantities remain unchanged. Malformed or
+incomplete stored detail is dropped without changing its parent. Frontend child
+nodes and ribbons conserve the recorded parent budget; old unsplit records keep
+an Unresolved heat balance card. Source pressures alone cannot reconstruct an
+absent allocated subdivision.
+
+The primary Scope control exposes All (Building) and individual Zone names in
+one select, preserving the existing `{kind, zoneName}` state and export contract.
+The diagram has no vertical dividers or Utility context block. One corner unit
+label applies to all cards; domain identity remains in stage names, source data
+and the compact legend. A selected relation displays endpoint quantities and
+their ratio in two responsive panels. Monthly ratios use paired normalized
+quantities and validated conversion semantics; zeros, missing endpoints and
+different boundaries remain explicit. Raw Hourly traces do not prove allocated
+Hourly conversion pairs.
 
 ### Driver allocation and multipliers
 
@@ -775,8 +811,8 @@ integration through the app shell and delegated handlers.
 
 | Behavior / retained module contract | Test files / assertions |
 | --- | --- |
-| Primary controls | `energy_path_controls_epath200_browser_test.go`: fresh Building/Annual; Scope and Period selects; Zone search appears only in Zone scope; Annual and 12 months; absent months stay empty; both services remain visible. Service, KPI and old subview controls are absent. No Analyze/Run calls or result mutations. |
-| Four stages and dual scales | `energy_path_layout_epath142_browser_test.go`, `energy_path_ribbons_epath143_browser_test.go`: visible/hit-testable nodes, direct-use lane, thermal/site divider and independently scaled conversion ribbons; pure geometry companions cover calculations. |
+| Primary controls | `energy_path_controls_epath200_browser_test.go`: fresh All/Annual; single All/Zone Scope list and Period select; Annual and 12 months; absent months stay empty; both services remain visible. Service, KPI and old subview controls are absent. No Analyze/Run calls or result mutations. |
+| Stages and dual scales | `energy_path_layout_epath142_browser_test.go`, `energy_path_ribbons_epath143_browser_test.go`: visible/hit-testable nodes, direct-use lane, single unit label and independently scaled conversion ribbons without dividers; pure geometry companions cover calculations. |
 | Ordering, grouping and selection | `energy_path_interaction_epath145_browser_test.go`, `energy_path_other_grouping_epath123_browser_test.go`: fixed taxonomy; directed path dimming; strict <1% grouping preserves exact-1% and protected categories, carrier branches, members and source identities. |
 | Native keyboard input | `energy_path_keyboard_epath201_browser_test.go`: trusted Tab/Shift+Tab, Enter, Space and Escape; exact node/link targets and focus; selection retains graph DOM, layout/projection counters and completed result. |
 | Component chart | `energy_path_inspector_epath150_browser_test.go`, `energy_path_component_chart_browser_test.go`: every visible node/link exposes Monthly/Hourly; old information/action sections are absent. Paired thermal/site values remain separate; real zero differs from missing; source identity, shared calendar and proven multiplier govern Hourly data. Monthly-only data creates no Hourly curve. Preference/focus restore without rebuilding the flow graph. |

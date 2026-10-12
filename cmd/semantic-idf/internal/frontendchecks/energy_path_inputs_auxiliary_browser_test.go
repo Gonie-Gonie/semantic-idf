@@ -140,7 +140,7 @@ try{
  check(JSON.stringify(auxiliaryScene.drawing.ribbons)===JSON.stringify(baseline.drawing.ribbons),'auxiliary context changed quantitative ribbons/ports/COP');
  for(const graph of allGraphs){
   const load=graph.nodes.find(node=>node.level==='load'),scope=load.zoneName||'',suffix=scope?'office':'building',period=graph.id||graph.period||'annual',scale=load.value/80;
-  for(const [key,kind,value,category]of[['solar','solar_incident',1000,'surface.exterior_walls'],['conv.wall','exterior_convection',50,'surface.exterior_walls'],['conv.roof','exterior_convection',-20,'surface.roofs'],['internal','internal_gains',30,'internal.people'],['storage','surface_storage',-10,'surface.exterior_walls']]){
+  for(const [key,kind,value,category]of[['solar','solar_incident',1000,'surface.exterior_walls'],['conv.wall','exterior_convection',50,'surface.exterior_walls'],['conv.roof','exterior_convection',-20,'surface.roofs'],['people','people',30,'internal.people'],['lighting','lighting',20,'internal.lighting'],['electric','equipment.electric',12,'internal.equipment'],['gas','equipment.gas',8,'internal.equipment'],['legacy.internal','internal_gains',999,'internal.people'],['legacy.absorbed','solar_absorbed',99,'surface.exterior_walls'],['legacy.storage','surface_storage',-10,'surface.exterior_walls']]){
    const id='input.'+key+'.'+suffix,sourceID='source.'+id;
    const node={id,level:'input',kind:'input.'+kind,label:key,value:Math.abs(value*scale),signedValue:value*scale,rawValue:value*scale,effectiveValue:value*scale,unit:'kWh',scaleDomain:'boundary',basis:'reported_boundary',period,zoneName:scope,aggregationBasis:'model_total',driverCategory:category,sourceIds:[sourceID]};
    graph.nodes.push(node);
@@ -152,7 +152,15 @@ try{
  const before=JSON.stringify(result);Object.assign(state,{...graphState,simulationResult:result});simulation.renderSimulation();
  const host=document.getElementById('simulationEnergyDashboard'),scene=view.prepareEnergyPathScene(explanation,state),graph=()=>view.energyPathGraphForState(explanation,state);
  check(host.querySelectorAll('[data-energy-path-stage]').length===5,'reported inputs did not create the first stage');
- check(scene.visibleNodes.filter(node=>node.level==='input').length===4,'surface inputs were not grouped by physical quantity');
+ check(scene.visibleNodes.filter(node=>node.level==='input').length===5,'boundary inputs were not grouped by physical quantity');
+ check(!scene.visibleNodes.some(node=>['input.internal_gains','input.solar_absorbed','input.surface_storage'].includes(node.kind)),'derived internal gains or envelope process appeared as a given boundary input');
+ const internal=scene.visibleNodes.find(node=>node.driverCategory==='internal.gains');check(internal?.value===30&&internal.groupedMembers.length===3,'derived Internal gains did not retain People/Lighting/Equipment drivers');
+ for(const [kind,expectedInput]of[['input.people',30],['input.lighting',20],['input.equipment',20]]){
+  const input=scene.visibleNodes.find(node=>node.kind===kind),relation=scene.drawing.connectors.find(item=>item.fromId===input?.id&&item.toId===internal.id);
+  check(input?.signedValue===expectedInput&&relation?.fromValue===expectedInput&&relation?.toValue===10,'boundary input relation borrowed the entire Internal gains card: '+kind);
+  const series=chart.energyPathMonthlyChartSeries(relation.link,'link',Array.from({length:12},(_,month)=>view.energyPathGraphForState(explanation,{...state,simulationEnergyPeriod:'M'+(month+1)})));
+  check(series[0].points[0].value===expectedInput/4&&series[1].points[0].value===2.5,'Monthly relation lost the matching original internal-driver subset: '+kind);
+ }
  const convection=graph().nodes.find(node=>node.kind==='input.exterior_convection');
  check(convection.signedValue===30,'opposite convection observations lost their signed aggregate');
  const monthly=Array.from({length:12},(_,month)=>view.energyPathGraphForState(explanation,{...state,simulationEnergyPeriod:'M'+(month+1)}));
@@ -170,6 +178,7 @@ try{
  const inputMonthly=chart.energyPathMonthlyChartSeries(inputLink.link,'link',monthly);
  check(inputMonthly[0].points[0].value===7.5,'grouped input association double counted its reference');
  check(scene.drawing.ribbons.length===baseline.drawing.ribbons.length,'inputs became conserved ribbons');
+ check(scene.drawing.connectors.every(item=>item.path.endsWith(' Z')&&!item.arrowPath)&&!host.querySelector('.energy-path-context-arrow'),'measured input/auxiliary relationships still use arrow connectors');
  const canvas=host.querySelector('[data-energy-path-canvas]');
  const edge=id=>[...host.querySelectorAll('[data-energy-explanation-edge]')].find(element=>element.dataset.energyExplanationEdge===id&&element.tabIndex>=0);
  const button=id=>[...host.querySelectorAll('[data-energy-path-layout-node]')].find(element=>element.dataset.energyPathLayoutNode===id);
@@ -181,7 +190,7 @@ try{
   const input=host.querySelector('[data-energy-path-input-kind="input.exterior_convection"]');input.click();
   const frequency=host.querySelector('[data-energy-path-chart-frequency]');frequency.value='monthly';frequency.dispatchEvent(new Event('change',{bubbles:true}));
   const layout=host.querySelector('[data-energy-path-layout]');layout.scrollLeft=0;
-  host.querySelector('[data-energy-path-input-context]').scrollIntoView({block:'start',behavior:'instant'});
+  host.querySelector('[data-energy-path-layout]').scrollIntoView({block:'start',behavior:'instant'});
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
   const canvas=host.querySelector('[data-energy-path-canvas]'),r=canvas.getBoundingClientRect();
   check(layout.scrollWidth>=canvas.clientWidth,'five-stage canvas was clipped instead of scrollable');
@@ -191,7 +200,8 @@ try{
  };
  window.inputsAuxiliaryPointer=(debug=false)=>{
   const evidence=[];
-  for(const fraction of[.35,.5,.65,.2,.8,.1,.9]){const p=target.getPointAtLength(target.getTotalLength()*fraction),m=target.getScreenCTM(),x=p.x*m.a+p.y*m.c+m.e,y=p.x*m.b+p.y*m.d+m.f,hit=document.elementFromPoint(x,y);if(hit?.closest('[data-energy-explanation-edge]')===target)return {x,y};evidence.push({x,y,hit:hit?.outerHTML.slice(0,300)});}
+  const from=auxiliary.fromPort,to=auxiliary.toPort,middle=(from.x+to.x)/2,fromY=(from.y0+from.y1)/2,toY=(to.y0+to.y1)/2;
+  for(const fraction of[.35,.5,.65,.2,.8,.1,.9]){const q=1-fraction,p={x:q*q*q*from.x+3*q*q*fraction*middle+3*q*fraction*fraction*middle+fraction*fraction*fraction*to.x,y:(q*q*q+3*q*q*fraction)*fromY+(3*q*fraction*fraction+fraction*fraction*fraction)*toY},m=target.getScreenCTM(),x=p.x*m.a+p.y*m.c+m.e,y=p.x*m.b+p.y*m.d+m.f,hit=document.elementFromPoint(x,y);if(hit?.closest('[data-energy-explanation-edge]')===target)return {x,y};evidence.push({x,y,hit:hit?.outerHTML.slice(0,300)});}
   return debug?evidence:null;
  };
  window.finishInputsAuxiliary=()=>{try{

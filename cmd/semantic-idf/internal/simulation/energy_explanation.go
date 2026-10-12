@@ -215,6 +215,7 @@ type EnergyExplanationNode struct {
 	ThermalComponent      string                             `json:"thermalComponent,omitempty"`
 	ThermalBoundary       string                             `json:"thermalBoundary,omitempty"`
 	LoadBreakdown         []EnergyExplanationLoadComponent   `json:"loadBreakdown,omitempty"`
+	DriverBreakdown       []EnergyExplanationDriverComponent `json:"driverBreakdown,omitempty"`
 	OffsetEffects         []EnergyExplanationOffsetEffect    `json:"offsetEffects,omitempty"`
 	SimultaneousLoad      *EnergyExplanationSimultaneousLoad `json:"simultaneousLoad,omitempty"`
 	LatentShare           float64                            `json:"latentShare,omitempty"`
@@ -258,6 +259,20 @@ type EnergyExplanationLoadComponent struct {
 	Share     float64  `json:"share,omitempty"`
 	Unit      string   `json:"unit,omitempty"`
 	SourceIDs []string `json:"sourceIds,omitempty"`
+}
+
+// DriverBreakdown subdivides an existing allocated driver budget. Raw/effective
+// values are the component's pressure magnitudes, not additional load or energy.
+// Annual entries sum completed monthly allocations without annual reweighting.
+type EnergyExplanationDriverComponent struct {
+	Component       string   `json:"component"`
+	Label           string   `json:"label"`
+	Value           float64  `json:"value"`
+	RawValue        float64  `json:"rawValue"`
+	EffectiveValue  float64  `json:"effectiveValue"`
+	SourceIDs       []string `json:"sourceIds,omitempty"`
+	decodedFromJSON bool
+	valuePresence   uint8
 }
 
 // EnergyExplanationOffsetEffect is diagnostic heat-balance context. It
@@ -2225,6 +2240,7 @@ func aggregateEnergyExplanationMonthlyGraphs(monthly map[int]energyExplanationGr
 			if !exists {
 				node.Period = "annual"
 				node.LoadBreakdown = cloneEnergyExplanationLoadComponents(node.LoadBreakdown)
+				node.DriverBreakdown = cloneEnergyExplanationDriverComponents(node.DriverBreakdown)
 				node.OffsetEffects = cloneEnergyExplanationOffsetEffects(node.OffsetEffects)
 				node.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(node.SimultaneousLoad)
 				node.allocationSourceIDs = appendUniqueStrings(nil, node.allocationSourceIDs...)
@@ -2250,6 +2266,7 @@ func aggregateEnergyExplanationMonthlyGraphs(monthly map[int]energyExplanationGr
 			current.RelatedEntityIDs = appendUniqueStrings(current.RelatedEntityIDs, node.RelatedEntityIDs...)
 			current.RelatedPathIDs = appendUniqueStrings(current.RelatedPathIDs, node.RelatedPathIDs...)
 			current.LoadBreakdown = mergeEnergyExplanationLoadComponents(current.LoadBreakdown, node.LoadBreakdown)
+			current.DriverBreakdown = mergeEnergyExplanationDriverComponents(current.DriverBreakdown, node.DriverBreakdown)
 			current.OffsetEffects = mergeEnergyExplanationOffsetEffects(current.OffsetEffects, node.OffsetEffects)
 			current.simultaneousLoadContributions = mergeEnergyExplanationSimultaneousLoadContributions(current.simultaneousLoadContributions, node.simultaneousLoadContributions)
 			finalizeEnergyExplanationLoadNode(current)
@@ -2849,6 +2866,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		existing := nodes[node.ID]
 		if existing == nil {
 			node.LoadBreakdown = cloneEnergyExplanationLoadComponents(node.LoadBreakdown)
+			node.DriverBreakdown = cloneEnergyExplanationDriverComponents(node.DriverBreakdown)
 			node.OffsetEffects = cloneEnergyExplanationOffsetEffects(node.OffsetEffects)
 			node.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(node.SimultaneousLoad)
 			node.allocationSourceIDs = appendUniqueStrings(nil, node.allocationSourceIDs...)
@@ -2871,6 +2889,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		existing.node.RelatedEntityIDs = appendUniqueStrings(existing.node.RelatedEntityIDs, node.RelatedEntityIDs...)
 		existing.node.RelatedPathIDs = appendUniqueStrings(existing.node.RelatedPathIDs, node.RelatedPathIDs...)
 		existing.node.LoadBreakdown = mergeEnergyExplanationLoadComponents(existing.node.LoadBreakdown, node.LoadBreakdown)
+		existing.node.DriverBreakdown = mergeEnergyExplanationDriverComponents(existing.node.DriverBreakdown, node.DriverBreakdown)
 		existing.node.ThermalBoundary = mergeEnergyPathThermalBoundary(existing.node.ThermalBoundary, node.ThermalBoundary)
 		existing.node.OffsetEffects = mergeEnergyExplanationOffsetEffects(existing.node.OffsetEffects, node.OffsetEffects)
 		existing.node.simultaneousLoadContributions = mergeEnergyExplanationSimultaneousLoadContributions(existing.node.simultaneousLoadContributions, node.simultaneousLoadContributions)
@@ -3013,6 +3032,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				ZoneName:            item.ZoneName,
 				ServiceKind:         serviceKind,
 				DriverCategory:      item.DriverCategory,
+				DriverBreakdown:     energyDriverComponentBreakdownForSeries(item, math.Abs(rawValue), displayValue),
 				ThermalComponent:    item.ThermalComponent,
 				HeatCategory:        item.HeatCategory,
 				Sign:                sign,

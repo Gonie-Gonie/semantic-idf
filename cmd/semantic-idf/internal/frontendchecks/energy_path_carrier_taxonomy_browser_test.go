@@ -111,8 +111,8 @@ try {
       { id: "facility.gas", sourceType: "sql_meter", isMeter: true, name: "NaturalGas:Facility", sourceUnit: "J", normalizedUnit: "kWh" },
       { id: "cooling.electricity", sourceType: "sql_meter", isMeter: true, name: "Cooling:Electricity", sourceUnit: "J", normalizedUnit: "kWh" },
       { id: "water_systems.gas", sourceType: "sql_meter", isMeter: true, name: "WaterSystems:NaturalGas", sourceUnit: "J", normalizedUnit: "kWh" },
-      { id: "facility.water", sourceType: "sql_meter", isMeter: true, name: "Water:Facility", units: "m3", sourceUnit: "m3", normalizedUnit: "m3", inspectorSection: "context" },
-      { id: "water_systems.water", sourceType: "sql_meter", isMeter: true, name: "WaterSystems:Water", units: "m3", sourceUnit: "m3", normalizedUnit: "m3", inspectorSection: "context" },
+      { id: "facility.water", sourceType: "sql_meter", isMeter: true, name: "Water:Facility", units: "m3", sourceUnit: "m3", normalizedUnit: "m3", rawValue: 250, effectiveValue: 250, inspectorSection: "context" },
+      { id: "water_systems.water", sourceType: "sql_meter", isMeter: true, name: "WaterSystems:Water", units: "m3", sourceUnit: "m3", normalizedUnit: "m3", rawValue: 250, effectiveValue: 250, inspectorSection: "context" },
     ],
   };
   rawWaterExplanation.summary = {
@@ -139,6 +139,10 @@ try {
   const retainedWaterSystemsLinks = rawGraph.links.filter((link) => link.fromId === "end_use.water_systems.building");
   check(retainedWaterSystemsLinks.length === 1 && retainedWaterSystemsLinks[0].toId === "carrier.natural_gas.building" && retainedWaterSystemsLinks[0].fromValue === 5, "Water systems did not retain its exact natural-gas energy branch");
   check(rawWaterExplanation.sources.find((source) => source.id === "facility.water")?.inspectorSection === "context", "raw water source context was not retained");
+  const waterReference = document.createElement('div');waterReference.innerHTML = view.renderEnergyPathContextMetrics(rawWaterExplanation, { ...state });
+  check(waterReference.querySelector('[data-energy-path-context-metric="water"]')?.textContent.includes('250 m3'), 'water volume/source was lost from the retained context helper');
+  document.getElementById('mount').innerHTML = view.renderEnergyPathView(rawWaterExplanation, { ...state });
+  check(!document.querySelector('[data-energy-path-context-metrics],[data-energy-path-context-metric="water"]'), 'removed Utility context section remains in the main Energy Path view');
   check(JSON.stringify(rawWaterExplanation.nodes) === rawNodesBefore && JSON.stringify(rawWaterExplanation.links) === rawLinksBefore && JSON.stringify(rawWaterExplanation.sources) === rawSourcesBefore, "water filtering mutated the source payload");
 
   const rawKPI = summaryModule.energyPathSummaryKPIValues(rawWaterExplanation.summary)
@@ -348,7 +352,7 @@ try {
   carrierCases.forEach((carrier) => {
     const rendered = carrierStage?.querySelector('[data-energy-explanation-node="carrier.' + carrier.token + '.building"]');
     check(rendered && rendered.textContent.includes(carrier.label) && rendered.title.includes("kWh site") &&
-      carrierStage.querySelector("header")?.textContent.includes("kWh site"), "rendered carrier label/common unit/full tooltip is not canonical for " + carrier.token);
+      mount.querySelector('[data-energy-path-unit]')?.textContent === 'kWh' && !carrierStage.querySelector('header small'), "rendered carrier label/corner unit/full tooltip is not canonical for " + carrier.token);
   });
   check(!carrierStage?.textContent.includes("legacy "), "legacy carrier labels leaked into Energy Source nodes");
 

@@ -13,6 +13,7 @@ import {
   isEnergyPathSummaryV2,
 } from "../energy-path-summary.js";
 import { energyPathKPIItems } from "../energy-path-kpis.js";
+import { energyPathDriverPresentationLabel, energyPathProjectDriverBreakdown } from "../energy-path-driver-presentation.js";
 import { energyPathLayout } from "../energy-path-layout.js";
 import { energyPathRibbons } from "../energy-path-ribbons.js";
 import { energyPathContextConnectors, energyPathGroupInputs, energyPathInputSignedValue, isEnergyPathContextRelation } from "../energy-path-context.js";
@@ -75,7 +76,7 @@ export const ENERGY_PATH_STAGES = Object.freeze([
     labelKey: "simulation.energyPathStageInputs",
     label: "Boundary Inputs",
     descriptionKey: "simulation.energyPathStageInputsDescription",
-    description: "Reported boundary observations and envelope process context; these quantities are not additive load contributions",
+    description: "External conditions and prescribed internal sources; building heat response is shown in Load Drivers",
     scaleDomain: "boundary",
     unitLabel: "kWh",
   }),
@@ -123,11 +124,6 @@ export const ENERGY_PATH_PERIODS = Object.freeze([
     .map((label, index) => Object.freeze({ value: `M${index + 1}`, labelKey: `simulation.month.${index + 1}`, label })),
 ]);
 
-const ENERGY_PATH_SCOPES = Object.freeze([
-  Object.freeze({ value: "building", labelKey: "simulation.energyPathScopeBuilding", label: "Building" }),
-  Object.freeze({ value: "zone", labelKey: "simulation.energyPathScopeZone", label: "Zone" }),
-]);
-
 const ENERGY_PATH_SERVICES = Object.freeze([
   Object.freeze({ value: "all", labelKey: "common.all", label: "All" }),
   Object.freeze({ value: "cooling", labelKey: "simulation.cooling", label: "Cooling" }),
@@ -146,9 +142,18 @@ const ENERGY_PATH_DRIVER_ORDER = Object.freeze({
   "internal.people": 8,
   "internal.lighting": 9,
   "internal.equipment": 10,
+  "internal.gains": 8,
   "interzone.transfer": 11,
   "internal.other": 12,
   "balance.storage_other": 12,
+  "balance.air_storage": 12,
+  "balance.surface_balance": 13,
+  "balance.outdoor_air_balance": 14,
+  "balance.interzone_balance": 15,
+  "balance.internal_gain_balance": 16,
+  "balance.other_internal_gains": 16,
+  "balance.surface_exchange": 17,
+  "balance.unresolved_balance": 18,
 });
 
 const ENERGY_PATH_END_USE_ORDER = Object.freeze({
@@ -449,7 +454,6 @@ export function renderEnergyPathView(explanation = {}, viewState = {}, options =
   return `
     <section class="energy-path-view" data-energy-path-scene="${scene.token}" data-energy-path-selection="${escapeHTML(selectedID)}" data-energy-path-schema="${escapeHTML(ENERGY_PATH_SCHEMA_V2)}" data-energy-path-zone-coverage="${scene.zoneCoverage.limited ? "partial" : "complete_or_unreported"}">
       ${renderEnergyPathHeader(explanation, viewState, { scene, fixedContext: options.fixedContext })}
-      ${renderEnergyPathContextMetrics(explanation, viewState)}
       ${renderEnergyPathSupportStrip(scene.allGraphNodes, scene.graph.links, selectedID, scene.graph.supplyActivities, scene.display)}
       ${renderEnergyPathGraph(scene, viewState)}
       ${renderEnergyPathQuality(explanation, viewState)}
@@ -467,10 +471,16 @@ export function renderEnergyPathInspector(scene, viewState = {}, options = {}) {
   const kind = selectedLink ? "link" : "node";
   const nodeByID = new Map(scene.allGraphNodes.map((node) => [node.id, node]));
   const label = selectedLink ? `${nodeByID.get(item.fromId)?.label || item.fromId} → ${nodeByID.get(item.toId)?.label || item.toId}` : item.label;
+  const endpointLabels = { from: nodeByID.get(item.fromId)?.label, to: nodeByID.get(item.toId)?.label };
   scene.monthlyChartGraphs ||= Array.from({ length: 12 }, (_, month) => energyPathGraphForState(scene.explanation, { ...viewState, simulationEnergyPeriod: `M${month + 1}` }));
   return renderEnergyPathComponentChart({
     item, kind, label, display: scene.display, frequency: viewState.simulationEnergyChartFrequency,
-    monthly: energyPathMonthlyChartSeries(item, kind, scene.monthlyChartGraphs),
+    endpointLabels,
+    conversionRatio: selectedLink ? energyPathConversionRatio(item, scene.allGraphNodes, scene.graph.links) : null,
+    monthly: energyPathMonthlyChartSeries(item, kind, scene.monthlyChartGraphs, {
+      ...endpointLabels,
+      ratioForLink: (link, graph) => energyPathConversionRatio(link, graph.nodes || [], graph.links || []),
+    }),
     hourly: viewState.simulationEnergyChartFrequency === "hourly" ? energyPathHourlyChartSeries(item,
       options.result?.purposeResults?.energyExplanation?.sources || scene.explanation.sources || [], viewState,
       options.result?.purposeResults?.energyExplanation?.hourlyLabels || scene.explanation.hourlyLabels || []) : [],
@@ -1702,14 +1712,17 @@ export function energyPathCorrespondencePairs(nodes = [], relations = []) {
     const driverNode = fromNode.level === "driver" ? fromNode : toNode.level === "driver" ? toNode : null;
     const endUseNode = fromNode.level === "end_use" ? fromNode : toNode.level === "end_use" ? toNode : null;
     if (!driverNode || !endUseNode) return [];
-    const driverCategory = energyPathToken(driverNode.driverCategory || driverNode.kind || "").replace(/^driver[._-]/, "");
     const endUse = energyPathCanonicalEndUse(endUseNode);
-    const expectedEndUse = driverCategory === "internal.lighting"
-      ? "lighting"
-      : driverCategory === "internal.equipment"
-        ? "equipment"
-        : "";
-    if (!expectedEndUse || endUse !== expectedEndUse) return [];
+    const driverMembers = driverNode.groupedMembers?.length ? driverNode.groupedMembers : [driverNode];
+    const endUseIDs = new Set(endUseNode.originalNodeIds?.length ? endUseNode.originalNodeIds : [endUseNode.id]);
+    const relationMembers = relation.groupedMembers?.length ? relation.groupedMembers : [relation];
+    const verified = relationMembers.some((member) => driverMembers.some((driver) => {
+      const category = energyPathToken(driver.driverCategory || driver.kind).replace(/^driver[._-]/, "");
+      const expected = category === "internal.lighting" ? "lighting" : category === "internal.equipment" ? "equipment" : "";
+      return expected && expected === endUse &&
+        (member.fromId === driver.id && endUseIDs.has(member.toId) || member.toId === driver.id && endUseIDs.has(member.fromId));
+    }));
+    if (!verified) return [];
     return [{ relation, driverNode, endUseNode }];
   });
 }
@@ -2312,7 +2325,10 @@ export function updateEnergyPathControlState(event, viewState = {}, explanation 
   }
   const scope = target.closest("[data-simulation-energy-scope]");
   if (scope) {
-    viewState.simulationEnergyScopeKind = scope.value === "zone" ? "zone" : "building";
+    const zoneName = energyPathZoneNames(explanation).find((name) => `zone:${name}` === scope.value);
+    if (scope.value !== "building" && !zoneName) return { handled: true, render: false };
+    viewState.simulationEnergyScopeKind = zoneName ? "zone" : "building";
+    if (zoneName) viewState.simulationEnergyZoneName = zoneName;
     viewState.simulationEnergySelection = "";
     normalizeEnergyPathViewState(viewState, explanation);
     return { handled: true, render: true };
@@ -2414,6 +2430,9 @@ export function energyPathGraphForState(explanation = {}, viewState = {}) {
   }
 
   ({ nodes, links } = energyPathApplyCarrierTaxonomy(nodes, links, explanation.sources || []));
+  const correspondences = new Set(energyPathCorrespondencePairs(nodes, links).map((pair) => pair.relation));
+  links = links.filter((link) => link.relation !== "source_correspondence" || correspondences.has(link));
+  ({ nodes, links } = energyPathProjectDriverBreakdown(nodes, links));
   nodes = nodes.map(energyPathWithOriginalMembers);
 
   const scopeKind = viewState.simulationEnergyScopeKind || "building";
@@ -2905,16 +2924,32 @@ function mergeEnergyPathPresentationLink(current, next) {
 
 function synchronizeEnergyPathPresentationNonFlowLinks(nodes = [], links = []) {
   const nodeByID = new Map((nodes || []).filter((node) => node?.id).map((node) => [node.id, node]));
+  const reference = (node, link, side) => {
+    if (!node) return null;
+    const endpoints = new Set((node.groupedMembers?.length ? node.groupedMembers : [node]).map((member) => member.id));
+    const values = new Map();
+    const visit = (record, ancestors = new Set()) => {
+      if (ancestors.has(record)) return false;
+      if (record.groupedMembers?.length) return record.groupedMembers.every((member) => visit(member, new Set(ancestors).add(record)));
+      const id = record[`${side}Id`], value = record[`${side}Value`];
+      if (!endpoints.has(id) || typeof value !== "number" || !Number.isFinite(value) || value < 0 || values.has(id) && values.get(id) !== value) return false;
+      values.set(id, value);
+      return true;
+    };
+    if (!visit(link) || !values.size) return null;
+    const total = [...values.values()].reduce((sum, value) => sum + value, 0);
+    return Number.isFinite(total) ? total : null;
+  };
   for (const link of links || []) {
     if (energyPathToken(link.relation) !== "source_correspondence") continue;
     const fromNode = nodeByID.get(link.fromId);
     const toNode = nodeByID.get(link.toId);
     if (fromNode) {
-      link.fromValue = Math.abs(Number(fromNode.value) || 0);
+      link.fromValue = reference(fromNode, link, "from");
       link.fromUnit = fromNode.unit || link.fromUnit || "";
     }
     if (toNode) {
-      link.toValue = Math.abs(Number(toNode.value) || 0);
+      link.toValue = reference(toNode, link, "to");
       link.toUnit = toNode.unit || link.toUnit || "";
     }
     link.ratio = 0;
@@ -2937,15 +2972,15 @@ export function energyPathMergeAllServiceDrivers(nodes = [], links = []) {
 	if (!canonicalDrivers.length) {
 		return { nodes, links };
 	}
-	const targetByCategory = new Map([["internal.other", "balance.storage_other"]]);
+	const targetByCategory = new Map(["internal.people", "internal.lighting", "internal.equipment", "internal.other", "balance.other_internal_gains"].map((category) => [category, "internal.gains"]));
 
 	const driverByID = new Map();
 	const oldToNewID = new Map();
 	for (const node of canonicalDrivers) {
 		const sourceCategory = energyPathToken(node.driverCategory);
 		const category = targetByCategory.get(sourceCategory) || sourceCategory;
-		const parts = String(node.id || "").split(".");
-		const scopeToken = parts.at(-1) || "building";
+		const parts = String(node.originalDriverId || node.id || "").split(".");
+		const scopeToken = node.groupingScope || parts.at(-1) || "building";
 		const id = `driver.${category}.all.${scopeToken}`;
 		oldToNewID.set(node.id, id);
 		const current = driverByID.get(id);
@@ -2956,7 +2991,7 @@ export function energyPathMergeAllServiceDrivers(nodes = [], links = []) {
 				kind: `driver.${category}`,
 				driverCategory: category,
 				serviceKind: "all",
-				label: category === "balance.storage_other" ? "Other / storage" : node.label,
+				label: energyPathDriverPresentationLabel(category, node.label),
 				sourceIds: energyPathUniqueValues(node.sourceIds),
 				relatedEntityIds: energyPathUniqueValues(node.relatedEntityIds),
 				relatedPathIds: energyPathUniqueValues(node.relatedPathIds),
@@ -2988,7 +3023,7 @@ export function energyPathMergeAllServiceDrivers(nodes = [], links = []) {
 			...link,
 			fromId: oldToNewID.get(link.fromId) || link.fromId,
 			toId: oldToNewID.get(link.toId) || link.toId,
-			...(isEnergyPathContextRelation(link) ? { groupedMembers: energyPathLinkAllocationMembers(link) } : {}),
+			...(isEnergyPathNonFlowRelation(link) ? { groupedMembers: energyPathLinkAllocationMembers(link) } : {}),
 		};
 		const key = [projected.fromId, projected.toId, projected.relation || "", projected.basis || "", projected.serviceKind || ""].join("|");
 		const current = linkByKey.get(key);
@@ -2999,7 +3034,7 @@ export function energyPathMergeAllServiceDrivers(nodes = [], links = []) {
 			linkByKey.set(key, projected);
 			continue;
 		}
-		if (isEnergyPathContextRelation(current)) current.groupedMembers = [...energyPathLinkAllocationMembers(current), ...energyPathLinkAllocationMembers(projected)];
+		if (isEnergyPathNonFlowRelation(current)) current.groupedMembers = [...energyPathLinkAllocationMembers(current), ...energyPathLinkAllocationMembers(projected)];
 		if (!isEnergyPathNonFlowRelation(current) || !isEnergyPathNonFlowRelation(projected)) {
 			for (const field of ["fromValue", "toValue", "value", "signedValue", "displayValue"]) {
 				if (Object.prototype.hasOwnProperty.call(projected, field) || Object.prototype.hasOwnProperty.call(current, field)) {
@@ -3105,25 +3140,19 @@ export function energyPathSummaryForState(explanation = {}, fallbackSummary = {}
 export function renderEnergyPathControls(explanation = {}, viewState = {}, preparedOptions = null) {
   const zones = preparedOptions?.zones || energyPathZoneNames(explanation);
   const rootIsZoneOnly = energyPathToken(explanation.scope?.kind) === "zone" && !energyPathZoneResults(explanation).length;
-  const scopes = ENERGY_PATH_SCOPES.map((scope) => (
-    `<option value="${scope.value}" ${viewState.simulationEnergyScopeKind === scope.value ? "selected" : ""} ${(scope.value === "zone" && !zones.length) || (scope.value === "building" && rootIsZoneOnly) ? "disabled" : ""}>${escapeHTML(t(scope.labelKey, {}, scope.label))}</option>`
-  )).join("");
+  const selectedScope = energyPathScopeControlValue(viewState);
+  const scopes = `<option value="building" ${selectedScope === "building" ? "selected" : ""} ${rootIsZoneOnly ? "disabled" : ""}>${escapeHTML(t("common.all", {}, "All"))}</option>` + zones.map((zone) =>
+    `<option value="${escapeHTML(`zone:${zone}`)}" ${selectedScope === `zone:${zone}` ? "selected" : ""}>${escapeHTML(zone)}</option>`
+  ).join("");
   const periods = ENERGY_PATH_PERIODS.map((period) => (
     `<option value="${period.value}" ${viewState.simulationEnergyPeriod === period.value ? "selected" : ""}>${escapeHTML(t(period.labelKey, {}, period.label))}</option>`
   )).join("");
-  const zoneControl = viewState.simulationEnergyScopeKind === "zone"
-    ? `<span class="energy-path-zone-control">
-        <input type="search" list="simulationEnergyPathZones" value="${escapeHTML(viewState.simulationEnergyZoneName || "")}" data-simulation-energy-zone-name aria-label="${escapeHTML(t("simulation.energyPathZone", {}, "Zone"))}" autocomplete="off" />
-        <datalist id="simulationEnergyPathZones">${zones.map((zone) => `<option value="${escapeHTML(zone)}"></option>`).join("")}</datalist>
-      </span>`
-    : "";
   return `
     <div class="energy-path-controls" aria-label="${escapeHTML(t("simulation.energyPathControls", {}, "Energy Path controls"))}">
       <label>
         <span>${escapeHTML(t("simulation.energyPathScope", {}, "Scope"))}</span>
         <span class="energy-path-control-fields">
           <select data-simulation-energy-scope aria-label="${escapeHTML(t("simulation.energyPathScope", {}, "Scope"))}">${scopes}</select>
-          ${zoneControl}
         </span>
       </label>
       <label>
@@ -3131,6 +3160,10 @@ export function renderEnergyPathControls(explanation = {}, viewState = {}, prepa
         <select data-simulation-energy-path-period aria-label="${escapeHTML(t("common.period", {}, "Period"))}">${periods}</select>
       </label>
     </div>`;
+}
+
+export function energyPathScopeControlValue(viewState = {}) {
+  return viewState.simulationEnergyScopeKind === "zone" ? `zone:${viewState.simulationEnergyZoneName || ""}` : "building";
 }
 
 export function energyPathRatioQualityForState(explanation = {}, viewState = {}) {
@@ -3151,7 +3184,6 @@ export function renderEnergyPathGraph(scene, viewState = {}) {
   const directLane = layout.lanes.find((lane) => lane.id === "direct");
   const directStart = layout.columns.find((column) => column.level === "end_use").x;
   const inputColumn = layout.columns.find((column) => column.level === "input");
-  const driverColumn = layout.columns.find((column) => column.level === "driver");
   const percent = (value) => `${value / layout.width * 100}%`;
   const stages = ENERGY_PATH_STAGES.filter((stage) => layout.columns.some((column) => column.level === stage.level)).map((stage) => {
     const column = layout.columns.find((item) => item.level === stage.level);
@@ -3160,13 +3192,9 @@ export function renderEnergyPathGraph(scene, viewState = {}) {
     const description = partialCarrierSubtotal
       ? t("simulation.energyPathObservedDirectUseSubtotalExplanation", {}, "Only directly observed zone energy uses are included; energy-source values are subtotals, not complete zone totals.")
       : t(stage.descriptionKey, {}, stage.description);
-    const unitLabel = energyPathStageUnit(stage, display);
     return `<article class="energy-path-stage ${stage.scaleDomain}-domain" data-energy-path-stage="${escapeHTML(stage.level)}"${partialCarrierSubtotal ? ' data-energy-path-value-scope="observed_direct_use_subtotal"' : ""} style="left:${percent(column.x)};width:${percent(column.width)}">
       <header title="${escapeHTML(description)}">
-        <strong>${escapeHTML(t(stage.labelKey, {}, stage.label))}</strong>
-        <span title="${escapeHTML(unitLabel)}">${escapeHTML(partialCarrierSubtotal
-          ? t("simulation.energyPathKnownEnergySources", {}, "Known energy sources")
-          : unitLabel)}</span>
+        <strong>${escapeHTML(partialCarrierSubtotal ? t("simulation.energyPathKnownEnergySources", {}, "Known energy sources") : t(stage.labelKey, {}, stage.label))}</strong>
       </header>
       <div class="energy-path-stage-nodes">${entries.length
         ? entries.map((entry) => renderEnergyPathNode(entry.node, stage, selectedID, relatedNodeIDs, { ...entry, column, focusKind: energyPathFocusKind(focus, "node", entry.id, true) }, display)).join("")
@@ -3174,9 +3202,10 @@ export function renderEnergyPathGraph(scene, viewState = {}) {
     </article>`;
   }).join("");
   const inputNotice = inputColumn
-    ? `<p class="energy-path-input-note" data-energy-path-input-context>${escapeHTML(t("simulation.energyPathEnvelopeContext", {}, "Envelope · insulation / thermal storage"))}. ${escapeHTML(t("simulation.energyPathInputContextDescription", {}, "Boundary and envelope process observations are separate reference quantities, not additive load contributions or transfer efficiencies."))}${renderEnergyPathMissingInputs(visibleNodes)}</p>`
+    ? ""
     : `<p class="energy-path-input-note" data-energy-path-input-unavailable>${escapeHTML(t("simulation.energyPathInputsUnavailable", {}, "Boundary input observations are unavailable in this saved result. Run Basic Energy again to collect them."))}</p>`;
   return `${inputNotice}<div class="energy-path-layout${inputColumn ? " energy-path-layout-with-inputs" : ""}" data-energy-path-layout>
+    <span class="energy-path-unit" data-energy-path-unit>${escapeHTML(energyPathDisplayUnit("kWh", display))}</span>
     <div class="energy-path-stage-grid" data-energy-path-canvas role="group" aria-label="${escapeHTML(inputColumn ? t("simulation.energyPathDirectionWithInputs", {}, "Boundary inputs → Load drivers → Thermal load → End-use energy → Energy sources") : t("simulation.energyPathDirection", {}, "Load drivers → Thermal load → End-use energy → Energy sources"))}" style="height:${layout.height}px">
       <svg class="energy-path-graph-underlay" data-energy-path-graph-underlay viewBox="0 0 ${layout.width} ${layout.height}" preserveAspectRatio="none" aria-hidden="true" focusable="false">
         ${renderEnergyPathRibbonGeometry(drawing, visibleNodes, focus, display)}
@@ -3185,8 +3214,6 @@ export function renderEnergyPathGraph(scene, viewState = {}) {
       ${directLane?.height > 0 ? `<div class="energy-path-direct-lane-band" data-energy-path-lane-band="direct" style="left:${percent(directStart)};width:${percent(layout.width - directStart)};top:${directLane.y}px;height:${directLane.height}px">
         <span>${escapeHTML(t("simulation.energyPathDirectAuxiliaryLane", {}, "Direct & auxiliary energy"))}</span>
       </div>` : ""}
-      <div class="energy-path-plot-divider" data-energy-path-divider style="left:${percent(layout.dividerX)}"><span>${escapeHTML(t("simulation.energyPathConversion", {}, "Equipment conversion"))}</span></div>
-      ${inputColumn ? `<div class="energy-path-plot-divider energy-path-envelope-divider" data-energy-path-envelope-context style="left:${percent(driverColumn.x)}" title="${escapeHTML(t("simulation.energyPathEnvelopeContext", {}, "Envelope · insulation / thermal storage"))}"><span>${escapeHTML(t("simulation.energyPathEnvelope", {}, "Envelope"))}</span></div>` : ""}
       ${stages}
       ${renderEnergyPathBridgeRatios(drawing, layout, visibleNodes, links, ratioQuality, focus, display)}
       ${renderEnergyPathLinkHitLayer(drawing, layout, visibleNodes, focus, display)}
@@ -3194,16 +3221,15 @@ export function renderEnergyPathGraph(scene, viewState = {}) {
   </div>`;
 }
 
-function energyPathStageUnit(stage, display) {
-  if (stage.scaleDomain === "boundary") return `${energyPathDisplayUnit(stage.unitLabel, display)} · ${t("simulation.energyPathReported", {}, "Reported")}`;
-  return energyPathDisplayUnit(t(stage.scaleDomain === "thermal" ? "simulation.energyPathThermalUnit" : "simulation.energyPathSiteUnit", {}, stage.unitLabel), display);
-}
 
 function energyPathInputLabel(kind, fallback = kind) {
   const labels = {
     "input.solar_incident": ["IncidentSolar", "Incident solar"],
     "input.exterior_convection": ["ExteriorConvection", "Exterior convection"],
     "input.exterior_longwave": ["ExteriorLongwave", "Exterior longwave exchange"],
+    "input.people": ["People", "People"],
+    "input.lighting": ["Lighting", "Lighting"],
+    "input.equipment": ["Equipment", "Equipment"],
     "input.internal_gains": ["InternalGains", "Reported internal gains"],
     "input.solar_absorbed": ["AbsorbedSolar", "Solar absorbed · envelope context"],
     "input.surface_storage": ["SurfaceStorage", "Envelope storage · process context"],
@@ -3220,9 +3246,9 @@ function renderEnergyPathMissingInputs(nodes) {
 
 function renderEnergyPathContextGeometry(drawing, nodes, focus, display) {
   const nodeByID = new Map(nodes.map((node) => [node.id, node]));
-  return (drawing.connectors || []).map((connector) => `<g class="energy-path-context-connector" data-energy-path-context-link="${escapeHTML(connector.id)}" data-energy-path-context-relation="${escapeHTML(connector.relation)}" data-energy-path-focus="${energyPathFocusKind(focus, "link", connector.id)}" data-from-value="${connector.fromValue}" data-to-value="${connector.toValue}" data-from-unit="${escapeHTML(connector.fromUnit)}" data-to-unit="${escapeHTML(connector.toUnit)}">
+  return (drawing.connectors || []).map((connector) => `<g class="energy-path-context-connector" data-energy-path-context-link="${escapeHTML(connector.id)}" data-energy-path-context-relation="${escapeHTML(connector.relation)}" data-energy-path-focus="${energyPathFocusKind(focus, "link", connector.id)}" ${energyPathAppearanceAttributes(energyPathLinkAppearance(connector.link, nodes))} data-from-value="${connector.fromValue}" data-to-value="${connector.toValue}" data-from-width="${connector.fromWidth}" data-to-width="${connector.toWidth}" data-from-unit="${escapeHTML(connector.fromUnit)}" data-to-unit="${escapeHTML(connector.toUnit)}">
     <title>${escapeHTML(energyPathRibbonTitle(connector, nodeByID, display))}</title>
-    <path d="${escapeHTML(connector.path)}"/><path class="energy-path-context-arrow" d="${escapeHTML(connector.arrowPath)}"/>
+    <path d="${escapeHTML(connector.path)}"/>
   </g>`).join("");
 }
 
@@ -3348,7 +3374,8 @@ function renderEnergyPathLinkHitLayer(drawing, layout, nodes, focus, display) {
   return `<svg class="energy-path-link-hit-layer" data-energy-path-hit-layer viewBox="0 0 ${layout.width} ${layout.height}" preserveAspectRatio="none" role="group" aria-label="${escapeHTML(t("simulation.energyPathSelectableLinks", {}, "Selectable energy links"))}">
     ${[...drawing.ribbons, ...(drawing.connectors || [])].map((ribbon) => {
       const title = [energyPathRibbonTitle(ribbon, nodeByID, display), energyPathAppearanceLabel(energyPathLinkAppearance(ribbon.link, nodes))].filter(Boolean).join(" · ");
-      return `<g><path class="energy-path-link-hit${ribbon.domain === "context" ? " energy-path-context-hit" : ""}" data-energy-path-link-hit="${escapeHTML(ribbon.id)}" data-energy-explanation-edge="${escapeHTML(ribbon.id)}" d="${escapeHTML(ribbon.path)}" tabindex="${ribbon.domain === "conversion" ? -1 : 0}" role="button" aria-pressed="${focus.selectedLinkID === ribbon.id}" aria-label="${escapeHTML(title)}"><title>${escapeHTML(title)}</title></path>
+      const zeroContext = ribbon.domain === "context" && !ribbon.fromWidth && !ribbon.toWidth;
+      return `<g><path class="energy-path-link-hit${ribbon.domain === "context" ? " energy-path-context-hit" : ""}${zeroContext ? " energy-path-zero-context-hit" : ""}" data-energy-path-link-hit="${escapeHTML(ribbon.id)}" data-energy-explanation-edge="${escapeHTML(ribbon.id)}" d="${escapeHTML(zeroContext ? ribbon.centerPath : ribbon.path)}" tabindex="${ribbon.domain === "conversion" ? -1 : 0}" role="button" aria-pressed="${focus.selectedLinkID === ribbon.id}" aria-label="${escapeHTML(title)}"><title>${escapeHTML(title)}</title></path>
         <path class="energy-path-link-focus-ring${focus.selectedLinkID === ribbon.id ? " selected" : ""}" d="${escapeHTML(ribbon.path)}" aria-hidden="true"/>
       </g>`;
     }).join("")}
@@ -3390,11 +3417,11 @@ export function renderEnergyPathLinkInspector(explanation, ribbon, nodes, links,
 
 function renderEnergyPathGraphLegend(display, includeContext = false) {
   return `<div class="energy-path-domain-legend" data-energy-path-legend aria-label="${escapeHTML(t("simulation.energyPathScaleDomains", {}, "Thermal and site-energy scale domains"))}">
-    <span data-energy-path-legend-item="thermal"><i class="energy-path-legend-swatch thermal" aria-hidden="true"></i>${escapeHTML(display?.perArea ? t("simulation.energyPathLegendThermalArea", {}, "Thermal kWh/m²") : t("simulation.energyPathLegendThermal", {}, "Thermal kWh"))}</span>
-    <span data-energy-path-legend-item="site"><i class="energy-path-legend-swatch site" aria-hidden="true"></i>${escapeHTML(display?.perArea ? t("simulation.energyPathLegendSiteArea", {}, "Site kWh/m²") : t("simulation.energyPathLegendSite", {}, "Site kWh"))}</span>
+    <span data-energy-path-legend-item="thermal"><i class="energy-path-legend-swatch thermal" aria-hidden="true"></i>${escapeHTML(t("simulation.energyPathLegendThermalOnly", {}, "Thermal"))}</span>
+    <span data-energy-path-legend-item="site"><i class="energy-path-legend-swatch site" aria-hidden="true"></i>${escapeHTML(t("simulation.energyPathLegendSiteOnly", {}, "Site energy"))}</span>
     <span data-energy-path-legend-item="allocated"><i class="energy-path-legend-swatch allocated" aria-hidden="true"></i>${escapeHTML(t("simulation.energyPathAllocated", {}, "Allocated"))}</span>
     <span data-energy-path-legend-item="residual"><i class="energy-path-legend-swatch residual" aria-hidden="true"></i>${escapeHTML(t("simulation.energyPathLegendResidual", {}, "Residual"))}</span>
-    ${includeContext ? `<span data-energy-path-legend-item="context"><i class="energy-path-legend-context" aria-hidden="true"></i>${escapeHTML(t("simulation.energyPathLegendContext", {}, "Thin lines: measured / allocation associations, not conserved flows"))}</span>` : ""}
+    ${includeContext ? `<span data-energy-path-legend-item="context" title="${escapeHTML(t("simulation.energyPathContextLinkDescription", {}, "Association only: endpoint quantities have separate boundaries and do not define a conversion efficiency."))}"><i class="energy-path-legend-context" aria-hidden="true"></i>${escapeHTML(t("simulation.energyPathLegendContext", {}, "Reference relations"))}</span>` : ""}
   </div>`;
 }
 
@@ -3408,12 +3435,10 @@ function renderEnergyPathStage(stage, nodes, selectedID, relatedNodeIDs, index, 
     : `<span class="energy-path-stage-empty">${escapeHTML(t("common.notAvailable", {}, "—"))}</span>`;
   return `
     <article class="energy-path-stage ${stage.scaleDomain === "site" ? "site-domain" : "thermal-domain"}" data-energy-path-stage="${escapeHTML(stage.level)}"${partialCarrierSubtotal ? ' data-energy-path-value-scope="observed_direct_use_subtotal"' : ""}>
-      ${stage.level === "end_use" ? `<span class="energy-path-conversion-divider">${escapeHTML(t("simulation.energyPathConversion", {}, "Equipment conversion"))}</span>` : ""}
       <header>
         <strong>${escapeHTML(partialCarrierSubtotal
           ? t("simulation.energyPathKnownEnergySources", {}, "Known energy sources")
           : t(stage.labelKey, {}, stage.label))}</strong>
-        <span>${escapeHTML(energyPathStageUnit(stage, display))}</span>
       </header>
       <p>${escapeHTML(partialCarrierSubtotal
         ? t("simulation.energyPathObservedDirectUseSubtotalExplanation", {}, "Only directly observed zone energy uses are included; energy-source values are subtotals, not complete zone totals.")

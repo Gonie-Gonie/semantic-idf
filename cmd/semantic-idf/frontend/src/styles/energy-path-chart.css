@@ -1,0 +1,39 @@
+/* Selected relations compare paired energy quantities and their numeric ratio.
+   Each plot retains its own internal scroll area when graph fonts are enlarged. */
+.energy-path-component-chart {
+  --energy-path-chart-min-width: max(360px, calc(var(--energy-path-chart-font-size) * 30));
+  container-type: inline-size;
+}
+
+.energy-path-component-chart[data-energy-path-chart-mode="monthly"] {
+  --energy-path-chart-min-width: max(360px, calc(var(--energy-path-chart-font-size) * 30));
+}
+
+.energy-path-chart-panels {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+
+.energy-path-chart-panel { min-width: 0; }
+.energy-path-chart-panel h4 { margin: 0 0 6px; font: inherit; font-weight: 600; color: var(--ink); }
+.energy-path-chart-panel .energy-path-chart-empty { display: grid; place-items: center; min-height: 150px; }
+
+.energy-path-chart-quantities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+.energy-path-chart-quantities > div { flex: 1 1 180px; min-width: 0; }
+.energy-path-chart-quantities dt { margin: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.energy-path-chart-quantities dd { margin: 2px 0 0; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.energy-path-chart-note { display: block; margin-top: 7px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+@container (min-width: 680px) {
+  .energy-path-chart-panels.has-ratio { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

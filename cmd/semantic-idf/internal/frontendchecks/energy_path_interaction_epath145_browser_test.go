@@ -106,16 +106,16 @@ try{
  const barNodes=id=>[...host.querySelectorAll("[data-energy-path-bar]")].filter(element=>element.dataset.energyPathBar===id);
  const positions=()=>JSON.stringify([...host.querySelectorAll("[data-energy-path-layout-node]")].map(element=>[element.dataset.energyPathLayoutNode,element.style.left,element.style.top,element.style.width,element.style.height]));
  const paths=()=>JSON.stringify([...host.querySelectorAll("[data-energy-path-ribbon]")].map(element=>[element.dataset.energyPathRibbon,element.getAttribute("d"),element.dataset.fromWidth,element.dataset.toWidth,element.dataset.fromValue,element.dataset.toValue]));
- const current=graph(),lightingDriver=current.nodes.find(item=>item.driverCategory==="internal.lighting"),lightingUse=current.nodes.find(item=>item.endUse==="lighting");
+ const current=graph(),lightingDriver=current.nodes.find(item=>item.driverCategory==="internal.gains"),lightingUse=current.nodes.find(item=>item.endUse==="lighting"),equipmentUse=current.nodes.find(item=>item.endUse==="equipment");
  if(new URLSearchParams(location.search).get("run145")!=="1"){
   if(new URLSearchParams(location.search).get("selection")==="selected")click(node(lightingDriver.id));
-  document.body.dataset.epath145Status="manual";document.getElementById("epath145-result").textContent="Actual145fixture: selectnodesorlinks; Enter/Space onlinks, Escape/blankgraphclear. Lightingdriver highlightsHeating/Gas pluscounterpartcardonly.";
+  document.body.dataset.epath145Status="manual";document.getElementById("epath145-result").textContent="Actual145fixture: selectnodesorlinks; Enter/Space onlinks, Escape/blankgraphclear. Internal gains highlights Heating/Gas plus Lighting/Equipment counterpart cards only.";
  }else{
  check(innerWidth===1600&&innerHeight===900,"actual145viewport is not1600x900");
  const originalPositions=positions(),originalPaths=paths();
  const physical=current.links.filter(link=>ribbon(link.id));
- check(physical.length===24&&host.querySelectorAll("[data-energy-path-ribbon]").length===24,"interaction overlay changed physical ribbon count");
- check(host.querySelectorAll("[data-energy-path-link-hit]").length===24,"physical links lack one separate accessible hit target each");
+ check(physical.length===22&&host.querySelectorAll("[data-energy-path-ribbon]").length===22,"interaction overlay changed grouped Internal gains physical ribbon count");
+ check(host.querySelectorAll("[data-energy-path-link-hit]").length===22,"physical links lack one separate accessible hit target each");
  const underlay=host.querySelector("[data-energy-path-graph-underlay]"),hitLayer=host.querySelector("[data-energy-path-hit-layer]");
  check(underlay?.getAttribute("aria-hidden")==="true"&&hitLayer&&!underlay.contains(hitLayer)&&hitLayer.getAttribute("aria-hidden")!=="true","keyboard hit targets are hidden inside quantitative SVG");
  check(!host.querySelector("[data-energy-path-component-chart]"),"unselected graph rendered link details");
@@ -129,7 +129,8 @@ try{
   if(conversion){const control=ratio(link.id);check(control?.tagName==="BUTTON"&&control.type==="button"&&control.tabIndex===0&&control.dataset.energyExplanationEdge===link.id,"conversion ratio is not the sole native conversion tabstop");check(Boolean(control?.compareDocumentPosition(hitLayer)&Node.DOCUMENT_POSITION_FOLLOWING),"native conversion controls come after SVG in keyboard DOM order");}
  }
  const taxonomy=level=>[...host.querySelectorAll('[data-energy-path-stage="'+level+'"] [data-energy-path-layout-node]')].map(element=>current.nodes.find(item=>item.id===element.dataset.energyPathLayoutNode));
- check(taxonomy("driver").map(item=>item.driverCategory).join("|")==="surface.exterior_walls|surface.roofs|surface.ground_floors|surface.windows_doors|surface.interzone|air.infiltration|air.mechanical_ventilation|air.interzone|internal.people|internal.lighting|internal.equipment|interzone.transfer","driver taxonomy order depends on values/inputorder");
+ check(taxonomy("driver").map(item=>item.driverCategory).join("|")==="surface.exterior_walls|surface.roofs|surface.ground_floors|surface.windows_doors|surface.interzone|air.infiltration|air.mechanical_ventilation|air.interzone|internal.gains|interzone.transfer","driver taxonomy order depends on values/inputorder");
+ check(lightingDriver?.groupedMembers.length===3&&lightingDriver.value===60,"Internal gains grouping discarded or duplicated an original People/Lighting/Equipment contribution");
  check(taxonomy("load").map(item=>item.serviceKind).join(",")==="cooling,heating","load service order is not fixed");
  check(taxonomy("end_use").map(item=>item.level==="residual"?"residual":item.endUse).join(",")==="cooling,heating,fans_pumps,lighting,equipment,water_systems,refrigeration,other,residual","end-use order is not fixed taxonomy / residuallast");
  check(taxonomy("carrier").map(item=>item.carrier).join(",")==="electricity,natural_gas","carrier order follows descending values instead of fixed taxonomy");
@@ -146,8 +147,7 @@ try{
  check(expectedIDs.size===3,"selection fixture does not have its expected three-stage Heating path");
  for(const link of physical)assertOpacity(ribbon(link.id),expectedIDs.has(link.id)?1:.25,"directed Lighting demand "+link.id);
  for(const id of[lightingDriver.id,heatingLoad.id,heatingUse.id,gas.id]){assertOpacity(node(id),1,"selected demand node");for(const bar of barNodes(id))assertOpacity(bar,1,"selected demand bar");}
- assertOpacity(node(lightingUse.id),1,"correspondence counterpart card");check(node(lightingUse.id).dataset.energyPathFocus==="counterpart"&&node(lightingUse.id).dataset.energyPathRelated==="true","correspondence counterpart loses its distinct nonflow encoding");
- for(const bar of barNodes(lightingUse.id))assertOpacity(bar,.25,"counterpart physical bar must not imply causal demand flow");
+ for(const use of[lightingUse,equipmentUse]){assertOpacity(node(use.id),1,"correspondence counterpart card");check(node(use.id).dataset.energyPathFocus==="counterpart"&&node(use.id).dataset.energyPathRelated==="true","correspondence counterpart loses its distinct nonflow encoding");for(const bar of barNodes(use.id))assertOpacity(bar,.25,"counterpart physical bar must not imply causal demand flow");}
  assertOpacity(node(electricity.id),.25,"shared Electricity must not flood unrelated branches");
  for(const control of host.querySelectorAll("[data-energy-path-bridge-ratio]"))assertOpacity(control,expectedIDs.has(control.dataset.energyPathBridgeRatio)?1:.25,"conversion ratio focus");
  node(electricity.id).focus();opacity(node(electricity.id));
@@ -160,6 +160,7 @@ try{
  check(state.simulationEnergySelection===coolingLink.id&&document.activeElement?.dataset.energyExplanationEdge===coolingLink.id,"native conversion button did not select exact link/focus");
  const detail=host.querySelector('[data-energy-path-component-chart="'+coolingLink.id+'"]');
  check(detail?.querySelector("[data-energy-path-chart-frequency]")&&!detail.querySelector("[data-energy-path-detail-section]"),"selected link retained old details or omitted its chart controls");
+ check(detail?.querySelector('[data-energy-path-current-ratio]')?.textContent==='4.00'&&detail.querySelector('[data-energy-path-chart-panel="ratio"] h4')?.textContent==='COP'&&detail.querySelector('[data-energy-path-chart-ratio]')?.dataset.energyPathChartRatio==='4','native cooling-link selection omitted its paired COP graph or changed reported values');
  key(ratio(coolingLink.id),"Escape");await assertClear("conversion Escape");
  const keyboardLink=physical.find(link=>link.fromId===lightingDriver.id);
  for(const pressed of["Enter"," "]){const beforeScroll=pane.scrollTop,event=key(hit(keyboardLink.id),pressed);check(event.defaultPrevented&&pane.scrollTop===beforeScroll,"SVG "+JSON.stringify(pressed)+" did not prevent native scrolling");check(state.simulationEnergySelection===keyboardLink.id&&document.activeElement?.dataset.energyExplanationEdge===keyboardLink.id&&host.querySelector('[data-energy-path-component-chart="'+keyboardLink.id+'"]'),"SVG keyboard activation did not select exact link and restore focus");key(hit(keyboardLink.id),"Escape");await assertClear("SVG clear");}
@@ -176,7 +177,7 @@ try{
  const monthlyLink=graph().links.find(link=>link.relation==="load_to_end_use"&&link.serviceKind==="cooling");click(ratio(monthlyLink.id));
  check(host.querySelector('[data-energy-path-component-chart="'+monthlyLink.id+'"] [data-energy-path-chart-frequency]'),"selected monthly link lost its chart controls");
  const adapter={genericCaptureContext:()=>({marker:"145-history"}),genericRestoreContext:async()=>{}},snapshot=simulation.captureSimulationNavigationContext(adapter);
- change("[data-simulation-energy-scope]","zone");change("[data-simulation-energy-zone-name]","Office");check(state.simulationEnergySelection===""&&!host.querySelector("[data-energy-path-component-chart]"),"scope change retained an out-of-scope selected edge");
+ change("[data-simulation-energy-scope]","zone:Office");check(state.simulationEnergySelection===""&&!host.querySelector("[data-energy-path-component-chart]"),"scope change retained an out-of-scope selected edge");
  check(pane.scrollHeight<=pane.clientHeight+1&&pane.scrollWidth<=pane.clientWidth+1,"Zone interaction graph requires scrolling");
  const restored=await simulation.restoreSimulationNavigationContext(snapshot,adapter);check(restored&&state.simulationEnergyScopeKind==="building"&&state.simulationEnergyPeriod==="M1"&&state.simulationEnergySelection===monthlyLink.id&&host.querySelector('[data-energy-path-component-chart="'+monthlyLink.id+'"]'),"history restore dropped exact selected monthly link/scope/chart");
  key(ratio(monthlyLink.id),"Escape");change("[data-simulation-energy-path-period]","annual");assertClear("history clear");
@@ -191,7 +192,7 @@ try{
  Object.assign(state,{simulationResult:frozen,simulationEnergyScopeKind:"building",simulationEnergyPeriod:"annual",simulationEnergyService:"all",simulationEnergySelection:""});simulation.renderSimulation();
  check(positions()===originalPositions,"valid changed demand magnitudes/reversed input reordered taxonomy or node geometry");
  check(JSON.stringify(result)===originalJSON&&JSON.stringify(frozen)===variedJSON,"selection/hit targets/history/taxonomy mutated raw source/export inputs");
- evidence.push("24quantitative ribbons; true tiny width="+tinyPath.dataset.fromWidth+"px; independent8pxhit; directedLighting→Heating→Gas; exact1600×900");
+ evidence.push("22 quantitative ribbons with three-member Internal gains; true tiny width="+tinyPath.dataset.fromWidth+"px; independent8pxhit; directed Internal gains→Heating→Gas; both Lighting/Equipment counterpart cards; exact1600×900");
  document.body.dataset.epath145Status=failures.length?"failed":"passed";document.getElementById("epath145-result").textContent=(failures.length?failures.join("\n"):"passed")+"\n"+evidence.join("\n");
  }
 }catch(error){document.body.dataset.epath145Status="failed";document.getElementById("epath145-result").textContent=failures.join("\n")+"\n"+error.stack;}
