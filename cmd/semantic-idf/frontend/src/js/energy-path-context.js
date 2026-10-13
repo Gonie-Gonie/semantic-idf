@@ -1,4 +1,5 @@
 import { energyPathWithOriginalMembers, mergeEnergyPathOriginalMembers } from "./energy-path-grouping.js";
+import { energyPathHeatDirection, energyPathGrossHeatValue } from "./energy-path-driver-presentation.js";
 
 const token = (value) => String(value ?? "").trim().toLowerCase();
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
@@ -17,7 +18,7 @@ export function energyPathInputSignedValue(node = {}) {
 }
 
 const unique = (values) => [...new Set((values || []).filter(Boolean))].sort();
-const inputKinds = new Set(["input.solar_incident", "input.exterior_convection", "input.exterior_longwave", "input.people", "input.lighting", "input.equipment", "input.internal_gains", "input.solar_absorbed", "input.surface_storage"]);
+const inputKinds = new Set(["input.solar_incident", "input.exterior_convection", "input.exterior_longwave", "input.ground_conduction", "input.people", "input.lighting", "input.equipment", "input.internal_gains", "input.solar_absorbed", "input.surface_storage"]);
 const inputKind = (value) => token(value).startsWith("input.equipment.") ? "input.equipment" : token(value);
 const heatDirection = (node) => ["gain", "loss"].includes(node.heatDirection) ? node.heatDirection : "";
 
@@ -98,6 +99,30 @@ function inputDriverReference(node, members) {
   return references.size && finite(total) ? total : null;
 }
 
+// A boundary association references only its matched original room drivers.
+// Native allocated values remain evidence for identity/conflict validation;
+// the directional physical observation supplies this non-flow endpoint.
+export function energyPathInputDriverHeatReference(link = {}, node = {}) {
+  const direction = energyPathHeatDirection(node);
+  if (token(link.relation) !== "input_to_driver" || node.level !== "driver" || !direction) return undefined;
+  const drivers = new Map();
+  for (const member of energyPathWithOriginalMembers(node).groupedMembers) {
+    if (member.level !== "driver") continue;
+    const current = drivers.get(member.id);
+    if (current && (energyPathHeatDirection(current) !== energyPathHeatDirection(member) || energyPathGrossHeatValue(current) !== energyPathGrossHeatValue(member))) return null;
+    drivers.set(member.id, member);
+  }
+  const references = new Map();
+  for (const member of contextLinkMembers(link)) {
+    const driver = drivers.get(member.toId), gross = driver && energyPathGrossHeatValue(driver);
+    if (!driver || energyPathHeatDirection(driver) !== direction || gross === null || !finite(member.toValue) || member.toValue < 0) return null;
+    if (references.has(member.toId) && references.get(member.toId).allocated !== member.toValue) return null;
+    references.set(member.toId, { gross, allocated: member.toValue });
+  }
+  const total = [...references.values()].reduce((sum, value) => sum + value.gross, 0);
+  return references.size && finite(total) ? total : null;
+}
+
 /** Re-establish each context endpoint's own reference quantity after visual
  * grouping. A repeated full load is never summed as though it were allocated. */
 export function synchronizeEnergyPathContextValues(nodes = [], links = []) {
@@ -116,7 +141,9 @@ export function synchronizeEnergyPathContextValues(nodes = [], links = []) {
       // Several surfaces can reference the same original room driver, while
       // People/Lighting/Equipment can share one Internal gains display card.
       // Count each matching original target once, never the card's full total.
-      link.toValue = inputDriverReference(to, members);
+      const heat = energyPathInputDriverHeatReference(link, to);
+      link.toValue = heat === undefined ? inputDriverReference(to, members) : heat;
+      link.driverReferenceBasis = heat === undefined ? "allocated" : "gross_heat";
     }
     // An auxiliary relation references only its proven served-load subset.
     // Keep each backend owner relation distinct, even when Fans/Pumps share a

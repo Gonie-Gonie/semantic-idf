@@ -240,7 +240,8 @@ func assertBasicEnergyPathOutputFrequencies(t *testing.T, plan PurposeRunPlan) {
 		case "Timestep":
 			boundary := output.VariableName == "Surface Outside Face Convection Heat Gain Energy" ||
 				output.VariableName == "Surface Outside Face Net Thermal Radiation Heat Gain Energy" ||
-				output.VariableName == "Surface Heat Storage Energy"
+				output.VariableName == "Surface Heat Storage Energy" ||
+				output.VariableName == "Surface Outside Face Conduction Heat Transfer Energy"
 			definition, supported := energyHeatAliasDefinitionForName(output.VariableName)
 			if output.ObjectType != "Output:Variable" || !boundary && !(supported && energyPathNeedsDirectionalHeatOutput(definition, output.VariableName)) {
 				t.Fatalf("unexpected Timestep Energy Path output: %#v", output)

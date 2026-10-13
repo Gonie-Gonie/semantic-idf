@@ -688,13 +688,222 @@ func addThermalInputDirectionalFixture(t *testing.T, f thermalInputFixture, freq
 	}
 }
 
+func TestEnergyPathThermalInputsNativeEachCallZoneAxisExcludesDetailed(t *testing.T) {
+	f := newThermalInputFixture(t)
+	addThermalInputDirectionalFixture(t, f, "Timestep", 110, 105)
+	db, err := sql.Open("sqlite", f.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{
+		`UPDATE Time SET IntervalType=-1 WHERE IntervalType=0`,
+		`INSERT INTO Time VALUES(99999,2017,1,31,0,5,5,-1,3,0)`,
+		`INSERT INTO ReportDataDictionary VALUES(299,'Office Wall','Surface Outside Face Convection Heat Gain Energy','J','HVAC System Timestep',0)`,
+		`INSERT INTO ReportData VALUES(99999,299,360000000000)`,
+		`INSERT INTO ReportDataDictionary VALUES(291,'Office Wall','Surface Outside Face Net Thermal Radiation Heat Gain Energy','J','Zone Timestep',0),(292,'Lab Wall','Surface Outside Face Net Thermal Radiation Heat Gain Energy','J','Zone Timestep',0)`,
+		`INSERT INTO ReportData SELECT TimeIndex,291,CASE WHEN TimeIndex=20001 THEN -7200000 ELSE 0 END FROM Time WHERE TimeIndex BETWEEN 20001 AND 20288`,
+		`INSERT INTO ReportData SELECT TimeIndex,292,0 FROM Time WHERE TimeIndex BETWEEN 20001 AND 20288`,
+	} {
+		if _, err := db.Exec(query); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	values, sources, months := f.read(t)
+	assertThermalInputDirection(t, values, months, "Office", "M1", "gain", 660, true)
+	assertThermalInputDirection(t, values, months, "Office", "Annual", "loss", -642, true)
+	longwaveFound := false
+	for _, value := range energyPathThermalInputGraphValues(values, months, "", "Annual") {
+		if value.kind == "input.exterior_longwave" && value.direction == "loss" {
+			longwaveFound = true
+			if value.effective != -12 || value.directionBasis != "native_interval" {
+				t.Fatalf("native longwave interval evidence changed: %+v", value)
+			}
+		}
+	}
+	if !longwaveFound {
+		t.Fatal("complete native exterior longwave disappeared")
+	}
+	for _, source := range sources {
+		if source.ID == "sql-input-rdd-299" {
+			t.Fatal("Detailed source entered Zone Timestep boundary axis")
+		}
+	}
+}
+
+func TestEnergyPathThermalInputsIncompleteFineRetainsCompleteMonthlyBoundary(t *testing.T) {
+	for _, mutation := range []string{
+		`DELETE FROM ReportData WHERE ReportDataDictionaryIndex=211 AND TimeIndex=20100`,
+		`DELETE FROM ReportDataDictionary WHERE ReportDataDictionaryIndex=212`,
+		`DELETE FROM Time WHERE TimeIndex=20001`,
+		`DELETE FROM Time WHERE IntervalType IN (1,2); DELETE FROM ReportData WHERE ReportDataDictionaryIndex IN (211,212) AND TimeIndex BETWEEN 20097 AND 20192`,
+		`DELETE FROM Time WHERE IntervalType IN (1,2); DELETE FROM ReportData WHERE ReportDataDictionaryIndex IN (211,212) AND TimeIndex BETWEEN 20193 AND 20288`,
+	} {
+		f := newThermalInputFixture(t)
+		addThermalInputDirectionalFixture(t, f, "Timestep", 110, 105)
+		db, err := sql.Open("sqlite", f.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(mutation); err != nil {
+			t.Fatal(err)
+		}
+		db.Close()
+		values, _, months := f.read(t)
+		for _, zone := range []string{"", "Office", "Lab"} {
+			var annual float64
+			monthly := 0.0
+			for _, period := range []string{"Annual", "M1", "M2"} {
+				found := false
+				for _, value := range energyPathThermalInputGraphValues(values, months, zone, period) {
+					if value.kind != "input.exterior_convection" || value.category != energyDriverCategoryExteriorWalls {
+						continue
+					}
+					if value.direction != "" || value.directionBasis != "net_only" {
+						t.Fatalf("partial fine observations acquired gross authority: %+v", value)
+					}
+					found = true
+					if period == "Annual" {
+						annual = value.effective
+					} else {
+						monthly += value.effective
+					}
+				}
+				if !found {
+					t.Fatalf("complete Monthly boundary disappeared for %s/%s after %s", zone, period, mutation)
+				}
+			}
+			if annual != monthly {
+				t.Fatalf("Monthly net fallback erased Annual boundary: %s annual=%g monthly=%g", zone, annual, monthly)
+			}
+		}
+	}
+}
+
+func TestEnergyPathThermalInputsGroundConductionUsesExecutedOutsideFaceBoundary(t *testing.T) {
+	f := newThermalInputFixture(t)
+	f.geometry.Surfaces = append(f.geometry.Surfaces,
+		idf.GeometrySurface{ID: "gwall", Name: "Ground Wall", ZoneName: "Office", SurfaceType: "Wall", OutsideBoundary: "Ground"},
+		idf.GeometrySurface{ID: "fc", Name: "FC Slab", ZoneName: "Office", SurfaceType: "Floor", OutsideBoundary: "GroundFCfactorMethod"},
+		idf.GeometrySurface{ID: "kiva", Name: "Kiva Slab", ZoneName: "Office", SurfaceType: "Floor", OutsideBoundary: "Foundation"},
+		idf.GeometrySurface{ID: "pre", Name: "Preprocessor Slab", ZoneName: "Office", SurfaceType: "Floor", OutsideBoundary: "GroundSlabPreprocessorAverage"})
+	f.context = newEnergyDriverBuildContext(f.geometry, f.doc)
+	db, err := sql.Open("sqlite", f.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{
+		`INSERT INTO Surfaces VALUES(7,'Ground Wall',20,1,-1,1),(8,'FC Slab',20,1,-5,1),(9,'Kiva Slab',20,1,-6,1),(10,'Preprocessor Slab',20,1,-2,1)`,
+		`INSERT INTO ReportDataDictionary VALUES(301,'Ground','Surface Outside Face Conduction Heat Transfer Energy','J','Hourly',0),(302,'Ground Wall','Surface Outside Face Conduction Heat Transfer Energy','J','Hourly',0),(303,'FC Slab','Surface Outside Face Conduction Heat Transfer Energy','J','Hourly',0),(304,'Kiva Slab','Surface Outside Face Conduction Heat Transfer Energy','J','Hourly',0),(305,'Preprocessor Slab','Surface Outside Face Conduction Heat Transfer Energy','J','Hourly',0)`,
+		`INSERT INTO ReportData SELECT TimeIndex,301,CASE WHEN TimeIndex=1001 THEN 3600000 WHEN TimeIndex=1002 THEN -7200000 WHEN TimeIndex=1025 THEN -10800000 ELSE 0 END FROM Time WHERE IntervalType=1 AND EnvironmentPeriodIndex=3`,
+		`INSERT INTO ReportData SELECT TimeIndex,302,CASE WHEN TimeIndex=1001 THEN -14400000 WHEN TimeIndex=1002 THEN 18000000 ELSE 0 END FROM Time WHERE IntervalType=1 AND EnvironmentPeriodIndex=3`,
+		`INSERT INTO ReportData SELECT TimeIndex,303,0 FROM Time WHERE IntervalType=1 AND EnvironmentPeriodIndex=3`,
+		`INSERT INTO ReportData SELECT TimeIndex,304,360000000000 FROM Time WHERE IntervalType=1 AND EnvironmentPeriodIndex=3`,
+		`INSERT INTO ReportData SELECT TimeIndex,305,360000000000 FROM Time WHERE IntervalType=1 AND EnvironmentPeriodIndex=3`,
+	} {
+		if _, err := db.Exec(query); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	values, sources, months := f.read(t)
+	foundFloor, foundWall := false, false
+	for _, value := range energyPathThermalInputGraphValues(values, months, "Office", "Annual") {
+		if value.kind != "input.ground_conduction" {
+			continue
+		}
+		if value.directionBasis != "native_interval" {
+			t.Fatalf("ground native directions lost: %+v", value)
+		}
+		if value.category == energyDriverCategoryGroundFloors && value.direction == "gain" {
+			foundFloor = value.effective == 30 && value.raw == 5
+		}
+		if value.category == energyDriverCategoryStorageOther && value.direction == "loss" {
+			foundWall = value.effective == -30 && value.raw == -5
+		}
+	}
+	if !foundFloor || !foundWall {
+		t.Fatalf("ground floor/wall boundary or multiplier/sign wrong: %+v", values)
+	}
+	for _, source := range sources {
+		if source.ID == "sql-input-rdd-304" || source.ID == "sql-input-rdd-305" {
+			t.Fatal("unsupported Kiva/preprocessor output became a ground boundary")
+		}
+		if source.ID == "sql-input-rdd-301" && (source.RawValue != -4 || source.EffectiveValue != -24 || !strings.Contains(source.Formula, "opposite sign")) {
+			t.Fatalf("native ground source sign was overwritten: %+v", source)
+		}
+	}
+	driver := EnergyExplanationNode{ID: "storage", Level: "driver", DriverCategory: energyDriverCategoryStorageOther, SourceIDs: []string{"air-storage"}}
+	groundWall := energyPathThermalInputValue{kind: "input.ground_conduction", category: energyDriverCategoryStorageOther, sourceIDs: []string{"sql-input-rdd-302"}}
+	if energyPathGroundInputDriverSurfaceEvidence(groundWall, driver, sources) {
+		t.Fatal("ground wall associated with unrelated Zone-air storage")
+	}
+	driver.SourceIDs = []string{"inside-wall"}
+	sources = append(sources, EnergyDataSource{ID: "inside-wall", SourceType: "sql_report_data", Name: "Surface Inside Face Convection Heat Gain Energy", KeyValue: "Ground Wall"})
+	if !energyPathGroundInputDriverSurfaceEvidence(groundWall, driver, sources) {
+		t.Fatal("exact ground wall inside-face association lost")
+	}
+	groundFloor := energyPathThermalInputValue{kind: "input.ground_conduction", category: energyDriverCategoryGroundFloors, sourceIDs: []string{"sql-input-rdd-301"}}
+	driver.DriverCategory = energyDriverCategoryGroundFloors
+	driver.SourceIDs = []string{"outside-floor"}
+	sources = append(sources, EnergyDataSource{ID: "outside-floor", SourceType: "sql_report_data", Name: "Surface Inside Face Convection Heat Gain Energy", KeyValue: "Outdoor Floor"})
+	if energyPathGroundInputDriverSurfaceEvidence(groundFloor, driver, sources) {
+		t.Fatal("ground floor associated with unrelated outdoor-floor pool")
+	}
+	result := EnergyExplanationResult{Schema: energyExplanationSchema}
+	attachEnergyPathThermalInputs(&result, nil, nil, f.context, &f.geometry, &f.doc)
+	foundUnsupported := false
+	for _, warning := range result.Warnings {
+		foundUnsupported = foundUnsupported || warning.Code == "energy_path_ground_conduction_unsupported"
+	}
+	if !foundUnsupported {
+		t.Fatal("unsupported Foundation boundary was silently omitted")
+	}
+}
+
+func TestEnergyPathThermalInputGroundRequestsPreserveExistingFrequencies(t *testing.T) {
+	for _, frequency := range []string{"Monthly", "Hourly"} {
+		for _, policy := range []string{"", PurposeFrequencyPolicyPreserve} {
+			f := newThermalInputFixture(t)
+			doc := parsePurposePlanFixture(t, f.doc.String()+"Output:Variable,Ground,Surface Outside Face Conduction Heat Transfer Energy,"+frequency+";")
+			builder := newPurposePlanBuilder(doc, NormalizeSimulationPurposeRequest(&SimulationPurposeRequest{Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy}, FrequencyPolicy: policy}))
+			builder.geometry = f.geometry
+			builder.addEnergyPathThermalInputOutputs([]string{"Office", "Lab"})
+			foundMonthly, foundTimestep := false, false
+			for _, object := range builder.objects {
+				if object.VariableName != "Surface Outside Face Conduction Heat Transfer Energy" {
+					continue
+				}
+				if object.KeyValue != "Ground" {
+					t.Fatalf("ground output wildcarded or escaped its boundary: %+v", object)
+				}
+				if object.ReportingFrequency == "Monthly" {
+					foundMonthly = true
+					if frequency == "Monthly" && (object.State != PurposeOutputStateExisting || object.ObjectIndex == nil) {
+						t.Fatalf("existing Monthly rewritten: %+v", object)
+					}
+				}
+				if object.ReportingFrequency == "Timestep" {
+					foundTimestep = true
+					if object.State != PurposeOutputStateTemporary || object.ObjectIndex != nil {
+						t.Fatalf("ground companion changed existing output: %+v", object)
+					}
+				}
+			}
+			if !foundMonthly || !foundTimestep {
+				t.Fatalf("ground Monthly/Timestep companion missing for existing %s/%s", frequency, policy)
+			}
+		}
+	}
+}
+
 func TestEnergyPathThermalInputRequestsUseNativeDailyAndMonthlyOnly(t *testing.T) {
 	f := newThermalInputFixture(t)
 	builder := newPurposePlanBuilder(f.doc, NormalizeSimulationPurposeRequest(&SimulationPurposeRequest{Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy}}))
 	builder.geometry = f.geometry
 	builder.addEnergyPathThermalInputOutputs([]string{"Office", "Lab"})
 	builder.addEnergyPathHourlyOutputs()
-	incident, internal, storage, directional := 0, 0, 0, 0
+	incident, internal, storage, directional, ground := 0, 0, 0, 0, 0
 	for _, object := range builder.objects {
 		if !energyPathThermalInputVariable(object.VariableName) {
 			continue
@@ -709,7 +918,7 @@ func TestEnergyPathThermalInputRequestsUseNativeDailyAndMonthlyOnly(t *testing.T
 			}
 		} else if object.ReportingFrequency == "Timestep" {
 			directional++
-			if object.VariableName != "Surface Outside Face Convection Heat Gain Energy" && object.VariableName != "Surface Outside Face Net Thermal Radiation Heat Gain Energy" && object.VariableName != "Surface Heat Storage Energy" {
+			if object.VariableName != "Surface Outside Face Convection Heat Gain Energy" && object.VariableName != "Surface Outside Face Net Thermal Radiation Heat Gain Energy" && object.VariableName != "Surface Heat Storage Energy" && object.VariableName != "Surface Outside Face Conduction Heat Transfer Energy" {
 				t.Fatalf("non-reversible input gained an unnecessary fine roster: %+v", object)
 			}
 		} else if object.ReportingFrequency != "Monthly" {
@@ -721,12 +930,20 @@ func TestEnergyPathThermalInputRequestsUseNativeDailyAndMonthlyOnly(t *testing.T
 		if object.VariableName == "Surface Heat Storage Energy" {
 			storage++
 		}
-		if object.KeyValue == "Ground" || object.KeyValue == "Partition" || object.KeyValue == "Adiabatic" {
+		if object.VariableName == "Surface Outside Face Conduction Heat Transfer Energy" {
+			ground++
+			if object.KeyValue != "Ground" {
+				t.Fatalf("ground output requested at non-ground boundary: %+v", object)
+			}
+		} else if object.KeyValue == "Ground" {
+			t.Fatalf("exterior weather output requested at ground boundary: %+v", object)
+		}
+		if object.KeyValue == "Partition" || object.KeyValue == "Adiabatic" {
 			t.Fatalf("non-exterior thermal input requested: %+v", object)
 		}
 	}
-	if incident != 3 || internal != 2 || storage != 4 || directional != 6 {
-		t.Fatalf("roster incident=%d internal=%d storage=%d directional=%d", incident, internal, storage, directional)
+	if incident != 3 || internal != 2 || storage != 4 || directional != 7 || ground != 2 {
+		t.Fatalf("roster incident=%d internal=%d storage=%d directional=%d ground=%d", incident, internal, storage, directional, ground)
 	}
 	for _, existing := range []string{"", "Output:Diagnostics,DisplayExtraWarnings;"} {
 		doc := parsePurposePlanFixture(t, f.doc.String()+existing)

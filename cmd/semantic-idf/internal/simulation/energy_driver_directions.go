@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 )
@@ -18,10 +19,37 @@ type energyDriverDirectionalValues struct {
 	effective  bool
 }
 
-type energyDriverDirectionTime struct {
+type energyNativeReportTime struct {
+	id                       int64
 	month, day, hour, minute int
 	hours                    float64
+	end                      time.Time
+	valid                    bool
 	intervalType             string
+}
+
+// Time.IntervalType is not a reliable domain marker: native EnergyPlus can
+// write Zone Timestep as EachCall (-1). Source dictionary frequency selects
+// the zone axis; unrelated Detailed/HVAC System Timestep rows never join it.
+func energyNativeIntervalMonthComplete(times []energyNativeReportTime, references ...[]energyNativeReportTime) bool {
+	if len(times) == 0 {
+		return false
+	}
+	for index, item := range times {
+		if !item.valid || index > 0 && item.end.Sub(times[index-1].end) != time.Duration(item.hours*float64(time.Hour)) {
+			return false
+		}
+	}
+	start, end := times[0].end.Add(-time.Duration(times[0].hours*float64(time.Hour))), times[len(times)-1].end
+	if start.Hour() != 0 || start.Minute() != 0 || end.Hour() != 0 || end.Minute() != 0 || !end.After(start) {
+		return false
+	}
+	for _, reference := range references {
+		if len(reference) > 0 && (!energyNativeIntervalMonthComplete(reference) || !start.Equal(reference[0].end.Add(-time.Duration(reference[0].hours*float64(time.Hour)))) || !end.Equal(reference[len(reference)-1].end)) {
+			return false
+		}
+	}
+	return true
 }
 
 type energyDriverDirectionalSource struct {
@@ -32,10 +60,13 @@ type energyDriverDirectionalSource struct {
 }
 
 type energyDriverDirectionalCollector struct {
-	times  map[int64]energyDriverDirectionTime
-	counts map[int]map[int]int
-	valid  map[int]map[int]bool
-	series map[int]*energyDriverDirectionalSource
+	times             map[int64]energyNativeReportTime
+	counts            map[int]map[int]int
+	valid             map[int]map[int]bool
+	series            map[int]*energyDriverDirectionalSource
+	zoneTimeIDs       map[int64]bool
+	zoneAxisFinalized bool
+	months            map[int]bool
 }
 
 func energyHeatDirectionFrequencyRank(frequency string) int {
@@ -58,15 +89,15 @@ func newEnergyDriverDirectionalCollector(db *sql.DB, enabled bool) *energyDriver
 		return nil
 	}
 	rows, err := db.Query(`SELECT TimeIndex,Year,Month,Day,Hour,Minute,"Interval",IntervalType FROM "Time"
-WHERE EnvironmentPeriodIndex=? AND (WarmupFlag=0 OR WarmupFlag IS NULL) AND IntervalType IN (0,1,2) ORDER BY TimeIndex`, environment)
+WHERE EnvironmentPeriodIndex=? AND (WarmupFlag=0 OR WarmupFlag IS NULL) AND IntervalType IN (-1,0,1,2) ORDER BY TimeIndex`, environment)
 	if err != nil {
 		return nil
 	}
 	defer rows.Close()
-	out := &energyDriverDirectionalCollector{times: map[int64]energyDriverDirectionTime{}, counts: map[int]map[int]int{0: {}, 1: {}, 2: {}}, valid: map[int]map[int]bool{0: {}, 1: {}, 2: {}}, series: map[int]*energyDriverDirectionalSource{}}
+	out := &energyDriverDirectionalCollector{times: map[int64]energyNativeReportTime{}, counts: map[int]map[int]int{-1: {}, 0: {}, 1: {}, 2: {}}, valid: map[int]map[int]bool{-1: {}, 0: {}, 1: {}, 2: {}}, series: map[int]*energyDriverDirectionalSource{}, zoneTimeIDs: map[int64]bool{}, months: map[int]bool{}}
 	previous := map[int]time.Time{}
-	starts, ends := map[int]map[int]time.Time{0: {}, 1: {}, 2: {}}, map[int]map[int]time.Time{0: {}, 1: {}, 2: {}}
-	durations := map[int]map[int]float64{0: {}, 1: {}, 2: {}}
+	starts, ends := map[int]map[int]time.Time{-1: {}, 0: {}, 1: {}, 2: {}}, map[int]map[int]time.Time{-1: {}, 0: {}, 1: {}, 2: {}}
+	durations := map[int]map[int]float64{-1: {}, 0: {}, 1: {}, 2: {}}
 	for rows.Next() {
 		var id int64
 		var year, month, day, hour, minute, intervalType int
@@ -83,6 +114,7 @@ WHERE EnvironmentPeriodIndex=? AND (WarmupFlag=0 OR WarmupFlag IS NULL) AND Inte
 			valid = valid && hour == 24 && minute == 0 && interval == 1440
 		}
 		end := time.Date(year, time.Month(month), day, hour, minute, 0, 0, time.UTC)
+		nativeValid := valid
 		if last, exists := previous[rank]; exists && end.Sub(last) != time.Duration(interval*float64(time.Minute)) {
 			valid = false
 		}
@@ -98,7 +130,8 @@ WHERE EnvironmentPeriodIndex=? AND (WarmupFlag=0 OR WarmupFlag IS NULL) AND Inte
 		if _, duplicate := out.times[id]; duplicate {
 			return nil
 		}
-		out.times[id] = energyDriverDirectionTime{month: month, day: day, hour: hour, minute: minute, hours: interval / 60, intervalType: fmt.Sprint(intervalType)}
+		out.times[id] = energyNativeReportTime{id: id, month: month, day: day, hour: hour, minute: minute, hours: interval / 60, end: end, valid: nativeValid, intervalType: fmt.Sprint(intervalType)}
+		out.months[month] = true
 	}
 	if rows.Err() != nil {
 		return nil
@@ -129,14 +162,14 @@ func (collector *energyDriverDirectionalCollector) observe(row SQLSeriesRow, dic
 	if !included {
 		return
 	}
-	if t.intervalType != fmt.Sprint(rank) {
+	if rank == 0 && t.intervalType != "0" && t.intervalType != "-1" || rank == 1 && t.intervalType != "1" {
 		return
 	}
 	state := collector.series[row.DictionaryIndex]
 	if state == nil {
 		state = &energyDriverDirectionalSource{values: energyDriverDirectionalValues{gain: map[int]float64{}, loss: map[int]float64{}, observed: map[int]bool{}, sourceIDs: []string{fmt.Sprintf("sql-rdd-%d", row.DictionaryIndex)}}, seen: map[int]int{}}
-		for month, valid := range collector.valid[rank] {
-			state.values.observed[month] = valid
+		for month := range collector.months {
+			state.values.observed[month] = rank == 0 || collector.valid[rank][month]
 		}
 		collector.series[row.DictionaryIndex] = state
 	}
@@ -145,6 +178,9 @@ func (collector *energyDriverDirectionalCollector) observe(row SQLSeriesRow, dic
 	if duplicate || !row.Value.Valid || !energyPathFinite(row.Value.Float64) || !row.Month.Valid || !row.Day.Valid || !row.Hour.Valid || !row.Minute.Valid || int(row.Month.Int64) != t.month || int(row.Day.Int64) != t.day || int(row.Hour.Int64) != t.hour || int(row.Minute.Int64) != t.minute || row.IntervalType != t.intervalType {
 		state.values.observed[t.month] = false
 		return
+	}
+	if rank == 0 {
+		collector.zoneTimeIDs[row.TimeIndex] = true
 	}
 	value, unit := convertEnergySQLValue(row.Value.Float64, dictionary.row.units)
 	if energyExplanationIntegratesRate(dictionary) {
@@ -177,10 +213,43 @@ func (collector *energyDriverDirectionalCollector) values(dictionary energyExpla
 		return nil
 	}
 	rank := energyHeatDirectionFrequencyRank(dictionary.reportingFrequency)
+	collector.finalizeZoneAxis()
 	for month, valid := range state.values.observed {
-		state.values.observed[month] = valid && state.seen[month] == collector.counts[rank][month] && collector.counts[rank][month] > 0 && energyPathFinite(state.values.gain[month]) && energyPathFinite(state.values.loss[month])
+		state.values.observed[month] = valid && collector.valid[rank][month] && state.seen[month] == collector.counts[rank][month] && collector.counts[rank][month] > 0 && energyPathFinite(state.values.gain[month]) && energyPathFinite(state.values.loss[month])
 	}
 	return &state.values
+}
+
+func (collector *energyDriverDirectionalCollector) finalizeZoneAxis() {
+	if collector.zoneAxisFinalized {
+		return
+	}
+	collector.zoneAxisFinalized = true
+	axes := map[string]map[int][]energyNativeReportTime{"zone": {}, "hourly": {}, "daily": {}}
+	ids := make([]int64, 0, len(collector.times))
+	for id := range collector.times {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	for _, id := range ids {
+		item := collector.times[id]
+		axis := ""
+		if collector.zoneTimeIDs[id] {
+			axis = "zone"
+		} else if item.intervalType == "1" {
+			axis = "hourly"
+		} else if item.intervalType == "2" {
+			axis = "daily"
+		}
+		if axis != "" {
+			axes[axis][item.month] = append(axes[axis][item.month], item)
+		}
+	}
+	collector.counts[0], collector.valid[0] = map[int]int{}, map[int]bool{}
+	for month, times := range axes["zone"] {
+		collector.counts[0][month] = len(times)
+		collector.valid[0][month] = (len(axes["hourly"][month]) > 0 || len(axes["daily"][month]) > 0) && energyNativeIntervalMonthComplete(times, axes["hourly"][month], axes["daily"][month])
+	}
 }
 
 func preferredEnergyDriverDirections(items []energyExplanationSeries) *energyDriverDirectionalValues {

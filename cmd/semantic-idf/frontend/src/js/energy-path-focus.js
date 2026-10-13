@@ -1,6 +1,6 @@
 const token = (value) => String(value ?? "").trim().toLowerCase();
 const LEVELS = ["input", "driver", "load", "end_use", "carrier"];
-const INPUT_ORDER = ["input.solar_incident", "input.exterior_convection", "input.exterior_longwave", "input.people", "input.lighting", "input.equipment", "input.internal_gains", "input.solar_absorbed", "input.surface_storage"];
+const INPUT_ORDER = ["input.solar_incident", "input.exterior_convection", "input.exterior_longwave", "input.ground_conduction", "input.people", "input.lighting", "input.equipment", "input.internal_gains", "input.solar_absorbed", "input.surface_storage"];
 const DRIVER_ORDER = [
   "surface.exterior_walls", "surface.roofs", "surface.ground_floors", "surface.windows_doors", "surface.interzone",
   "air.infiltration", "air.mechanical_ventilation", "air.interzone",

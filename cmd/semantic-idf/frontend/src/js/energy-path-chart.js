@@ -2,6 +2,7 @@ import { t } from "./i18n.js";
 import { escapeHTML } from "./state.js";
 import { energyPathDisplayUnit, formatEnergyPathDisplayValue } from "./energy-path-display.js";
 import { energyPathHeatDirection, energyPathGrossHeatValue } from "./energy-path-driver-presentation.js";
+import { energyPathInputDriverHeatReference } from "./energy-path-context.js";
 
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const copy = (key, fallback, values = {}) => t(`simulation.energyPathChart${key}`, values, fallback);
@@ -14,31 +15,33 @@ let chartLabelContext = null;
 export function energyPathMonthlyChartSeries(item = {}, kind = "node", graphs = [], endpointLabels = {}) {
   const wanted = new Set(members(item).map((member) => member.id));
   const directionalDriver = kind === "node" && item.level === "driver" && energyPathHeatDirection(item);
-  const fields = kind === "link" ? ["fromValue", "toValue"] : directionalDriver ? ["effectiveValue", "value"] : ["value"];
+  const fields = kind === "link" ? ["fromValue", "toValue"] : directionalDriver ? ["effectiveValue"] : ["value"];
   return fields.map((field) => ({
     id: field,
     label: kind === "link" ? endpointLabels[field === "fromValue" ? "from" : "to"] || monthlyLinkLabel(item, field)
-      : directionalDriver ? t(field === "effectiveValue" ? "simulation.energyPathGrossHeatExchange" : "simulation.energyPathLoadContribution", {}, field === "effectiveValue" ? "Heat exchange" : "Load contribution") : item.label || item.id || "",
+      : item.label || item.id || "",
     unit: kind === "link" ? item[field === "fromValue" ? "fromUnit" : "toUnit"] || "kWh" : item.unit || "kWh",
     points: Array.from({ length: 12 }, (_, month) => {
       const graph = graphs[month] || {};
       const records = kind === "link" ? [...(graph.links || []), ...(graph.relations || [])] : graph.nodes || [];
       if (kind === "link" && item.relation === "input_to_driver") {
-        const reference = inputContextMonthlyReference(item, field, graph, records, wanted, endpointLabels.fromNode);
-        if (reference !== undefined) return { x: month, label: t(`simulation.month.${month + 1}`, {}, `M${month + 1}`), value: reference };
+        const reference = inputContextMonthlyReference(item, field, graph, records, wanted, endpointLabels.fromNode, endpointLabels.toNode);
+        if (reference !== undefined) return { x: month, label: t(`simulation.month.${month + 1}`, {}, `M${month + 1}`),
+          value: contextDisplayValue(reference, item, field, endpointLabels) };
       }
       const found = new Map();
       for (const record of records) {
         for (const member of members(record)) {
           if (!wanted.has(member.id)) continue;
-          const value = directionalDriver && field === "effectiveValue" ? energyPathGrossHeatValue(member)
-            : kind === "node" && member.level === "input" && finite(member.signedValue) ? member.signedValue : member[field];
+          const value = directionalDriver ? energyPathGrossHeatValue(member)
+            : kind === "node" && member.level === "input" && finite(member.signedValue)
+              ? energyPathHeatDirection(member) ? Math.abs(member.signedValue) : member.signedValue : member[field];
           found.set(member.id, kind === "link" ? member : value);
         }
       }
       if (kind === "link" && ["input_to_driver", "load_to_auxiliary", "source_correspondence"].includes(item.relation)) {
         return { x: month, label: t(`simulation.month.${month + 1}`, {}, `M${month + 1}`),
-          value: found.size === wanted.size ? contextMonthlyValue(item.relation, field, [...found.values()], records, wanted) : null };
+          value: found.size === wanted.size ? contextDisplayValue(contextMonthlyValue(item.relation, field, [...found.values()], records, wanted), item, field, endpointLabels) : null };
       }
       const values = [...found.values()].map((value) => kind === "link" ? value[field] : value);
       const ratios = kind === "link" && endpointLabels.ratioForLink
@@ -52,6 +55,13 @@ export function energyPathMonthlyChartSeries(item = {}, kind = "node", graphs = 
       };
     }),
   }));
+}
+
+// Directional variables use positive magnitudes; native signed evidence and
+// allocated downstream references remain unchanged in the graph contract.
+function contextDisplayValue(value, item, field, labels = {}) {
+  return item.relation === "input_to_driver" && field === "fromValue" && energyPathHeatDirection(labels.fromNode) && finite(value)
+    ? Math.abs(value) : value;
 }
 
 // Ratios use paired observations on one calendar, never averages of component
@@ -88,12 +98,13 @@ function chartEnergyUnitFactor(unit) {
 
 function monthlyLinkLabel(item, field) {
   const from = field === "fromValue";
+  if (item.relation === "input_to_driver" && !from && item.driverReferenceBasis === "gross_heat") return t("simulation.energyPathContextToHeat", {}, "Room-side heat quantity");
   if (item.relation === "input_to_driver") return t(`simulation.energyPathContext${from ? "FromInput" : "ToDriver"}`, {}, from ? "Reported observation" : "Allocated load-driver reference");
   if (item.relation === "load_to_auxiliary") return t(`simulation.energyPathContext${from ? "FromThermal" : "ToAuxiliary"}`, {}, from ? "Served thermal reference" : "Allocated auxiliary site energy");
   return from ? copy("From", "From") : copy("To", "To");
 }
 
-function inputContextMonthlyReference(item, field, graph, records, wanted, selectedInput) {
+function inputContextMonthlyReference(item, field, graph, records, wanted, selectedInput, selectedDriver) {
   if (!item.id || !item.fromId || !item.toId) return undefined;
   const sameScope = (record) => token(record.zoneName) === token(item.zoneName);
   const candidates = records.filter((record) => record.relation === item.relation && record.id === item.id &&
@@ -128,6 +139,13 @@ function inputContextMonthlyReference(item, field, graph, records, wanted, selec
     for (const entry of related) for (const member of members(entry)) {
       if (!member.toId || !finite(member.toValue) || observations.has(member.toId) && observations.get(member.toId) !== member.toValue) return null;
       observations.set(member.toId, member.toValue);
+    }
+    if (item.driverReferenceBasis === "gross_heat") {
+      const drivers = (graph.nodes || []).flatMap(members).filter((node) => node.level === "driver");
+      const direction = energyPathHeatDirection(selectedDriver) || energyPathHeatDirection(drivers.find((node) => observations.has(node.id)));
+      if (!drivers.length || !direction) return null;
+      return energyPathInputDriverHeatReference({ ...item, groupedMembers: related.flatMap(members) },
+        { level: "driver", heatDirection: direction, groupedMembers: drivers });
     }
     const total = [...observations.values()].reduce((sum, value) => sum + value, 0);
     return observations.size && finite(total) ? total : null;
@@ -252,7 +270,7 @@ export function energyPathHourlyChartSeries(item = {}, sources = [], viewState =
     return {
       id: group.members.map((member) => member.id).join("|"), label: group.label, unit: "kWh",
       points: axis.map(({ index, x, label }) => {
-        const value = (nativeDirection && direction === "loss" ? -1 : 1) * group.members.reduce((sum, member) => sum + member.values[index] * member.multiplier, 0);
+        const value = group.members.reduce((sum, member) => sum + member.values[index] * member.multiplier, 0);
         return { x, label, value: finite(value) ? value : null };
       }),
     };
@@ -331,26 +349,18 @@ export function renderEnergyPathComponentChart({ item = {}, kind = "node", label
       <option value="monthly"${frequency === "monthly" ? " selected" : ""}>${escapeHTML(copy("Monthly", "Monthly"))}</option>
       <option value="hourly"${frequency === "hourly" ? " selected" : ""}>${escapeHTML(copy("Hourly", "Hourly"))}</option>
     </select></header>
-    ${kind === "link" ? renderLinkQuantities(item, endpointLabels, display, validatedConversion, ratio[0]) : directionalDriver ? renderDirectionalQuantities(item, display) : ""}
+    ${kind === "link" ? renderLinkQuantities(item, endpointLabels, display, validatedConversion, ratio[0]) : ""}
     <div class="energy-path-chart-panels${kind === "link" ? " has-ratio" : ""}"><section class="energy-path-chart-panel" data-energy-path-chart-panel="quantities">${kind === "link" ? `<h4>${escapeHTML(copy("Quantities", "Endpoint quantities"))}</h4>` : ""}${quantities}</section>${ratioPanel}</div>
   </aside>`;
 }
 
-function renderDirectionalQuantities(item, display) {
-  const gross = energyPathGrossHeatValue(item);
-  const values = [
-    [t("simulation.energyPathGrossHeatExchange", {}, "Heat exchange"), gross],
-    [t("simulation.energyPathLoadContribution", {}, "Load contribution"), item.value],
-  ];
-  return `<dl class="energy-path-chart-quantities" data-energy-path-directional-quantities>${values.map(([label, value]) => `<div><dt>${escapeHTML(label)}</dt><dd>${escapeHTML(formatEnergyPathDisplayValue(value, item.unit || "kWh", display))}</dd></div>`).join("")}</dl>`;
-}
-
 function renderLinkQuantities(item, labels, display, conversionRatio, ratio) {
   const from = labels.from || monthlyLinkLabel(item, "fromValue"), to = labels.to || monthlyLinkLabel(item, "toValue");
+  const fromValue = contextDisplayValue(item.fromValue, item, "fromValue", labels);
   const fromFactor = chartEnergyUnitFactor(item.fromUnit), toFactor = chartEnergyUnitFactor(item.toUnit);
-  const value = fromFactor !== null && toFactor !== null && finite(item.fromValue) && finite(item.toValue) && item.toValue !== 0
-    ? item.fromValue * fromFactor / (item.toValue * toFactor) : null;
-  return `<dl class="energy-path-chart-quantities"><div><dt>${escapeHTML(from)}</dt><dd>${escapeHTML(formatEnergyPathDisplayValue(item.fromValue, item.fromUnit || "kWh", display))}</dd></div><div><dt>${escapeHTML(to)}</dt><dd>${escapeHTML(formatEnergyPathDisplayValue(item.toValue, item.toUnit || "kWh", display))}</dd></div><div><dt>${escapeHTML(conversionRatio?.label || ratio?.label || copy("Ratio", "From / to ratio"))}</dt><dd data-energy-path-current-ratio="${finite(value) ? value : ""}">${escapeHTML(chartRatioValue(value))}</dd></div></dl>`;
+  const value = fromFactor !== null && toFactor !== null && finite(fromValue) && finite(item.toValue) && item.toValue !== 0
+    ? fromValue * fromFactor / (item.toValue * toFactor) : null;
+  return `<dl class="energy-path-chart-quantities"><div><dt>${escapeHTML(from)}</dt><dd>${escapeHTML(formatEnergyPathDisplayValue(fromValue, item.fromUnit || "kWh", display))}</dd></div><div><dt>${escapeHTML(to)}</dt><dd>${escapeHTML(formatEnergyPathDisplayValue(item.toValue, item.toUnit || "kWh", display))}</dd></div><div><dt>${escapeHTML(conversionRatio?.label || ratio?.label || copy("Ratio", "From / to ratio"))}</dt><dd data-energy-path-current-ratio="${finite(value) ? value : ""}">${escapeHTML(chartRatioValue(value))}</dd></div></dl>`;
 }
 
 function chartRatioValue(value) {

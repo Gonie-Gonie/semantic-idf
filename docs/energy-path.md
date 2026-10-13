@@ -103,9 +103,11 @@ splits individual native intervals before any time or physical-source sum;
 split. Directional IDs are stable across Annual/Monthly selections. Direction
 does not change `driverCategory` or the electrical-storage accounting contract.
 Driver `rawValue`/`effectiveValue` retain gross magnitudes; `signedValue` and
-`heatDirection` retain their physical direction. Cards show signed gross Heat
-exchange separately from allocated `value` as Load contribution. A nonzero physical exchange remains
-visible even when actual service load and its allocation are zero.
+`heatDirection` retain their physical direction. Directional cards show one
+positive gross magnitude, with direction in the label, for example
+`Infiltration (gain)` and `Infiltration (loss)`. Allocated `value` remains the
+driver-to-load ribbon quantity and is not a second card value. A nonzero physical
+exchange remains visible even when actual service load and its allocation are zero.
 
 Use independent linear thermal/site width scales even when both units say kWh.
 A 100 thermal → 25 electricity conversion is valid; its width difference is not
@@ -179,7 +181,7 @@ and `effectiveValue` retain direction and `rawValue` retains the native scope.
 Explicit zero survives JSON; missing data does not become a reported zero.
 
 Current boundary kinds are `input.solar_incident`, `input.exterior_convection`,
-`input.exterior_longwave`, `input.people`, `input.lighting`, and the
+`input.exterior_longwave`, `input.ground_conduction`, `input.people`, `input.lighting`, and the
 `input.equipment.electric/.gas/.other/.hot_water/.steam` families. The equipment
 families group into one display card while retaining native members. Native total
 heating energy includes radiant, convective and latent heat, excluding lost heat;
@@ -198,6 +200,24 @@ and explicit native Gain/Loss families retain their supported Monthly energy.
 Monthly-only signed inputs remain labelled net-only: their hidden reversals
 cannot be reconstructed. Exact owner, unit, surface roster, calendar coverage and
 Zone/Group factors must be proven; incomplete categories remain unavailable.
+
+Exterior convection and longwave describe the outside face of verified outdoor
+surfaces. Ground conduction uses `Surface Outside Face Conduction Heat Transfer
+Energy` for verified `Ground` / `GroundFCfactorMethod` surfaces, including buried
+walls as well as floors. Its native sign is inverted so gain enters the envelope
+from the ground. `Foundation`/Kiva lacks this native outside-face output and is
+not filled with inside-face transfer. Load Drivers continue to use room-side
+surface/air exchange; boundary observations never replace their source quantities.
+When a mixed other/storage driver is expanded, ground associations follow only
+its surface-exchange component, not Zone-air storage or balance differences.
+
+Native Zone Timestep timestamps can use SQL `IntervalType=0` or `-1`.
+The dictionary's reporting frequency and its observed Time IDs identify the
+Zone Timestep axis; a global `-1` axis would also admit HVAC Detailed timestamps.
+Validate native clock continuity and compatible Hourly/Daily endpoints rather
+than equating one SQL enum with one physical reporting boundary. If interval
+evidence cannot support a gross split but complete Monthly evidence exists,
+retain an explicitly net-only boundary observation.
 
 Input observations are not additional driver pressure. Absorbed solar overlaps
 incident solar; storage is an envelope response rather than an external source.
@@ -229,10 +249,21 @@ observations and scope changes. The inspector supplies the selected input node's
 original member roster so an incomplete monthly input group cannot masquerade as
 the full reference quantity. One endpoint may remain observed when the other
 is unavailable; missing members alone do not prove zero. Monthly charts preserve
-signed input values, served-load subtotals and actual auxiliary slices; unavailable
-months and Hourly sources remain gaps. App and batch detail use the same presentation logic. File/API
+served-load subtotals and actual auxiliary slices; unavailable
+months and Hourly sources remain gaps. Directional node and boundary-reference
+charts show positive magnitudes with gain/loss labels; signed physical evidence
+remains in the payload, and net-only observations retain their sign. App and
+batch detail use the same presentation logic. File/API
 projections and trace exports preserve the optional input nodes and relations;
 the existing accounting summary categories remain unchanged.
+
+For a displayed input-to-driver reference, proven directional driver members
+contribute their gross physical magnitudes, counted once per exact original
+target. This keeps boundary/room-side comparisons consistent with the card
+quantities. The presentation copy of that non-flow relation may differ from its
+canonical allocated `toValue`; original members and the saved wire link retain
+the allocation evidence. Directionless legacy targets retain their existing
+allocated reference. Driver-to-load accounting ribbons are unchanged.
 
 Ratio plots preserve paired numeric values and distinguish missing, zero-denominator
 and unverified-boundary gaps. Tiny nonzero endpoint quantities retain extra precision

@@ -19,14 +19,18 @@ The release script infers bump size from these sections:
 ## Changed
 
 - Energy Path separates thermal gains/losses and storage/release before native
-  interval aggregation. Directional cards distinguish gross heat exchange from
-  allocated load contribution, including nonzero exchange with zero load.
+  interval aggregation. Directional cards show one positive gross magnitude with
+  gain/loss in the label, including nonzero exchange with zero load. Ribbons
+  retain their allocated load contribution.
   Older Monthly-only evidence remains explicitly net-only; new Basic Energy
   runs request Timestep outputs for reversible thermal quantities.
 
 ## Fixed
 
-- _None._
+- Energy Path restores exterior convection and longwave observations from native
+  Zone Timestep SQL timestamps, retaining complete Monthly net evidence when a
+  gross split is unavailable. Verified ground-contact surfaces expose outside-face
+  conduction separately from room-side load drivers.
 
 ## Performance
 

@@ -30,7 +30,7 @@ func TestEnergyDriverGrossDirectionsPreserveNativeIntervalBeforeEverySum(t *test
 				`CREATE TABLE EnvironmentPeriods(EnvironmentPeriodIndex INTEGER PRIMARY KEY,EnvironmentType INTEGER)`,
 				`INSERT INTO EnvironmentPeriods VALUES(3,3)`,
 				`CREATE TABLE "Time"(TimeIndex INTEGER PRIMARY KEY,Year INTEGER,Month INTEGER,Day INTEGER,Hour INTEGER,Minute INTEGER,"Interval" REAL,IntervalType INTEGER,EnvironmentPeriodIndex INTEGER,WarmupFlag INTEGER)`,
-				`INSERT INTO "Time" VALUES(1,2025,1,1,0,15,15,0,3,0),(2,2025,1,1,0,30,15,0,3,0),(3,2025,1,1,0,45,15,0,3,0),(4,2025,1,1,1,0,15,0,3,0),(1000,2025,1,1,24,0,1440,3,3,0)`,
+				`INSERT INTO "Time" VALUES(1,2025,1,1,0,15,15,0,3,0),(2,2025,1,1,0,30,15,0,3,0),(3,2025,1,1,0,45,15,0,3,0),(4,2025,1,1,1,0,15,0,3,0),(999,2025,1,1,24,0,1440,2,3,0),(1000,2025,1,1,24,0,1440,3,3,0)`,
 				`CREATE TABLE ReportDataDictionary(ReportDataDictionaryIndex INTEGER PRIMARY KEY,KeyValue TEXT,Name TEXT,Units TEXT,IsMeter INTEGER,ReportingFrequency TEXT,IndexGroup TEXT)`,
 				`CREATE TABLE ReportData(ReportDataIndex INTEGER PRIMARY KEY,TimeIndex INTEGER,ReportDataDictionaryIndex INTEGER,Value REAL)`,
 				`INSERT INTO ReportDataDictionary VALUES(1,'Wall A','Surface Inside Face Convection Heat Gain Energy','J',0,'Monthly','Zone'),(2,'Wall A','Surface Inside Face Convection Heat Gain Energy','J',0,'Zone Timestep','Zone'),(3,'Wall B','Surface Inside Face Convection Heat Gain Energy','J',0,'Monthly','Zone'),(4,'Wall B','Surface Inside Face Convection Heat Gain Energy','J',0,'Zone Timestep','Zone'),(5,'Office','Zone Air Heat Balance Air Energy Storage Rate','W',0,'Monthly','Zone'),(6,'Office','Zone Air Heat Balance Air Energy Storage Rate','W',0,'Zone Timestep','Zone'),(7,'Office','Zone Air System Sensible Cooling Energy','J',0,'Monthly','Zone'),(8,'Office','Zone Air System Sensible Heating Energy','J',0,'Monthly','Zone')`,
@@ -109,12 +109,14 @@ func TestEnergyDriverGrossDirectionsPreserveNativeIntervalBeforeEverySum(t *test
 					t.Fatal(err)
 				}
 				for name, mutations := range map[string][]string{
-					"missing first native interval":       {`DELETE FROM "Time" WHERE TimeIndex=1`},
-					"missing last native interval":        {`DELETE FROM "Time" WHERE TimeIndex=96`},
-					"missing selected surface interval":   {`DELETE FROM ReportData WHERE ReportDataDictionaryIndex=4 AND TimeIndex=2`},
-					"null selected surface interval":      {`UPDATE ReportData SET Value=NULL WHERE ReportDataDictionaryIndex=4 AND TimeIndex=2`},
-					"duplicate selected surface interval": {`INSERT INTO ReportData(TimeIndex,ReportDataDictionaryIndex,Value) SELECT TimeIndex,ReportDataDictionaryIndex,Value FROM ReportData WHERE ReportDataDictionaryIndex=4 AND TimeIndex=2`},
-					"hourly fallback":                     {`DELETE FROM ReportData WHERE TimeIndex BETWEEN 25 AND 96`, `DELETE FROM "Time" WHERE TimeIndex BETWEEN 25 AND 96`, `UPDATE "Time" SET Hour=TimeIndex,Minute=0,"Interval"=60,IntervalType=1 WHERE TimeIndex BETWEEN 1 AND 24`, `UPDATE ReportDataDictionary SET ReportingFrequency='Hourly' WHERE ReportingFrequency='Zone Timestep'`},
+					"native Zone Timestep EachCall encoding":              {`UPDATE "Time" SET IntervalType=-1 WHERE IntervalType=0`, `INSERT INTO "Time" VALUES(200000,2025,1,1,0,5,5,-1,3,0)`, `INSERT INTO ReportDataDictionary VALUES(500,'Wall A','Surface Inside Face Convection Heat Gain Energy','J',0,'HVAC System Timestep','Zone')`, `INSERT INTO ReportData(TimeIndex,ReportDataDictionaryIndex,Value) VALUES(200000,500,360000000000)`},
+					"missing first native interval":                       {`DELETE FROM "Time" WHERE TimeIndex=1`},
+					"native union without independent endpoint authority": {`DELETE FROM "Time" WHERE IntervalType=2`},
+					"missing last native interval":                        {`DELETE FROM "Time" WHERE TimeIndex=96`},
+					"missing selected surface interval":                   {`DELETE FROM ReportData WHERE ReportDataDictionaryIndex=4 AND TimeIndex=2`},
+					"null selected surface interval":                      {`UPDATE ReportData SET Value=NULL WHERE ReportDataDictionaryIndex=4 AND TimeIndex=2`},
+					"duplicate selected surface interval":                 {`INSERT INTO ReportData(TimeIndex,ReportDataDictionaryIndex,Value) SELECT TimeIndex,ReportDataDictionaryIndex,Value FROM ReportData WHERE ReportDataDictionaryIndex=4 AND TimeIndex=2`},
+					"hourly fallback":                                     {`DELETE FROM ReportData WHERE TimeIndex BETWEEN 25 AND 96`, `DELETE FROM "Time" WHERE TimeIndex BETWEEN 25 AND 96`, `UPDATE "Time" SET Hour=TimeIndex,Minute=0,"Interval"=60,IntervalType=1 WHERE TimeIndex BETWEEN 1 AND 24`, `UPDATE ReportDataDictionary SET ReportingFrequency='Hourly' WHERE ReportingFrequency='Zone Timestep'`},
 				} {
 					t.Run(name, func(t *testing.T) {
 						mutatedPath := filepath.Join(t.TempDir(), "mutated.sql")
@@ -139,7 +141,7 @@ func TestEnergyDriverGrossDirectionsPreserveNativeIntervalBeforeEverySum(t *test
 						}
 						upgraded := UpgradeEnergyExplanationV1(parsed)
 						wall := energyPathV2NodeByID(upgraded.Nodes, "driver.surface.exterior_walls.cooling.building.gain")
-						if name == "hourly fallback" {
+						if name == "hourly fallback" || name == "native Zone Timestep EachCall encoding" {
 							if wall == nil || wall.EffectiveValue != 13 || wall.HeatDirectionBasis != "native_interval" {
 								t.Fatalf("complete native Hourly fallback lost gross evidence: %#v", wall)
 							}

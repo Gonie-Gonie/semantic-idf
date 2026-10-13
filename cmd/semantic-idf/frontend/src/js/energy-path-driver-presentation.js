@@ -39,13 +39,13 @@ export function energyPathDirectionalLabel(node = {}, fallback = node.label || n
     fallback = t(`simulation.energyPathDriverCategory.${node.driverCategory}`, {}, fallback);
   }
   return t(`simulation.energyPathHeat${direction === "gain" ? "Gain" : "Loss"}Label`, { label: fallback },
-    `${fallback} · ${direction === "gain" ? "heat gain" : "heat loss"}`);
+    `${fallback} (${direction})`);
 }
 
 export function energyPathGrossHeatValue(node = {}) {
   const direction = energyPathHeatDirection(node);
   return direction && finite(node.effectiveValue) && node.effectiveValue >= 0
-    ? (direction === "loss" ? -1 : 1) * node.effectiveValue : null;
+    ? node.effectiveValue : null;
 }
 
 /** Project the backend's additive, within-parent allocation breakdown. Native
@@ -107,8 +107,14 @@ export function energyPathProjectDriverBreakdown(nodes = [], links = []) {
           sourceIds: [...new Set([...member.sourceIds, ...(nodeByID.get(link.toId)?.sourceIds || [])])] });
       });
     } else if (children.has(link.toId) && link.relation === "input_to_driver") {
-      for (const member of children.get(link.toId)) projectedLinks.push({ ...link,
-        id: `${link.id}.component.${member.driverCategory}`, toId: member.id, toValue: member.value });
+      for (const member of children.get(link.toId)) {
+        // Buried-wall inside-face convection is classified as surface_exchange.
+        // Sharing its residual parent does not associate the Ground boundary
+        // with air storage or heat-balance reconciliation components.
+        if (nodeByID.get(link.fromId)?.kind === "input.ground_conduction" && member.driverCategory !== "balance.surface_exchange") continue;
+        projectedLinks.push({ ...link,
+          id: `${link.id}.component.${member.driverCategory}`, toId: member.id, toValue: member.value });
+      }
     } else if (visibleIDs.has(link.fromId) && visibleIDs.has(link.toId)) {
       projectedLinks.push(link);
     }

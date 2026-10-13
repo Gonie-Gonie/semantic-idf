@@ -324,6 +324,7 @@ func energyPathExpectedThermalInputFrequency(name string) (string, bool) {
 	case "Surface Outside Face Incident Solar Radiation Rate per Area":
 		return "Daily", true
 	case "Surface Outside Face Convection Heat Gain Energy",
+		"Surface Outside Face Conduction Heat Transfer Energy",
 		"Surface Outside Face Net Thermal Radiation Heat Gain Energy",
 		"Surface Outside Face Solar Radiation Heat Gain Energy",
 		"Surface Heat Storage Energy", "Zone Total Internal Total Heating Energy",
@@ -352,7 +353,8 @@ func assertEnergyPathMonthlyHourlyRequestPairs(t *testing.T, plan PurposeRunPlan
 		if frequency, thermalInput := energyPathExpectedThermalInputFrequency(output.VariableName); thermalInput {
 			reversible := output.VariableName == "Surface Outside Face Convection Heat Gain Energy" ||
 				output.VariableName == "Surface Outside Face Net Thermal Radiation Heat Gain Energy" ||
-				output.VariableName == "Surface Heat Storage Energy"
+				output.VariableName == "Surface Heat Storage Energy" ||
+				output.VariableName == "Surface Outside Face Conduction Heat Transfer Energy"
 			if output.ObjectType != "Output:Variable" || (output.ReportingFrequency != frequency && !(reversible && output.ReportingFrequency == "Timestep")) || output.KeyValue == "" || output.KeyValue == "*" ||
 				!purposeIDsContain(output.PurposeIDs, SimulationPurposeBasicEnergy) || output.Reason != "Basic Energy Path" ||
 				strings.TrimSpace(purposeFieldValue(output.Fields, "Schedule Name")) != "" {
@@ -442,7 +444,8 @@ func assertEnergyPathMonthlyHourlyRequestPairs(t *testing.T, plan PurposeRunPlan
 			}
 			if output.VariableName == "Surface Outside Face Convection Heat Gain Energy" ||
 				output.VariableName == "Surface Outside Face Net Thermal Radiation Heat Gain Energy" ||
-				output.VariableName == "Surface Heat Storage Energy" {
+				output.VariableName == "Surface Heat Storage Energy" ||
+				output.VariableName == "Surface Outside Face Conduction Heat Transfer Energy" {
 				timestep, exists := frequencies["Timestep"]
 				if !exists || timestep.ScopeZoneName != frequencies[frequency].ScopeZoneName {
 					t.Fatalf("reversible boundary request %s lost Timestep companion with the same owner: %#v", key, frequencies)

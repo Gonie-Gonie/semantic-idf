@@ -12,8 +12,8 @@ Use [Tools](./tools.en.md) for Building/Annual comparisons and
 
 | Stage | Quantity | Domain | Example |
 | --- | --- | --- | --- |
-| Inputs | External conditions and prescribed internal heat sources. | Boundary context, independently scaled. | Incident solar, exterior exchange, People, Lighting, Equipment. |
-| Drivers | Signed gross heat exchange and its separately allocated cooling/heating contribution. | Thermal energy. | Exterior-wall heat gain/loss and load contribution. |
+| Inputs | Exterior boundary exchange and prescribed internal heat sources. | Boundary context, independently scaled. | Incident solar, exterior convection/radiation, ground conduction, People, Lighting, Equipment. |
+| Drivers | Room-side heat exchange, separated by direction. | Thermal energy. | Wall heat exchange (gain/loss), infiltration (gain/loss). |
 | Loads | Observed thermal service at its declared boundary. | Thermal energy. | Zone sensible cooling. |
 | End uses | Consumption by equipment or direct uses. | Site energy. | Coil electricity, lighting, gas heating. |
 | Carriers | Facility or scoped consumption by energy resource. | Site energy. | Electricity, natural gas, purchased district cooling. |
@@ -34,8 +34,8 @@ People gains do not imply a purchased People-energy end use.
 
 ## Inputs, insulation, storage, and auxiliaries {#inputs-and-auxiliaries}
 
-The first stage shows solar arriving at exterior surfaces, signed exterior
-convection and longwave exchange, and the reported heat from prescribed People,
+The first stage shows solar arriving at exterior surfaces, exterior
+convection and longwave exchange, ground conduction, and the reported heat from prescribed People,
 Lighting and Equipment activity. Equipment combines the supported electric, gas,
 other, hot-water and steam heat-source families. Its input is reported heat,
 including radiant, convective and latent components, rather than purchased
@@ -48,14 +48,27 @@ and when. Absorbed solar, total internal gains and envelope storage are building
 responses rather than independent boundary sources; they are not cards in the
 first stage. Exterior-face exchange remains a reported boundary observation,
 not an independent weather-only quantity. It also depends on the surface response.
-Positive exterior exchange enters the outside face; negative values retain their
-reported direction. Input observations must not be summed into one load total.
-Reversible observations have separate gain and loss cards; positive-only inputs
-such as incident solar do not acquire an artificial loss card.
+Exterior gain enters the outside face; loss leaves it. Reversible observations
+have separate `(gain)` and `(loss)` cards, both showing positive magnitudes.
+Positive-only inputs such as incident solar do not acquire an artificial loss
+card. Load Drivers retain room-side transfer rather than substituting exterior
+exchange. Input observations must not be summed into one load total.
+
+Ground conduction is heat crossing the exterior face of ground-contact walls
+and floors. It requires verified `Ground` or `GroundFCfactorMethod` surfaces and
+their native outside-face conduction output. `Foundation`/Kiva does not provide
+this output, so it is not substituted with room-side heat transfer or shown as
+zero. Exterior convection/radiation and ground conduction describe the envelope
+boundary; wall, roof, floor and window drivers describe transfer on the room side.
 
 All displayed connections use ribbons. Reference ribbons retain independent
 endpoint scales and the matching driver subset; their different physical
 boundaries mean their widths do not establish a conserved transfer or efficiency.
+For directional boundary-to-driver references, the driver endpoint uses the
+same gross room-side heat magnitude as its card, restricted to the original
+members actually associated with that input. It does not use unrelated members
+of a grouped Internal gains card. Actual driver-to-load ribbons retain their
+allocated load quantities.
 
 Cooling/heating loads also connect to fan, pump and auxiliary consumption when
 the system path and allocation budget are supported. A connection retains the
@@ -64,8 +77,9 @@ load can be served by both a fan and a pump: do not sum their load references.
 Auxiliary consumption remains counted once in site energy and is excluded from
 coil-only COP. Unsupported service allocations stay unassigned.
 
-Select an input or association for its Monthly graph. Input values retain their
-sign; missing months remain gaps. Hourly requires actual compatible source
+Select an input or association for its Monthly graph. Directional values show
+positive magnitudes with direction in their labels; missing months remain gaps.
+Older net-only observations retain their signed values. Hourly requires actual compatible source
 observations and is otherwise unavailable. Older results may lack the new input
 outputs: rerun **Basic Energy** to obtain them. Daily solar integration uses the
 executed surface area and actual reported days, including short runs.
@@ -194,15 +208,15 @@ Heating pressure P_i = -D_i
 ```
 
 Gain and loss are separated before summing native intervals, surfaces, Zones or
-months. A source with +10 and −5 kWh therefore shows +10 gain and −5 loss, while
-one with +110 and −105 kWh shows +110 and −105. Both have net +5 kWh, but they
+months. A source with +10 and −5 kWh therefore shows gain 10 and loss 5, while
+one with +110 and −105 kWh shows gain 110 and loss 105. Both have net +5 kWh, but they
 describe different amounts of heat exchange. Annual values sum the corresponding
 monthly direction without cancelling the opposite direction.
 
-Directional driver cards show **Heat exchange** and **Load contribution** as
-separate values. The first is the signed physical observation; the second is its
-share of actual cooling/heating load. Ribbon widths use the allocated load
-contribution. A gain/loss can remain visible with zero load contribution.
+Directional driver cards show one positive heat-exchange magnitude, with
+`(gain)` or `(loss)` in the label. Storage and release use their explicit physical
+names. Ribbon widths still use the share allocated to actual cooling/heating
+load. A gain/loss can remain visible with zero load contribution.
 Splitting gross exchange does not increase actual HVAC loads, site consumption,
 or COP. Surface exchange includes its full supported heat-balance response; it
 does not isolate the portion caused by incident solar.

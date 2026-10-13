@@ -471,7 +471,13 @@ export function renderEnergyPathInspector(scene, viewState = {}, options = {}) {
   const kind = selectedLink ? "link" : "node";
   const nodeByID = new Map(scene.allGraphNodes.map((node) => [node.id, node]));
   const label = selectedLink ? `${nodeByID.get(item.fromId)?.label || item.fromId} → ${nodeByID.get(item.toId)?.label || item.toId}` : item.label;
-  const endpointLabels = { from: nodeByID.get(item.fromId)?.label, to: nodeByID.get(item.toId)?.label };
+  const endpointLabel = (id) => {
+    const node = nodeByID.get(id);
+    return node?.level === "driver" && energyPathHeatDirection(node) && !(item.relation === "input_to_driver" && item.driverReferenceBasis === "gross_heat")
+      ? `${node.label || id} · ${t("simulation.energyPathContextToDriver", {}, "Allocated load-driver reference")}` : node?.label;
+  };
+  const endpointLabels = { from: endpointLabel(item.fromId), to: endpointLabel(item.toId),
+    fromNode: nodeByID.get(item.fromId), toNode: nodeByID.get(item.toId) };
   scene.monthlyChartGraphs ||= Array.from({ length: 12 }, (_, month) => energyPathGraphForState(scene.explanation, { ...viewState, simulationEnergyPeriod: `M${month + 1}` }));
   return renderEnergyPathComponentChart({
     item, kind, label, display: scene.display, frequency: viewState.simulationEnergyChartFrequency,
@@ -2067,7 +2073,9 @@ export function renderEnergyPathWarnings(warnings = []) {
     unique.push({
       severity,
       code,
-      message: unassignedBuildingHVAC
+      message: code === "energy_path_ground_conduction_unsupported"
+        ? t("simulation.energyPathGroundConductionUnsupported", {}, "Ground boundary conduction is unavailable for Foundation/Kiva because the required outside-face output is not reported. Inside-face values are not substituted, and missing data stays unavailable.")
+        : unassignedBuildingHVAC
         ? message.replace(/^unassigned building hvac(?: auxiliary)? energy\s*(?::|·|—|-)?\s*/i, "")
         : message,
       unassignedBuildingHVAC,
@@ -3216,7 +3224,7 @@ export function renderEnergyPathGraph(scene, viewState = {}) {
     : `<p class="energy-path-input-note" data-energy-path-input-unavailable>${escapeHTML(t("simulation.energyPathInputsUnavailable", {}, "Boundary input observations are unavailable in this saved result. Run Basic Energy again to collect them."))}</p>`;
   const netOnly = visibleNodes.some((node) => ["input", "driver"].includes(node.level) &&
     (node.heatDirectionBasis === "net_only" || !node.heatDirectionBasis && !energyPathHeatDirection(node) &&
-      (node.level === "driver" || ["input.exterior_convection", "input.exterior_longwave", "input.surface_storage"].includes(node.kind))));
+      (node.level === "driver" || ["input.exterior_convection", "input.exterior_longwave", "input.ground_conduction", "input.surface_storage"].includes(node.kind))));
   const directionNotice = netOnly ? `<p class="energy-path-input-note" data-energy-path-net-only>${escapeHTML(t("simulation.energyPathNetOnlyNotice", {}, "Some quantities retain net-only evidence. Separate gains and losses require compatible interval or native Gain/Loss observations; rerun Basic Energy to collect interval outputs. Derived balance differences remain net-only."))}</p>` : "";
   return `${inputNotice}${directionNotice}<div class="energy-path-layout${inputColumn ? " energy-path-layout-with-inputs" : ""}" data-energy-path-layout>
     <span class="energy-path-unit" data-energy-path-unit>${escapeHTML(energyPathDisplayUnit("kWh", display))}</span>
@@ -3241,6 +3249,7 @@ function energyPathInputLabel(kind, fallback = kind) {
     "input.solar_incident": ["IncidentSolar", "Incident solar"],
     "input.exterior_convection": ["ExteriorConvection", "Exterior convection"],
     "input.exterior_longwave": ["ExteriorLongwave", "Exterior longwave exchange"],
+    "input.ground_conduction": ["GroundConduction", "Ground boundary conduction"],
     "input.people": ["People", "People"],
     "input.lighting": ["Lighting", "Lighting"],
     "input.equipment": ["Equipment", "Equipment"],
@@ -3329,11 +3338,16 @@ function energyPathRibbonTitle(ribbon, nodeByID, display) {
   const fromUnit = ribbon.domain === "context" ? ribbon.fromUnit : ribbon.domain === "site" ? "kWh site" : "kWh thermal";
   const toUnit = ribbon.domain === "context" ? ribbon.toUnit : ribbon.domain === "thermal" ? "kWh thermal" : "kWh site";
   const inputRelation = ribbon.relation === "input_to_driver";
+  const directionalDriver = nodeByID.get(ribbon.fromId)?.level === "driver" && energyPathHeatDirection(nodeByID.get(ribbon.fromId));
+  const fromValue = inputRelation && energyPathHeatDirection(nodeByID.get(ribbon.fromId))
+    ? Math.abs(ribbon.fromValue) : ribbon.fromValue;
   const fromLabel = ribbon.domain === "context" ? inputRelation
-    ? t("simulation.energyPathContextFromInput", {}, "Reported observation") : t("simulation.energyPathContextFromThermal", {}, "Served thermal reference") : t("simulation.energyPathBridgeFrom", {}, "From");
+    ? t("simulation.energyPathContextFromInput", {}, "Reported observation") : t("simulation.energyPathContextFromThermal", {}, "Served thermal reference")
+    : directionalDriver ? t("simulation.energyPathContextToDriver", {}, "Allocated load-driver reference") : t("simulation.energyPathBridgeFrom", {}, "From");
   const toLabel = ribbon.domain === "context" ? inputRelation
-    ? t("simulation.energyPathContextToDriver", {}, "Allocated load-driver reference") : t("simulation.energyPathContextToAuxiliary", {}, "Allocated auxiliary site energy") : t("simulation.energyPathBridgeTo", {}, "To");
-  const values = `${from} → ${to} · ${fromLabel}: ${energyPathValueLabel(ribbon.fromValue, fromUnit, display)} · ${toLabel}: ${energyPathValueLabel(ribbon.toValue, toUnit, display)}`;
+    ? ribbon.link?.driverReferenceBasis === "gross_heat" ? t("simulation.energyPathContextToHeat", {}, "Room-side heat quantity") : t("simulation.energyPathContextToDriver", {}, "Allocated load-driver reference")
+    : t("simulation.energyPathContextToAuxiliary", {}, "Allocated auxiliary site energy") : t("simulation.energyPathBridgeTo", {}, "To");
+  const values = `${from} → ${to} · ${fromLabel}: ${energyPathValueLabel(fromValue, fromUnit, display)} · ${toLabel}: ${energyPathValueLabel(ribbon.toValue, toUnit, display)}`;
   return ribbon.domain === "context" ? `${values} · ${t("simulation.energyPathContextLinkDescription", {}, "Association only: endpoint quantities have separate boundaries and do not define a conversion efficiency.")}` : values;
 }
 
@@ -3480,7 +3494,10 @@ function renderEnergyPathNode(node, stage, selectedID, relatedNodeIDs = new Set(
   const direction = energyPathHeatDirection(node);
   const grossHeat = node.level === "driver" ? energyPathGrossHeatValue(node) : null;
   const directionalDriver = grossHeat !== null;
-  const number = stage.level === "input" ? energyPathInputSignedValue(node) : energyPathNodeNumber(node.value);
+  const signedInput = stage.level === "input" ? energyPathInputSignedValue(node) : null;
+  const number = directionalDriver ? grossHeat
+    : stage.level === "input" ? direction && signedInput !== null ? Math.abs(signedInput) : signedInput
+      : energyPathNodeNumber(node.value);
   const fullValue = number === null ? t("common.notAvailable", {}, "—") : energyPathValueLabel(number, stage.unitLabel, display);
   const badgeLabels = [
     latentBadge ? t("simulation.energyPathLatentShareSignificant", { share: energyPathPercentLabel(latentShare) }, `Latent ${energyPathPercentLabel(latentShare)}`) : "",
@@ -3489,24 +3506,16 @@ function renderEnergyPathNode(node, stage, selectedID, relatedNodeIDs = new Set(
     energyPathAppearanceLabel(appearance),
   ].filter(Boolean);
   const processInput = stage.level === "input" && ["input.solar_absorbed", "input.surface_storage"].includes(node.kind);
-  const heatLabel = t("simulation.energyPathGrossHeatExchange", {}, "Heat exchange");
-  const loadLabel = t("simulation.energyPathLoadContribution", {}, "Load contribution");
-  const grossText = directionalDriver ? `${grossHeat > 0 ? "+" : ""}${energyPathValueLabel(grossHeat, stage.unitLabel, display)}` : "";
-  const fullTitle = [directionalDriver ? `${label}: ${heatLabel} ${grossText}; ${loadLabel} ${fullValue}` : `${label}: ${fullValue}`, ...badgeLabels, stage.level === "input" ? t("simulation.energyPathInputContextDescription", {}, "Boundary and envelope process observations are separate reference quantities, not additive load contributions or transfer efficiencies.") : ""].filter(Boolean).join(" · ");
+  const fullTitle = [`${label}: ${fullValue}`, ...badgeLabels, stage.level === "input" ? t("simulation.energyPathInputContextDescription", {}, "Boundary and envelope process observations are separate reference quantities, not additive load contributions or transfer efficiencies.") : ""].filter(Boolean).join(" · ");
   const compactValue = number !== null
     ? display?.perArea ? formatEnergyPathDisplayValue(number, stage.unitLabel, display, { includeUnit: false }) : number.toLocaleString(undefined, { maximumFractionDigits: 2 })
     : t("common.notAvailable", {}, "—");
-  const compactGross = directionalDriver ? `${grossHeat > 0 ? "+" : ""}${geometry
-    ? display?.perArea ? formatEnergyPathDisplayValue(grossHeat, stage.unitLabel, display, { includeUnit: false }) : grossHeat.toLocaleString(undefined, { maximumFractionDigits: 2 })
-    : energyPathValueLabel(grossHeat, stage.unitLabel, display)}` : "";
-  const quantities = directionalDriver
-    ? `<span class="energy-path-node-quantities"><span data-energy-path-gross-heat="${grossHeat}"><span>${escapeHTML(heatLabel)}</span><strong>${escapeHTML(compactGross)}</strong></span><span data-energy-path-load-contribution="${number ?? ""}"><span>${escapeHTML(loadLabel)}</span><strong>${escapeHTML(geometry ? compactValue : fullValue)}</strong></span></span>`
-    : `<strong>${escapeHTML(geometry ? compactValue : fullValue)}</strong>`;
+  const quantities = `<strong${directionalDriver ? ` data-energy-path-gross-heat="${grossHeat}"` : ""}>${escapeHTML(geometry ? compactValue : fullValue)}</strong>`;
   const placement = geometry
     ? ` data-energy-path-layout-node="${escapeHTML(node.id || "")}" data-energy-path-lane="${escapeHTML(geometry.lane)}" data-energy-path-focus="${geometry.focusKind}" style="left:${(geometry.x - geometry.column.x) / geometry.column.width * 100}%;top:${geometry.y}px;width:${geometry.width / geometry.column.width * 100}%;height:${geometry.height}px"`
     : "";
   return `
-    <button class="energy-path-node${directionalDriver ? " energy-path-directional-driver" : ""}${selected ? " selected" : ""}${related ? " related" : ""}${unclassified ? " energy-path-unclassified-energy" : ""}${processInput ? " energy-path-input-process" : ""}" type="button" data-energy-explanation-node="${escapeHTML(node.id || "")}" ${energyPathAppearanceAttributes(appearance)}${placement}${direction ? ` data-energy-path-heat-direction="${direction}"` : ""}${stage.level === "input" ? ` data-energy-path-input-kind="${escapeHTML(node.kind)}"${number !== null ? ` data-energy-path-input-signed-value="${number}"` : ""}` : ""}${related ? ' data-energy-path-related="true"' : ""}${node.carrierQuality ? ` data-energy-path-carrier-quality="${escapeHTML(node.carrierQuality.status)}"` : ""}${unclassified ? ` data-energy-path-unclassified-energy="${escapeHTML(node.carrier || "")}"` : ""} aria-pressed="${selected ? "true" : "false"}" title="${escapeHTML(fullTitle)}" aria-label="${escapeHTML(fullTitle)}">
+    <button class="energy-path-node${directionalDriver ? " energy-path-directional-driver" : ""}${selected ? " selected" : ""}${related ? " related" : ""}${unclassified ? " energy-path-unclassified-energy" : ""}${processInput ? " energy-path-input-process" : ""}" type="button" data-energy-explanation-node="${escapeHTML(node.id || "")}" ${energyPathAppearanceAttributes(appearance)}${placement}${direction ? ` data-energy-path-heat-direction="${direction}"` : ""}${stage.level === "input" ? ` data-energy-path-input-kind="${escapeHTML(node.kind)}"${signedInput !== null ? ` data-energy-path-input-signed-value="${signedInput}"` : ""}` : ""}${related ? ' data-energy-path-related="true"' : ""}${node.carrierQuality ? ` data-energy-path-carrier-quality="${escapeHTML(node.carrierQuality.status)}"` : ""}${unclassified ? ` data-energy-path-unclassified-energy="${escapeHTML(node.carrier || "")}"` : ""} aria-pressed="${selected ? "true" : "false"}" title="${escapeHTML(fullTitle)}" aria-label="${escapeHTML(fullTitle)}">
       ${appearance.allocated ? `<i class="energy-path-allocation-mark" data-energy-path-allocation-mark="${appearance.allocationLabelKind}" aria-hidden="true"></i>` : ""}
       <span class="energy-path-node-copy"><span class="energy-path-node-label">${escapeHTML(label)}</span>${latentBadge}${partialCoverageBadge}${residualBadge}</span>
       ${quantities}
