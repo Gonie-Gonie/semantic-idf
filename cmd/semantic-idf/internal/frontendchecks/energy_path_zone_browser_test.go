@@ -269,7 +269,7 @@ try {
   assert(graph.nodes.length === 4 && graph.nodes.every((node) => node.id.includes(".heating.")), "Service filtering did not apply to the selected zone and M1 graph");
   state.simulationEnergySelection = graph.nodes.find((node) => node.level === "load").id;
   const rendered = document.createElement("div");
-  rendered.innerHTML = module.renderEnergyPathView(explanation, state);
+  rendered.innerHTML = module.renderEnergyPathView(explanation, { ...state, simulationEnergyDetailsOpen: true });
   assert(rendered.querySelector("[data-energy-path-component-chart]"), "Selected Zone node did not render its chart");
   // Retain the standalone detail renderer's scoped calculation contract.
   const details = document.createElement("div");

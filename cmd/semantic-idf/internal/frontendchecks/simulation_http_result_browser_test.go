@@ -55,6 +55,7 @@ func TestSimulationHTTPResultTransportBrowser(t *testing.T) {
 	var runID string
 	runCalls, cacheCalls := 0, 0
 	pollCalls, pollActive, pollMaxActive, bodyBytes, totalBodyBytes := 0, 0, 0, 0, 0
+	const resultAccept = "application/vnd.semantic-idf.simulation-parts+json, application/vnd.semantic-idf.simulation-transfer+json"
 	mux := http.NewServeMux()
 	mux.Handle("/src/", http.StripPrefix("/src/", http.FileServer(http.Dir(repoPath("frontend/src")))))
 	mux.HandleFunc("/src/http-result.html", func(w http.ResponseWriter, _ *http.Request) {
@@ -63,7 +64,7 @@ func TestSimulationHTTPResultTransportBrowser(t *testing.T) {
 	})
 	mux.HandleFunc("/api/simulation-run", func(w http.ResponseWriter, r *http.Request) {
 		var request simulation.SimulationRunRequest
-		if r.Method != http.MethodPost || r.Header.Get("Accept") != "application/vnd.semantic-idf.simulation-transfer+json" || json.NewDecoder(r.Body).Decode(&request) != nil || request.PurposeRequest == nil {
+		if r.Method != http.MethodPost || r.Header.Get("Accept") != resultAccept || json.NewDecoder(r.Body).Decode(&request) != nil || request.PurposeRequest == nil {
 			http.Error(w, "invalid run request", http.StatusBadRequest)
 			return
 		}
@@ -151,7 +152,7 @@ func TestSimulationHTTPResultTransportBrowser(t *testing.T) {
 			TextHash string `json:"textHash"`
 			RunID    string `json:"runId"`
 		}
-		if r.Method != http.MethodPost || r.Header.Get("Accept") != "application/vnd.semantic-idf.simulation-transfer+json" || json.NewDecoder(r.Body).Decode(&request) != nil {
+		if r.Method != http.MethodPost || r.Header.Get("Accept") != resultAccept || json.NewDecoder(r.Body).Decode(&request) != nil {
 			http.Error(w, "invalid cache request", http.StatusBadRequest)
 			return
 		}

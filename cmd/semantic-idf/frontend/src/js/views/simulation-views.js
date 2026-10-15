@@ -7436,10 +7436,11 @@ async function exportSimulationEnergyPath(button) {
     button.disabled = true;
     // Capture exactly the displayed named run and six-field selection before any
     // async dialog or save. Editing the model does not rewrite this run snapshot.
-    await simulationResultStore(scene.result)?.ensureAll();
+    const resourceStore = simulationResultStore(scene.result);
+    if (resourceStore) await resourceStore.ensureAll();
     // Selection was captured on click. Navigation within this immutable run
     // does not rewrite the export; replacing the run invalidates its owner.
-    if (state.simulationResult !== scene.result || simulationResultStore(scene.result)?.disposed) throw new Error(t("simulation.energyPathExportUnavailable", {}, "This export no longer matches the displayed run. Reopen Data details and try again."));
+    if (state.simulationResult !== scene.result || resourceStore?.disposed) throw new Error(t("simulation.energyPathExportUnavailable", {}, "This export no longer matches the displayed run. Reopen Data details and try again."));
     const report = buildEnergyPathReport(scene.result, viewState);
     if (!report) throw new Error(t("simulation.energyPathExportUnavailable", {}, "This export no longer matches the displayed run. Reopen Data details and try again."));
     const result = JSON.parse(report.rawResult);

@@ -32,7 +32,7 @@ function outputRequestIndex(objects) {
   return index;
 }
 
-function sourceIndex(sources) {
+function sourceIndexByID(sources) {
   if (!Array.isArray(sources)) sources = EMPTY;
   let index = sourceIndexes.get(sources);
   if (index && index.length === sources.length) return index.byID;
@@ -45,7 +45,7 @@ function sourceIndex(sources) {
 /** Prepare reusable metadata indexes without creating a hidden drawer/DOM. */
 export function prepareEnergyPathOutputRequests(outputObjects = [], sources = []) {
   outputRequestIndex(outputObjects);
-  sourceIndex(sources);
+  sourceIndexByID(sources);
 }
 
 const METER_CARRIERS = Object.freeze({
@@ -144,7 +144,7 @@ function resolution(status, matches = []) {
  */
 export function resolveEnergyPathOutputRequest(source, outputObjects = [], sources = []) {
   if (typeof source === "string") {
-    source = sourceIndex(sources).get(source);
+    source = sourceIndexByID(sources).get(source);
   }
   if (!source || typeof source !== "object") return resolution("unavailable");
   const sourceType = token(source.sourceType);

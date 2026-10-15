@@ -63,7 +63,7 @@ func TestEPATH090FrontendKeepsEndUseAndCarrierStagesDistinct(t *testing.T) {
 		`const useEnergyPathV2 = isEnergyPathV2(explanation)`,
 		`if (useEnergyPathV2)`,
 		`renderEnergyPathView(explanation, state, simulationEnergySceneOptions(scene))`,
-		`outputObjects: scene.result?.purposeRunPlan?.outputObjects || []`,
+		`outputObjects: state.simulationEnergyDetailsOpen ? scene.result?.purposeRunPlan?.outputObjects || [] : []`,
 		`inspectorActionsForNode:`,
 		`"simulation.energyPathUpgradeUnavailable"`,
 	} {

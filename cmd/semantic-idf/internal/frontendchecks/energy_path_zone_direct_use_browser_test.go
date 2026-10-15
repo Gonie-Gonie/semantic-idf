@@ -116,7 +116,7 @@ try {
   const renderWithLegacyDetail = (explanation, state) => {
     const graph = module.energyPathGraphForState(explanation, state);
     return module.renderEnergyPathNodeInspector(explanation, graph.nodes, state.simulationEnergySelection, state, graph.relations, graph.links, graph.supplyActivities)
-      + module.renderEnergyPathView(explanation, state);
+      + module.renderEnergyPathView(explanation, { ...state, simulationEnergyDetailsOpen: true });
   };
   const i18n = await import("/src/js/i18n.js");
   const annual = zoneGraph();

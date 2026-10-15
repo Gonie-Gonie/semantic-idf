@@ -139,7 +139,7 @@ try {
   assert(mount.querySelectorAll('[data-energy-path-kpi]').length === 4 && mount.querySelectorAll('[data-energy-path-kpi="coverage"] [data-energy-path-kpi-boundary]').length === 2 && !mount.querySelector('[data-energy-path-kpi="coverage"] [data-energy-path-kpi-boundary-value]'), "unknown partial Zone coverage must remain explicit and nonnumeric in the fourth KPI card");
   assert(!mount.textContent.includes("Unassigned building HVAC energy"), "selected Zone summary displayed unassigned Building energy");
 
-  mount.innerHTML = module.renderEnergyPathView(explanation, { ...state, simulationEnergySelection: allocated.id });
+  mount.innerHTML = module.renderEnergyPathView(explanation, { ...state, simulationEnergySelection: allocated.id, simulationEnergyDetailsOpen: true });
   const details = document.createElement("div");
   details.innerHTML = module.renderEnergyPathNodeInspector(explanation, graph.nodes, allocated.id, state, graph.relations);
   const basis = details.querySelector('[data-energy-path-inspector-value="basis"] dd')?.textContent || "";

@@ -68,7 +68,7 @@ function Assert-SafeAncestors {
 }
 
 function Assert-SafeTree {
-    param([string]$Path)
+    param([string]$Path, [switch]$CollectFiles)
 
     Assert-SafeAncestors -Path $Path
     $pending = New-Object 'Collections.Generic.Stack[string]'
@@ -82,9 +82,30 @@ function Assert-SafeTree {
                     throw "Refusing to clean a symbolic link or junction: $($child.FullName)"
                 }
                 if ($child.PSIsContainer) { $pending.Push($child.FullName) }
+                elseif ($CollectFiles) {
+                    [pscustomobject]@{ Path = $child.FullName; Length = [long]$child.Length }
+                }
             }
         }
+        elseif ($CollectFiles) {
+            $file = Get-Item -LiteralPath $entry -Force
+            [pscustomobject]@{ Path = $file.FullName; Length = [long]$file.Length }
+        }
     }
+}
+
+function Format-CleanupBytes {
+    param([long]$Bytes)
+
+    if ($Bytes -lt 1KB) { return ('{0:N0} B' -f $Bytes) }
+    $units = @('KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB')
+    $size = $Bytes / 1KB
+    $unit = 0
+    while ($size -ge 1024 -and $unit -lt $units.Length - 1) {
+        $size /= 1024
+        $unit++
+    }
+    return ('{0:N2} {1} ({2:N0} bytes)' -f $size, $units[$unit], $Bytes)
 }
 
 function Test-EmptyDirectoryTree {
@@ -199,28 +220,52 @@ foreach ($relative in @('.', 'cmd/semantic-idf', '.runtime')) {
     }
 }
 
-# Validate the complete plan before the first removal, including nested links.
-foreach ($path in $plan) { Assert-SafeTree -Path $path }
-if ($plan.Count -eq 0) {
-    Write-Host '[ok] No generated files to clean.'
-}
-foreach ($path in $plan) {
-    $relative = $path.Substring($rootPrefix.Length).Replace('\', '/')
-    if ($PSCmdlet.ShouldProcess($path, 'Remove generated repository files')) {
-        # Recheck immediately before a recursive operation, using one shell and
-        # literal paths throughout discovery, validation and deletion.
-        $safePath = Assert-RepoPath -Path $path
-        Assert-SafeTree -Path $safePath
-        if ($relative -match '^(?:frontend|internal)(?:/|$)' -and -not (Test-EmptyDirectoryTree -Path $safePath)) {
-            throw "Legacy source directory is no longer empty: $safePath"
+[long]$deletedFiles = 0
+[long]$deletedBytes = 0
+try {
+    # Validate the complete plan before the first removal, including nested links.
+    foreach ($path in $plan) { Assert-SafeTree -Path $path }
+    if ($plan.Count -eq 0) {
+        Write-Host '[ok] No generated files to clean.'
+    }
+    foreach ($path in $plan) {
+        $relative = $path.Substring($rootPrefix.Length).Replace('\', '/')
+        if ($PSCmdlet.ShouldProcess($path, 'Remove generated repository files')) {
+            # Recheck immediately before a recursive operation, using one shell
+            # and literal paths. Capture logical file sizes during that traversal.
+            $safePath = Assert-RepoPath -Path $path
+            $files = @(Assert-SafeTree -Path $safePath -CollectFiles)
+            if ($relative -match '^(?:frontend|internal)(?:/|$)' -and -not (Test-EmptyDirectoryTree -Path $safePath)) {
+                throw "Legacy source directory is no longer empty: $safePath"
+            }
+            $removed = $false
+            try {
+                Remove-Item -LiteralPath $safePath -Recurse -Force
+                $removed = $true
+            }
+            finally {
+                foreach ($file in $files) {
+                    if (-not $removed) {
+                        # A locked file can leave a partially removed tree. Count
+                        # only confirmed removals and preserve the original error.
+                        try { if (Test-Path -LiteralPath $file.Path) { continue } }
+                        catch { continue }
+                    }
+                    $deletedFiles++
+                    $deletedBytes += $file.Length
+                }
+            }
+            Write-Host "[removed] $relative"
         }
-        Remove-Item -LiteralPath $safePath -Recurse -Force
-        Write-Host "[removed] $relative"
+    }
+    if ($Hard) {
+        Write-Host '[ok] Hard cleanup selected. Run dev setup before the next build or test.'
+    }
+    else {
+        Write-Host '[ok] Build outputs (bin, build, frontend/dist), development tools and retained local evidence are preserved.'
     }
 }
-if ($Hard) {
-    Write-Host '[ok] Hard cleanup selected. Run dev setup before the next build or test.'
-}
-else {
-    Write-Host '[ok] Build outputs (bin, build, frontend/dist), development tools and retained local evidence are preserved.'
+finally {
+    $previewNote = if ($WhatIfPreference) { ' (preview only)' } else { '' }
+    Write-Host ('[summary] Removed {0:N0} files, {1}{2}.' -f $deletedFiles, (Format-CleanupBytes $deletedBytes), $previewNote)
 }

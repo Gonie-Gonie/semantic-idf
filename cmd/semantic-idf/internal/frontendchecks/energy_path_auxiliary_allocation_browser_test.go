@@ -124,7 +124,7 @@ try {
 
   // Preserve the legacy detail utility's data contract separately from the interactive chart view.
   mount.innerHTML = module.renderEnergyPathNodeInspector(explanation, graph.nodes, state.simulationEnergySelection, state, graph.relations, graph.links, graph.supplyActivities)
-    + module.renderEnergyPathView(explanation, state);
+    + module.renderEnergyPathView(explanation, { ...state, simulationEnergyDetailsOpen: true });
   const widget = mount.querySelector("[data-energy-path-auxiliary-allocation-quality]");
   assert(widget?.dataset.energyPathExpectedValue === "150", "Zone view omitted auxiliary allocation quality");
   assert(widget.querySelectorAll("[data-energy-path-auxiliary-allocation-ratio]").length === 3, "Zone quality must show direct, allocated, and unassigned ratios");

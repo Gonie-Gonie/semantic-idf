@@ -123,6 +123,11 @@ that running processes will release locked files. Close browser/test processes
 using selected paths before cleanup. Cleanup works without the repo-local
 Go/Wails runtime.
 
+The final summary reports the number and total logical size of files actually
+deleted, excluding directories and preserved or locked files. It also appears
+after a partial cleanup failure. Preview runs and runs with nothing to delete
+report `0 files, 0 B`.
+
 ## CLI
 
 The packaged executable opens the desktop app when run without arguments. It also supports scriptable commands through
