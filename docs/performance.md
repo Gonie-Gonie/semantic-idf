@@ -186,8 +186,9 @@ after across the two final runs. The interaction run reached 4.88 GB while
 loading all resources. These decimal totals include the native harness's
 cached snapshot and its WebView children; they are neither JavaScript heap
 measurements nor a bound on fully expanded results. Temporary harnesses,
-payload copies, profiles and browser data were removed after recording these
-findings; no additional permanent benchmark or test files were introduced.
+payload copies, profiles and browser data are disposable investigation artifacts
+under ignored `.runtime/tmp/result-loading-benchmark`; no additional permanent
+benchmark or test files were introduced.
 
 ### Progress calibration across saved models
 
