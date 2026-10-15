@@ -499,6 +499,7 @@ export function renderEnergyPathQuality(explanation = {}, viewState = {}) {
 }
 
 export function renderEnergyPathDetails(scene, viewState = {}, options = {}) {
+  if (viewState.simulationEnergyDetailsOpen !== true) return renderEnergyPathDataDetails({}, viewState);
   return renderEnergyPathDataDetails(scene.explanation, viewState, {
     ...options,
     display: scene.display,

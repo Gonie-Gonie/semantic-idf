@@ -2,6 +2,52 @@ const METER_OUTPUT_TYPES = new Set([
   "output:meter", "output:meter:meterfileonly", "output:meter:cumulative", "output:meter:cumulativemeterfileonly",
 ]);
 
+// Run-plan arrays are immutable snapshots. A weak index follows their lifetime
+// and preserves the original order/duplicates used for ambiguity resolution.
+const requestIndexes = new WeakMap();
+const sourceIndexes = new WeakMap();
+const EMPTY = [];
+
+function appendIndex(index, key, value) {
+  if (!index.has(key)) index.set(key, []);
+  index.get(key).push(value);
+}
+
+function outputRequestIndex(objects) {
+  if (!Array.isArray(objects)) objects = EMPTY;
+  let index = requestIndexes.get(objects);
+  if (index && index.length === objects.length) return index;
+  index = { length: objects.length, variables: new Map(), meters: new Map(), meterGroups: new Map() };
+  objects.forEach((object, position) => {
+    const identity = requestIdentity(object);
+    const entry = { object, index: position, identity };
+    if (identity.type === "output:variable") appendIndex(index.variables, identity.name, entry);
+    else if (METER_OUTPUT_TYPES.has(identity.type)) {
+      appendIndex(index.meters, identity.key, entry);
+      const group = meterGroup(identity.key);
+      if (group) appendIndex(index.meterGroups, group, entry);
+    }
+  });
+  requestIndexes.set(objects, index);
+  return index;
+}
+
+function sourceIndex(sources) {
+  if (!Array.isArray(sources)) sources = EMPTY;
+  let index = sourceIndexes.get(sources);
+  if (index && index.length === sources.length) return index.byID;
+  const byID = new Map();
+  for (const source of sources) if (source && !byID.has(source.id)) byID.set(source.id, source);
+  sourceIndexes.set(sources, { length: sources.length, byID });
+  return byID;
+}
+
+/** Prepare reusable metadata indexes without creating a hidden drawer/DOM. */
+export function prepareEnergyPathOutputRequests(outputObjects = [], sources = []) {
+  outputRequestIndex(outputObjects);
+  sourceIndex(sources);
+}
+
 const METER_CARRIERS = Object.freeze({
   electricity: "electricity", naturalgas: "natural_gas", gas: "natural_gas",
   districtcooling: "district_cooling", districtheating: "district_heating", districtheatingwater: "district_heating",
@@ -98,7 +144,7 @@ function resolution(status, matches = []) {
  */
 export function resolveEnergyPathOutputRequest(source, outputObjects = [], sources = []) {
   if (typeof source === "string") {
-    source = (Array.isArray(sources) ? sources : []).find((candidate) => candidate?.id === source);
+    source = sourceIndex(sources).get(source);
   }
   if (!source || typeof source !== "object") return resolution("unavailable");
   const sourceType = token(source.sourceType);
@@ -120,8 +166,12 @@ export function resolveEnergyPathOutputRequest(source, outputObjects = [], sourc
   if (!sourceName) return resolution("unavailable");
 
   const matches = [];
-  for (const [index, object] of (Array.isArray(outputObjects) ? outputObjects : []).entries()) {
-    const identity = requestIdentity(object);
+  const catalog = outputRequestIndex(outputObjects);
+  const group = isMeter ? meterGroup(sourceName) : "";
+  const candidates = isMeter
+    ? (group ? catalog.meterGroups.get(group) : catalog.meters.get(sourceName)) || EMPTY
+    : catalog.variables.get(sourceName) || EMPTY;
+  for (const { object, index, identity } of candidates) {
     if (explicitType && identity.type !== explicitType) continue;
     if (isMeter ? !METER_OUTPUT_TYPES.has(identity.type) : identity.type !== "output:variable") continue;
     if (frequency && identity.frequency && frequency !== identity.frequency) continue;

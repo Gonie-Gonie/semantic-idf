@@ -511,6 +511,8 @@ func appAssetHandler(app *App) http.Handler {
 			}
 		case "/api/simulation/progress":
 			serveSimulationProgress(w, r, app)
+		case "/api/simulation-result-part":
+			app.serveSimulationResultPart(w, r)
 		case "/api/simulation-result-cache":
 			if r.Method != http.MethodPost {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -524,8 +526,18 @@ func appAssetHandler(app *App) http.Handler {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			if err := writeSimulationResultBytes(w, app.cachedSimulationResultBytes(request.TextHash, request.RunID)); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+			payload := app.cachedSimulationResultBytes(request.TextHash, request.RunID)
+			var writeErr error
+			if acceptsSimulationResultParts(r) {
+				writeErr = app.writeSimulationPartsManifest(w, r, payload, request.RunID, request.TextHash)
+			} else {
+				writeErr = writeSimulationResultBytes(w, payload)
+			}
+			if writeErr != nil {
+				if acceptsSimulationResultParts(r) {
+					w.Header().Set("X-SemanticIDF-Result-Error", "simulation_result_transfer_manifest")
+				}
+				http.Error(w, writeErr.Error(), http.StatusInternalServerError)
 			}
 		case "/api/simulation-run-plan":
 			if r.Method != http.MethodPost {
@@ -585,8 +597,17 @@ func appAssetHandler(app *App) http.Handler {
 					return
 				}
 			}
-			if err := writeSimulationResultBytes(w, payload); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+			var writeErr error
+			if acceptsSimulationResultParts(r) && result != nil {
+				writeErr = app.writeSimulationPartsManifest(w, r, payload, result.RunID, analysisTextHash(request.Text))
+			} else {
+				writeErr = writeSimulationResultBytes(w, payload)
+			}
+			if writeErr != nil {
+				if acceptsSimulationResultParts(r) {
+					w.Header().Set("X-SemanticIDF-Result-Error", "simulation_result_transfer_manifest")
+				}
+				http.Error(w, writeErr.Error(), http.StatusInternalServerError)
 			}
 		case "/api/simulation-purpose-outputs":
 			if r.Method != http.MethodPost {

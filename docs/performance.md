@@ -17,7 +17,7 @@ remaining time. See [progress and estimates](simulation-runner.md#progress-and-e
 | Alias lookup | Bounded indexes for fixed catalogs | First-match precedence, normalization, dynamic meter fallback and independently owned slices |
 | Energy drivers | Unit/rate conversion, surface category and membership prepared per dictionary | Original SQL ordering, arithmetic, rounding and full observation arrays |
 | Energy Path quality | Run-level evidence prepared once per Building/Zone scope and shared by annual/monthly periods | Period-local closure/ratios, source IDs, scope completeness and fresh evidence on refresh |
-| Desktop result transport | Exact column/timeline deduplication, negotiated HTTP response, lazy frontend point arrays and compact workspace snapshots | Value bits including negative zero, timestamp gaps, labels, sample order and request identity |
+| Desktop result transport | Exact column/timeline deduplication, bounded resource responses, foreground priority, background preparation, worker parsing and immutable lookup indexes | Value bits including negative zero, timestamp gaps, labels, sample order, request identity and latest user selection |
 | Browser tests | Discover Chrome once per test process | Existing browser scenarios; avoid repeated PATH/PATHEXT probes in Go test-cache logs |
 
 The public SQL walker retains its original interface. TEXT/noninteger metadata,
@@ -29,8 +29,9 @@ phases; the runner's independent initial Series/Heat Flow read does not use that
 deadline. A completed SQL parse is the proper baseline when a previously
 timed-out parse had silently selected CSV/ESO instead.
 
-Transfer negotiation uses `semantic-idf.simulation-transfer/v1`. Unnegotiated and
-small responses retain their ordinary result shape. Compact references are
+Desktop transfer negotiation prefers `semantic-idf.simulation-parts/v1`, which
+partitions an immutable `semantic-idf.simulation-transfer/v1` snapshot. Legacy
+clients retain their complete-response contracts. Compact references are
 collision-checked and exactly restored; unopened loops keep numeric columns.
 Heat Flow and Thermal Topology also share exact numeric, boolean and string
 columns, including repeated masks and labels, across their result projections.
@@ -115,8 +116,78 @@ stages and completed status. These are single local measurements, excluding
 engine execution and SQL/result building.
 The saved-run replay and bounded browser regressions are maintained tests;
 the hidden native harness and payload copies were disposable investigation
-artifacts. Larger responses still require one JSON string; exact sharing does
-not establish an unlimited model-size guarantee.
+artifacts. Legacy complete-response clients still require one JSON string;
+exact sharing does not establish an unlimited model-size guarantee. The desktop
+now uses the bounded resource transport described below.
+
+### Prioritized desktop result loading
+
+The common result loader requests the current view first, then silently prepares
+nearby actions and other views. Two concurrent resource jobs share an 8 MiB
+in-flight window; worker parsing transfers numeric buffers before installing
+ordinary arrays and lazy shared points on the UI thread. Background admission is
+bounded to 384 MiB of encoded resources per result. This covers the default
+four-purpose capture; larger runs prioritize their current context. Explicit
+foreground reads and exports can exceed this speculative budget. It is not a
+bound on total browser memory.
+
+Current-view nearby actions have priority over other tab defaults, which share
+a round-robin tier in UI order; remaining resources follow. Context changes
+promote already queued resources without duplicate requests or budget charges.
+
+Structural catalogs and observations are separate resources. Pending values
+suspend the requesting renderer rather than appearing empty. Run/selection
+guards discard stale completion, and immutable metadata indexes avoid repeated
+source-to-output-plan scans. Typed column validation is shared by all aliases
+and prepared during bounded resource installation. Closed Energy Data details
+retain only their hidden container; opening either tab creates its existing
+content and preserves focus.
+
+The engine, SQL readers, purpose builders and numerical algorithms are unchanged.
+They still finish before result transmission. Complete-result report exports
+also retain their existing canonical serialization path: loading all resources
+prevents partial exports, but does not remove that path's large-string or memory
+limits. Resource transfer improvements must not be reported as engine speedups
+or unlimited model/export capacity.
+
+On 2026-10-15, a hidden Wails 2.12.0/WebView2 155 harness compared the previous
+complete-response desktop (`6be00af`) with this loader at 1586 x 863. Both used
+the same 369,406,289-byte snapshot rebuilt read-only from the default Large
+Office/EnergyPlus 24.2/Busan four-purpose capture above. The new run included
+2.060 seconds of cold production partition preparation. These single local
+measurements exclude engine execution, SQL reading and result construction.
+
+| Native desktop measurement | Before | After |
+| --- | ---: | ---: |
+| First Energy display | 17.585 s | 2.575 s |
+| HTTP body bytes received before first display, decimal MB | 369.41 | 28.30 |
+| Energy DOM elements, same 40 graph nodes and five stages | 67,989 | 802 |
+| Monthly selection | 13.384 s | 0.138 s |
+| Data details opening | 13.602 s | 0.524 s |
+| Resolve 2,924 sources against 7,065 output requests | 8.401 s | 0.009 s |
+
+The manifest is 73,017 bytes, followed by six catalog and 183 data resources;
+the largest resource is 2,097,102 bytes. All bodies total 369,878,460 bytes:
+partitioning changes when data is needed, not the underlying observation count.
+Reconstruction preserves every original snapshot byte. Source-resolution
+fingerprints match, rapid zone/month/loop/series changes retain the latest
+selection, and drawer keyboard focus remains intact. All 23 original run files
+retain identical lengths and SHA-256 hashes.
+
+In a separate fresh run with no intervening interaction, natural prefetch
+finished at 5.614 seconds. The first-ever Heat Flow opening then took 0.747
+seconds without another read, versus the previous 0.769 seconds. In the busy
+interaction sequence it was clicked before preparation finished: 1.830 seconds,
+including 1.096 seconds waiting for resources. Background preparation avoids
+that wait once complete; it does not guarantee an immediate cold tab switch.
+
+Sampled initial process-tree private memory was 6.40 GB before and 2.49-3.14 GB
+after across the two final runs. The interaction run reached 4.88 GB while
+loading all resources. These decimal totals include the native harness's
+cached snapshot and its WebView children; they are neither JavaScript heap
+measurements nor a bound on fully expanded results. Temporary harnesses,
+payload copies, profiles and browser data were removed after recording these
+findings; no additional permanent benchmark or test files were introduced.
 
 ### Progress calibration across saved models
 

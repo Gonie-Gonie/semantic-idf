@@ -135,9 +135,40 @@ values. Parallel file completion times vary with CPU, memory and disk contention
 
 ## Desktop result transport
 
-The desktop negotiates `application/vnd.semantic-idf.simulation-transfer+json`
-for run and workspace-cache responses. The internal
-`semantic-idf.simulation-transfer/v1` envelope retains the canonical result with
+The desktop negotiates `application/vnd.semantic-idf.simulation-parts+json`
+for run and workspace-cache responses. A small
+`semantic-idf.simulation-parts/v1` manifest identifies an immutable snapshot by
+run ID, input text hash and an independent random snapshot ID. Its `catalogParts`
+hydrate structural metadata before its `parts` install deferred data bindings.
+Both stages use JSON paths and optional array offset/count/length bindings;
+each resource body is an array aligned with its binding list. Catalog paths are
+relative to the manifest, and data paths are relative to its `root`. Within a
+stage no resource replaces an ancestor of another resource.
+
+Read-only `/api/simulation-result-part` requests require the exact `runId`,
+`textHash`, `snapshot` and `partId`. Missing or expired snapshots return 404;
+resources from different runs cannot share identities. Resources target 2 MiB
+and never exceed 4 MiB; the manifest has the same hard ceiling. Large arrays are
+split only between complete elements, preserving array order and number tokens.
+A scalar exceeding the resource ceiling (for example, a long process log) uses
+the existing complete snapshot only when the client also explicitly accepts
+compact-v1 and that snapshot is smaller than 448 MiB. This compatibility
+fallback does not repeat the simulation POST. Other errors, or a larger
+snapshot that cannot be partitioned, report an explicit loading error.
+Metadata paging bounds large selector catalogs and binding lists as well as
+observation arrays. Structural catalogs preserve source/scope/period identity;
+hourly observations remain independent of their source metadata.
+
+The server partitions the existing serialized snapshot with byte slices. It
+does not rebuild results, read SQL, or write a result JSON file for each request.
+At most two immutable resource snapshots are retained; the current workspace
+snapshot is protected from a late older completion. Concurrent requests for the
+same source share preparation. The existing public cache API and ordinary
+canonical/compact responses retain their shapes. A legacy canonical cache entry
+is wrapped only inside the negotiated parts manifest.
+
+The manifest root uses the internal
+`semantic-idf.simulation-transfer/v1` envelope, which retains the canonical result with
 exact, collision-checked references to repeated arrays. Point sets share
 timelines and materialize lazily. Optional `columnSets` and `columnBindings`
 share long numeric, boolean and string arrays in Heat Flow and Thermal Topology,
@@ -150,13 +181,18 @@ The browser validates all binding paths before installing them and rejects
 prototype paths, duplicate targets and invalid typed columns. Receipt checks
 the uncompressed Content-Length when present. Empty responses, incomplete
 receipt, failed text decoding and invalid JSON report result-loading errors,
-separately from EnergyPlus errors. A failed POST is never automatically retried;
+separately from EnergyPlus errors. Parts assembly failures carry
+`X-SemanticIDF-Result-Error: simulation_result_transfer_manifest` for the same
+classification. A failed POST is never automatically retried;
 it may already have completed the simulation. Saved engine files remain intact.
 
-The response is still parsed as one JSON string. Deduplication fixes the bundled
-four-purpose Large Office response that exceeded the native WebView string
-limit; it does not remove the size/memory limit for arbitrarily larger models.
-See the native reproduction in [performance.md](performance.md).
+Resources are parsed in a worker when available, and deferred columns retain
+their lazy point representation. The initial view requests its dependencies;
+bounded background work fetches other result resources with interaction taking
+priority. Existing non-parts clients still receive a complete JSON response and
+remain subject to their host's full-response limits. Parts bound individual
+transfers; they do not eliminate the memory cost of retaining and eventually
+using a complete result. See [performance.md](performance.md) for native evidence.
 
 ## Purpose planning
 

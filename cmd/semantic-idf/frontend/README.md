@@ -15,6 +15,25 @@
 - `src/js/simulation-progress.js`: measured work, approximate remaining-time
   presentation, HTTP progress polling and response-byte progress. Unknown totals
   remain indeterminate; legacy stage-count percentages are not displayed as time.
+- `src/js/simulation-result-parts.js`: named-run resource ownership, bounded
+  catalog hydration, deferred observations and view dependency declarations.
+  `result-resource-scheduler.js` deduplicates requests and promotes foreground
+  work over speculative reads; two reads share an 8 MiB admission window.
+  `simulation-result-worker.js` parses bounded JSON resources off the UI thread
+  and transfers numeric buffers without changing binary64 values. The canonical
+  result is never sent through structured clone: its lazy point getters would
+  otherwise expand every series. Compact v1 and complete legacy results remain
+  supported. Background admission is limited to 384 MiB per result; this is a
+  transfer-byte budget, not a bound on the user's fully opened result or exports.
+  Active view data comes first, then nearby scope/period/source data, other tab
+  defaults and remaining resources. Other tab defaults share a priority and
+  enter the queue round-robin in tab order; selection changes promote existing
+  requests. Immutable columns are validated once as their bounded chunks arrive,
+  and every canonical binding shares that validation. Add future views through dependency rules,
+  not separate fetch loops. Deferred reads suspend rendering without treating
+  unloaded values as missing; retries check run and selection identity. Replacing
+  a result releases its queue, requests and worker. Exports explicitly load all
+  parts before capturing the existing complete-result snapshot.
 - `src/js/auxiliary-panel.js`: the in-app Settings/Guide/Tools panel. Main stays
   mounted with its analysis and simulation state. Up to three frames are loaded
   lazily and retained, including drafts, manual routes and running batch tools.

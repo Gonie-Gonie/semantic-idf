@@ -305,13 +305,17 @@ function renderOutputPanel(explanation, drawer, outputObjects) {
 
 export function renderEnergyPathDataDetails(explanation = {}, viewState = {}, options = {}) {
   const open = viewState.simulationEnergyDetailsOpen === true;
+  // The scene owns the drawer state. Closed or inactive panels have no DOM to
+  // maintain; opening them renders the same snapshot and restores focus through
+  // the existing details slot.
+  if (!open) return '<aside id="energyPathDataDetails" class="energy-path-data-details" data-energy-path-data-details hidden></aside>';
   const drawer = options.drawer && typeof options.drawer === "object" ? options.drawer : {};
   const tab = drawer.tab === "output" ? "output" : "data";
   const outputObjects = options.outputObjects || [];
   return `<aside id="energyPathDataDetails" class="energy-path-data-details" data-energy-path-data-details ${open ? "" : "hidden"} tabindex="-1" role="dialog" aria-modal="false" aria-labelledby="energyPathDataDetailsTitle">
     <header><strong id="energyPathDataDetailsTitle">${escapeHTML(copy("DataDetails", "Data details"))}</strong><button type="button" data-energy-path-details-toggle>${escapeHTML(copy("CloseDetails", "Close"))}</button></header>
     <div class="energy-path-details-tabs" role="tablist" aria-label="${escapeHTML(copy("DataDetails", "Data details"))}">${["data", "output"].map((name) => `<button id="energyPath${name === "data" ? "Data" : "Output"}Tab" type="button" role="tab" tabindex="${tab === name ? 0 : -1}" aria-selected="${tab === name}" aria-controls="energyPath${name === "data" ? "Data" : "Output"}Panel" data-energy-path-details-tab="${name}">${escapeHTML(name === "data" ? copy("DataTab", "Data") : copy("OutputTab", "Output"))}</button>`).join("")}</div>
-    ${renderDataPanel(explanation, viewState, outputObjects, options.diagnosticsHTML, drawer, options.exportContext, options.display)}
-    ${renderOutputPanel(explanation, drawer, outputObjects)}
+    ${tab === "data" ? renderDataPanel(explanation, viewState, outputObjects, options.diagnosticsHTML, drawer, options.exportContext, options.display) : renderOutputPanel(explanation, drawer, outputObjects)}
+    <section id="energyPath${tab === "data" ? "Output" : "Data"}Panel" class="energy-path-details-panel" role="tabpanel" aria-labelledby="energyPath${tab === "data" ? "Output" : "Data"}Tab" data-energy-path-details-panel="${tab === "data" ? "output" : "data"}" hidden></section>
   </aside>`;
 }

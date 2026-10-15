@@ -19,6 +19,9 @@ type simulationWorkspaceCache struct {
 	inputPath       string
 	payload         []byte
 	requestSequence uint64
+	parts           map[string]*simulationResultParts
+	partsOrder      []string
+	partsBuilding   map[simulationPartsSource]*simulationPartsBuild
 }
 
 func (a *App) rememberSimulationResult(text string, result *simulation.SimulationRunResult) {

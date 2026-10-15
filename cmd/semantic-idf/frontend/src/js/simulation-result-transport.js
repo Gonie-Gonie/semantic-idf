@@ -4,10 +4,42 @@ const transferSchema = "semantic-idf.simulation-transfer/v1";
 const unsafePathKeys = new Set(["__proto__", "prototype", "constructor"]);
 const object = (value) => value !== null && typeof value === "object";
 const index = (value, length) => Number.isInteger(value) && value >= 0 && value < length;
+const validatedColumns = new WeakMap();
+const invalidColumn = () => { throw new Error("Invalid simulation result transfer data"); };
+
+function validateColumnValues(kind, values) {
+  if (!["number", "boolean", "string"].includes(kind) || !Array.isArray(values)) invalidColumn();
+  for (const value of values) if (typeof value !== kind || kind === "number" && !Number.isFinite(value)) invalidColumn();
+}
+
+function columnValues(set) {
+  const values = set.values, previous = validatedColumns.get(set);
+  if (!previous || previous.values !== values || previous.kind !== set.kind) {
+    validateColumnValues(set.kind, values);
+    validatedColumns.set(set, { kind: set.kind, values });
+  }
+  return values;
+}
+
+// Resource readers validate each bounded chunk once, before a UI needs it.
+// The cache is shared by every canonical binding of this immutable column.
+// Completion requires nonoverlapping coverage; no pending getter is read here.
+export function createSimulationColumnValidation(set, length) {
+  const kind = set.kind, ranges = [];
+  let count = 0;
+  return (values, offset, assembled) => {
+    validateColumnValues(kind, values);
+    const end = offset + values.length;
+    if (set.kind !== kind || !Number.isSafeInteger(offset) || offset < 0 || end > length ||
+      !Array.isArray(assembled) || assembled.length !== length || ranges.some(range => offset < range.end && end > range.start)) invalidColumn();
+    ranges.push({ start: offset, end }); count += values.length;
+    if (count === length) validatedColumns.set(set, { kind, values: assembled });
+  };
+}
 
 // Keep the canonical result shape. Repeated heat-flow/topology columns share
 // their exact arrays; untouched series keep their numeric columns until opened.
-export function decodeSimulationResultTransfer(payload) {
+export function decodeSimulationResultTransfer(payload, { deferData = false } = {}) {
   if (!object(payload) || !String(payload.schema || "").startsWith("semantic-idf.simulation-transfer/")) return payload;
   if (payload.schema !== transferSchema) throw new Error("Unsupported simulation result transfer format");
   const { result, timelines, pointSets, pointBindings } = payload;
@@ -15,16 +47,15 @@ export function decodeSimulationResultTransfer(payload) {
   const invalid = () => { throw new Error("Invalid simulation result transfer data"); };
   if (!object(result) || Array.isArray(result) || !Array.isArray(timelines) || !Array.isArray(pointSets) || !Array.isArray(pointBindings) || !Array.isArray(columnSets) || !Array.isArray(columnBindings)) invalid();
   for (const timeline of timelines) {
-    if (!object(timeline) || !Array.isArray(timeline.x) || !Array.isArray(timeline.labels) || timeline.x.length !== timeline.labels.length) invalid();
+    if (!object(timeline) || (!deferData && (!Array.isArray(timeline.x) || !Array.isArray(timeline.labels) || timeline.x.length !== timeline.labels.length))) invalid();
   }
   for (const set of pointSets) {
-    if (!object(set) || !index(set.timeline, timelines.length) || !Array.isArray(set.values) || set.values.length !== timelines[set.timeline].x.length) invalid();
+    if (!object(set) || !index(set.timeline, timelines.length) || (!deferData && (!Array.isArray(set.values) || set.values.length !== timelines[set.timeline].x.length))) invalid();
   }
   for (const set of columnSets) {
-    if (!object(set) || !["number", "boolean", "string"].includes(set.kind) || !Array.isArray(set.values)) invalid();
-    for (const value of set.values) {
-      if (typeof value !== set.kind || (set.kind === "number" && !Number.isFinite(value))) invalid();
-    }
+    if (!object(set) || !["number", "boolean", "string"].includes(set.kind)) invalid();
+    if (deferData) continue;
+    columnValues(set);
   }
   const bound = new WeakMap();
   const resolve = (binding, sets) => {
@@ -54,6 +85,7 @@ export function decodeSimulationResultTransfer(payload) {
   const materialize = (data) => {
     if (pointsBySet[data]) return pointsBySet[data];
     const set = pointSets[data], timeline = timelines[set.timeline];
+    if (!Array.isArray(set.values) || !Array.isArray(timeline.x) || !Array.isArray(timeline.labels) || set.values.length !== timeline.x.length || timeline.x.length !== timeline.labels.length) invalid();
     const points = set.values.map((value, offset) => {
       const x = timeline.x[offset], label = timeline.labels[offset];
       if (!Number.isSafeInteger(x) || typeof label !== "string" || typeof value !== "number" || !Number.isFinite(value)) invalid();
@@ -66,7 +98,17 @@ export function decodeSimulationResultTransfer(payload) {
     return points;
   };
   for (const { owner, key, data } of columnTargets) {
-    Object.defineProperty(owner, key, { value: columnSets[data].values, enumerable: true, configurable: true, writable: true });
+    const assign = (value) => Object.defineProperty(owner, key, { value, enumerable: true, configurable: true, writable: true });
+    if (!deferData) assign(columnSets[data].values);
+    else Object.defineProperty(owner, key, {
+      enumerable: true, configurable: true,
+      get() {
+        const values = columnValues(columnSets[data]);
+        assign(values);
+        return values;
+      },
+      set(value) { assign(value); },
+    });
   }
   for (const { owner, key, data } of pointTargets) {
     const assign = (value) => Object.defineProperty(owner, key, { value, enumerable: true, configurable: true, writable: true });

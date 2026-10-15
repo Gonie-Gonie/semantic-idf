@@ -109,6 +109,23 @@ Detailed accounting and ownership rules belong in the
 [Energy Path wire contract](energy-path.md#wire-contract) and
 [equipment boundaries](energy-path.md#equipment-boundaries).
 
+Desktop result loading separates immutable result resources from presentation.
+The negotiated HTTP transport publishes a catalog and bounded JSON resources
+identified by input hash, run ID and snapshot token. The original result
+builder and canonical APIs remain the source of values. A common priority queue
+deduplicates reads, prepares the active view first and prefetches nearby actions
+and other views within its background budget. Other views share a round-robin
+priority tier so one large tab cannot monopolize background preparation; newly
+relevant work promotes existing requests. Worker parsing handles individual
+resources; it never clones the expanded canonical result. View-specific
+dependency declarations extend this policy without introducing another loader.
+
+Unloaded data is a pending dependency, not an empty result or a measured zero.
+Rendering resumes only for the current run and selection after its dependencies
+are ready. Replacing a result cancels its pending reads and worker work. Keep
+hidden panel contents unmounted and prepare reusable data indexes separately, so
+prefetching does not create invisible DOM or change the user's controls.
+
 Settings persist through the backend API in the local app data/config directory.
 Keep defaults and migration in `settings_app.go`, rather than duplicating them
 across frontend views.

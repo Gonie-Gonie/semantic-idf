@@ -4,18 +4,15 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 )
 
 const compactSimulationResultMediaType = "application/vnd.semantic-idf.simulation-transfer+json"
 
 func acceptsCompactSimulationResult(r *http.Request) bool {
-	for _, mediaType := range strings.Split(r.Header.Get("Accept"), ",") {
-		if strings.TrimSpace(mediaType) == compactSimulationResultMediaType {
-			return true
-		}
+	if acceptsSimulationResultParts(r) {
+		return true
 	}
-	return false
+	return acceptsSimulationResultMediaType(r, compactSimulationResultMediaType)
 }
 
 // Send the existing immutable JSON snapshot as a response body. Passing it to

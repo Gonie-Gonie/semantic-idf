@@ -30,11 +30,12 @@ import { migrateEnergyPathState } from "../energy-path-state.js";
 import { createEnergyPathSceneSlot } from "../energy-path-scene-slot.js";
 import { energyPathDisplayContext } from "../energy-path-display.js";
 import { buildEnergyPathReport, renderEnergyPathReportHTML } from "../energy-path-report.js";
-import { resolveEnergyPathOutputRequest, energyPathOutputRequestKey } from "../energy-path-output-requests.js";
+import { resolveEnergyPathOutputRequest, energyPathOutputRequestKey, prepareEnergyPathOutputRequests } from "../energy-path-output-requests.js";
 import { hvacInspectionLoopKey, hvacInspectionSharedFrame, rememberHVACInspectionFrame } from "../hvac-inspection-data.js";
 import { renderHVACInspection, handleHVACInspectionEvent } from "./hvac-inspection-view.js";
 import { renderComfortInspection, handleComfortInspectionEvent, renderComfortInspectionReport } from "./comfort-inspection-view.js";
 import { decodeSimulationResultTransfer, simulationResultTransferMediaType } from "../simulation-result-transport.js";
+import { loadSimulationResultParts, simulationResultStore, simulationResultPartsMediaType, isPendingSimulationResource } from "../simulation-result-parts.js";
 import { createSimulationProgress, readSimulationJSONResponse } from "../simulation-progress.js";
 import { isSimulationFailure, simulationFailureSummary, simulationFailureDetails, simulationFailureHover, renderSimulationFailureDetails } from "../simulation-diagnostics.js";
 import { heatFlowBalance, heatFlowPresentationExtents, heatFlowPresentationRatio, heatFlowCategoryKind, heatFlowCategoryLabel, heatFlowCategoryValue as heatFlowObservedValue,
@@ -61,6 +62,7 @@ const heatFlowTimelineGeometry = Object.freeze({ width: 760, height: 92, left: 3
 let simulationEnvironmentSettingsKey = "";
 let simulationEnvironmentRequest = null;
 let simulationNavigationCleanup = null;
+let simulationNavigationGeneration = 0;
 let simulationNavigationRevealTarget = null;
 let simulationSeriesPanels = [];
 let simulationSeriesPanelSequence = 1;
@@ -71,6 +73,12 @@ let heatFlowSpatialObservedGrid = null;
 let heatFlowSpatialFrame = 0;
 let simulationEnergyDetailsReturnSelector = "";
 let simulationEnergyDrawer = { tab: "data", stage: "", outputSource: "" };
+let simulationResourceOwner = null;
+let simulationResourceRenderDepth = 0;
+let simulationResourceRenderPending = null;
+let simulationResourceFocusRequest = null;
+let simulationResourceIntentGeneration = 0;
+const simulationPreparedOutputIndexes = new WeakSet();
 const simulationEnergySceneSlot = createEnergyPathSceneSlot();
 const simulationEnergyPrimaryKeys = Object.keys(migrateEnergyPathState().primary);
 const simulationEnergyControls = Object.freeze({
@@ -79,6 +87,100 @@ const simulationEnergyControls = Object.freeze({
   period: { attribute: "data-simulation-energy-path-period", key: "simulationEnergyPeriod", values: ENERGY_PATH_PERIODS.map((period) => period.value) },
 });
 const legacyEnergyPresentation = Object.freeze({ signMode: "display", sankeyMode: "detailed", nodeLimit: 0 });
+
+function simulationResourceContext() {
+  const scene = simulationEnergySceneSlot.peek();
+  const graph = scene?.result === state.simulationResult && scene.resourcePrimary?.every((value, index) => value === state[simulationEnergyPrimaryKeys[index]]) ? scene.path.graph : null;
+  const item = [...(graph?.nodes || []), ...(graph?.links || [])].find(candidate => candidate.id === state.simulationEnergySelection);
+  return { ...state, energySourceIDs: item?.sourceIds || [], seriesIDs: simulationSeriesPanels.flatMap(panel => panel.seriesIDs || []) };
+}
+
+function simulationResourceSelectionKey() {
+  return JSON.stringify([state.simulationActiveResultView, ...simulationEnergyPrimaryKeys.map(key => state[key]),
+    state.simulationEnergySelection, state.simulationEnergyChartFrequency, state.simulationEnergyDetailsOpen, simulationEnergyDrawer,
+    state.simulationHVACInspection?.selectedLoop, state.simulationComfortZone, state.simulationSelectedSeries,
+    simulationSeriesPanels, state.simulationHeatFlowSelectedZone, state.simulationHeatFlowStory,
+    state.simulationHeatFlowFrameIndex, state.simulationHeatFlowRangeStart, state.simulationHeatFlowRangeEnd]);
+}
+
+function simulationResourceFailure(error) {
+  if (error?.name === "AbortError") return;
+  setStatus(localizedMessage("simulation.resultDisplayFailed", { message: error.message || String(error) }, "Results received, but display failed: {message}"), "error");
+}
+
+function prepareSimulationNearbyResources(result, store) {
+  store.prefetch(state.simulationActiveResultView || "energy", simulationResourceContext());
+  if (simulationPreparedOutputIndexes.has(result)) return;
+  simulationPreparedOutputIndexes.add(result);
+  window.setTimeout(() => {
+    if (state.simulationResult !== result || store.disposed) return;
+    store.read(() => prepareEnergyPathOutputRequests(result.purposeRunPlan?.outputObjects || [], result.purposeResults?.energyExplanation?.sources || []), { priority: 2 }).catch(() => {});
+  }, 0);
+}
+
+// Renderers remain synchronous for complete/legacy results. A multipart result
+// suspends at its resource boundary, retaining the current DOM until every
+// value the renderer needs is available. Empty, missing and not loaded differ.
+function withSimulationResources(render, result = state.simulationResult, view = state.simulationActiveResultView || "energy") {
+  const store = simulationResultStore(result);
+  if (state.simulationResult === result && simulationResourceOwner && simulationResourceOwner.result !== result) {
+    simulationResourceOwner.dispose(); simulationResourceOwner = null;
+  }
+  if (!store || simulationResourceRenderDepth) return render();
+  if (state.simulationResult === result && simulationResourceOwner !== store) {
+    simulationResourceOwner?.dispose(); simulationResourceOwner = store;
+  }
+  const invoke = () => {
+    simulationResourceRenderDepth++;
+    try { return render(); }
+    finally { simulationResourceRenderDepth--; }
+  };
+  let waiting;
+  try {
+    if (store.ready(view, simulationResourceContext())) {
+      const value = invoke();
+      prepareSimulationNearbyResources(result, store);
+      return value;
+    }
+    waiting = store.ensure(view, simulationResourceContext());
+  } catch (error) {
+    if (!isPendingSimulationResource(error)) throw error;
+    waiting = error.ready;
+  }
+  let selection = simulationResourceSelectionKey();
+  const runGeneration = state.simulationActiveRunID;
+  const intentGeneration = simulationResourceIntentGeneration;
+  const current = () => state.simulationResult === result && state.simulationActiveRunID === runGeneration && intentGeneration === simulationResourceIntentGeneration && !store.disposed && simulationResourceSelectionKey() === selection;
+  const task = (async () => {
+    await waiting;
+    if (!current()) return false;
+    await store.ensure(view, simulationResourceContext());
+    const value = await store.read(() => {
+      if (!current()) return false;
+      // Deferred graph leaves preserve owner identity. Clear the mounted scene
+      // only for the foreground retry; background arrivals never redraw it.
+      simulationEnergySceneSlot.clear();
+      const focused = document.activeElement;
+      const focusID = focused?.id;
+      const focusAttribute = focused && [...focused.attributes].find(attribute => /^(data-energy-path-chart-frequency|data-simulation-energy-|data-simulation-hvac-loop)/.test(attribute.name));
+      let output;
+      try { output = invoke(); }
+      finally { selection = simulationResourceSelectionKey(); }
+      if (focused && !focused.isConnected) {
+        const replacement = focusID ? document.getElementById(focusID) : focusAttribute
+          ? document.querySelector(`[${focusAttribute.name}="${CSS.escape(focusAttribute.value)}"]`) : null;
+        replacement?.focus({ preventScroll: true });
+      }
+      if (simulationResourceFocusRequest?.selection === selection) focusSimulationEnergyDetails(simulationResourceFocusRequest.options);
+      return output;
+    });
+    if (current()) prepareSimulationNearbyResources(result, store);
+    return value;
+  })();
+  simulationResourceRenderPending = task;
+  task.catch(error => { if (current()) simulationResourceFailure(error); }).finally(() => { if (simulationResourceRenderPending === task) simulationResourceRenderPending = null; });
+  return task;
+}
 
 export function captureSimulationEnergyWorkspaceContext() {
   const { primary, drawer } = migrateEnergyPathState({
@@ -580,10 +682,9 @@ export function initializeSimulationControls() {
   });
   elements.simulationResultTabs?.querySelectorAll("[data-simulation-result-view-button]").forEach((button) => {
     button.addEventListener("click", () => {
+      simulationResourceIntentGeneration++;
       state.simulationActiveResultView = button.dataset.simulationResultViewButton || "energy";
-      renderSimulationResultTabs(state.simulationResult);
-      toggleSimulationResultSections();
-      renderActiveSimulationResultView(state.simulationResult);
+      renderSimulation();
     });
   });
   elements.simulationEnergyDashboard?.addEventListener("click", handleSimulationSeriesInspectClick);
@@ -661,9 +762,19 @@ function configureSimulationPanelNavigation() {
   }
   simulationNavigationCleanup = configureResultPanelNavigationHooks("simulation", {
     canReveal(selection, context) {
+      const store = simulationResultStore(state.simulationResult);
+      if (store) {
+        const candidate = store.probe(() => simulationNavigationDestination(selection, context));
+        // An unloaded destination is resolved by async reveal, never reported
+        // as unavailable and never fetched just to paint a navigation affordance.
+        return !candidate.ready || Boolean(candidate.value || context.genericCanReveal(selection));
+      }
       return Boolean(simulationNavigationDestination(selection, context) || context.genericCanReveal(selection));
     },
     async reveal(selection, options, context) {
+      const generation = ++simulationNavigationGeneration;
+      const initialSelection = simulationResourceSelectionKey();
+      const initialIntent = simulationResourceIntentGeneration;
       if (options.action === "restore" && options.preserveFilters && state.simulationActiveResultView === "energy" &&
         isEnergyPathV2(state.simulationResult?.purposeResults?.energyExplanation)) {
         // The Simulation adapter already restored the exact Energy context.
@@ -672,12 +783,16 @@ function configureSimulationPanelNavigation() {
         context.refreshSelectionStyles(selection, state.globalHover);
         return Boolean(context.genericFindTarget(selection));
       }
-      const destination = simulationNavigationDestination(selection, context);
+      const result = state.simulationResult;
+      const store = simulationResultStore(result);
+      const destination = store ? await store.read(() => simulationNavigationDestination(selection, context)) : simulationNavigationDestination(selection, context);
+      if (state.simulationResult !== result || generation !== simulationNavigationGeneration || initialIntent !== simulationResourceIntentGeneration || simulationResourceSelectionKey() !== initialSelection) return false;
       if (!destination) {
         return context.genericReveal(selection, options);
       }
       simulationNavigationRevealTarget = destination;
-      applySimulationNavigationDestination(destination);
+      const displayed = await applySimulationNavigationDestination(destination);
+      if (displayed === false || state.simulationResult !== result || generation !== simulationNavigationGeneration) return false;
       context.refreshSelectionStyles(selection, state.globalHover);
       const target = findSimulationNavigationTarget(selection, context, destination);
       if (!target) {
@@ -899,8 +1014,13 @@ function applySimulationNavigationDestination(destination = {}) {
   if (!state.simulationResult) {
     return;
   }
+  simulationResourceIntentGeneration++;
   state.simulationActiveResultView = destination.resultView || state.simulationActiveResultView || "energy";
-  if (destination.hvacInspectionLoop) simulationHVACInspectionContext().context.selectedLoop = destination.hvacInspectionLoop;
+  if (destination.hvacInspectionLoop) {
+    const runID = state.simulationResult.runId || state.simulationResult.inputPath || state.simulationResult.filename || "result";
+    if (state.simulationHVACInspection?.runID !== runID) state.simulationHVACInspection = { runID, loops: {} };
+    state.simulationHVACInspection.selectedLoop = destination.hvacInspectionLoop;
+  }
   for (const [key, value] of Object.entries({
     simulationEnergyScopeKind: destination.energyScopeKind,
     simulationEnergyZoneName: destination.energyZoneName,
@@ -924,28 +1044,7 @@ function applySimulationNavigationDestination(destination = {}) {
   if (destination.selectedSeries) {
     state.simulationSelectedSeries = destination.selectedSeries;
   }
-  renderSimulationResultTabs(state.simulationResult);
-  switch (state.simulationActiveResultView) {
-    case "energy":
-      renderSimulationEnergyDashboard(state.simulationResult);
-      break;
-    case "zone_heat_flow":
-      renderSimulationHeatFlow();
-      break;
-    case "hvac_loops":
-      renderSimulationHVACLoops(state.simulationResult);
-      break;
-    case "comfort":
-      renderSimulationComfort(state.simulationResult);
-      break;
-    case "series":
-      renderSimulationSeriesSelect(state.simulationResult);
-      renderSimulationChart();
-      break;
-    default:
-      break;
-  }
-  toggleSimulationResultSections();
+  return renderSimulation();
 }
 
 function findSimulationNavigationTarget(selection = {}, context = {}, destination = null) {
@@ -1080,6 +1179,8 @@ export function captureSimulationNavigationContext(context) {
 }
 
 export async function restoreSimulationNavigationContext(snapshot = {}, context) {
+  const generation = ++simulationNavigationGeneration;
+  const intentGeneration = ++simulationResourceIntentGeneration;
   restoreSimulationEnergyWorkspaceContext(snapshot);
   if (!state.simulationResult) {
     return false;
@@ -1106,10 +1207,21 @@ export async function restoreSimulationNavigationContext(snapshot = {}, context)
       state[key] = value;
     }
   }
-  const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
-  normalizeEnergyPathViewState(state, explanation);
-  const graph = energyPathGraphForState(explanation, state);
-  if (isEnergyPathV2(explanation)) validateSimulationEnergyResultContext(explanation, graph);
+  const result = state.simulationResult;
+  const explanation = result?.purposeResults?.energyExplanation || {};
+  let selection = simulationResourceSelectionKey();
+  const normalize = () => {
+    if (state.simulationResult !== result || generation !== simulationNavigationGeneration || intentGeneration !== simulationResourceIntentGeneration || selection !== simulationResourceSelectionKey()) return false;
+    try {
+      normalizeEnergyPathViewState(state, explanation);
+      const graph = energyPathGraphForState(explanation, state);
+      if (isEnergyPathV2(explanation)) validateSimulationEnergyResultContext(explanation, graph);
+    } finally { selection = simulationResourceSelectionKey(); }
+  };
+  const resourceStore = simulationResultStore(result);
+  if (resourceStore) { if (await resourceStore.read(normalize) === false) return false; }
+  else normalize();
+  if (state.simulationResult !== result || generation !== simulationNavigationGeneration) return false;
   if (Array.isArray(snapshot.seriesPanels)) {
     simulationSeriesPanels = snapshot.seriesPanels.map((panel) => ({ ...panel, seriesIDs: [...(panel.seriesIDs || [])] }));
     simulationSeriesPanelSequence = Math.max(simulationSeriesPanelSequence, ...simulationSeriesPanels.map((panel) => (Number(panel.id) || 0) + 1));
@@ -1117,7 +1229,7 @@ export async function restoreSimulationNavigationContext(snapshot = {}, context)
     simulationSeriesPanels = [{ id: simulationSeriesPanelSequence++, seriesIDs: [snapshot.selectedSeries], start: Number(snapshot.seriesRangeStart) || 0, end: snapshot.seriesRangeEnd ?? -1 }];
   }
   simulationNavigationRevealTarget = snapshot.navigationRevealTarget ? { ...snapshot.navigationRevealTarget } : null;
-  renderSimulation();
+  if (await renderSimulation() === false || state.simulationResult !== result || generation !== simulationNavigationGeneration) return false;
   await context.genericRestoreContext(snapshot);
   restoreSimulationEnergyHistoryFocus(snapshot.targetId);
   restoreSimulationElementScroll(elements.simulationEnergyDashboard, snapshot.energyScrollTop);
@@ -1221,6 +1333,10 @@ export async function loadSimulationEnvironment({ render = true, force = false, 
 }
 
 export function renderSimulation() {
+  return withSimulationResources(renderSimulationReady);
+}
+
+function renderSimulationReady() {
   syncSimulationRunSetup(state.simulationResult);
   simulationSemanticBindings.clear();
   setSimulationPreviewMode(false);
@@ -1443,7 +1559,7 @@ function prepareSimulationEnergyScene(result) {
     const graph = energyPathGraphForState(explanation, state);
     const display = energyPathDisplayContext(explanation, state);
     const path = prepareEnergyPathScene(explanation, state, { graph, allServiceGraph: graph, display });
-    return { result, path };
+    return { result, path, resourcePrimary: simulationEnergyPrimaryKeys.map(key => state[key]) };
   });
 }
 
@@ -1458,7 +1574,7 @@ function simulationEnergySceneOptions(scene) {
   return {
     scene: scene.path,
     result: scene.result,
-    outputObjects: scene.result?.purposeRunPlan?.outputObjects || [],
+    outputObjects: state.simulationEnergyDetailsOpen ? scene.result?.purposeRunPlan?.outputObjects || [] : [],
     inspectorActionsForNode: (node, sources, viewState) => simulationEnergyInspectorActions(node, sources, viewState, scene.result, graph),
     driverNavigationForNode: (node, sources, viewState, model) => simulationEnergyDriverNavigation(node, sources, viewState, model, scene.driverNavigation),
     serviceNavigationForNode: (node, sources, viewState, model) => simulationEnergyServiceNavigation(node, sources, viewState, model, graph),
@@ -1489,11 +1605,15 @@ function simulationEnergyInspectorContext(scene) {
   return [state.report, state.report?.geometry, state.report?.profile, state.report?.hvac,
     state.semanticProjection, state.semanticProjection?.navigation, state.semanticProjection?.navigation?.entities,
     state.semanticProjection?.navigation?.occurrences, state.reportAnalysisKey, state.lastAnalyzedKey,
-    scene.result?.series, scene.result?.purposeRunPlan?.outputObjects, scene.result?.purposeResults?.zoneHeatFlow,
+    scene.result?.series, scene.result?.purposeRunPlan, scene.result?.purposeResults?.zoneHeatFlow,
     scene.result?.heatFlow];
 }
 
 function updateSimulationEnergyPanel(kind) {
+  return withSimulationResources(() => updateSimulationEnergyPanelReady(kind), state.simulationResult, "energy");
+}
+
+function updateSimulationEnergyPanelReady(kind) {
   const scene = simulationEnergySceneSlot.peek(simulationEnergySceneContext());
   const update = kind === "details" ? updateEnergyPathDetails : updateEnergyPathSelection;
   const context = scene && simulationEnergyInspectorContext(scene);
@@ -1508,6 +1628,10 @@ function updateSimulationEnergyPanel(kind) {
 }
 
 export function renderSimulationEnergyDashboard(result) {
+  return withSimulationResources(() => renderSimulationEnergyDashboardReady(result), result, "energy");
+}
+
+function renderSimulationEnergyDashboardReady(result) {
   syncSimulationRunSetup(result);
   const energy = result?.purposeResults?.energy || {};
   const explanation = result?.purposeResults?.energyExplanation || {};
@@ -3955,6 +4079,10 @@ function simulationHVACInspectionContext(result = state.simulationResult) {
 }
 
 function renderSimulationHVACLoops(result) {
+  return withSimulationResources(() => renderSimulationHVACLoopsReady(result), result, "hvac_loops");
+}
+
+function renderSimulationHVACLoopsReady(result) {
   const { loops, loop, ui, context } = simulationHVACInspectionContext(result);
   if (!loop) {
     renderSimulationHVACLoopEmpty(t("simulation.noHVACLoopResult", {}, "Run HVAC Loop Check to inspect node state series."));
@@ -4013,6 +4141,10 @@ function renderSimulationComfortEmpty(message) {
 }
 
 function renderSimulationComfort(result) {
+  return withSimulationResources(() => renderSimulationComfortReady(result), result, "comfort");
+}
+
+function renderSimulationComfortReady(result) {
   if (!elements.simulationComfortResults) return;
   const ui = { selectedZone: state.simulationComfortZone || "" };
   if (elements.simulationComfortStats) elements.simulationComfortStats.textContent = "";
@@ -4706,6 +4838,7 @@ function simulationEnergyRestoredOutputOpener(dashboard) {
 }
 
 function focusSimulationEnergyDetails({ closed = false, output = false, tab = "" } = {}) {
+  simulationResourceFocusRequest = { selection: simulationResourceSelectionKey(), options: { closed, output, tab } };
   const dashboard = elements.simulationEnergyDashboard;
   const explicitOpener = closed && simulationEnergyDetailsReturnSelector ? dashboard?.querySelector(simulationEnergyDetailsReturnSelector) : null;
   const opener = closed ? explicitOpener || simulationEnergyRestoredOutputOpener(dashboard) : null;
@@ -4728,6 +4861,7 @@ function focusSimulationEnergyDetails({ closed = false, output = false, tab = ""
 function handleSimulationEnergyDetailsClick(event) {
   const control = event.target.closest("[data-energy-path-details-toggle], [data-energy-path-quality-stage], [data-energy-path-details-tab], [data-energy-path-output-source]");
   if (!control || control.disabled) return false;
+  simulationResourceIntentGeneration++;
   event.preventDefault();
   event.stopPropagation();
   const { energyPathQualityStage: stage, energyPathDetailsTab: tab, energyPathOutputSource: sourceID } = control.dataset;
@@ -4783,6 +4917,7 @@ function simulationEnergyGraphFocusTarget(id) {
 
 function selectSimulationEnergyGraphItem(id) {
   if (!id) return;
+  simulationResourceIntentGeneration++;
   state.simulationEnergySelection = id;
   updateSimulationEnergyPanel("selection");
   simulationEnergyGraphFocusTarget(id)?.focus({ preventScroll: true });
@@ -4790,6 +4925,7 @@ function selectSimulationEnergyGraphItem(id) {
 
 function clearSimulationEnergyGraphSelection({ focusID = state.simulationEnergySelection, focusCanvas = false } = {}) {
   if (!state.simulationEnergySelection) return;
+  simulationResourceIntentGeneration++;
   state.simulationEnergySelection = "";
   updateSimulationEnergyPanel("selection");
   const target = !focusCanvas && simulationEnergyGraphFocusTarget(focusID);
@@ -5146,6 +5282,7 @@ export function handleSimulationEnergyDashboardChange(event) {
   if (target.matches("[data-energy-path-chart-frequency]")) {
     if (target.disabled || !["monthly", "hourly"].includes(target.value) ||
       target.value === (state.simulationEnergyChartFrequency || "monthly")) return;
+    simulationResourceIntentGeneration++;
     state.simulationEnergyChartFrequency = target.value;
     updateSimulationEnergyPanel("chart");
     elements.simulationEnergyDashboard.querySelector("[data-energy-path-chart-frequency]")?.focus({ preventScroll: true });
@@ -5172,7 +5309,21 @@ export function handleSimulationEnergyDashboardChange(event) {
   }
   target.value = value;
   const next = Object.fromEntries(simulationEnergyPrimaryKeys.map((key) => [key, state[key]]));
-  const update = updateEnergyPathControlState(event, next, explanation);
+  let update;
+  try { update = updateEnergyPathControlState(event, next, explanation); }
+  catch (error) {
+    if (!isPendingSimulationResource(error)) throw error;
+    // The requested value was validated above and written to `next` before
+    // graph-dependent normalization suspended. Commit that intent now: an
+    // older render may replace this select while its data is still loading.
+    // Replaying an event from the detached select would lose the latest choice.
+    error.ready.catch(() => {});
+    recordViewHistory();
+    simulationResourceIntentGeneration++;
+    Object.assign(state, next);
+    renderSimulationEnergyDashboard(state.simulationResult);
+    return;
+  }
   if (!update.handled || !update.render) return;
   if (Object.values(simulationEnergyControls).every(({ key }) => next[key] === state[key])) {
     target.value = currentValue || "";
@@ -5181,6 +5332,7 @@ export function handleSimulationEnergyDashboardChange(event) {
   // One shared history point before any primary mutation. A select's following
   // change event becomes a no-op, including if a node was selected meanwhile.
   recordViewHistory();
+  simulationResourceIntentGeneration++;
   Object.assign(state, next);
   renderSimulationEnergyDashboard(state.simulationResult);
   elements.simulationEnergyDashboard.querySelector(`[${control.attribute}]`)?.focus({ preventScroll: true });
@@ -5189,16 +5341,21 @@ export function handleSimulationEnergyDashboardChange(event) {
 function handleSimulationHVACResultsInput(event) {
   if (!(event.target instanceof Element)) return;
   const picker = event.target.closest("[data-simulation-hvac-loop]");
-  const { context, loop, ui } = simulationHVACInspectionContext();
   if (picker && event.type !== "click") {
+    const context = state.simulationHVACInspection;
+    if (!context) return;
     if (picker.value !== context.selectedLoop) {
       recordViewHistory();
+      simulationResourceIntentGeneration++;
       context.selectedLoop = picker.value;
       renderSimulationHVACLoops(state.simulationResult);
       elements.simulationHVACLoopResults.querySelector("[data-simulation-hvac-loop]")?.focus({ preventScroll: true });
     }
     return;
   }
+  const store = simulationResultStore(state.simulationResult);
+  if (store && !store.ready("hvac_loops", simulationResourceContext())) return;
+  const { context, loop, ui } = simulationHVACInspectionContext();
   if (loop && handleHVACInspectionEvent(event, elements.simulationHVACLoopResults, loop, ui)) {
     state.simulationHVACFrameIndex = ui.frameIndex;
     if (event.target.matches("[data-simulation-hvac-frame]")) rememberHVACInspectionFrame(loop, context, ui);
@@ -5208,11 +5365,13 @@ function handleSimulationHVACResultsInput(event) {
 function handleSimulationComfortResultsChange(event) {
   const ui = { selectedZone: state.simulationComfortZone || "" };
   if (handleComfortInspectionEvent(event, elements.simulationComfortResults, state.simulationResult?.purposeResults?.comfort || {}, ui)) {
+    simulationResourceIntentGeneration++;
     state.simulationComfortZone = ui.selectedZone || "";
   }
 }
 
 function selectSimulationSeries(series, range = { start: 0, end: -1 }) {
+  simulationResourceIntentGeneration++;
   state.simulationSelectedSeries = seriesID(series);
   if (simulationSeriesPanels[0]) {
     // Different variables can have different timestamp grids. A contextual
@@ -5704,6 +5863,10 @@ function outputObjectIsMeter(objectType) {
 }
 
 function renderSimulationSeriesSelect(result) {
+  return withSimulationResources(() => renderSimulationSeriesSelectReady(result), result, "series");
+}
+
+function renderSimulationSeriesSelectReady(result) {
   const series = safeSimulationSeriesList(result?.series);
   state.simulationSeriesGroup = "all";
   if (!series.length) {
@@ -5793,6 +5956,10 @@ function simulationSeriesGroupLabel(groupID) {
 }
 
 function renderSimulationChart() {
+  return withSimulationResources(renderSimulationChartReady, state.simulationResult, "series");
+}
+
+function renderSimulationChartReady() {
   if (!elements.simulationChart) return;
   const series = safeSimulationSeriesList(state.simulationResult?.series);
   if (!series.length || !simulationSeriesPanels.length) {
@@ -5914,6 +6081,7 @@ function handleSimulationSeriesWorkspaceChange(event) {
   if (!select) return;
   const panel = simulationSeriesPanels.find((item) => String(item.id) === select.dataset.seriesPanelId);
   if (!panel) return;
+  simulationResourceIntentGeneration++;
   panel.seriesIDs[Number(select.dataset.seriesVariableIndex) || 0] = select.value;
   state.simulationSelectedSeries = select.value;
   renderSimulationChart();
@@ -6077,6 +6245,10 @@ function zoomSimulationSeriesPanel(event, panel, series, hitTarget = event.curre
 }
 
 function renderSimulationHeatFlow({ frameOnly = false } = {}) {
+  return withSimulationResources(() => renderSimulationHeatFlowReady({ frameOnly }), state.simulationResult, "zone_heat_flow");
+}
+
+function renderSimulationHeatFlowReady({ frameOnly = false } = {}) {
   if (!elements.simulationHeatFlow) {
     return;
   }
@@ -7261,8 +7433,13 @@ async function exportSimulationEnergyPath(button) {
   const viewState = Object.fromEntries(simulationEnergyPrimaryKeys.map((key) => [key, state[key]]));
   const includeTraceSheets = Boolean(button.closest("[data-energy-path-export-section]")?.querySelector("[data-energy-path-export-trace]")?.checked);
   try {
+    button.disabled = true;
     // Capture exactly the displayed named run and six-field selection before any
     // async dialog or save. Editing the model does not rewrite this run snapshot.
+    await simulationResultStore(scene.result)?.ensureAll();
+    // Selection was captured on click. Navigation within this immutable run
+    // does not rewrite the export; replacing the run invalidates its owner.
+    if (state.simulationResult !== scene.result || simulationResultStore(scene.result)?.disposed) throw new Error(t("simulation.energyPathExportUnavailable", {}, "This export no longer matches the displayed run. Reopen Data details and try again."));
     const report = buildEnergyPathReport(scene.result, viewState);
     if (!report) throw new Error(t("simulation.energyPathExportUnavailable", {}, "This export no longer matches the displayed run. Reopen Data details and try again."));
     const result = JSON.parse(report.rawResult);
@@ -8011,7 +8188,7 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
     return null;
   }
   stopSimulationProgressClock(runID);
-  if (state.simulationActiveRunID !== runID) return result;
+  if (state.simulationActiveRunID !== runID) { simulationResultStore(result)?.dispose(); return result; }
   simulationPendingResponseRunID = "";
   state.simulationResult = result;
   state.simulationEnergyDetailsOpen = false;
@@ -8026,14 +8203,16 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
   state.simulationHeatFlowStory = "all";
   state.simulationProgress = { runId: runID, phase: "render_results", percent: 100, message: t("simulation.preparingResults", {}, "Preparing result display"), status: "running" };
   try {
-    renderSimulation();
+    await renderSimulation();
   } catch (error) {
+    if (state.simulationActiveRunID !== runID || state.simulationResult !== result) return result;
     const message = t("simulation.resultDisplayFailed", { message: error.message || String(error) }, `Results received, but display failed: ${error.message || String(error)}`);
     state.simulationProgress = { runId: runID, phase: "display_failed", percent: 100, message, displayError: error.message || String(error), status: "display_failed" };
     updateSimulationProgressUI();
     if (!silent) setStatus(localizedMessage("simulation.resultDisplayFailed", { message: error.message || String(error) }, "Results received, but display failed: {message}"), "error");
     return result;
   }
+  if (state.simulationActiveRunID !== runID || state.simulationResult !== result) return result;
   state.simulationProgress = { runId: runID, phase: "complete", percent: 100, message: simulationDoneMessage(result), status: result.status };
   updateSimulationProgressUI();
   if (!silent || isSimulationFailure(result)) setStatus(() => simulationDoneMessage(result), result.status === "succeeded" ? "ok" : "warn", {
@@ -8092,12 +8271,17 @@ async function callSimulationAPI(methodName, endpoint, payload) {
 }
 
 export async function loadCachedSimulationResult(textHash, runId) {
+  const previousResult = state.simulationResult, previousRun = state.simulationActiveRunID, previousText = getDocumentText();
   state.simulationEnvironment ||= await loadSimulationEnvironment({ render: false });
+  const current = () => previousResult === state.simulationResult && previousRun === state.simulationActiveRunID && previousText === getDocumentText();
+  if (!current()) return null;
   const api = backend();
   if (state.simulationEnvironment?.resultHTTPAvailable !== true && typeof api?.GetCachedSimulationResult === "function") {
     return decodeSimulationResultTransfer(await api.GetCachedSimulationResult(textHash, runId));
   }
-  return fetchSimulationJSON("/api/simulation-result-cache", { textHash, runId });
+  const result = await fetchSimulationJSON("/api/simulation-result-cache", { textHash, runId });
+  if (!current()) { simulationResultStore(result)?.dispose(); return null; }
+  return result;
 }
 
 async function fetchSimulationJSON(endpoint, payload) {
@@ -8108,16 +8292,31 @@ async function fetchSimulationJSON(endpoint, payload) {
     method: payload === undefined ? "GET" : "POST",
     headers: payload === undefined ? undefined : {
       "Content-Type": "application/json",
-      ...(resultTransfer ? { Accept: simulationResultTransferMediaType } : {}),
+      ...(resultTransfer ? { Accept: `${simulationResultPartsMediaType}, ${simulationResultTransferMediaType}` } : {}),
     },
     body: payload === undefined ? undefined : JSON.stringify(payload),
   });
   if (!response.ok) {
-    throw new Error(await response.text());
+    const error = new Error(await response.text());
+    const code = response.headers.get("X-SemanticIDF-Result-Error");
+    if (code?.startsWith("simulation_result_transfer_")) error.code = code;
+    throw error;
   }
   const result = await readSimulationJSONResponse(response, endpoint === "/api/simulation-run"
     ? (progress) => simulationProgressUI.receive(payload.runId, progress) : undefined);
-  return resultTransfer ? decodeSimulationResultTransfer(result) : result;
+  if (!resultTransfer) return result;
+  const decoded = await loadSimulationResultParts(result);
+  const store = simulationResultStore(decoded);
+  if (store) {
+    try {
+      await store.ensure(state.simulationActiveResultView || "energy", simulationResourceContext());
+      // Status and native diagnostics also have consumers outside the view
+      // render gate. Their bounded evidence must be ready before publication.
+      await store.read(() => { simulationDoneMessage(decoded); simulationFailureDetails(decoded); });
+    }
+    catch (error) { store.dispose(); throw error; }
+  }
+  return decoded;
 }
 
 function waitForProgressRuntime() {
