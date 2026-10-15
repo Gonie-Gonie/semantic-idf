@@ -1,6 +1,8 @@
 import { backend, elements, escapeHTML, getDocumentText, setStatus, state } from "../state.js";
 import { getLanguage, localizedMessage, t } from "../i18n.js";
 import { configureResultPanelNavigationHooks } from "../panel-navigation-adapters.js";
+import { normalizeHVACOperationCalendar } from "../hvac-operation.js";
+import { renderHVACOperationDetail, connectHVACOperationDetail } from "./hvac-operation-view.js";
 
 const HVAC_GRAPH_EXPORT_SCHEMA = "semantic-idf.hvac.graph.v1";
 let hvacComponentBaseCountCache = { serviceModel: null, counts: new Map() };
@@ -87,6 +89,18 @@ export function initializeHVACControls() {
     navigateHVACFromPanelElement(nodeButton, hvacTargetForNode(nodeButton.dataset.hvacNode || ""));
   });
   elements.hvacGraph?.addEventListener("change", (event) => {
+    const calendarInput = event.target.closest("[data-hvac-operation-calendar]");
+    if (calendarInput) {
+      state.hvacOperationCalendar = normalizeHVACOperationCalendar({ ...state.hvacOperationCalendar, [calendarInput.dataset.hvacOperationCalendar]: calendarInput.value });
+      const loop = state.report?.hvac?.loops?.find((item) => item.id === state.activeHVACLoopId);
+      const selected = loop && selectedLoopGraphItem(loop);
+      const detail = elements.hvacGraph.querySelector("[data-hvac-operation-detail]");
+      if (detail && selected?.kind === "component") {
+        detail.outerHTML = renderSelectedHVACDetail(selected);
+        connectHVACOperationDetail(elements.hvacGraph);
+      }
+      return;
+    }
     const quickFilter = event.target.closest("select[data-hvac-filter-kind]");
     if (!quickFilter) {
       return;
@@ -1181,6 +1195,7 @@ export function renderHVAC(hvac = state.report?.hvac) {
   } else {
     renderHVACLoopView(selectedLoop);
   }
+  connectHVACOperationDetail(elements.hvacGraph);
 }
 
 function renderEmptyHVAC() {
@@ -1466,6 +1481,7 @@ function renderHVACLoopView(loop) {
   const relatedPaths = servicePathsForLoop(state.report?.hvac, loop);
   const couplings = hvacServiceModel().couplings || [];
   const loopCouplings = supportingCouplingsForLoop(loop, couplings);
+  const inspectingEquipment = selectedLoopGraphItem(loop)?.kind === "component";
   elements.hvacGraph.innerHTML = `
     <div class="hvac-loop-title">
       <div class="hvac-loop-heading">
@@ -1481,10 +1497,10 @@ function renderHVACLoopView(loop) {
     </div>
     ${renderHVACLoopDiagram(loop, { interactive: true })}
     ${renderHVACLoopGraphDetail(loop)}
-    ${renderHVACLoopServiceOverview(loop, relatedPaths, loopCouplings)}
+    ${inspectingEquipment ? "" : `${renderHVACLoopServiceOverview(loop, relatedPaths, loopCouplings)}
     ${renderHVACLoopRelatedServicePaths(relatedPaths)}
     ${renderHVACLoopSupportingAssets(loop, couplings)}
-    ${renderCrossLoopRelations(loop)}`;
+    ${renderCrossLoopRelations(loop)}`}`;
 }
 
 function renderHVACLoopServiceOverview(loop, relatedPaths, loopCouplings) {
@@ -4638,28 +4654,9 @@ function selectedLoopGraphItem(loop) {
 function renderSelectedHVACDetail(selected) {
   if (selected.kind === "component") {
     const component = selected.component || {};
-    const ruleEdges = ruleEdgesForComponent(component);
-    const relatedLoopNames = verifiedCrossLoopNamesForComponent(component);
-    return `
-      <section class="hvac-graph-detail">
-        <div class="hvac-section-head">
-          <h3>${escapeHTML(component.objectName || selected.label || t("common.component"))}</h3>
-          <span>${escapeHTML(component.objectType || t("common.component"))}</span>
-        </div>
-        <div class="hvac-detail-grid">
-          <div><span>${t("common.object")}</span><strong>${renderObjectLink(component.objectIndex, component.objectType) || "—"}</strong></div>
-          <div><span>${escapeHTML(t("hvac.family", {}, "Family"))}</span><strong>${escapeHTML(componentMetaLabel(component))}</strong></div>
-          <div><span>${t("common.inlet")}</span><strong>${escapeHTML(component.inletNode || "—")}</strong></div>
-          <div><span>${t("common.outlet")}</span><strong>${escapeHTML(component.outletNode || "—")}</strong></div>
-          <div><span>${t("common.water")}</span><strong>${escapeHTML([component.waterInletNode, component.waterOutletNode].filter(Boolean).join(" -> ") || "—")}</strong></div>
-          ${component.sourceOwner ? `<div><span>${escapeHTML(t("hvac.sourceOwner", {}, "Source owner"))}</span><strong>${escapeHTML(component.sourceOwner)}</strong></div>` : ""}
-          ${component.expectedObjectType ? `<div><span>${escapeHTML(t("hvac.expectedType", {}, "Expected type"))}</span><strong>${escapeHTML(component.expectedObjectType)}</strong></div>` : ""}
-          ${component.loopName ? `<div><span>${t("hvac.viewLoop")}</span><strong>${escapeHTML(component.loopName)}</strong></div>` : ""}
-        </div>
-        ${renderHVACTraceDrawer(ruleEdges.map((edge) => [edge.ruleId, edge.sourceObjectName, hvacSourceFieldLabel(component)].filter(Boolean).join(" / ")))}
-        ${renderComponentCrossLoopMap(component, relatedLoopNames)}
-        ${renderHVACEditableFields(component.editableFields)}
-      </section>`;
+    const profiles = state.report?.hvac?.operatingProfiles || [];
+    const profile = profiles.find((item) => item.componentIndex === component.objectIndex && item.loopId === selected.loop?.id);
+    return renderHVACOperationDetail(profile, state.report?.hvac?.operatingSchedules || [], { component, calendar: state.hvacOperationCalendar });
   }
   if (selected.kind === "branch") {
     return `

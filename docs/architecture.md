@@ -85,6 +85,17 @@ HVAC and Simulation keep standalone selections. The internal Semantic projection
 supports identity and indexing; it is not an exposed input tab. Follow the
 [navigation contract](semantic-navigation.md) when adding another participant.
 
+HVAC operating profiles are scoped by component object index and loop ID.
+Typed containment supplies ancestor permissions; node/circuit matches supply
+controllers and setpoints. The additive `operatingProfiles` contract carries
+availability expressions and a source-backed control DAG, while
+`operatingSchedules` retains exact supported calendar rules. The browser uses
+minute-resolution, three-state permissions (allowed, blocked, unknown), manager
+priority and fan overrides; runtime dispatch, external/EMS schedules and
+unsupported inputs remain unknown. These are configured permissions, never
+simulation operating status. Static HVAC does not reuse Profile's approximate
+schedule fallback. Calendar changes only replace the equipment inspection.
+
 Metrics definitions, calculated values, guide entries and exports share one
 catalog. Metrics JSON stays categorized; CSV is `name,value`, with variable IDs
 and units in the name, including `[-]` for unitless values. Batch Metrics uses

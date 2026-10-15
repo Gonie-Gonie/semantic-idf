@@ -18,6 +18,10 @@ The release script infers bump size from these sections:
 
 ## Changed
 
+- Loop equipment selection now shows a 24-hour availability stack and a compact
+  control-sequence diagram. Date and day-type selection applies to all permission
+  plots; unresolved runtime conditions remain conditional. The control diagram
+  follows inputs through the on/off decision to modulation, including an OFF branch.
 - Energy Path separates thermal gains/losses and storage/release before native
   interval aggregation. Directional cards show one positive gross magnitude with
   gain/loss in the label, including nonzero exchange with zero load. Ribbons

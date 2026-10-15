@@ -105,29 +105,22 @@ fully resolved. Read warnings at the path, component and loop levels. Unserved
 Zones/plenums may be intentional; a missing modeled service needs investigation
 rather than a guessed assignment.
 
-## Read component details and values {#component-values}
+## Read equipment availability and control {#component-values}
 
-Component details identify source object type/name, role here, supported
-inlet/outlet nodes, water ports, related loops, sequences and editable fields.
-“Role here” distinguishes an occurrence's context from the object's general
-family. A multi-port heat pump or coil can have different contextual roles.
+Select equipment in the loop diagram to open two columns below it. On the left,
+**Availability** stacks the loop and parent controls above the equipment's own
+conditions, with the final permission plot at the bottom. Choose a date and day
+type to compare all plots on the same 24-hour axis.
 
-Node names are EnergyPlus identifiers, not measured state values. A connection
-arrow means declared direction or graph relationship. Its width/color is not
-mass flow, operating fraction, temperature or kWh. Components shown in series
-can be bypassed or controlled off in an actual run.
+**Allowed** means the evaluated configuration permits operation; **Blocked**
+means a known condition prevents it. **Conditional / unknown** means that load, temperature,
+external control or an unresolved input is still needed. These plots describe
+permission, not simulated run status.
 
-Numeric capacity is a declared design/rated quantity in its displayed unit.
-`Autosize` needs an engine sizing calculation; the static graph does not turn
-it into a measured capacity. Likewise, rated COP/efficiency and performance
-curve references do not determine seasonal efficiency or actual part-load COP.
-Static HVAC Metrics report inventory/conditioning evidence rather than a
-capacity-weighted annual-performance result.
-
-An unavailable value shown as — means unresolved/absent information, not zero.
-An explicit zero should be considered with the field's EnergyPlus semantics.
-Several references to the same shared component do not justify summing its
-capacity or energy once per recipient Zone.
+On the right, **Control sequence** connects inputs to the on/off decision and
+then to modulation, with a separate OFF branch. Follow the arrows to see which
+load, setpoint or control mode changes capacity, flow or another operating
+parameter. Shared equipment is shown in the context of the selected loop.
 
 ### Example: trace a chilled-water service {#chilled-water-example}
 

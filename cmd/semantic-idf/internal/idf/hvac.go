@@ -23,6 +23,8 @@ type HVACReport struct {
 	NodeEdges           []HVACNodeEdge           `json:"nodeEdges,omitempty"`
 	ComponentReferences []HVACComponentReference `json:"componentReferences,omitempty"`
 	RuleGraph           HVACRuleGraph            `json:"ruleGraph,omitempty"`
+	OperatingProfiles   []HVACOperatingProfile   `json:"operatingProfiles,omitempty"`
+	OperatingSchedules  []HVACOperationSchedule  `json:"operatingSchedules,omitempty"`
 	Warnings            []HVACWarning            `json:"warnings"`
 }
 
@@ -395,6 +397,8 @@ func analyzeHVACWithContext(ctx *hvacContext) HVACReport {
 		NodeEdges:           buildHVACNodeEdges(loops),
 		ComponentReferences: append([]HVACComponentReference(nil), ctx.componentReferences...),
 		RuleGraph:           ruleGraph,
+		OperatingProfiles:   buildHVACOperatingProfiles(ctx, loops, relations),
+		OperatingSchedules:  buildHVACOperationSchedules(ctx.doc),
 	}
 	report.LoopCount = len(report.Loops)
 	report.ZoneRelationCount = len(report.ZoneRelations)
