@@ -173,8 +173,14 @@ Windows의 소스 checkout에서 실행하는 개발 명령입니다. PowerShell
 .\dev.bat setup
 ```
 
-`-WhatIf`로 파일 삭제 없이 정리 계획을 확인할 수 있습니다. 일반 `clean-repo`는 Go 빌드 캐시, 자동 생성된 프런트엔드 binding·빌드 파일과 확인된 임시 개발 생성물을 삭제합니다. `build/bin`, 설치된 Go/Wails 도구, 의존성 캐시, 로컬 시뮬레이션 근거와 재사용 비교 기준은 보존하므로 setup을 다시 실행할 필요가 없습니다. 다음 빌드·테스트에서 필요한 생성물이 다시 만들어집니다.
+`-WhatIf`로 파일 삭제 없이 선택된 정리 경로를 확인할 수 있습니다. 선택된 디렉터리는 내부 파일까지 포함합니다. 일반 `clean-repo`는 자동 생성된 프런트엔드 binding(`wailsjs/`), 루트·프런트엔드의 `node_modules`, `.runtime/gocache/`, `.runtime/guide-review/`와 임시 작업 공간인 `.runtime/tmp/`를 삭제합니다. 저장소 루트, `cmd/semantic-idf/`, `.runtime/` 바로 아래의 Go 테스트 실행 파일, `coverage.out`, `.syso` 파일도 삭제합니다.
 
-`clean-repo --hard`는 `build/bin`, `.runtime/`, `.tools/`도 삭제하여 도구 설치와 생성 상태를 처음 clone한 수준으로 초기화합니다. `.runtime/`의 로컬 시뮬레이션 capture와 baseline도 모두 삭제되므로 보관할 내용은 먼저 해당 디렉터리 밖으로 복사합니다. 다음 빌드·테스트 전에 `dev setup`을 실행합니다.
+이전 소스 위치인 루트의 `frontend/`와 `internal/`은 전체 트리가 빈 디렉터리만으로 구성된 경우에만 삭제하며, 파일이나 링크가 하나라도 있으면 해당 트리를 보존합니다.
 
-두 모드 모두 추적 소스, 유지 관리되는 빌드 아이콘, Git 메타데이터·hook과 명시적 생성 경로 밖의 모델·설정 파일을 보존합니다. 디렉터리 junction이나 symbolic link를 통해 checkout 밖의 파일을 삭제하지 않습니다.
+일반 정리는 `.runtime/`에서 확인된 기존 Chrome/Edge CDP·smoke-test·HVAC 프로필 디렉터리, Geometry/HVAC 스크린샷과 Geometry smoke-test harness, 브라우저 DOM·HTTP 로그도 삭제합니다. 명시된 삭제 디렉터리 밖에서 이름 규칙에 해당하지 않는 나머지 최상위 `chrome-*` 디렉터리나 PNG, 용도를 확인하지 않은 runtime 파일은 보존합니다. 새 일회성 조사 파일은 `.runtime/tmp/`에 두고, 시뮬레이션 근거와 재사용 비교 기준은 그 밖에 보관합니다.
+
+일반 정리는 `bin/`, `build/`, `cmd/semantic-idf/frontend/dist/`의 모든 빌드 결과를 보존합니다. 설치된 도구(`.runtime/go/`, `.runtime/bin/`), 의존성 캐시(`.runtime/gopath/`, `.runtime/gomodcache/`, `.runtime/cache/`), 로컬 시뮬레이션 근거와 재사용 비교 기준도 보존하므로 setup을 다시 실행할 필요가 없습니다. 다음 빌드·테스트에서 필요한 생성물이 다시 만들어집니다.
+
+`clean-repo --hard`는 `bin/`, `build/`, 프런트엔드 `dist/`, `.runtime/`, `.tools/`도 삭제하여 도구 설치와 생성 상태를 처음 clone한 수준으로 초기화합니다. `.runtime/`의 로컬 시뮬레이션 capture와 baseline도 모두 삭제되므로 보관할 내용은 먼저 해당 디렉터리 밖으로 복사합니다. 다음 빌드·테스트 전에 `dev setup`을 실행합니다.
+
+두 모드 모두 Git에서 추적하거나 스테이징한 파일, 유지 관리되는 빌드 아이콘, Git 메타데이터·hook과 명시적 생성 경로 밖의 모델·설정 파일을 보존합니다. 디렉터리 junction이나 symbolic link를 통해 checkout 밖의 파일을 삭제하지 않습니다. 선택된 경로를 사용하는 브라우저·테스트 프로세스는 정리 전에 종료합니다. `-WhatIf`는 파일 잠금 해제 여부까지 확인하지 않습니다.

@@ -53,5 +53,8 @@ read the relevant contract before changing a shared model or consumer.
   reusable comparison baselines, build outputs and toolchain caches. An ignored
   path alone is not proof that its contents are disposable.
 - Remove identified temporary replay/profile/search/screenshot artifacts after
-  recording useful findings. Reproduction commands must distinguish local
-  optional captures from files guaranteed to exist in a fresh clone.
+  recording useful findings. Use `.runtime/tmp/` for new disposable investigation
+  files; `dev clean-repo` removes this entire scratch workspace. Keep simulation
+  evidence and reusable baselines outside it. Reproduction commands must
+  distinguish local optional captures from files guaranteed to exist in a fresh
+  clone.

@@ -87,6 +87,25 @@ function Assert-SafeTree {
     }
 }
 
+function Test-EmptyDirectoryTree {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) { return $false }
+    $pending = New-Object 'Collections.Generic.Stack[string]'
+    $pending.Push($Path)
+    while ($pending.Count -gt 0) {
+        $entry = Get-Item -LiteralPath $pending.Pop() -Force
+        if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { return $false }
+        foreach ($child in Get-ChildItem -LiteralPath $entry.FullName -Force) {
+            if (-not $child.PSIsContainer -or ($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                return $false
+            }
+            $pending.Push($child.FullName)
+        }
+    }
+    return $true
+}
+
 Assert-NoReparsePoint -Path $repoRoot
 $gitRoot = [IO.Path]::GetFullPath((Read-Git 'rev-parse --show-toplevel').Trim())
 if (-not $gitRoot.Equals($repoRoot, $comparison)) {
@@ -100,8 +119,12 @@ function Add-CleanupPath {
 
     $full = Assert-RepoPath -Path $Path
     $relative = $full.Substring($rootPrefix.Length).Replace('\', '/')
-    if (-not $Hard -and ($relative -eq 'build/bin' -or $relative.StartsWith('build/bin/', $comparison))) {
-        return
+    if (-not $Hard) {
+        foreach ($outputDirectory in @('bin', 'build', 'cmd/semantic-idf/frontend/dist')) {
+            if ($relative.Equals($outputDirectory, $comparison) -or $relative.StartsWith($outputDirectory + '/', $comparison)) {
+                return
+            }
+        }
     }
     $hasTrackedChild = $false
     foreach ($trackedPath in $tracked) {
@@ -112,7 +135,7 @@ function Add-CleanupPath {
     }
     Assert-SafeAncestors -Path $full
     if (-not (Test-Path -LiteralPath $full)) { return }
-    if ($hasTrackedChild -or (-not $Hard -and $relative -eq 'build')) {
+    if ($hasTrackedChild) {
         foreach ($child in Get-ChildItem -LiteralPath $full -Force) {
             Add-CleanupPath -Path $child.FullName
         }
@@ -125,32 +148,54 @@ function Add-CleanupPath {
 # Ignore rules alone are not a deletion policy: models, .env, editor settings,
 # optional external fixtures and unknown untracked files are never selected.
 $generatedDirectories = @(
-    'bin',
-    'build',
     'cmd/semantic-idf/frontend/wailsjs',
-    'cmd/semantic-idf/frontend/dist',
     'node_modules',
     'cmd/semantic-idf/frontend/node_modules'
 )
 if ($Hard) {
-    $generatedDirectories += @('.runtime', '.tools')
+    $generatedDirectories += @('bin', 'build', 'cmd/semantic-idf/frontend/dist', '.runtime', '.tools')
 }
 else {
-    $generatedDirectories += @('.runtime/gocache', '.runtime/guide-review')
+    $generatedDirectories += @('.runtime/gocache', '.runtime/guide-review', '.runtime/tmp')
 }
 foreach ($relative in $generatedDirectories) {
     Add-CleanupPath -Path (Join-Path $repoRoot $relative)
 }
+
+# Moving application sources to cmd/semantic-idf can leave empty directories.
+# These former roots are not disposable workspaces: any file or link protects
+# the whole tree, including optional external fixtures and old build outputs.
+foreach ($relative in @('frontend', 'internal')) {
+    $directory = Assert-RepoPath -Path (Join-Path $repoRoot $relative)
+    if (Test-EmptyDirectoryTree -Path $directory) { Add-CleanupPath -Path $directory }
+}
+
+# Legacy browser investigations predate the dedicated .runtime/tmp workspace.
+# Match only their known top-level profile and capture names, never arbitrary
+# screenshots, browser installations, simulation evidence or comparison baselines.
+$browserProfilePattern = '^(?:chrome|edge)-(?:cdp|smoke|hvac-profile)(?:-|$)'
+$geometryCapturePattern = '^geometry-(?:\d+x\d+|(?:desktop|mobile)(?:-(?:canvas|cdp(?:-surface-(?:False|True))?|default|disable-software-rasterizer|timeout|use-angle-swiftshader))?)\.png$'
+$browserCaptureFiles = @(
+    'chrome-dom.txt', 'chrome-dom.err.txt', 'geometry-smoke.html',
+    'hvac_http_stdout.log', 'hvac_http_stderr.log', 'hvac_static_screenshot.png'
+)
 foreach ($relative in @('.', 'cmd/semantic-idf', '.runtime')) {
     if ($Hard -and $relative -eq '.runtime') { continue }
     $directory = Join-Path $repoRoot $relative
     Assert-SafeAncestors -Path $directory
     if (-not (Test-Path -LiteralPath $directory -PathType Container)) { continue }
     Assert-NoReparsePoint -Path $directory
-    foreach ($file in Get-ChildItem -LiteralPath $directory -File -Force) {
-        $isTestBinary = $file.Name -like '*.test' -or $file.Name -like '*.test.exe'
-        $isBuildFile = $relative -ne '.runtime' -and ($file.Name -like '*.syso' -or $file.Name -eq 'coverage.out')
-        if ($isTestBinary -or $isBuildFile) { Add-CleanupPath -Path $file.FullName }
+    foreach ($entry in Get-ChildItem -LiteralPath $directory -Force) {
+        if ($entry.PSIsContainer) {
+            if ($relative -eq '.runtime' -and $entry.Name -match $browserProfilePattern) {
+                Add-CleanupPath -Path $entry.FullName
+            }
+            continue
+        }
+        $isTestBinary = $entry.Name -like '*.test' -or $entry.Name -like '*.test.exe'
+        $isBuildFile = $entry.Name -like '*.syso' -or $entry.Name -eq 'coverage.out'
+        $isBrowserCapture = $relative -eq '.runtime' -and ($entry.Name -in $browserCaptureFiles -or $entry.Name -match $geometryCapturePattern)
+        if ($isTestBinary -or $isBuildFile -or $isBrowserCapture) { Add-CleanupPath -Path $entry.FullName }
     }
 }
 
@@ -166,6 +211,9 @@ foreach ($path in $plan) {
         # literal paths throughout discovery, validation and deletion.
         $safePath = Assert-RepoPath -Path $path
         Assert-SafeTree -Path $safePath
+        if ($relative -match '^(?:frontend|internal)(?:/|$)' -and -not (Test-EmptyDirectoryTree -Path $safePath)) {
+            throw "Legacy source directory is no longer empty: $safePath"
+        }
         Remove-Item -LiteralPath $safePath -Recurse -Force
         Write-Host "[removed] $relative"
     }
@@ -174,5 +222,5 @@ if ($Hard) {
     Write-Host '[ok] Hard cleanup selected. Run dev setup before the next build or test.'
 }
 else {
-    Write-Host '[ok] build/bin and installed development tools are preserved.'
+    Write-Host '[ok] Build outputs (bin, build, frontend/dist), development tools and retained local evidence are preserved.'
 }

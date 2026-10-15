@@ -85,23 +85,43 @@ Build artifacts and downloaded runtimes stay ignored by git.
 
 ### Repository cleanup
 
-`dev clean-repo` removes generated frontend bindings/build files, build/package
-intermediates, Go test binaries, coverage files, Go build cache and temporary
-Guide review captures. It preserves `build/bin`, the installed Go/Wails tools,
-downloaded dependencies, local simulation evidence and reusable comparison
-baselines. Development can continue without another setup.
+`dev clean-repo` preserves all build outputs in `bin/`, `build/` and
+`cmd/semantic-idf/frontend/dist/`. It removes generated frontend bindings
+(`wailsjs/`), optional root/frontend `node_modules`, the Go build cache
+(`.runtime/gocache/`), temporary Guide review captures (`.runtime/guide-review/`)
+and the disposable scratch workspace (`.runtime/tmp/`). It also removes Go test
+binaries, `coverage.out` and `.syso` files directly under the repository root,
+`cmd/semantic-idf/` and `.runtime/`.
+Legacy root `frontend/` and `internal/` trees are removed only when they contain
+empty directories alone; any file or link preserves the tree.
 
-`dev clean-repo --hard` also removes `build/bin`, `.runtime/` and `.tools/`,
-resetting installed tooling and generated files to a fresh-clone state. Local
-captures and baselines inside `.runtime/` are included; move any you want to
-retain outside that directory first. Run `dev setup` before the next build or
-test. Optional root/frontend `node_modules` are removed in both modes.
+Known legacy browser test artifacts under `.runtime/` are also removed: Chrome/Edge
+CDP, smoke-test and HVAC profile directories, identified Geometry/HVAC screenshots
+and the Geometry smoke-test harness, and browser DOM/HTTP logs. The named rules
+in [scripts/clean-repo.ps1](scripts/clean-repo.ps1) preserve other top-level
+`chrome-*` directories, PNGs and unknown runtime files outside the named disposable
+directories. Put future disposable investigations in `.runtime/tmp/` so they can
+be removed without extending the legacy rules.
+
+Normal cleanup preserves installed tools (`.runtime/go/`, `.runtime/bin/`),
+dependency caches (`.runtime/gopath/`, `.runtime/gomodcache/`, `.runtime/cache/`),
+local simulation evidence and reusable comparison baselines. Development can
+continue without another setup.
+
+`dev clean-repo --hard` additionally removes `bin/`, `build/`, frontend `dist/`,
+`.runtime/` and `.tools/`, resetting installed tooling and generated files to a
+fresh-clone state. Local captures and baselines inside `.runtime/` are included;
+move any you want to retain outside that directory first. Run `dev setup` before
+the next build or test.
 
 Both modes preserve Git-tracked or staged files, maintained build icons, Git
 metadata/hooks and models/settings outside the named generated locations. They
 refuse cleanup through symbolic links or junctions. Use `dev clean-repo -WhatIf`
-or `dev clean-repo --hard -WhatIf` to preview the complete plan without deleting
-anything. Cleanup works without the repo-local Go/Wails runtime.
+or `dev clean-repo --hard -WhatIf` to preview the selected paths without deleting
+anything. A selected directory includes its contents; a preview does not verify
+that running processes will release locked files. Close browser/test processes
+using selected paths before cleanup. Cleanup works without the repo-local
+Go/Wails runtime.
 
 ## CLI
 

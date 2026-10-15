@@ -27,6 +27,9 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
+- Repository cleanup removes identified temporary browser profiles, captures
+  and the `.runtime/tmp/` scratch workspace while preserving all build outputs
+  during normal cleanup.
 - Energy Path restores exterior convection and longwave observations from native
   Zone Timestep SQL timestamps, retaining complete Monthly net evidence when a
   gross split is unavailable. Verified ground-contact surfaces expose outside-face

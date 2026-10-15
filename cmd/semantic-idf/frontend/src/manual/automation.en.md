@@ -173,8 +173,14 @@ These commands run from a source checkout on Windows. From PowerShell, use `.\de
 .\dev.bat setup
 ```
 
-Use `-WhatIf` to inspect the cleanup plan without deleting files. Normal `clean-repo` removes the Go build cache, generated frontend bindings/build files and known temporary development artifacts. It keeps `build/bin`, the installed Go/Wails tools, dependency caches, local simulation evidence and reusable baselines, so setup is not required again. Subsequent builds and tests recreate removed artifacts as needed.
+Use `-WhatIf` to inspect selected paths without deleting files; a selected directory includes its contents. Normal `clean-repo` removes generated frontend bindings (`wailsjs/`), root/frontend `node_modules`, `.runtime/gocache/`, `.runtime/guide-review/` and the disposable `.runtime/tmp/` scratch workspace. It also removes Go test binaries, `coverage.out` and `.syso` files directly under the repository root, `cmd/semantic-idf/` and `.runtime/`.
 
-`clean-repo --hard` also removes `build/bin`, `.runtime/` and `.tools/`, returning installed tooling and generated files to a fresh-clone state. Everything kept under `.runtime/`, including local simulation captures and baselines, is removed; copy anything you want to retain outside that directory first. Run `dev setup` before the next build or test.
+Legacy root `frontend/` and `internal/` trees are removed only when they contain empty directories alone; any file or link preserves the tree.
 
-Both modes preserve tracked source files, maintained build icons, Git metadata/hooks, and model/settings files outside the explicit generated paths. A directory junction or symbolic link does not permit cleanup to reach files outside the checkout.
+Normal cleanup includes identified legacy Chrome/Edge CDP, smoke-test and HVAC profile directories, Geometry/HVAC screenshots and the Geometry smoke-test harness, and browser DOM/HTTP logs under `.runtime/`. It uses named rules, preserving other top-level `chrome-*` directories, PNGs and unknown runtime files outside the named disposable directories. Put new disposable investigations in `.runtime/tmp/`; keep simulation evidence and reusable baselines outside it.
+
+All build outputs in `bin/`, `build/` and `cmd/semantic-idf/frontend/dist/` are preserved during normal cleanup, along with installed tools (`.runtime/go/`, `.runtime/bin/`), dependency caches (`.runtime/gopath/`, `.runtime/gomodcache/`, `.runtime/cache/`), local simulation evidence and reusable baselines. Setup is not required again. Subsequent builds and tests recreate removed artifacts as needed.
+
+`clean-repo --hard` additionally removes `bin/`, `build/`, frontend `dist/`, `.runtime/` and `.tools/`, returning installed tooling and generated files to a fresh-clone state. Everything kept under `.runtime/`, including local simulation captures and baselines, is removed; copy anything you want to retain outside that directory first. Run `dev setup` before the next build or test.
+
+Both modes preserve Git-tracked or staged files, maintained build icons, Git metadata/hooks, and model/settings files outside the explicit generated paths. A directory junction or symbolic link does not permit cleanup to reach files outside the checkout. Close browser/test processes using selected paths before cleanup; `-WhatIf` does not verify that files are unlocked.

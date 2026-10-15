@@ -91,7 +91,7 @@ echo SemanticIDF developer commands
 echo.
 echo   dev setup             Install repo-local Go/Wails runtime and git hook
 echo   dev check             Check repo-local runtime
-echo   dev clean-repo        Remove generated files; preserve build/bin and tools
+echo   dev clean-repo        Remove disposable files; preserve bin/build/dist and tools
 echo   dev clean-repo --hard Reset generated files and tools; rerun dev setup
 echo   dev clean-repo -WhatIf Preview cleanup without deleting files
 echo   dev test              Run fast tests and all tiers for changed features
