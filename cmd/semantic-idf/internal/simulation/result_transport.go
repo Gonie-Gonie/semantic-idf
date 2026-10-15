@@ -6,11 +6,29 @@ import "math"
 // and its order, sharing identical columns and timelines without changing the
 // public result or the numerical/export models.
 type ResultTransport struct {
-	Schema        string               `json:"schema"`
-	Result        *SimulationRunResult `json:"result"`
-	Timelines     []resultTimeline     `json:"timelines"`
-	PointSets     []resultPointSet     `json:"pointSets"`
-	PointBindings []resultPointBinding `json:"pointBindings"`
+	Schema         string               `json:"schema"`
+	Result         *SimulationRunResult `json:"result"`
+	Timelines      []resultTimeline     `json:"timelines"`
+	PointSets      []resultPointSet     `json:"pointSets"`
+	PointBindings  []resultPointBinding `json:"pointBindings"`
+	ColumnSets     []resultValueColumn  `json:"columnSets,omitempty"`
+	ColumnBindings []resultPointBinding `json:"columnBindings,omitempty"`
+}
+
+type resultValueColumn struct {
+	Kind   string `json:"kind"`
+	Values any    `json:"values"`
+}
+
+type resultValueKey struct {
+	Hash   uint64
+	Length int
+	Kind   string
+}
+
+type resultValueSliceKey struct {
+	First  any
+	Length int
 }
 
 type resultTimeline struct {
@@ -44,6 +62,8 @@ type resultTransportBuilder struct {
 	timelineIndex map[resultColumnKey][]int
 	pointIndex    map[resultColumnKey][]int
 	slices        map[resultSliceKey]int
+	columnIndex   map[resultValueKey][]int
+	columnSlices  map[resultValueSliceKey]int
 }
 
 // CompactResultTransport makes a shallow structural copy; the caller's result,
@@ -55,14 +75,19 @@ func CompactResultTransport(result *SimulationRunResult) any {
 	}
 	copyResult := *result
 	builder := resultTransportBuilder{
-		wire:          ResultTransport{Schema: "semantic-idf.simulation-transfer/v1", Result: &copyResult},
+		wire: ResultTransport{Schema: "semantic-idf.simulation-transfer/v1", Result: &copyResult,
+			Timelines: []resultTimeline{}, PointSets: []resultPointSet{}, PointBindings: []resultPointBinding{}},
 		timelineIndex: make(map[resultColumnKey][]int), pointIndex: make(map[resultColumnKey][]int),
-		slices: make(map[resultSliceKey]int),
+		slices:      make(map[resultSliceKey]int),
+		columnIndex: make(map[resultValueKey][]int), columnSlices: make(map[resultValueSliceKey]int),
 	}
 	copyResult.Series = builder.series(result.Series, []any{"series"})
+	copyResult.HeatFlow = builder.heatFlow(result.HeatFlow, []any{"heatFlow"})
 	if result.PurposeResults != nil {
 		bundle := *result.PurposeResults
 		copyResult.PurposeResults = &bundle
+		bundle.ZoneHeatFlow = builder.heatFlow(bundle.ZoneHeatFlow, []any{"purposeResults", "zoneHeatFlow"})
+		bundle.ThermalTopology = builder.thermalTopology(bundle.ThermalTopology, []any{"purposeResults", "thermalTopology"})
 		bundle.HVACLoops = copyResultSlice(bundle.HVACLoops)
 		for i := range bundle.HVACLoops {
 			loop := &bundle.HVACLoops[i]
@@ -83,10 +108,138 @@ func CompactResultTransport(result *SimulationRunResult) any {
 		}
 		comfort.BuildingMetrics = builder.metrics(comfort.BuildingMetrics, []any{"purposeResults", "comfort", "buildingMetrics"})
 	}
-	if len(builder.wire.PointBindings) == 0 {
+	if len(builder.wire.PointBindings)+len(builder.wire.ColumnBindings) == 0 {
 		return result
 	}
 	return &builder.wire
+}
+
+// Heat-flow columns occur both in the ordinary result and its purpose bundle.
+// Surface flows also repeat their exact observations across boundaries,
+// connections and traces. Intern these typed columns without changing their
+// values, masks, ordering, or the independently owned original containers.
+func (builder *resultTransportBuilder) heatFlow(dataset HeatFlowDataset, path []any) HeatFlowDataset {
+	resultBindColumn(builder, &dataset.Labels, resultPath(path, "labels"))
+	dataset.Zones = copyResultSlice(dataset.Zones)
+	for i := range dataset.Zones {
+		zone := &dataset.Zones[i]
+		zonePath := resultPath(path, "zones", i)
+		zone.Values = copyResultSlice(zone.Values)
+		for j := range zone.Values {
+			resultBindColumn(builder, &zone.Values[j], resultPath(zonePath, "values", j))
+		}
+		zone.Observed = copyResultSlice(zone.Observed)
+		for j := range zone.Observed {
+			resultBindColumn(builder, &zone.Observed[j], resultPath(zonePath, "observed", j))
+		}
+		resultBindColumn(builder, &zone.Temperature, resultPath(zonePath, "temperature"))
+		resultBindColumn(builder, &zone.TemperatureObserved, resultPath(zonePath, "temperatureObserved"))
+	}
+	return dataset
+}
+
+func (builder *resultTransportBuilder) thermalTopology(topology ThermalTopologySimulationResult, path []any) ThermalTopologySimulationResult {
+	topology.Periods = copyResultSlice(topology.Periods)
+	for i := range topology.Periods {
+		period := &topology.Periods[i]
+		periodPath := resultPath(path, "periods", i)
+		resultBindColumn(builder, &period.Labels, resultPath(periodPath, "labels"))
+		period.BoundaryFlows = copyResultSlice(period.BoundaryFlows)
+		for j := range period.BoundaryFlows {
+			flow := &period.BoundaryFlows[j]
+			flowPath := resultPath(periodPath, "boundaryFlows", j)
+			resultBindColumn(builder, &flow.Values, resultPath(flowPath, "values"))
+			resultBindColumn(builder, &flow.Observed, resultPath(flowPath, "observed"))
+			flow.Traces = copyResultSlice(flow.Traces)
+			for k := range flow.Traces {
+				resultBindColumn(builder, &flow.Traces[k].Values, resultPath(flowPath, "traces", k, "values"))
+			}
+		}
+		period.ConnectionFlows = copyResultSlice(period.ConnectionFlows)
+		for j := range period.ConnectionFlows {
+			resultBindColumn(builder, &period.ConnectionFlows[j].Values, resultPath(periodPath, "connectionFlows", j, "values"))
+		}
+	}
+	return topology
+}
+
+type resultPrimitive interface{ float64 | bool | string }
+
+func resultBindColumn[T resultPrimitive](builder *resultTransportBuilder, target *[]T, path []any) {
+	values := *target
+	if len(values) < 128 {
+		return
+	}
+	sliceKey := resultValueSliceKey{First: &values[0], Length: len(values)}
+	id, exists := builder.columnSlices[sliceKey]
+	if !exists {
+		kind, hash := resultPrimitiveHash(values)
+		key := resultValueKey{Hash: hash, Length: len(values), Kind: kind}
+		for _, candidate := range builder.columnIndex[key] {
+			if resultPrimitiveEqual(builder.wire.ColumnSets[candidate].Values.([]T), values) {
+				id, exists = candidate, true
+				break
+			}
+		}
+		if !exists {
+			id = len(builder.wire.ColumnSets)
+			builder.wire.ColumnSets = append(builder.wire.ColumnSets, resultValueColumn{Kind: kind, Values: copyResultSlice(values)})
+			builder.columnIndex[key] = append(builder.columnIndex[key], id)
+		}
+		builder.columnSlices[sliceKey] = id
+	}
+	builder.wire.ColumnBindings = append(builder.wire.ColumnBindings, resultPointBinding{Path: path, Data: id})
+	*target = nil
+}
+
+func resultPrimitiveHash[T resultPrimitive](values []T) (string, uint64) {
+	hash := uint64(14695981039346656037)
+	switch values := any(values).(type) {
+	case []float64:
+		for _, value := range values {
+			hash = (hash ^ math.Float64bits(value)) * 1099511628211
+		}
+		return "number", hash
+	case []bool:
+		for _, value := range values {
+			bit := uint64(0)
+			if value {
+				bit = 1
+			}
+			hash = (hash ^ bit) * 1099511628211
+		}
+		return "boolean", hash
+	case []string:
+		for _, value := range values {
+			hash = (hash ^ uint64(len(value))) * 1099511628211
+			for i := 0; i < len(value); i++ {
+				hash = (hash ^ uint64(value[i])) * 1099511628211
+			}
+		}
+		return "string", hash
+	}
+	panic("unsupported result column")
+}
+
+func resultPrimitiveEqual[T resultPrimitive](left, right []T) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	if numbers, ok := any(left).([]float64); ok {
+		other := any(right).([]float64)
+		for i, value := range numbers {
+			if math.Float64bits(value) != math.Float64bits(other[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	for i, value := range left {
+		if value != right[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func copyResultSlice[T any](items []T) []T {

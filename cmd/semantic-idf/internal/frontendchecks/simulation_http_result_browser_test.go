@@ -239,6 +239,30 @@ try{
  check(typeof descriptor(decoded.series[1],"points").get==="function"&&envelope.pointSets[0].values===null&&envelope.pointSets[1].values.length===3,"reading one series expanded another series or retained its redundant value column");
  check(Array.isArray(decoded.series[2].points)&&decoded.series[2].points.length===0&&decoded.series[2].displayPoints===null,"empty and null arrays changed");
  check(JSON.parse(JSON.stringify(decoded)).series[1].points[0].value===4.125,"enumerable lazy points were omitted from JSON export");
+ const columns=()=>({...wire(),columnSets:[{kind:"number",values:[0,-0,1.23456789012345,-8]},{kind:"boolean",values:[true,false,true,false]},{kind:"string",values:["","01/01 01:00","한글 🔥","last"]}],columnBindings:[{path:["heatFlow","values"],data:0},{path:["heatFlow","observed"],data:1},{path:["heatFlow","labels"],data:2},{path:["purposeResults","zoneHeatFlow","values"],data:0}],result:{...wire().result,heatFlow:{values:null,empty:[],absent:null},purposeResults:{...wire().result.purposeResults,zoneHeatFlow:{values:null}}}});
+ const columnEnvelope=columns(),withColumns=decode(columnEnvelope);
+ check(withColumns.heatFlow.values===withColumns.purposeResults.zoneHeatFlow.values&&withColumns.heatFlow.values===columnEnvelope.columnSets[0].values,"repeated typed columns were copied or bound incorrectly");
+ check(Object.is(withColumns.heatFlow.values[1],-0)&&withColumns.heatFlow.values[2]===1.23456789012345&&withColumns.heatFlow.values[3]===-8,"typed columns changed signs, negative zero or precision");
+ check(withColumns.heatFlow.observed[1]===false&&withColumns.heatFlow.labels[2]==="한글 🔥"&&withColumns.heatFlow.labels[0]===""&&withColumns.heatFlow.empty.length===0&&withColumns.heatFlow.absent===null,"typed columns changed missing, false, empty or Unicode values");
+ check(typeof descriptor(withColumns.series[0],"points").get==="function"&&JSON.parse(JSON.stringify(withColumns)).heatFlow.observed[1]===false,"typed columns expanded lazy points or were omitted from exports");
+ const onlyColumns=columns();onlyColumns.timelines=[];onlyColumns.pointSets=[];onlyColumns.pointBindings=[];
+ check(decode(onlyColumns).heatFlow.values.length===4,"column-only transport was rejected");
+ for(const change of [
+  item=>item.columnSets=null,
+  item=>item.columnBindings=null,
+  item=>item.columnSets[0].kind="object",
+  item=>item.columnSets[0].values[0]=Infinity,
+  item=>item.columnSets[0].values[0]=null,
+  item=>item.columnSets[1].values[0]=1,
+  item=>item.columnSets[2].values[0]=false,
+  item=>item.columnBindings[0].data=99,
+  item=>item.columnBindings[0].path=["__proto__","polluted"],
+  item=>item.columnBindings[0].path=["constructor","prototype","polluted"],
+  item=>item.columnBindings[0].path=["heatFlow","empty"],
+  item=>item.columnBindings[0].path=["missing","values"],
+  item=>item.columnBindings.push({...item.columnBindings[0]}),
+  item=>item.columnBindings[0].path=["series",0,"points"],
+ ]){const bad=columns();change(bad);let rejected=false;try{decode(bad);}catch{rejected=true;}check(rejected,"decoder accepted invalid typed column or conflicting target");check(descriptor(bad.result.series[0],"points").value===null,"failed validation partially installed a result");}
  for(const change of [
   item=>item.pointBindings[0].path=["__proto__","polluted"],
   item=>item.pointBindings[0].path=["constructor","prototype","polluted"],
@@ -317,6 +341,12 @@ try{
  check(serverState.pollCalls===3,"settled/failed/native-only runs leaked HTTP progress polling");
  check(document.querySelector('[data-simulation-failure]')?.hidden&&!document.getElementById("runtimeStatus").title.includes("transport failure"),"successful rerun retained stale failure evidence");
  const diagnostic=await import("/src/js/simulation-diagnostics.js"),stateModule=await import("/src/js/state.js"),i18n=await import("/src/js/i18n.js"),mainReport=state.report;
+ api.RunPurposeSimulationText=async()=>{const error=new Error(i18n.t("simulation.resultTransfer.decode",{received:"567.4 MiB"}));error.code="simulation_result_transfer_decode";throw error;};
+ const beforeTransferFailure=state.simulationResult;
+ button.click();for(let n=0;state.simulationRunning&&n<1000;n++)await tick();
+ check(state.simulationProgress.failure.errorCode==="simulation_result_transfer_decode"&&state.simulationResult===beforeTransferFailure,"result-loading failure lost its identity or the previous result");
+ check(status.textContent.startsWith("Result loading failed:")&&!status.textContent.includes("Simulation failed:")&&document.getElementById("runtimeStatus").textContent.startsWith("Result loading failed:"),"received result failure was mislabeled as an engine failure");
+ check(!document.querySelector('[data-simulation-failure] pre').textContent.includes("No Severe/Fatal ERR details"),"result-loading failure incorrectly requested missing engine errors");
  const cause='GetSurfaceData: missing Construction "<bad-object>"';
  api.RunPurposeSimulationText=async request=>({runId:request.runId,status:"failed",filename:"broken.idf",inputPath:"C:/inputs/broken.idf",energyPlusVersion:"24.2",energyPlusExecutablePath:"C:/EnergyPlus24/energyplus.exe",weatherPath:"C:/weather/test.epw",outputDirectory:"C:/managed/failed-run",exitCode:1,error:"exit status 1",stderr:'stderr native <img src=x onerror="window.__diagnosticInjected=true">',stdout:"EnergyPlus terminated",err:{path:"C:/managed/failed-run/eplusout.err",warnings:50,severe:1,fatal:1,issues:[{severity:"Warning",line:2,message:"unrelated warning"},{severity:"Severe",line:140,message:cause+'\n** ~~~ ** Object=<script>window.__diagnosticInjected=true</'+'script>'},{severity:"Fatal",line:142,message:"EnergyPlus Terminated--Error(s) Detected."}]} ,series:[]});
  button.click();for(let n=0;state.simulationRunning&&n<1000;n++)await tick();

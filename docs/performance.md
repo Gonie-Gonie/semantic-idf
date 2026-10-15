@@ -32,6 +32,8 @@ timed-out parse had silently selected CSV/ESO instead.
 Transfer negotiation uses `semantic-idf.simulation-transfer/v1`. Unnegotiated and
 small responses retain their ordinary result shape. Compact references are
 collision-checked and exactly restored; unopened loops keep numeric columns.
+Heat Flow and Thermal Topology also share exact numeric, boolean and string
+columns, including repeated masks and labels, across their result projections.
 A newer run cannot replace another request's response, and a failed POST is
 not retried through a second transport. Receiving/display failures are separate
 from engine completion. See [simulation-runner.md](simulation-runner.md).
@@ -82,6 +84,39 @@ Native-clock browser playback of the compact HVAC response took 1.232 seconds
 locally through HTTP receipt, JSON parsing, lazy binding and first display. It
 materialized 127 of 717 point sets initially. This excludes engine/SQL work and
 does not measure the native Wails WebView bridge.
+
+### Default run JSON failure on Windows
+
+On 2026-10-15, the bundled `RefBldgLargeOfficeNew2004_Chicago.idf` with EnergyPlus
+24.2, Busan TMYx 2007-2021 weather and all four desktop purposes completed with
+zero Severe/Fatal errors. Its negotiated response was 594,973,623 bytes. A
+hidden Wails 2.12.0/WebView2 155 harness received HTTP 200 and every byte in one
+chunk, but both `TextDecoder.decode()` and `response.text()` produced an empty
+string. Parsing that string reproduced `Unexpected end of JSON input`.
+The mostly ASCII response exceeded V8's 64-bit maximum string length of
+536,870,888 UTF-16 code units ([V8 string definition](https://chromium.googlesource.com/v8/v8/+/refs/heads/lkgr/include/v8-primitive.h#133)).
+This was a result-decoding failure after successful engine execution.
+
+Heat Flow appeared twice (about 98.1 MB each); Thermal Topology contributed
+149.0 MB with repeated flow columns and observation masks. Extending exact
+column sharing reduced the same saved-run response to 369,406,354 bytes, a
+37.91% reduction. Read-only replay checked all 31,860,960 bound point samples
+and 70,860,472 numeric values, masks and labels against their source arrays,
+including float bits, order and lengths. The original run-file hashes and
+metadata stayed unchanged. The envelope has 882 point sets/3,833 bindings and
+705 typed columns/1,674 bindings.
+
+The native harness then used the production response reader and decoder:
+receipt and JSON parsing took 2.90 seconds, binding took 0.12 seconds, and every
+column binding retained its exact array, including 2,655 negative zeros.
+It retained eight HVAC loops, 62 components and 19 comfort zones. Rendering the
+actual app's default Energy view took another 12.1 seconds: 40 nodes, all five
+stages and completed status. These are single local measurements, excluding
+engine execution and SQL/result building.
+The saved-run replay and bounded browser regressions are maintained tests;
+the hidden native harness and payload copies were disposable investigation
+artifacts. Larger responses still require one JSON string; exact sharing does
+not establish an unlimited model-size guarantee.
 
 ### Progress calibration across saved models
 

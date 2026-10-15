@@ -8,6 +8,7 @@ export function isSimulationFailure(result) {
 const text = (value) => String(value ?? "").trim();
 const firstLine = (value) => text(value).split(/\r?\n/).find((line) => line.trim())?.trim() || "";
 const seriousIssues = (result) => (result?.err?.issues || []).filter((issue) => /^(severe|fatal)$/i.test(issue.severity || ""));
+const isResultTransferFailure = (result) => String(result?.errorCode || "").startsWith("simulation_result_transfer_");
 
 export function simulationFailureSummary(result) {
   if (["cancelled", "canceled"].includes(result?.status)) return t("simulation.runCancelled", {}, "Simulation cancelled");
@@ -20,7 +21,9 @@ export function simulationFailureSummary(result) {
   }
   if (!reason) return t("simulation.finishedWithIssues", {}, "Simulation finished with issues");
   if (reason.length > 240) reason = `${reason.slice(0, 237)}…`;
-  return t("simulation.failureReason", { reason }, "Simulation failed: {reason}");
+  return isResultTransferFailure(result)
+    ? t("simulation.resultTransfer.failureReason", { reason }, "Result loading failed: {reason}")
+    : t("simulation.failureReason", { reason }, "Simulation failed: {reason}");
 }
 
 // Preserve native wording, paths and continuation lines. The disclosure and
@@ -44,7 +47,7 @@ export function simulationFailureDetails(result) {
       const line = Number.isInteger(issue.line) && issue.line > 0 ? ` · ${t("simulation.errLine", { line: issue.line }, "line {line}")}` : "";
       details.push(`[${text(issue.severity)}${line}] ${text(issue.message)}`);
     }
-  } else if (!["cancelled", "canceled"].includes(result.status)) {
+  } else if (!isResultTransferFailure(result) && !["cancelled", "canceled"].includes(result.status)) {
     details.push(`\n${t("simulation.failureNoERR", {}, "No Severe/Fatal ERR details were received. Check the process output and run paths below.")}`);
   }
   if (text(result.stderr)) details.push(`\nstderr\n${text(result.stderr)}`);

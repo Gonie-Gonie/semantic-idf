@@ -202,26 +202,59 @@ export function createSimulationProgress({ state, elements, getPendingRunID, get
 // Count the actual decoded response bytes without cloning a potentially large
 // stream. A compressed Content-Length is not a valid total for these bytes.
 export async function readSimulationJSONResponse(response, onProgress) {
-  if (!onProgress || !response.body?.getReader) return response.json();
-  const encoding = response.headers.get("Content-Encoding"), length = Number(response.headers.get("Content-Length"));
-  const total = (!encoding || encoding === "identity") && Number.isFinite(length) && length > 0 ? length : 0;
-  const reader = response.body.getReader(), decoder = new TextDecoder(), parts = [];
+  const encoding = response.headers.get("Content-Encoding")?.trim().toLowerCase();
+  const lengthHeader = response.headers.get("Content-Length")?.trim(), length = Number(lengthHeader);
+  const expected = (!encoding || encoding === "identity") && /^\d+$/.test(lengthHeader || "") && Number.isSafeInteger(length) ? length : null;
+  const total = expected || 0, decoder = new TextDecoder(), parts = [];
+  const failure = (code, parameters = {}, cause) => {
+    const error = new Error(t(`simulation.resultTransfer.${code}`, parameters));
+    error.code = `simulation_result_transfer_${code}`;
+    if (cause) error.cause = cause;
+    return error;
+  };
   let completed = 0, notified = -Infinity;
-  try {
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      completed += value.byteLength; parts.push(decoder.decode(value, { stream: true }));
-      if (performance.now() - notified >= 200) {
-        const knownTotal = total >= completed ? total : 0;
-        onProgress({ phase: "receiving_results", progressKind: knownTotal ? "work" : "indeterminate", workCompleted: completed, workTotal: knownTotal, workUnit: "bytes" });
-        notified = performance.now();
+  const decode = (value, stream) => {
+    try { return decoder.decode(value, { stream }); }
+    catch (cause) { throw failure("decode", { received: byteLabel(completed) }, cause); }
+  };
+  if (response.body?.getReader) {
+    const reader = response.body.getReader();
+    try {
+      for (;;) {
+        let chunk;
+        try { chunk = await reader.read(); }
+        catch (cause) { throw failure("interrupted", { received: byteLabel(completed) }, cause); }
+        const { value, done } = chunk;
+        if (done) break;
+        completed += value.byteLength; parts.push(decode(value, true));
+        if (onProgress && performance.now() - notified >= 200) {
+          const knownTotal = total >= completed ? total : 0;
+          onProgress({ phase: "receiving_results", progressKind: knownTotal ? "work" : "indeterminate", workCompleted: completed, workTotal: knownTotal, workUnit: "bytes" });
+          notified = performance.now();
+        }
       }
-    }
-    parts.push(decoder.decode());
-    onProgress({ phase: "decode_results", progressKind: "indeterminate", workCompleted: completed, workTotal: 0, workUnit: "bytes" });
-    await new Promise(resolve => window.setTimeout(resolve, 0));
-    const text = parts.join(""); parts.length = 0;
-    return JSON.parse(text);
-  } finally { reader.releaseLock(); }
+    } finally { reader.releaseLock(); }
+  } else {
+    let buffer;
+    try { buffer = await response.arrayBuffer(); }
+    catch (cause) { throw failure("interrupted", { received: byteLabel(completed) }, cause); }
+    const bytes = new Uint8Array(buffer);
+    completed = bytes.byteLength; parts.push(decode(bytes, true));
+  }
+  if (expected !== null && completed !== expected) {
+    throw failure("incomplete", { received: byteLabel(completed), expected: byteLabel(expected) });
+  }
+  if (!completed) throw failure("empty");
+  parts.push(decode(undefined, false));
+  onProgress?.({ phase: "decode_results", progressKind: "indeterminate", workCompleted: completed, workTotal: 0, workUnit: "bytes" });
+  if (onProgress) await new Promise(resolve => window.setTimeout(resolve, 0));
+  let text;
+  try { text = parts.join(""); }
+  catch (cause) { throw failure("decode", { received: byteLabel(completed) }, cause); }
+  finally { parts.length = 0; }
+  // WebView2 can deliver every byte yet decode an oversized string as empty.
+  // Keep this distinct from an empty response and from EnergyPlus failure.
+  if (!text.length) throw failure("decode", { received: byteLabel(completed) });
+  try { return JSON.parse(text); }
+  catch (cause) { throw failure("invalidJSON", {}, cause); }
 }

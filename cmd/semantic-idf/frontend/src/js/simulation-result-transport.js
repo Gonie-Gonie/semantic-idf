@@ -5,40 +5,51 @@ const unsafePathKeys = new Set(["__proto__", "prototype", "constructor"]);
 const object = (value) => value !== null && typeof value === "object";
 const index = (value, length) => Number.isInteger(value) && value >= 0 && value < length;
 
-// Keep the canonical result shape. Repeated series share their original point
-// arrays, and untouched loops keep their compact numeric columns until opened.
+// Keep the canonical result shape. Repeated heat-flow/topology columns share
+// their exact arrays; untouched series keep their numeric columns until opened.
 export function decodeSimulationResultTransfer(payload) {
   if (!object(payload) || !String(payload.schema || "").startsWith("semantic-idf.simulation-transfer/")) return payload;
   if (payload.schema !== transferSchema) throw new Error("Unsupported simulation result transfer format");
   const { result, timelines, pointSets, pointBindings } = payload;
+  const { columnSets = [], columnBindings = [] } = payload;
   const invalid = () => { throw new Error("Invalid simulation result transfer data"); };
-  if (!object(result) || Array.isArray(result) || !Array.isArray(timelines) || !Array.isArray(pointSets) || !Array.isArray(pointBindings)) invalid();
+  if (!object(result) || Array.isArray(result) || !Array.isArray(timelines) || !Array.isArray(pointSets) || !Array.isArray(pointBindings) || !Array.isArray(columnSets) || !Array.isArray(columnBindings)) invalid();
   for (const timeline of timelines) {
     if (!object(timeline) || !Array.isArray(timeline.x) || !Array.isArray(timeline.labels) || timeline.x.length !== timeline.labels.length) invalid();
   }
   for (const set of pointSets) {
     if (!object(set) || !index(set.timeline, timelines.length) || !Array.isArray(set.values) || set.values.length !== timelines[set.timeline].x.length) invalid();
   }
-  const targets = [], bound = new WeakMap();
-  for (const binding of pointBindings) {
-    if (!object(binding) || !Array.isArray(binding.path) || !binding.path.length || !index(binding.data, pointSets.length)) invalid();
+  for (const set of columnSets) {
+    if (!object(set) || !["number", "boolean", "string"].includes(set.kind) || !Array.isArray(set.values)) invalid();
+    for (const value of set.values) {
+      if (typeof value !== set.kind || (set.kind === "number" && !Number.isFinite(value))) invalid();
+    }
+  }
+  const bound = new WeakMap();
+  const resolve = (binding, sets) => {
+    if (!object(binding) || !Array.isArray(binding.path) || !binding.path.length || !index(binding.data, sets.length)) invalid();
     let owner = result;
     for (let offset = 0; offset < binding.path.length; offset++) {
       const key = binding.path[offset], last = offset === binding.path.length - 1;
       if (!object(owner) || (Array.isArray(owner) ? !index(key, owner.length) : typeof key !== "string" || !key || unsafePathKeys.has(key))) invalid();
       if (last) {
-        // Go's omitempty can omit a compacted points/displayPoints member.
+        // Go's omitempty can omit a compacted array member.
         if (Object.hasOwn(owner, key) && owner[key] !== null) invalid();
         const keys = bound.get(owner) || new Set();
         if (keys.has(key)) invalid();
         keys.add(key); bound.set(owner, keys);
-        targets.push({ owner, key, data: binding.data });
+        return { owner, key, data: binding.data };
       } else {
         if (!Object.hasOwn(owner, key)) invalid();
         owner = owner[key];
       }
     }
-  }
+  };
+  // Resolve every path before changing any target, including bindings across
+  // both tables. A malformed response cannot overwrite existing result data.
+  const pointTargets = pointBindings.map(binding => resolve(binding, pointSets));
+  const columnTargets = columnBindings.map(binding => resolve(binding, columnSets));
   const pointsBySet = new Array(pointSets.length);
   const materialize = (data) => {
     if (pointsBySet[data]) return pointsBySet[data];
@@ -54,7 +65,10 @@ export function decodeSimulationResultTransfer(payload) {
     set.values = null;
     return points;
   };
-  for (const { owner, key, data } of targets) {
+  for (const { owner, key, data } of columnTargets) {
+    Object.defineProperty(owner, key, { value: columnSets[data].values, enumerable: true, configurable: true, writable: true });
+  }
+  for (const { owner, key, data } of pointTargets) {
     const assign = (value) => Object.defineProperty(owner, key, { value, enumerable: true, configurable: true, writable: true });
     Object.defineProperty(owner, key, {
       enumerable: true, configurable: true,

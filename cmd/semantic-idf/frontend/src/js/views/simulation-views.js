@@ -8002,7 +8002,7 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
     if (state.simulationActiveRunID !== runID) return null;
     simulationPendingResponseRunID = "";
     state.simulationRunning = false;
-    const failure = { runId: runID, status: "failed", error: error.message || String(error), inputPath: request.inputPath,
+    const failure = { runId: runID, status: "failed", error: error.message || String(error), errorCode: error.code, inputPath: request.inputPath,
       filename: request.filename, energyPlusExecutablePath: installPath, weatherPath: request.weatherPath };
     state.simulationProgress = { runId: runID, phase: "request_failed", percent: 100, message: simulationFailureSummary(failure), status: "failed", failure };
     syncSimulationRunSetup(state.simulationResult);

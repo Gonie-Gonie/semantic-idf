@@ -133,6 +133,31 @@ reports active/queued workers and the active child's phase. Child row counts
 describe that child's current scan, not an overall percentage or a sum of ETA
 values. Parallel file completion times vary with CPU, memory and disk contention.
 
+## Desktop result transport
+
+The desktop negotiates `application/vnd.semantic-idf.simulation-transfer+json`
+for run and workspace-cache responses. The internal
+`semantic-idf.simulation-transfer/v1` envelope retains the canonical result with
+exact, collision-checked references to repeated arrays. Point sets share
+timelines and materialize lazily. Optional `columnSets` and `columnBindings`
+share long numeric, boolean and string arrays in Heat Flow and Thermal Topology,
+including observed masks and labels. Every value, negative zero, timestamp,
+array order and missing/empty distinction survives; no observation is sampled
+or rounded by transport. The encoder copies structural containers and never
+changes the source result. Ordinary API/CLI results keep their public shape.
+
+The browser validates all binding paths before installing them and rejects
+prototype paths, duplicate targets and invalid typed columns. Receipt checks
+the uncompressed Content-Length when present. Empty responses, incomplete
+receipt, failed text decoding and invalid JSON report result-loading errors,
+separately from EnergyPlus errors. A failed POST is never automatically retried;
+it may already have completed the simulation. Saved engine files remain intact.
+
+The response is still parsed as one JSON string. Deduplication fixes the bundled
+four-purpose Large Office response that exceeded the native WebView string
+limit; it does not remove the size/memory limit for arbitrarily larger models.
+See the native reproduction in [performance.md](performance.md).
+
 ## Purpose planning
 
 [purpose.go](../cmd/semantic-idf/internal/simulation/purpose.go) defines

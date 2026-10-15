@@ -68,6 +68,9 @@ func TestSimulationResultTransportSavedReplay(t *testing.T) {
 		started = time.Now()
 		samples := validateResultTransportBindings(t, &result, wire)
 		t.Logf("verified exact X, label, value bits for %d samples across %d bindings: %s", samples, len(wire.PointBindings), time.Since(started))
+		started = time.Now()
+		columnSamples := validateResultTransportColumnBindings(t, &result, wire)
+		t.Logf("verified exact column values/masks/labels for %d samples across %d bindings and %d unique columns: %s", columnSamples, len(wire.ColumnBindings), len(wire.ColumnSets), time.Since(started))
 	}
 	started = time.Now()
 	payload, err := json.Marshal(transport)

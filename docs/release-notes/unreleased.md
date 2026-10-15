@@ -31,6 +31,11 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
+- Default four-purpose simulation results no longer exceed the native WebView
+  text limit on the bundled Large Office case: repeated Heat Flow and Thermal
+  Topology arrays are transferred once, preserving every value and observation.
+  Result-receiving and JSON-decoding failures now have specific diagnostics and
+  are identified separately from EnergyPlus failures.
 - Repository cleanup removes identified temporary browser profiles, captures
   and the `.runtime/tmp/` scratch workspace while preserving all build outputs
   during normal cleanup.
