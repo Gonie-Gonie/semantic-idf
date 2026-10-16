@@ -157,6 +157,12 @@ function expressionEvaluator(resolve) {
   return gates;
 }
 
+// The stacked availability view uses the same native manager precedence and
+// overrides as the day inspector, with one shared schedule resolver per day.
+export function createHVACAvailabilityDayEvaluator(schedules = [], options = {}) {
+  return expressionEvaluator(createHVACScheduleDayResolver(schedules, options));
+}
+
 export function hvacAvailabilitySegments(values) {
   const segments = [];
   for (let minute = 0; minute < values.length; minute++) {

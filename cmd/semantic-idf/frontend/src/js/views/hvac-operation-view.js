@@ -1,6 +1,6 @@
 import { escapeHTML } from "../state.js";
 import { t } from "../i18n.js";
-import { evaluateHVACOperation, hvacOperationDayTypes } from "../hvac-operation.js";
+import { evaluateHVACOperation } from "../hvac-operation.js";
 import { renderHVACAvailability, connectHVACAvailability } from "./hvac-availability-view.js";
 
 const copy = (key, fallback, values = {}) => t(`hvac.operation.${key}`, values, fallback);
@@ -42,8 +42,8 @@ function graphLevels(graph, mode) {
 }
 
 function controlHighlights(node) {
-  const choices = (node.parameters || []).filter((parameter) => /control type|control mode|control variable|^action$|^value$|^target$|formula|quantity|node name|flow mode|flow control|operating mode|deadband|setpoint temperature|lower limit|upper limit|minimum part load|maximum part load|^(cooling|heating) sequence$/i.test(parameter.name));
-  return choices.slice(0, 3).map((parameter) => {
+  const choices = (node.parameters || []).filter((parameter) => /control type|control mode|control variable|actuator variable|^action$|^value$|^target$|formula|quantity|node.*name|^zone.*name$|flow mode|flow control|operating mode|deadband|setpoint temperature|lower limit|upper limit|minimum part load|maximum part load|^(cooling|heating) sequence$/i.test(parameter.name));
+  return choices.map((parameter) => {
     const raw = String(parameter.value), numeric = /^[-+]?\d+(?:\.\d+)?(?:e[-+]?\d+)?$/i.test(raw.trim());
     const unit = /temperature/i.test(parameter.name) ? " °C" : "";
     const value = numeric ? `${number(raw)}${unit}` : copy(`value.${raw}`, raw);
@@ -75,15 +75,14 @@ function nodeLabel(node) {
 }
 function kindLabel(node) { const kind = node.boundary === "input" ? "external_input" : node.boundary === "output" ? "external_output" : node.kind || "unknown"; return copy(`kind.${kind}`, human(kind)); }
 
-function renderNode(node, graph, mode) {
-  const source = node.source || {}, parameters = node.parameters || [], label = nodeLabel(node), role = kindLabel(node);
+function renderNode(node, graph) {
+  const source = node.source || {}, label = nodeLabel(node), role = kindLabel(node);
   return `<article class="hvac-control-node ${safe(node.kind || "unknown")}${node.boundary ? ` boundary-${safe(node.boundary)}` : ""}" data-hvac-control-node="${safe(node.id)}" data-hvac-node-kind="${safe(node.kind || "unknown")}"${node.boundary ? ` data-hvac-node-boundary="${safe(node.boundary)}"` : ""} role="group" aria-label="${safe(`${role}: ${label}`)}">
     <span class="hvac-control-kind">${safe(role)}</span><h5>${safe(label)}</h5>
     ${source.objectName ? `<span class="hvac-control-source" title="${safe([source.objectType, source.objectName].filter(Boolean).join(" · "))}">${safe(source.objectName)}</span>` : ""}
     ${source.objectType ? `<span class="hvac-control-object-type">${safe(source.objectType)}</span>` : ""}
-    ${mode !== "availability" ? `<div class="hvac-control-values">${controlHighlights(node)}</div>` : ""}
+    <div class="hvac-control-values">${controlHighlights(node)}</div>
     ${renderSchedule(node, graph)}
-    ${parameters.length ? `<details class="hvac-control-fields"><summary>${safe(copy(mode === "availability" ? "definitionFields" : "parameterFields", mode === "availability" ? "Definition fields" : "Parameters"))}</summary><dl>${parameters.map((parameter) => `<div><dt>${safe(parameter.name)}</dt><dd>${safe(String(parameter.value))}</dd></div>`).join("")}</dl></details>` : ""}
   </article>`;
 }
 
@@ -100,7 +99,7 @@ function renderGraph(graph, mode) {
   const edges = (graph.edges || []).filter((edge) => byID.has(edge.from) && byID.has(edge.to));
   return `<div class="hvac-control-graph ${mode}" data-hvac-operation-graph="${mode}" role="group" aria-label="${safe(copy(`${mode}Graph`, human(mode)))}">
     <svg class="hvac-control-connections" aria-hidden="true"><defs><marker id="${graphID}-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z"/></marker></defs>${edges.map((edge) => { const label = edgeLabel(edge); return `<g data-hvac-control-edge data-from="${safe(edge.from)}" data-to="${safe(edge.to)}" data-relation="${safe(edge.relation)}"${edge.polarity ? ` data-polarity="${safe(edge.polarity)}"` : ""}${edge.condition ? ` data-condition="${safe(edge.condition)}"` : ""}><title>${safe(label.description)}</title><path marker-end="url(#${graphID}-arrow)"/>${label.text ? `<text>${safe(label.text)}</text>` : ""}</g>`; }).join("")}</svg>
-    ${graphLevels(graph, mode).map((nodes) => `<div class="hvac-control-level">${nodes.map((node) => renderNode(node, graph, mode)).join("")}</div>`).join("")}
+    ${graphLevels(graph, mode).map((nodes) => `<div class="hvac-control-level">${nodes.map((node) => renderNode(node, graph)).join("")}</div>`).join("")}
     <ul class="sr-only">${edges.map((edge) => `<li>${safe(`${nodeLabel(byID.get(edge.from))} → ${nodeLabel(byID.get(edge.to))}: ${edgeLabel(edge).description}`)}</li>`).join("")}</ul>
   </div>`;
 }
@@ -108,14 +107,13 @@ function renderGraph(graph, mode) {
 export function renderHVACOperationDetail(profile, schedules = [], { component = {}, calendar = {} } = {}) {
   const model = evaluateHVACOperation(profile || {}, schedules, calendar), date = model.calendar;
   const label = component.objectName || copy("equipment", "Equipment");
-  const panel = (mode, title, hint, icon, graph) => `<section class="hvac-operation-panel ${mode}" data-hvac-operation-${mode}><div class="hvac-operation-panel-heading"><span class="hvac-operation-panel-icon" aria-hidden="true">${icon}</span><div><h4>${safe(copy(title, human(title)))}</h4><p>${safe(copy(hint, human(hint)))}</p></div></div>${mode === "parameters" ? `<div class="hvac-control-legend">${["external_input", "setpoint", "controller", "control_variable", "state_variable", "external_output"].map((kind) => `<span class="${kind}"><i></i>${safe(copy(`kind.${kind}`, human(kind)))}</span>`).join("")}</div>` : ""}${renderGraph(graph, mode)}</section>`;
+  const panel = (mode, title, graph) => `<section class="hvac-operation-panel ${mode}" data-hvac-operation-${mode}><div class="hvac-operation-panel-heading"><h4>${safe(copy(title, human(title)))}</h4></div>${renderGraph(graph, mode)}</section>`;
   return `<section class="hvac-operation-detail" data-hvac-operation-detail data-component-index="${safe(component.objectIndex ?? profile?.componentIndex ?? "")}">
-    <header class="hvac-operation-heading"><div><span class="hvac-operation-eyebrow">${safe(copy("operatingConditions", "OPERATING CONDITIONS"))}</span><h3>${safe(label)}</h3><span class="hvac-operation-object-type">${safe(component.objectType || "")}</span></div><span class="hvac-operation-basis">${safe(copy("configured", "From model definitions"))}</span></header>
-    <div class="hvac-operation-calendar"><label>${safe(copy("month", "Month"))}<input type="number" min="1" max="12" value="${date.month}" data-hvac-operation-calendar="month"/></label><label>${safe(copy("day", "Day"))}<input type="number" min="1" max="${new Date(Date.UTC(date.year, date.month, 0)).getUTCDate()}" value="${date.day}" data-hvac-operation-calendar="day"/></label><label class="day-type">${safe(copy("dayType", "Day type"))}<select data-hvac-operation-calendar="dayType">${hvacOperationDayTypes.map((dayType) => `<option value="${dayType}"${dayType === date.dayType ? " selected" : ""}>${safe(copy(`dayType.${dayType}`, human(dayType)))}</option>`).join("")}</select></label><span>${safe(copy("calendarHint", "Schedule definitions for the selected date and day type"))}</span></div>
+    <header class="hvac-operation-heading"><h3>${safe(label)}</h3><span class="hvac-operation-object-type">${safe(component.objectType || "")}</span></header>
     <div class="hvac-operation-columns">
-      <section class="hvac-operation-panel availability" data-hvac-operation-availability><div class="hvac-operation-panel-heading"><span class="hvac-operation-panel-icon" aria-hidden="true">◷</span><div><h4>${safe(copy("availabilityDefinitions", "Availability definitions"))}</h4><p>${safe(copy("availabilityDefinitionsHint", "Declared owners, managers and schedules · raw schedule values"))}</p></div></div>${renderHVACAvailability(model.availabilityDefinitions, schedules, date)}</section>
-      ${panel("onoff", "onOff", "onOffHint", "⑂", model.onOff)}
-      ${panel("parameters", "parameterControl", "parameterControlHint", "⇄", model.parameterControl)}
+      <section class="hvac-operation-panel availability" data-hvac-operation-availability><div class="hvac-operation-panel-heading"><h4>${safe(copy("availability", "Availability"))}</h4></div>${renderHVACAvailability(profile, schedules, date)}</section>
+      ${panel("onoff", "onOff", model.onOff)}
+      ${panel("parameters", "parameterControl", model.parameterControl)}
     </div>
   </section>`;
 }

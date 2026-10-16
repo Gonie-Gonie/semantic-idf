@@ -1,72 +1,48 @@
 import { escapeHTML } from "../state.js";
 import { getLanguage, t } from "../i18n.js";
-import { buildHVACScheduleTimeline } from "../hvac-availability-timeline.js";
+import { buildHVACAvailabilityStack } from "../hvac-availability-timeline.js";
 
 const safe = escapeHTML;
 const copy = (key, fallback) => t(`hvac.operation.${key}`, {}, fallback);
-const number = (value) => {
-  const numeric = Number(value);
-  if (numeric === 0) return "0";
-  return numeric.toLocaleString(getLanguage(), Math.abs(numeric) < .001
-    ? { notation: "scientific", maximumSignificantDigits: 6 }
-    : { maximumFractionDigits: 3 });
-};
 const models = new Map();
 let nextID = 0;
 
-function definitionFields(node) {
-  return `<article class="hvac-availability-definition" data-hvac-definition-node="${safe(node.id)}"><span class="hvac-availability-definition-kind">${safe(copy(`control.${node.code}`, String(node.code || node.kind || "").replaceAll("_", " ")))}</span><strong>${safe(node.source?.objectName || node.code)}</strong><span>${safe(node.source?.objectType || "")}</span><dl>${(node.parameters || []).map((parameter) => `<div><dt>${safe(parameter.name)}</dt><dd>${safe(String(parameter.value))}</dd></div>`).join("")}</dl></article>`;
+function rowName(row) {
+  if (row.kind === "final") return copy("finalAvailability", "Final availability");
+  return row.name || row.source?.objectName || copy(row.labelCode || "unresolvedAvailability", "Availability unresolved");
 }
 
-function scheduleRows(graph) {
-  const nodes = graph.nodes || [], byID = new Map(nodes.map((node) => [node.id, node]));
-  return nodes.filter((node) => (node.kind === "schedule" || node.code === "unresolved_schedule_reference") && !(graph.edges || []).some((edge) => edge.to === node.id && byID.get(edge.from)?.kind === "schedule"));
+function statusLabel(row, value) {
+  const key = value === null ? "unknown" : row.kind === "final" ? value === 1 ? "available" : "unavailable" : value === 1 ? "on" : "off";
+  return copy(`status.${key}`, { unknown: "Unknown", available: "Available", unavailable: "Unavailable", on: "ON", off: "OFF" }[key]);
 }
 
-export function renderHVACAvailability(graph, schedules, calendar) {
-  if (!graph.nodes?.length) return `<p class="hvac-operation-unresolved" data-hvac-graph-unavailable>${safe(copy("graphUnavailable", "This graph is not available in this report. Analyze the input again to resolve its source definitions."))}</p>`;
-  const view = calendar.timelineView || "day", byID = new Map(graph.nodes.map((node) => [node.id, node]));
-  const rows = scheduleRows(graph).map((node) => ({ node, timeline: buildHVACScheduleTimeline(node, schedules, calendar, { view }), owners: [...new Set((graph.edges || []).filter((edge) => edge.to === node.id).map((edge) => byID.get(edge.from)?.source?.objectName).filter(Boolean))] }));
+export function renderHVACAvailability(profile, schedules, calendar) {
+  const model = buildHVACAvailabilityStack(profile || {}, schedules, calendar, { view: calendar.timelineView || "day" });
   const id = `hvac-availability-${++nextID}`;
-  models.set(id, { rows, calendar, view });
-  while (models.size > 8) models.delete(models.keys().next().value);
-  return `<div class="hvac-availability-graph" data-hvac-operation-graph="availability" data-hvac-timeline-id="${id}" role="group" aria-label="${safe(copy("availabilityGraph", "Availability definition graph"))}">
-    <div class="hvac-availability-toolbar"><label>${safe(copy("timelineView", "View"))}<select data-hvac-operation-calendar="timelineView">${[["day", "representativeDay", "Representative day"], ["week", "representativeWeek", "Representative week"], ["year", "annual", "Annual"]].map(([value, key, label]) => `<option value="${value}"${value === view ? " selected" : ""}>${safe(copy(key, label))}</option>`).join("")}</select></label>${view === "year" ? `<label>${safe(copy("year", "Year"))}<input type="number" min="1900" max="2199" value="${calendar.year}" data-hvac-operation-calendar="year"/></label>` : ""}<button type="button" data-hvac-timeline-reset>${safe(copy("resetTimeline", "Reset view"))}</button><span>${safe(copy("timelineInteractions", "Wheel: zoom time · drag: pan · ← / →: pan · + / −: zoom"))}</span></div>
-    <p class="hvac-availability-basis">${safe(copy(view === "year" ? "annualBasis" : view === "week" ? "weekBasis" : "dayBasis", view === "year" ? "Standard Gregorian weekdays; holidays, DST and runtime overrides are not applied." : view === "week" ? "Seven consecutive dates from the selected date and day type; source values, without averaging." : "Exact schedule values for the selected date and day type."))}</p>
-    <div class="hvac-availability-legend"><span><i class="curve"></i>${safe(copy("rawScheduleValue", "Raw schedule value"))}</span><span><i class="zero"></i>${safe(copy("zeroScheduleValue", "Zero"))}</span><span><i class="unknown"></i>${safe(copy("unknownScheduleValue", "Unavailable"))}</span></div>
-    <div class="hvac-availability-timelines" tabindex="0" role="group" aria-label="${safe(copy("timelineInteractions", "Wheel: zoom time · drag: pan · ← / →: pan · + / −: zoom"))}">${rows.map(({ node, owners, timeline }, index) => {
-      const { minimum, maximum } = timeline;
-      const presence = timeline.hasPositive ? "present" : timeline.allOff === true ? "absent" : "unknown";
-      const presenceLabel = copy(`positiveValues.${presence}`, presence === "present" ? "Positive values present" : presence === "absent" ? "No positive values" : "Positive values unresolved");
-      const name = node.parameters?.find((parameter) => parameter.name === "Schedule Name")?.value || node.source?.objectName || node.code;
-      return `<article class="hvac-availability-timeline-row" data-hvac-control-node="${safe(node.id)}" data-hvac-node-kind="schedule" data-hvac-timeline-row="${index}"><div class="hvac-availability-timeline-heading"><strong class="hvac-control-source">${safe(name)}</strong><span>${safe(owners.join(" · "))}</span><span class="hvac-availability-presence ${presence}" data-hvac-positive-values="${presence}">${safe(presenceLabel)}</span><b>${minimum === null ? safe(copy("unknownScheduleValue", "Unavailable")) : safe(minimum === maximum ? number(minimum) : `${number(minimum)}–${number(maximum)}`)}</b></div><svg class="hvac-availability-timeline-plot" data-hvac-schedule-plot${timeline.status === "unknown" ? " data-hvac-schedule-unknown" : ""} role="img" aria-label="${safe(name)}" viewBox="0 0 800 112"></svg></article>`;
-    }).join("") || `<p class="hvac-operation-unresolved">${safe(copy("noDeclaredSchedules", "No availability schedule is declared for this occurrence. See the source definitions below."))}</p>`}</div>
-    <div class="hvac-availability-hover" data-hvac-timeline-hover aria-live="polite"></div>
-    <details class="hvac-availability-provenance" data-hvac-definition-details><summary>${safe(copy("definitionReferences", "Source definitions and references"))}</summary><div class="hvac-availability-definition-list">${graph.nodes.map(definitionFields).join("")}</div><ul class="hvac-availability-reference-list">${(graph.edges || []).map((edge) => `<li data-hvac-definition-edge><strong>${safe(byID.get(edge.from)?.source?.objectName || edge.from)}</strong> → <span>${safe(byID.get(edge.to)?.source?.objectName || edge.to)}</span></li>`).join("")}</ul></details>
+  models.set(id, model);
+  while (models.size > 2) models.delete(models.keys().next().value);
+  return `<div class="hvac-availability-graph" data-hvac-operation-graph="availability" data-hvac-timeline-id="${id}" role="group" aria-label="${safe(copy("availability", "Availability"))}">
+    <div class="hvac-availability-toolbar"><select data-hvac-operation-calendar="timelineView" aria-label="${safe(copy("timelineView", "View"))}">${[["day", "representativeDay", "Representative day"], ["week", "representativeWeek", "Representative week"], ["year", "annual", "Annual"]].map(([value, key, label]) => `<option value="${value}"${value === model.view ? " selected" : ""}>${safe(copy(key, label))}</option>`).join("")}</select><span data-hvac-timeline-hover aria-live="polite"></span></div>
+    <div class="hvac-availability-timelines" tabindex="0" role="group" aria-label="${safe(copy("availability", "Availability"))}" aria-keyshortcuts="ArrowLeft ArrowRight + - Home">${model.rows.map((row, index) => `<article class="hvac-availability-timeline-row ${row.kind === "final" ? "final" : ""}" data-hvac-timeline-row="${index}" data-hvac-availability-row="${safe(row.id)}" data-hvac-availability-kind="${safe(row.kind)}"><strong class="hvac-availability-name" title="${safe(rowName(row))}">${safe(rowName(row))}</strong><svg class="hvac-availability-timeline-plot" data-hvac-schedule-plot role="img" aria-label="${safe(rowName(row))}" viewBox="0 0 800 28"></svg><span class="hvac-availability-row-status" data-hvac-row-status></span></article>`).join("")}
+      <div class="hvac-availability-axis-row"><span></span><svg class="hvac-availability-time-axis" aria-hidden="true" viewBox="0 0 800 26"></svg><span></span></div>
+    </div>
   </div>`;
 }
 
-function timelineDate(model, minute) {
-  const calendar = model.rows[0]?.timeline.startDate || model.calendar, origin = Date.UTC(calendar.year, calendar.month - 1, calendar.day);
-  return new Date(origin + minute * 60000);
-}
-
 function timeLabel(model, minute, span) {
-  if (model.view === "day") return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(Math.floor(minute % 60)).padStart(2, "0")}`;
-  const weekTick = model.view === "week" && span > 3 * 1440 ? model.rows[0].timeline.ticks.find((tick) => tick.minute === minute) : null;
-  if (weekTick?.dayType) return `${copy(`dayType.${weekTick.dayType}`, weekTick.dayType)} ${weekTick.month}/${weekTick.day}`;
-  return new Intl.DateTimeFormat(getLanguage(), { timeZone: "UTC", month: model.view === "year" && span > 40 * 1440 ? "short" : "2-digit", ...(span > 40 * 1440 ? {} : { day: "2-digit" }), ...(span < 3 * 1440 ? { hour: "2-digit", minute: "2-digit", hour12: false } : {}) }).format(timelineDate(model, minute));
+  const whole = Math.floor(minute);
+  if (model.view === "day") return `${String(Math.floor(whole / 60)).padStart(2, "0")}:${String(whole % 60).padStart(2, "0")}`;
+  const tick = model.view === "week" && span > 3 * 1440 ? model.ticks.find((item) => item.minute === minute) : null;
+  if (tick?.dayType) return `${copy(`dayType.${tick.dayType}`, tick.dayType)} ${tick.month}/${tick.day}`;
+  const start = model.startDate, date = new Date(Date.UTC(start.year, start.month - 1, start.day) + whole * 60000);
+  return new Intl.DateTimeFormat(getLanguage(), { timeZone: "UTC", month: model.view === "year" && span > 40 * 1440 ? "short" : "2-digit", ...(span > 40 * 1440 ? {} : { day: "2-digit" }), ...(span < 3 * 1440 ? { hour: "2-digit", minute: "2-digit", hour12: false } : {}) }).format(date);
 }
 
 function ticksFor(model, range, width) {
   const span = range.end - range.start, count = Math.max(2, Math.floor(width / 110));
-  if (model.view === "week" && range.start === 0 && range.end === model.rows[0].timeline.totalMinutes) return model.rows[0].timeline.ticks.filter((_, index) => index % Math.ceil(model.rows[0].timeline.ticks.length / count) === 0).map((tick) => tick.minute);
-  if (model.view === "year" && span > 40 * 1440) {
-    const ticks = [];
-    for (let month = 0; month < 12; month++) { const minute = (Date.UTC(model.calendar.year, month, 1) - Date.UTC(model.calendar.year, 0, 1)) / 60000; if (minute >= range.start && minute <= range.end) ticks.push(minute); }
-    return ticks.filter((_, index) => index % Math.ceil(ticks.length / count) === 0);
-  }
-  const step = [30, 60, 120, 180, 360, 720, 1440, 2880, 10080].find((value) => value >= span / count) || 10080;
+  if (range.start === 0 && range.end === model.totalMinutes) return model.ticks.filter((_, index) => index % Math.ceil(model.ticks.length / count) === 0).map((tick) => tick.minute);
+  const step = [30, 60, 120, 180, 360, 720, 1440, 2880, 10080, 43200].find((value) => value >= span / count) || 43200;
   const ticks = [];
   for (let minute = Math.ceil(range.start / step) * step; minute <= range.end; minute += step) ticks.push(minute);
   return ticks;
@@ -78,82 +54,75 @@ function segmentIndex(segments, minute) {
   return low;
 }
 
-// Preserve exact minute evidence in the model and hover. At year scale there
-// can be more changes than screen pixels: draw each pixel's observed min/max,
-// never an hourly average that could erase a short positive interval.
-function plotSegments(segments, range, width) {
+// Screen pixels can contain several exact native intervals. Preserve every
+// observed status in their patch rather than choosing an average or majority.
+function plotPatches(segments, range, width) {
   const first = segmentIndex(segments, range.start), last = segmentIndex(segments, range.end - .0001) + 1;
-  if (last - first <= width * 3) return segments.slice(first, last);
+  const mask = (value) => value === null ? 4 : value === 1 ? 2 : 1;
+  if (last - first <= width * 2) return segments.slice(first, last).map((segment) => ({ ...segment, mask: mask(segment.value) }));
   const count = Math.max(1, Math.ceil(width)), span = range.end - range.start;
-  const buckets = Array.from({ length: count }, (_, index) => ({ startMinute: range.start + index / count * span, endMinute: range.start + (index + 1) / count * span, minimum: Infinity, maximum: -Infinity, unknown: false }));
+  const buckets = Array.from({ length: count }, (_, index) => ({ startMinute: range.start + index / count * span, endMinute: range.start + (index + 1) / count * span, mask: 0 }));
   for (let index = first; index < last; index++) {
-    const segment = segments[index];
-    const start = Math.max(0, Math.floor((segment.startMinute - range.start) / span * count));
+    const segment = segments[index], begin = Math.max(0, Math.floor((segment.startMinute - range.start) / span * count));
     const end = Math.min(count - 1, Math.floor((Math.min(segment.endMinute, range.end) - range.start - .0001) / span * count));
-    for (let pixel = start; pixel <= end; pixel++) {
-      const bucket = buckets[pixel];
-      if (segment.value === null) bucket.unknown = true;
-      else { bucket.minimum = Math.min(bucket.minimum, segment.value); bucket.maximum = Math.max(bucket.maximum, segment.value); }
-    }
+    for (let pixel = begin; pixel <= end; pixel++) buckets[pixel].mask |= mask(segment.value);
   }
-  return buckets.flatMap((bucket) => {
-    const result = [];
-    if (bucket.unknown) result.push({ ...bucket, value: null });
-    if (bucket.minimum !== Infinity) result.push({ ...bucket, value: bucket.minimum === 0 && bucket.maximum === 0 ? 0 : bucket.maximum });
-    return result;
-  });
+  return buckets;
 }
 
 export function connectHVACAvailability(container) {
   const host = container?.querySelector("[data-hvac-timeline-id]"), model = host && models.get(host.dataset.hvacTimelineId);
   if (!host || !model) { models.clear(); return () => {}; }
-  // String-rendered models only bridge render/connect. Keep the active model;
-  // replaced equipment or calendar views must not retain dense annual traces.
   models.clear(); models.set(host.dataset.hvacTimelineId, model);
-  if (!model.rows.length) return () => {};
-  const plotHost = host.querySelector(".hvac-availability-timelines"), total = model.rows[0].timeline.totalMinutes;
-  let range = { start: 0, end: total }, drag = null;
+  const plotHost = host.querySelector(".hvac-availability-timelines"), total = model.totalMinutes;
+  let range = { start: 0, end: total }, drag = null, hoverMinute = null;
   const controller = new AbortController(), { signal } = controller;
-  const hover = host.querySelector("[data-hvac-timeline-hover]");
-  const draw = () => {
-    host.dataset.timelineStart = range.start; host.dataset.timelineEnd = range.end; host.dataset.timelineTotal = total;
-    for (const [index, { timeline }] of model.rows.entries()) {
-      const svg = host.querySelector(`[data-hvac-timeline-row="${index}"] svg`), width = Math.max(160, svg.clientWidth), span = range.end - range.start;
-      const x = (minute) => 44 + (minute - range.start) / span * (width - 58);
-      const visible = plotSegments(timeline.segments, range, width - 58);
-      const low = Math.min(0, timeline.minimum ?? 0), maximum = Math.max(0, timeline.maximum ?? 0);
-      const high = maximum > 0 ? maximum : low < 0 ? 0 : 1;
-      const y = (value) => 72 - (value - low) / (high - low) * 58, pattern = `${host.dataset.hvacTimelineId}-unknown-${index}`;
-      const ticks = ticksFor(model, range, width - 58);
-      let path = "", previous = null;
-      for (const segment of visible) {
-        if (segment.value === null) { previous = null; continue; }
-        const start = x(Math.max(segment.startMinute, range.start)), end = x(Math.min(segment.endMinute, range.end));
-        if (segment.minimum !== undefined) {
-          path += `M${(start + end) / 2},${y(segment.minimum)} V${y(segment.maximum)} `; previous = null; continue;
-        }
-        path += `${previous ? "L" : "M"}${start},${y(segment.value)} H${end} `; previous = segment;
-      }
-      svg.setAttribute("viewBox", `0 0 ${width} 112`);
-      svg.dataset.renderedSegments = visible.length; svg.dataset.sourceSegments = timeline.segments.length;
-      svg.innerHTML = `<defs><pattern id="${pattern}" width="7" height="7" patternUnits="userSpaceOnUse"><path d="M0,7 L7,0" stroke="#d2a867" stroke-opacity=".5"/></pattern></defs>${visible.filter((segment) => segment.value === 0 || segment.value === null).map((segment) => `<rect class="${segment.value === null ? "unknown" : "zero"}" x="${x(Math.max(segment.startMinute, range.start))}" y="10" width="${Math.max(.3, x(Math.min(segment.endMinute, range.end)) - x(Math.max(segment.startMinute, range.start)))}" height="66"${segment.value === null ? ` fill="url(#${pattern})"` : ""}/>`).join("")}${ticks.map((minute) => `<line class="hvac-timeline-grid" x1="${x(minute)}" x2="${x(minute)}" y1="10" y2="76"/><text x="${x(minute)}" y="100" text-anchor="middle">${safe(timeLabel(model, minute, span))}</text>`).join("")}<line class="hvac-timeline-baseline" x1="44" x2="${width - 14}" y1="${y(0)}" y2="${y(0)}"/><path class="hvac-timeline-curve" d="${path}"/><text x="35" y="17" text-anchor="end">${safe(number(high))}</text><text x="35" y="76" text-anchor="end">${safe(number(low))}</text>${model.view === "day" ? visible.map((segment) => `<rect data-schedule-value="${segment.value}" data-start-minute="${segment.startMinute}" data-end-minute="${segment.endMinute}" x="${x(Math.max(segment.startMinute, range.start))}" y="10" width="${Math.max(.3, x(Math.min(segment.endMinute, range.end)) - x(Math.max(segment.startMinute, range.start)))}" height="66" fill="transparent"/>`).join("") : ""}`;
+  const paintHover = (minute) => {
+    hoverMinute = minute;
+    const visible = minute !== null && minute >= range.start && minute < range.end;
+    host.querySelector("[data-hvac-timeline-hover]").textContent = visible ? timeLabel(model, minute, 0) : "";
+    for (const [index, row] of model.rows.entries()) {
+      const element = host.querySelector(`[data-hvac-timeline-row="${index}"]`), svg = element.querySelector("svg"), line = svg.querySelector("[data-hvac-crosshair]"), status = element.querySelector("[data-hvac-row-status]");
+      line.setAttribute("visibility", visible ? "visible" : "hidden");
+      if (!visible) { status.textContent = ""; element.removeAttribute("data-hvac-hover-value"); continue; }
+      const x = 2 + (minute - range.start) / (range.end - range.start) * (svg.clientWidth - 4);
+      line.setAttribute("x1", x); line.setAttribute("x2", x);
+      const segment = row.timeline.segments[segmentIndex(row.timeline.segments, minute)], value = segment?.value ?? null;
+      element.dataset.hvacHoverValue = value === null ? "unknown" : String(value);
+      status.textContent = statusLabel(row, value);
     }
   };
+  const draw = () => {
+    host.dataset.timelineStart = range.start; host.dataset.timelineEnd = range.end; host.dataset.timelineTotal = total;
+    for (const [index, row] of model.rows.entries()) {
+      const svg = host.querySelector(`[data-hvac-timeline-row="${index}"] svg`), width = Math.max(50, svg.clientWidth), span = range.end - range.start;
+      const x = (minute) => 2 + (minute - range.start) / span * (width - 4), patches = plotPatches(row.timeline.segments, range, width - 4);
+      const pattern = `${host.dataset.hvacTimelineId}-unknown-${index}`;
+      svg.setAttribute("viewBox", `0 0 ${width} 28`); svg.dataset.renderedSegments = patches.length; svg.dataset.sourceSegments = row.timeline.segments.length;
+      svg.innerHTML = `<defs><pattern id="${pattern}" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0,6 L6,0"/></pattern></defs>${patches.map((patch) => {
+        const start = x(Math.max(patch.startMinute, range.start)), patchWidth = Math.max(.4, x(Math.min(patch.endMinute, range.end)) - start);
+        const status = patch.mask === 2 ? "on" : patch.mask === 1 ? "off" : patch.mask === 4 ? "unknown" : "mixed";
+        return `<g data-hvac-patch-status="${status}" data-start-minute="${patch.startMinute}" data-end-minute="${patch.endMinute}" data-has-on="${Boolean(patch.mask & 2)}"><rect class="hvac-availability-patch ${patch.mask & 2 ? "on" : "off"}" x="${start}" y="6" width="${patchWidth}" height="16"/>${patch.mask & 1 && patch.mask & 2 ? `<rect class="hvac-availability-patch off" x="${start}" y="14" width="${patchWidth}" height="8"/>` : ""}${patch.mask & 4 ? `<rect class="hvac-availability-patch unknown" x="${start}" y="6" width="${patchWidth}" height="16" fill="url(#${pattern})"/>` : ""}</g>`;
+      }).join("")}<line class="hvac-availability-crosshair" data-hvac-crosshair x1="0" x2="0" y1="1" y2="27" visibility="hidden"/>`;
+    }
+    const axis = host.querySelector(".hvac-availability-time-axis"), width = Math.max(50, axis.clientWidth), span = range.end - range.start;
+    axis.setAttribute("viewBox", `0 0 ${width} 26`);
+    axis.innerHTML = ticksFor(model, range, width).map((minute) => { const x = 2 + (minute - range.start) / span * (width - 4); return `<text x="${x}" y="17" text-anchor="${minute === range.start ? "start" : minute === range.end ? "end" : "middle"}">${safe(timeLabel(model, minute, span))}</text>`; }).join("");
+    paintHover(hoverMinute);
+  };
   const setRange = (start, span) => { span = Math.max(Math.min(60, total), Math.min(total, span)); start = Math.max(0, Math.min(total - span, start)); range = { start, end: start + span }; draw(); };
-  const ratioAt = (event, svg) => Math.max(0, Math.min(1, (event.clientX - svg.getBoundingClientRect().left - 44) / Math.max(1, svg.clientWidth - 58)));
-  plotHost.addEventListener("wheel", (event) => { const svg = event.target.closest("svg"); if (!svg) return; event.preventDefault(); const span = range.end - range.start, ratio = ratioAt(event, svg), nextSpan = span * Math.exp(Math.max(-1, Math.min(1, event.deltaY / 450))); setRange(range.start + span * ratio - nextSpan * ratio, nextSpan); }, { passive: false, signal });
-  plotHost.addEventListener("pointerdown", (event) => { const svg = event.target.closest("svg"); if (!svg || event.button !== 0) return; drag = { x: event.clientX, start: range.start, span: range.end - range.start, width: svg.clientWidth - 58 }; if (event.isTrusted) plotHost.setPointerCapture(event.pointerId); plotHost.classList.add("dragging"); }, { signal });
+  const ratioAt = (event, svg) => Math.max(0, Math.min(1, (event.clientX - svg.getBoundingClientRect().left - 2) / Math.max(1, svg.clientWidth - 4)));
+  plotHost.addEventListener("wheel", (event) => { const svg = event.target.closest(".hvac-availability-timeline-plot"); if (!svg) return; event.preventDefault(); const span = range.end - range.start, ratio = ratioAt(event, svg), minute = range.start + span * ratio, next = span * Math.exp(Math.max(-1, Math.min(1, event.deltaY / 450))); setRange(minute - next * ratio, next); paintHover(Math.min(total - .001, minute)); }, { passive: false, signal });
+  plotHost.addEventListener("pointerdown", (event) => { const svg = event.target.closest(".hvac-availability-timeline-plot"); if (!svg || event.button !== 0) return; drag = { svg, x: event.clientX, start: range.start, span: range.end - range.start, width: svg.clientWidth - 4 }; if (event.isTrusted) plotHost.setPointerCapture(event.pointerId); plotHost.classList.add("dragging"); }, { signal });
   plotHost.addEventListener("pointermove", (event) => {
-    if (drag) { setRange(drag.start - (event.clientX - drag.x) / Math.max(1, drag.width) * drag.span, drag.span); return; }
-    const row = event.target.closest("[data-hvac-timeline-row]"), svg = row?.querySelector("svg"); if (!svg) return;
-    const index = Number(row.dataset.hvacTimelineRow), minute = Math.min(total - 1, range.start + ratioAt(event, svg) * (range.end - range.start));
-    const source = model.rows[index].timeline.segments, segment = source[segmentIndex(source, minute)];
-    hover.textContent = `${row.querySelector("strong").textContent} · ${timeLabel(model, minute, 0)} · ${segment?.value == null ? copy("unknownScheduleValue", "Unavailable") : number(segment.value)}`;
+    const svg = drag?.svg || event.target.closest(".hvac-availability-timeline-plot"); if (!svg) return;
+    if (drag) setRange(drag.start - (event.clientX - drag.x) / Math.max(1, drag.width) * drag.span, drag.span);
+    paintHover(Math.min(total - .001, range.start + ratioAt(event, svg) * (range.end - range.start)));
   }, { signal });
   const stop = () => { drag = null; plotHost.classList.remove("dragging"); };
   plotHost.addEventListener("pointerup", stop, { signal }); plotHost.addEventListener("pointercancel", stop, { signal });
+  plotHost.addEventListener("pointerleave", () => { if (!drag) paintHover(null); }, { signal });
   plotHost.addEventListener("keydown", (event) => { const span = range.end - range.start; if (["ArrowLeft", "ArrowRight", "+", "=", "-", "Home", "0"].includes(event.key)) event.preventDefault(); else return; if (event.key === "Home" || event.key === "0") setRange(0, total); else if (event.key === "ArrowLeft" || event.key === "ArrowRight") setRange(range.start + span * (event.key === "ArrowLeft" ? -.2 : .2), span); else { const next = span * (event.key === "-" ? 1.5 : 1 / 1.5); setRange(range.start + (span - next) / 2, next); } }, { signal });
-  host.querySelector("[data-hvac-timeline-reset]").addEventListener("click", () => setRange(0, total), { signal });
   const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(draw) : null;
   observer?.observe(plotHost); draw();
   return () => { controller.abort(); observer?.disconnect(); };

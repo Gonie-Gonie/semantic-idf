@@ -18,16 +18,15 @@ The release script infers bump size from these sections:
 
 ## Changed
 
-- Loop equipment inspection separates three graphs: declared availability
-  references, configured On / Off decisions, and parameter control. Parameter
+- Loop equipment inspection separates three graphs: Availability,
+  configured On / Off decisions, and parameter control. Parameter
   control distinguishes external inputs/outputs, manipulated commands and
-  calculated states, with signed comparisons only for supported rules. Shared
-  calendar controls update raw schedule values; unresolved runtime decisions
-  remain explicit.
-- Availability schedules offer representative day/week and annual linear
-  timelines with shared time-axis zoom/pan, source-value hover and expandable
-  definition evidence. Minute transitions and unavailable intervals are
-  preserved; annual views identify their standard weekday-calendar basis.
+  calculated states, with signed comparisons only for supported rules.
+  Unresolved runtime decisions remain explicit.
+- Availability stacks compact ON/OFF patches for related conditions and final
+  configured permission. Rep. day/week and Annual share time-axis zoom/pan and
+  a cursor for comparing statuses. Manager overrides and unknown runtime inputs
+  are preserved; the calendar remains a static inspection basis.
 - Energy Path separates thermal gains/losses and storage/release before native
   interval aggregation. Directional cards show one positive gross magnitude with
   gain/loss in the label, including nonzero exchange with zero load. Ribbons

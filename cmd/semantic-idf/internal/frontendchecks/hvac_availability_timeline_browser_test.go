@@ -43,7 +43,7 @@ func TestHVACAvailabilitySourceTimelineBrowser(t *testing.T) {
 
 const hvacAvailabilityTimelineBrowserHTML = `<!doctype html><html><body data-timeline-status="pending"><pre id="result"></pre><script type="module">
 try {
-  const {buildHVACScheduleTimeline:build}=await import('/src/js/hvac-availability-timeline.js');
+  const {buildHVACScheduleTimeline:build,buildHVACAvailabilityStack:stack}=await import('/src/js/hvac-availability-timeline.js');
   const {normalizeHVACOperationCalendar:normalize}=await import('/src/js/hvac-operation.js');
   const check=(condition,message)=>{if(!condition)throw new Error(message);};
   const node=(name,type='Schedule:Constant')=>({kind:'schedule',source:{objectName:name,objectType:type}});
@@ -81,6 +81,58 @@ try {
   check(build(node('Off'),schedules,calendar,{view:'year'})===zero,'Immutable schedule timeline cache missed');
   check(JSON.stringify(schedules)===before,'Timeline builder mutated source definitions');
   check(normalize({...calendar,month:2,day:31,timelineView:'year'}).day===28&&normalize({...calendar,year:2024,month:2,day:31}).day===29,'Calendar bounds ignore selected year');
+  const owner={objectIndex:7,objectType:'Fan:VariableVolume',objectName:'Supply Fan'};
+  const positive=scheduleName=>({op:'schedule_positive',scheduleName});
+  const together=(...children)=>({op:'all',children});
+  const input=(name,id=name)=>({id,kind:'schedule',source:{objectName:name,objectType:'Schedule:Constant'}});
+  const profile=(expression,names=['Off'],layers)=>({availabilityDefinitions:{nodes:names.map(name=>input(name)),edges:[]},
+    availabilityLayers:layers||[{id:'equipment',owner,role:'equipment',expression}],finalAvailability:expression});
+  const last=result=>result.rows.at(-1).timeline;
+  const only=(timeline,value)=>timeline.segments.length===1&&timeline.segments[0].value===value;
+  const extra=[...schedules,constant('On',1),constant('Tiny',.0001)];
+  const rawStates=stack(profile(together(positive('Tiny'),positive('Negative')),['Tiny','Negative']),extra,calendar);
+  check(rawStates.rows.length===3&&rawStates.rows.at(-1).kind==='final','Inputs not followed by one final row');
+  check(only(rawStates.rows[0].timeline,1)&&only(rawStates.rows[1].timeline,0)&&only(last(rawStates),0),'Source predicates were not binary or final AND lost knownzero');
+  const cycleOn={op:'manager_scheduled_on',scheduleName:'On'};
+  const forceOff={op:'manager_scheduled_off',scheduleName:'Off'};
+  const fanOverride=profile({op:'fan_gate',target:'central_fan',children:[cycleOn,positive('Off')]},['On','Off']);
+  const immutable=JSON.stringify(fanOverride), override=stack(fanOverride,extra,calendar,{view:'week'});
+  check(only(override.rows[1].timeline,0)&&only(last(override),1),'Final incorrectly ANDed source rows instead of manager fan override');
+  check(override.rows.every(row=>row.timeline.totalMinutes===7*1440&&JSON.stringify(row.timeline.startDate)===JSON.stringify(override.startDate)),'Stack row calendars drifted');
+  check(stack(fanOverride,extra,calendar,{view:'week'})===override&&JSON.stringify(fanOverride)===immutable,'Stack cache missed or mutated profile');
+  const negativeOff=stack(profile({op:'manager_scheduled_off',scheduleName:'Negative'},['Negative']),extra,calendar);
+  check(only(negativeOff.rows[0].timeline,0)&&only(last(negativeOff),1),'ScheduledOff treated negative nonzero source as ForceOff');
+  for(const [op,wanted] of [['air_managers',0],['plant_managers',1]]) {
+    const expression={op:'manager_gate',children:[{op,children:[cycleOn,forceOff]}]};
+    check(only(last(stack(profile(expression,['On','Off']),extra,calendar)),wanted),'Stack lost native manager priority: '+op);
+  }
+  const runtime={op:'manager_unknown',reason:'runtime_manager',source:{objectIndex:8,objectType:'AvailabilityManager:NightCycle',objectName:'Night Cycle'}};
+  const unknown=stack(profile({op:'manager_gate',children:[runtime]},['On']),extra,calendar);
+  check(unknown.rows.length===3&&unknown.rows[1].kind==='layer'&&unknown.rows[1].name==='Night Cycle'&&only(unknown.rows[1].timeline,null)&&only(last(unknown),null),'Runtime manager input disappeared or became known');
+  check(only(last(stack(profile(together(positive('Off'),{op:'manager_gate',children:[runtime]}),['Off']),extra,calendar)),0),'Known OFF no longer masks unknown permission');
+  const dispatch={op:'always',value:0,reason:'not_in_operation_scheme'};
+  const dispatched=stack(profile(together(positive('On'),dispatch),['On'],[{id:'dispatch',owner,role:'plant_dispatch',expression:dispatch}]),extra,calendar);
+  check(dispatched.rows[1].kind==='layer'&&only(dispatched.rows[1].timeline,0)&&only(last(dispatched),0),'Explicit zero dispatch membership became missing or unknown');
+  const unresolvedProfile=profile(positive('Missing'),[]);
+  unresolvedProfile.availabilityDefinitions.nodes=[{id:'missing',kind:'unknown',code:'unresolved_schedule_reference',source:owner,parameters:[{name:'Schedule Name',value:'Missing'}]}];
+  const unresolved=stack(unresolvedProfile,extra,calendar);
+  check(unresolved.rows[0].name==='Missing'&&only(unresolved.rows[0].timeline,null)&&only(last(unresolved),null),'Missing schedule was omitted or resolved from owner name');
+  const nested=profile(positive('Pulse'),['Pulse']);
+  nested.availabilityDefinitions.nodes.push({id:'dayPulse',...node('Pulse','Schedule:Day:Interval')});
+  nested.availabilityDefinitions.edges.push({from:'Pulse',to:'dayPulse'});
+  nested.onOff={nodes:[input('On','unrelatedControl')],edges:[]};
+  const annual=stack(nested,extra,calendar,{view:'year'});
+  check(annual.rows.length===2&&last(annual).positiveMinutes===365&&last(annual).segments.length===731&&last(annual).segments[1].startMinute===367,'Annual stack sampled away minute pulses, included nested day or unrelated control schedules');
+  const leap=stack(nested,extra,{...calendar,year:2024},{view:'year'});
+  check(last(leap).positiveMinutes===366&&last(leap).totalMinutes===366*1440,'Final availability calendar lost leapday');
+  const weekly=stack(profile(positive('Week'),['Week']),extra,{...calendar,month:6,day:29},{view:'week'});
+  check(last(weekly).positiveMinutes===5*1440,'Final week does not advance weekday with source rows');
+  const partialFinal=last(stack(profile(positive('Missing weekends'),['Missing weekends']),extra,calendar,{view:'year'}));
+  check(partialFinal.status==='partial'&&partialFinal.allOff===null&&partialFinal.unknownMinutes>0,'Final unknown calendar interval was rendered as known OFF');
+  const legacy=stack({finalAvailability:positive('Tiny')},extra,calendar);
+  check(legacy.rows[0].name==='Tiny'&&!legacy.rows[0].source.objectType&&only(last(legacy),1),'Legacy exact references were lost or source type fabricated');
+  check(only(last(stack({},extra,calendar)),null),'Absent final availability became unrestricted');
+  check(JSON.stringify(schedules)===before,'Availability stack mutated original schedules');
   document.body.dataset.timelineStatus='passed';document.querySelector('#result').textContent='passed';
 } catch(error) { document.body.dataset.timelineStatus='failed';document.querySelector('#result').textContent=error.stack||String(error); }
 </script></body></html>`

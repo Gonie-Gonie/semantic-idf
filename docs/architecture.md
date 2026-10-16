@@ -87,8 +87,9 @@ supports identity and indexing; it is not an exposed input tab. Follow the
 
 HVAC operating profiles are scoped by component object index and loop ID.
 Typed containment supplies ancestors; exact node/circuit matches supply
-controllers and setpoints. Each `operatingProfiles` entry exposes three
-source-backed `HVACControlSequence` graphs:
+controllers and setpoints. The interface has three graphs: stacked Availability
+permissions, On / Off decisions and Parameter control. Each `operatingProfiles`
+entry retains source-backed `HVACControlSequence` records:
 
 | Field | Meaning |
 | --- | --- |
@@ -96,10 +97,19 @@ source-backed `HVACControlSequence` graphs:
 | `onOff` | Configured permission and demand conditions with explicit ON, OFF and unresolved branches |
 | `parameterControl` | External inputs, controllers/setpoints, manipulated control variables, calculated state variables and external outputs |
 
-Availability definitions contain no combined permission, dispatch algorithm or
-invented serial execution order. On/off combination preserves all/any semantics,
-air/zone manager precedence and plant assignment priority rather than treating
-every manager as another AND gate. A branch describes configured logic; runtime
+The Availability view stacks root schedules referenced by
+`availabilityDefinitions` as binary source rows: positive is ON, nonpositive is
+OFF and unavailable is unknown. Additional unresolved runtime leaves and dispatch
+conditions remain visible where needed. The bottom row evaluates the actual
+`finalAvailability` expression, not an AND of the displayed source flags or a
+second set of applied layer curves. A source schedule's flag is not itself a
+manager status: ScheduledOff tests exact zero, and fan overrides and manager
+priority can change the final permission. Source definition records remain
+available programmatically; the view exposes no raw numeric
+schedule ranges, definition/parameter disclosures or algorithm nodes. Both
+availability evaluation and On / Off preserve all/any semantics, air/zone
+manager precedence and plant assignment priority rather than treating every
+manager as another AND gate. A branch describes configured logic; runtime
 loads, temperatures, external/EMS schedules and unsupported conditions remain
 unresolved. It never asserts that equipment actually ran.
 
@@ -124,18 +134,17 @@ remain explicit external inputs with unresolved provider/value and comparison
 signs, except the supported pure-temperature residual convention.
 
 Legacy `availabilityLayers`, `finalAvailability` and `control` fields remain
-compatible. A saved report without the new graphs displays a reanalysis hint
-instead of reclassifying its old mixed control diagram as one of the new views.
-`operatingSchedules` retains exact supported calendar rules; calendar selection
-updates supported raw schedule values throughout the equipment inspection.
-Availability timelines expose representative day, seven consecutive dates and
-the selected Gregorian year. Annual weekdays are Gregorian; holidays, DST and
-runtime overrides are not invented. A special day-type selection applies only
-to the first day of the representative week. Minute transitions and unknown
-intervals survive run-length compression; timeline caches are bounded. Rows
-share horizontal zoom/pan, while source definitions remain expandable.
-Static HVAC does not reuse Profile's approximate schedule fallback. Calendar
-changes only replace the equipment inspection.
+compatible. On / Off and Parameter control show a reanalysis hint when their
+new graphs are absent, rather than reclassifying the old mixed control diagram.
+`operatingSchedules` retains exact supported calendar rules. The Availability
+toolbar exposes only Rep. day, Rep. week and Annual. Representative views use
+January 1/current year and a Monday anchor; Annual uses that year's regular
+Gregorian weekdays. Programmatic calendar options remain compatible, but the
+UI has no month/day/day-type/year/reset controls. Holidays, DST and runtime
+overrides are not invented. Minute transitions and unknown intervals survive
+compression; caches and drawing work are bounded. All rows share horizontal
+zoom/pan and a time cursor/status. Static HVAC does not reuse Profile's
+approximate schedule fallback.
 
 Metrics definitions, calculated values, guide entries and exports share one
 catalog. Metrics JSON stays categorized; CSV is `name,value`, with variable IDs

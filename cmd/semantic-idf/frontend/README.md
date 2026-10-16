@@ -6,17 +6,20 @@
 - `src/js`: feature modules for state, actions, views, navigation, settings, and analysis.
 - `src/js/hvac-operation.js` resolves exact calendar/day-type schedule traces
   for the selected equipment occurrence. `views/hvac-operation-view.js` renders
-  three separate graphs: availability definitions, On / Off decisions, and
+  three separate graphs: Availability, On / Off decisions, and
   parameter control with explicit external ports and control/state roles.
   These consume `HVACReport.operatingProfiles` and `operatingSchedules` from
   `internal/idf/hvac_operation*.go`, independently of simulation results and the
-  Profile tab's schedule approximations. Legacy permission evaluation remains
-  available for compatible consumers; missing or runtime inputs stay unknown.
+  Profile tab's schedule approximations. Availability shows binary source
+  schedules and evaluates the native final permission expression with manager
+  precedence/overrides; runtime inputs stay unknown.
   Exact object IDs, typed containment and circuit ports scope each profile;
   raw setpoint/performance schedules do not become binary availability gates.
-  `hvac-availability-timeline.js` builds bounded, compressed source timelines;
+  `hvac-availability-timeline.js` builds bounded, compressed permission timelines;
   `views/hvac-availability-view.js` owns representative day/week and annual
-  linear charts, shared horizontal zoom/pan and expandable source definitions.
+  binary patches, related input rows and a final permission row, with shared
+  horizontal zoom/pan and a time cursor/status. Its only visible control is the
+  time-view selector; calendar APIs remain compatible for programmatic users.
 - `src/js/simulation-progress.js`: measured work, approximate remaining-time
   presentation, HTTP progress polling and response-byte progress. Unknown totals
   remain indeterminate; legacy stage-count percentages are not displayed as time.

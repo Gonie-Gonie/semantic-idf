@@ -107,51 +107,34 @@ rather than a guessed assignment.
 
 ## Read equipment availability and control {#component-values}
 
-Select equipment in the loop diagram to open three graphs: **Availability
-definitions**, **On / Off decisions**, and **Parameter control**. Shared
+Select equipment in the loop diagram to open three graphs: **Availability**,
+**On / Off decisions**, and **Parameter control**. Shared
 equipment is inspected in the selected loop's
 context, so another circuit's setpoint is not automatically its control target.
 
-The month, day and day-type controls select the raw schedule values shown in
-all three graphs. Supported schedules retain their original day/week/year
-definitions. An external, missing or unsupported schedule remains unresolved;
-it is not replaced by an approximate daily profile. Older saved analysis without
-these graphs needs reanalysis of its source input.
+Missing, unsupported or runtime-dependent inputs remain unresolved. Older saved
+analysis may need reanalysis of its source input to show the new control graphs.
 
-### Availability definitions {#availability-definitions}
+### Availability {#availability-definitions}
 
-This graph answers **where availability is declared**. Follow the equipment,
-parent or loop reference to its AvailabilityManagerAssignmentList, individual
-AvailabilityManager objects and referenced schedules. Expand **Source
-definitions and references** to read the original fields and their links.
-Each timeline row shows one referenced schedule's raw values; it is not a
-final equipment permission plot. Shared references use the same schedule row.
+Related availability schedules are stacked as **ON / OFF** time bands, with
+**Final availability** at the bottom. A source schedule is ON when positive and
+OFF otherwise; unavailable inputs remain distinct. These source flags are not
+individual manager decisions. The final row applies the modeled manager rules
+and overrides, so it is not a simple AND of the rows. For example, a CycleOn
+manager can override a fan's own OFF schedule. Final ON permits operation and
+Final OFF blocks it; neither establishes whether the equipment actually ran.
 
-Choose a time view:
+Choose **Rep. day**, **Rep. week** or **Annual**. Representative views start on
+January 1 of the current year, using Monday as the representative starting day;
+Annual follows that year's regular Gregorian weekdays. The calendar does not
+apply simulation holidays, daylight saving or runtime overrides. Managers that
+need unknown temperatures, loads or external inputs stay unresolved.
 
-| View | Time basis |
-| --- | --- |
-| Representative day (Rep. day) | The selected date and day type, on a 00:00–24:00 axis |
-| Representative week (Rep. week) | Seven consecutive dates starting on the selected date; regular weekdays advance from the selected day type |
-| Annual | Every date in the selected Gregorian year, using that year's regular weekdays |
-
-These are source values, without averaging. In Rep. week, a selected special
-day type such as Holiday applies to the first day only; the remaining days
-follow regular weekdays. Annual uses 365 or 366 days according to the year.
-It does not apply the run's holidays, daylight saving or runtime overrides;
-it is a calendar for inspecting definitions, not a simulation operating record.
-Native minute transitions remain available when zooming into a longer view.
-Unavailable intervals remain separate from known zero values.
-
-Use the mouse wheel over a timeline to zoom the **time axis**, then drag to
-pan. All schedule rows share the visible time range. With the timeline focused,
-Left/Right pans and +/− zooms; **Reset view**, Home or 0 restores the full range.
-Hover to read the schedule name, time and raw value. The view uses linear
-timelines in all three time views.
-
-This view keeps declaration references separate from the logic that combines
-them. Fan operating mode, flow, performance and setpoint schedules belong to
-parameter control unless they are explicitly used by an availability definition.
+Use the wheel to zoom the time axis and drag to pan. All rows share the time
+range and cursor; hover to compare their statuses at the same time. Source
+minute transitions and known OFF versus unknown intervals are preserved.
+The detailed decision logic is shown in **On / Off decisions**.
 
 ### On / Off decisions {#on-off-decisions}
 
@@ -165,7 +148,7 @@ The graph preserves alternatives and combination rules. Air/Zone manager
 precedence and Plant manager assignment priority are different rules; several
 manager references do not imply a sequence of independent AND conditions.
 Limits and dispatch ranges use the declared source fields. They do not supply
-invented thresholds or a simulated decision for the selected calendar day.
+invented thresholds or a simulated decision for the inspection period.
 
 ### Parameter control {#parameter-control}
 
