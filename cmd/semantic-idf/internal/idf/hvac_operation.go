@@ -266,6 +266,9 @@ func (b *hvacOperatingBuilder) profile(occ hvacOperatingOccurrence) HVACOperatin
 	}
 	profile.FinalAvailability = hvacOperatingCombine("all", gates...)
 	profile.Control = b.control(occ, profile.AvailabilityLayers)
+	profile.AvailabilityDefinitions = b.availabilityDefinitions(occ, profile.AvailabilityLayers)
+	profile.OnOff = b.onOffControl(occ, profile)
+	profile.ParameterControl = b.parameterControl(occ, profile.Control)
 	return profile
 }
 
@@ -412,7 +415,8 @@ func (b *hvacOperatingBuilder) managerExpression(owner Object, loopType string) 
 	if strings.EqualFold(loopType, "PlantLoop") || strings.EqualFold(loopType, "CondenserLoop") {
 		op = "plant_managers"
 	}
-	result := HVACOperatingExpression{Op: op, Children: []HVACOperatingExpression{}}
+	listSource := hvacOperatingSource(list)
+	result := HVACOperatingExpression{Op: op, Source: &listSource, Children: []HVACOperatingExpression{}}
 	for index := 1; index+1 < len(list.Fields); index += 2 {
 		objectType, name := hvacFieldValue(list, index), hvacFieldValue(list, index+1)
 		if objectType == "" && name == "" {
@@ -421,6 +425,8 @@ func (b *hvacOperatingBuilder) managerExpression(owner Object, loopType string) 
 		manager, found := b.exactObject(objectType, name)
 		expression := HVACOperatingExpression{Op: "manager_unknown", Reason: "missing_manager"}
 		if found {
+			managerSource := hvacOperatingSource(manager)
+			expression.Source = &managerSource
 			switch strings.ToLower(manager.Type) {
 			case "availabilitymanager:scheduled":
 				expression.Op = "manager_scheduled"
@@ -440,7 +446,7 @@ func (b *hvacOperatingBuilder) managerExpression(owner Object, loopType string) 
 				}
 				expression.Reason = ""
 				if expression.ScheduleName == "" {
-					expression = HVACOperatingExpression{Op: "manager_unknown", Reason: "missing_schedule"}
+					expression = HVACOperatingExpression{Op: "manager_unknown", Reason: "missing_schedule", Source: &managerSource}
 				}
 			}
 		}

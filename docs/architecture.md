@@ -86,15 +86,56 @@ supports identity and indexing; it is not an exposed input tab. Follow the
 [navigation contract](semantic-navigation.md) when adding another participant.
 
 HVAC operating profiles are scoped by component object index and loop ID.
-Typed containment supplies ancestor permissions; node/circuit matches supply
-controllers and setpoints. The additive `operatingProfiles` contract carries
-availability expressions and a source-backed control DAG, while
-`operatingSchedules` retains exact supported calendar rules. The browser uses
-minute-resolution, three-state permissions (allowed, blocked, unknown), manager
-priority and fan overrides; runtime dispatch, external/EMS schedules and
-unsupported inputs remain unknown. These are configured permissions, never
-simulation operating status. Static HVAC does not reuse Profile's approximate
-schedule fallback. Calendar changes only replace the equipment inspection.
+Typed containment supplies ancestors; exact node/circuit matches supply
+controllers and setpoints. Each `operatingProfiles` entry exposes three
+source-backed `HVACControlSequence` graphs:
+
+| Field | Meaning |
+| --- | --- |
+| `availabilityDefinitions` | Declared owner, assignment list, AvailabilityManager and schedule references; expanded supported schedule definitions |
+| `onOff` | Configured permission and demand conditions with explicit ON, OFF and unresolved branches |
+| `parameterControl` | External inputs, controllers/setpoints, manipulated control variables, calculated state variables and external outputs |
+
+Availability definitions contain no combined permission, dispatch algorithm or
+invented serial execution order. On/off combination preserves all/any semantics,
+air/zone manager precedence and plant assignment priority rather than treating
+every manager as another AND gate. A branch describes configured logic; runtime
+loads, temperatures, external/EMS schedules and unsupported conditions remain
+unresolved. It never asserts that equipment actually ran.
+
+Graph nodes retain source identities and parameter object/field indexes.
+Availability expressions may additionally retain their declaring `source`, so
+an inherited fan override keeps the loop/parent manager's actual owner rather
+than guessing it from the selected fan or manager-list position.
+`boundary` identifies `input`/`output`; edges may carry `condition` (`yes`, `no`,
+`unknown`) and `polarity` (`positive`, `negative`, `unknown`). A feedback sign
+requires a supported comparison or response rule, not an equipment name or a
+generic controller label. Preserve the controller's Action field separately
+from comparison signs. State-variable nodes describe modeled outcomes; capacity or
+power is not automatically an independent actuator. Cyclic feedback links must
+not be interpreted as a topological execution order.
+
+The graph role `control_variable` means a manipulated command. The unchanged
+native Controller:WaterCoil `Control Variable` field instead names the sensed
+or regulated quantity; its source wording must not be relabeled as an actuator.
+Temperature/humidity target channels match both node identity and target quantity;
+one resolved channel does not establish another. Missing WaterCoil target channels
+remain explicit external inputs with unresolved provider/value and comparison
+signs, except the supported pure-temperature residual convention.
+
+Legacy `availabilityLayers`, `finalAvailability` and `control` fields remain
+compatible. A saved report without the new graphs displays a reanalysis hint
+instead of reclassifying its old mixed control diagram as one of the new views.
+`operatingSchedules` retains exact supported calendar rules; calendar selection
+updates supported raw schedule values throughout the equipment inspection.
+Availability timelines expose representative day, seven consecutive dates and
+the selected Gregorian year. Annual weekdays are Gregorian; holidays, DST and
+runtime overrides are not invented. A special day-type selection applies only
+to the first day of the representative week. Minute transitions and unknown
+intervals survive run-length compression; timeline caches are bounded. Rows
+share horizontal zoom/pan, while source definitions remain expandable.
+Static HVAC does not reuse Profile's approximate schedule fallback. Calendar
+changes only replace the equipment inspection.
 
 Metrics definitions, calculated values, guide entries and exports share one
 catalog. Metrics JSON stays categorized; CSV is `name,value`, with variable IDs

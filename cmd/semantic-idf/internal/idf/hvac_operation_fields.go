@@ -156,6 +156,27 @@ func hvacOperatingManagerListName(obj Object) string {
 // Control metadata is deliberately limited to the fields needed by the compact
 // operating graph. Existing catalog fields retain priority over these fallbacks.
 var hvacOperatingControlFieldNames = map[string]map[int]string{
+	"setpointmanager:singlezone:humidity:maximum":       {1: "Setpoint Node or NodeList Name", 2: "Control Zone Air Node Name"},
+	"setpointmanager:singlezone:humidity:minimum":       {1: "Setpoint Node or NodeList Name", 2: "Control Zone Air Node Name"},
+	"setpointmanager:multizone:maximumhumidity:average": {1: "HVAC Air Loop Name", 2: "Minimum Setpoint Humidity Ratio", 3: "Maximum Setpoint Humidity Ratio", 4: "Setpoint Node or NodeList Name"},
+	"setpointmanager:multizone:minimumhumidity:average": {1: "HVAC Air Loop Name", 2: "Minimum Setpoint Humidity Ratio", 3: "Maximum Setpoint Humidity Ratio", 4: "Setpoint Node or NodeList Name"},
+	"setpointmanager:multizone:humidity:maximum":        {1: "HVAC Air Loop Name", 2: "Minimum Setpoint Humidity Ratio", 3: "Maximum Setpoint Humidity Ratio", 4: "Setpoint Node or NodeList Name"},
+	"setpointmanager:multizone:humidity:minimum":        {1: "HVAC Air Loop Name", 2: "Minimum Setpoint Humidity Ratio", 3: "Maximum Setpoint Humidity Ratio", 4: "Setpoint Node or NodeList Name"},
+	"zonecontrol:thermostat":                            {1: "Zone or ZoneList Name", 2: "Control Type Schedule Name"},
+	"thermostatsetpoint:singleheating":                  {1: "Setpoint Temperature Schedule Name"},
+	"thermostatsetpoint:singlecooling":                  {1: "Setpoint Temperature Schedule Name"},
+	"thermostatsetpoint:singleheatingorcooling":         {1: "Setpoint Temperature Schedule Name"},
+	"thermostatsetpoint:dualsetpoint":                   {1: "Heating Setpoint Temperature Schedule Name", 2: "Cooling Setpoint Temperature Schedule Name"},
+	// These manager references are declarations only. Runtime logic stays
+	// unknown unless the existing expression evaluator explicitly supports it.
+	// Schedule positions agree with EnergyPlus 22.1 IDD and 24.2 IO Reference.
+	"availabilitymanager:scheduled":             {1: "Schedule Name"},
+	"availabilitymanager:scheduledon":           {1: "Schedule Name"},
+	"availabilitymanager:scheduledoff":          {1: "Schedule Name"},
+	"availabilitymanager:nightcycle":            {1: "Applicability Schedule Name", 2: "Fan Schedule Name", 3: "Control Type", 4: "Thermostat Tolerance", 5: "Cycling Run Time Control Type", 6: "Cycling Run Time", 7: "Control Zone or Zone List Name", 8: "Cooling Control Zone or Zone List Name", 9: "Heating Control Zone or Zone List Name", 10: "Heating Zone Fans Only Zone or Zone List Name"},
+	"availabilitymanager:optimumstart":          {1: "Applicability Schedule Name", 2: "Fan Schedule Name"},
+	"availabilitymanager:nightventilation":      {1: "Applicability Schedule Name", 2: "Fan Schedule Name", 3: "Ventilation Temperature Schedule Name"},
+	"availabilitymanager:lowtemperatureturnoff": {1: "Sensor Node Name", 2: "Temperature", 3: "Applicability Schedule Name"},
 	"plantloop":                   {18: "Load Distribution Scheme", 19: "Availability Manager List Name", 20: "Plant Loop Demand Calculation Scheme", 21: "Common Pipe Simulation", 22: "Pressure Simulation Type"},
 	"pump:variablespeed":          {3: "Design Maximum Flow Rate", 4: "Design Pump Head", 8: "Coefficient 1 of the Part Load Performance Curve", 9: "Coefficient 2 of the Part Load Performance Curve", 10: "Coefficient 3 of the Part Load Performance Curve", 11: "Coefficient 4 of the Part Load Performance Curve", 12: "Design Minimum Flow Rate", 13: "Pump Control Type", 14: "Pump Flow Rate Schedule Name", 15: "Pump Curve Name", 17: "VFD Control Type", 18: "Pump RPM Schedule Name", 19: "Minimum Pressure Schedule", 20: "Maximum Pressure Schedule", 21: "Minimum RPM Schedule", 22: "Maximum RPM Schedule", 28: "Design Minimum Flow Rate Fraction"},
 	"pump:constantspeed":          {3: "Design Flow Rate", 4: "Design Pump Head", 8: "Pump Control Type", 9: "Pump Flow Rate Schedule Name", 10: "Pump Curve Name", 12: "Rotational Speed"},

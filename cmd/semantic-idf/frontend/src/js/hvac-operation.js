@@ -9,11 +9,19 @@ const finite = (value) => typeof value === "number" && Number.isFinite(value);
 export const hvacOperationDayTypes = Object.freeze(dayTypes);
 
 export function normalizeHVACOperationCalendar(options = {}) {
+  const year = Math.max(1900, Math.min(2199, Math.trunc(Number(options.year) || new Date().getFullYear())));
   const month = Math.max(1, Math.min(12, Math.trunc(Number(options.month) || 1)));
-  const maximum = new Date(Date.UTC(2000, month, 0)).getUTCDate();
+  const maximum = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const day = Math.max(1, Math.min(maximum, Math.trunc(Number(options.day) || 1)));
   const dayType = dayTypes.find((item) => normalized(item) === normalized(options.dayType)) || "Monday";
-  return { month, day, dayType };
+  const timelineView = ["day", "week", "year"].includes(options.timelineView) ? options.timelineView : "day";
+  return { year, month, day, dayType, timelineView };
+}
+
+// Resolve a schedule's own values without transforming them into equipment
+// permissions. The caller can share this resolver across source rows for a day.
+export function createHVACScheduleDayResolver(schedules = [], options = {}) {
+  return scheduleResolver(schedules, normalizeHVACOperationCalendar(options));
 }
 
 function scheduleNamespace(schedule) {
@@ -167,16 +175,26 @@ export function evaluateHVACOperation(profile = {}, schedules = [], options = {}
     const values = evaluate(expression);
     return { values, segments: hvacAvailabilitySegments(values) };
   };
+  const graph = (sequence = {}) => ({
+    ...sequence,
+    nodes: (sequence.nodes || []).map((node) => node.kind === "schedule" ? {
+      ...node,
+      // A definition trace retains the schedule's raw values. It is not a
+      // permission, manager status, or inferred equipment operating state.
+      scheduleTrace: hvacAvailabilitySegments(resolve(
+        node.parameters?.find((item) => item.name === "Schedule Name")?.value || node.source?.objectName,
+        scheduleNamespace({ objectType: node.source?.objectType }),
+      )),
+    } : node),
+    edges: sequence.edges || [],
+  });
   return {
     calendar,
+    availabilityDefinitions: graph(profile.availabilityDefinitions),
+    onOff: graph(profile.onOff),
+    parameterControl: graph(profile.parameterControl),
     layers: (profile.availabilityLayers || []).map((layer) => ({ ...layer, ...trace(layer.expression) })),
     final: trace(profile.finalAvailability),
-    control: {
-      ...(profile.control || {}),
-      nodes: (profile.control?.nodes || []).map((node) => node.kind === "schedule" ? {
-        ...node, scheduleTrace: hvacAvailabilitySegments(resolve(node.parameters?.find((item) => item.name === "Schedule Name")?.value || node.source?.objectName)),
-      } : node),
-      edges: profile.control?.edges || [],
-    },
+    control: graph(profile.control),
   };
 }

@@ -107,20 +107,113 @@ rather than a guessed assignment.
 
 ## Read equipment availability and control {#component-values}
 
-Select equipment in the loop diagram to open two columns below it. On the left,
-**Availability** stacks the loop and parent controls above the equipment's own
-conditions, with the final permission plot at the bottom. Choose a date and day
-type to compare all plots on the same 24-hour axis.
+Select equipment in the loop diagram to open three graphs: **Availability
+definitions**, **On / Off decisions**, and **Parameter control**. Shared
+equipment is inspected in the selected loop's
+context, so another circuit's setpoint is not automatically its control target.
 
-**Allowed** means the evaluated configuration permits operation; **Blocked**
-means a known condition prevents it. **Conditional / unknown** means that load, temperature,
-external control or an unresolved input is still needed. These plots describe
-permission, not simulated run status.
+The month, day and day-type controls select the raw schedule values shown in
+all three graphs. Supported schedules retain their original day/week/year
+definitions. An external, missing or unsupported schedule remains unresolved;
+it is not replaced by an approximate daily profile. Older saved analysis without
+these graphs needs reanalysis of its source input.
 
-On the right, **Control sequence** connects inputs to the on/off decision and
-then to modulation, with a separate OFF branch. Follow the arrows to see which
-load, setpoint or control mode changes capacity, flow or another operating
-parameter. Shared equipment is shown in the context of the selected loop.
+### Availability definitions {#availability-definitions}
+
+This graph answers **where availability is declared**. Follow the equipment,
+parent or loop reference to its AvailabilityManagerAssignmentList, individual
+AvailabilityManager objects and referenced schedules. Expand **Source
+definitions and references** to read the original fields and their links.
+Each timeline row shows one referenced schedule's raw values; it is not a
+final equipment permission plot. Shared references use the same schedule row.
+
+Choose a time view:
+
+| View | Time basis |
+| --- | --- |
+| Representative day (Rep. day) | The selected date and day type, on a 00:00–24:00 axis |
+| Representative week (Rep. week) | Seven consecutive dates starting on the selected date; regular weekdays advance from the selected day type |
+| Annual | Every date in the selected Gregorian year, using that year's regular weekdays |
+
+These are source values, without averaging. In Rep. week, a selected special
+day type such as Holiday applies to the first day only; the remaining days
+follow regular weekdays. Annual uses 365 or 366 days according to the year.
+It does not apply the run's holidays, daylight saving or runtime overrides;
+it is a calendar for inspecting definitions, not a simulation operating record.
+Native minute transitions remain available when zooming into a longer view.
+Unavailable intervals remain separate from known zero values.
+
+Use the mouse wheel over a timeline to zoom the **time axis**, then drag to
+pan. All schedule rows share the visible time range. With the timeline focused,
+Left/Right pans and +/− zooms; **Reset view**, Home or 0 restores the full range.
+Hover to read the schedule name, time and raw value. The view uses linear
+timelines in all three time views.
+
+This view keeps declaration references separate from the logic that combines
+them. Fan operating mode, flow, performance and setpoint schedules belong to
+parameter control unless they are explicitly used by an availability definition.
+
+### On / Off decisions {#on-off-decisions}
+
+Follow the configured permission and equipment request through decision nodes
+to ON, OFF or an unresolved branch. Branch labels describe the condition being
+tested. Availability alone does not establish a load request, dispatch selection
+or actual operation. A decision that needs runtime temperature, load or another
+unavailable input stays unresolved.
+
+The graph preserves alternatives and combination rules. Air/Zone manager
+precedence and Plant manager assignment priority are different rules; several
+manager references do not imply a sequence of independent AND conditions.
+Limits and dispatch ranges use the declared source fields. They do not supply
+invented thresholds or a simulated decision for the selected calendar day.
+
+### Parameter control {#parameter-control}
+
+Trace how an equipment command is determined and what states result from it:
+
+| Role | Meaning and examples |
+| --- | --- |
+| External input | A demand, schedule, setpoint or inlet condition supplied from outside the selected equipment |
+| Controller / setpoint | The referenced object that compares a sensed quantity, supplies a target or applies a supported control rule |
+| Comparison | An explicitly defined residual or comparison, separate from the actuator's response direction |
+| Control variable | A manipulated command, such as requested water/air flow, speed or capacity command |
+| State variable | A resulting outlet condition, heat-transfer rate or power, determined by the command, inlet state and equipment model |
+| External output | A command or physical outlet quantity passed beyond the selected equipment's boundary |
+
+External ports use the selected equipment/circuit context and retain the
+declared node/field identity when resolved. Unresolved occurrence ports do not
+justify borrowing another circuit's ports. A physical flow path is not by itself
+evidence of a feedback controller. Performance curves
+and configured limits explain how states are determined; their presence does
+not make every calculated state a separately controlled variable.
+
+The graph's **Control variable** role means a manipulated command. EnergyPlus
+Controller:WaterCoil uses the source field **Control Variable** for the sensed
+or regulated quantity, such as outlet air temperature. The raw field retains
+that native meaning; **Actuator Variable** identifies the manipulated flow.
+
+Signed links appear only where a supported rule establishes the sign. Read the
+relation label together with the sign: a comparison sign and the controller's
+Normal/Reverse Action describe different parts of the control. An unknown sign
+does not imply positive feedback. Feedback arrows describe dependencies and
+may return to a sensor; their drawing order is not a simulation execution order.
+Use Simulation HVAC and actual output variables to inspect numerical operating
+states and convergence.
+
+For a supported Controller:WaterCoil temperature comparison, EnergyPlus uses
+`residual = sensed value − setpoint`: the measurement enters with **+**, the
+target with **−**. These are residual signs, not the actuator's response sign.
+The native **Action** field separately describes the response to increasing
+actuated flow: Normal for a heating response and Reverse for a cooling response.
+See the [EnergyPlus controller reference](https://bigladdersoftware.com/epx/docs/24-2/input-output-reference/group-controllers.html#field-action)
+and [native residual calculation](https://github.com/NREL/EnergyPlus/blob/v24.2.0/src/EnergyPlus/HVACControllers.cc#L1072).
+
+TemperatureAndHumidityRatio control keeps its temperature and maximum humidity
+ratio targets separate. Resolving one provider does not establish the other;
+a missing target stays an explicit unresolved external input. Supported humidity
+setpoint-manager types identify their target quantity even when they have no
+Control Variable field. Humidity and combined-mode dependencies retain unknown
+comparison signs where their detailed comparison/selection is not resolved.
 
 ### Example: trace a chilled-water service {#chilled-water-example}
 

@@ -18,10 +18,16 @@ The release script infers bump size from these sections:
 
 ## Changed
 
-- Loop equipment selection now shows a 24-hour availability stack and a compact
-  control-sequence diagram. Date and day-type selection applies to all permission
-  plots; unresolved runtime conditions remain conditional. The control diagram
-  follows inputs through the on/off decision to modulation, including an OFF branch.
+- Loop equipment inspection separates three graphs: declared availability
+  references, configured On / Off decisions, and parameter control. Parameter
+  control distinguishes external inputs/outputs, manipulated commands and
+  calculated states, with signed comparisons only for supported rules. Shared
+  calendar controls update raw schedule values; unresolved runtime decisions
+  remain explicit.
+- Availability schedules offer representative day/week and annual linear
+  timelines with shared time-axis zoom/pan, source-value hover and expandable
+  definition evidence. Minute transitions and unavailable intervals are
+  preserved; annual views identify their standard weekday-calendar basis.
 - Energy Path separates thermal gains/losses and storage/release before native
   interval aggregation. Directional cards show one positive gross magnitude with
   gain/loss in the label, including nonzero exchange with zero load. Ribbons

@@ -393,7 +393,7 @@ func (b *hvacOperatingBuilder) addLinkedControllers(g *hvacOperatingControlBuild
 			}
 			matched := false
 			for index := range manager.Fields {
-				name := strings.ToLower(catalogFieldName(manager, index))
+				name := strings.ToLower(hvacOperatingFieldName(manager, index))
 				if !strings.Contains(name, "setpoint") || !strings.Contains(name, "node") || strings.Contains(name, "reference") {
 					continue
 				}
@@ -408,7 +408,7 @@ func (b *hvacOperatingBuilder) addLinkedControllers(g *hvacOperatingControlBuild
 			id := g.node(fmt.Sprintf("setpoint:%d", manager.Index), "setpoint", "setpoint_manager", manager, hvacOperatingAllParameters(manager))
 			g.edge(id, target, "sets_target")
 			for index := range manager.Fields {
-				name := strings.ToLower(catalogFieldName(manager, index))
+				name := strings.ToLower(hvacOperatingFieldName(manager, index))
 				if strings.Contains(name, "reference") && strings.Contains(name, "node") {
 					nodes[normalizeName(hvacFieldValue(manager, index))] = true
 				}
