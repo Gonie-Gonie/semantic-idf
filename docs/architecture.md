@@ -87,15 +87,38 @@ supports identity and indexing; it is not an exposed input tab. Follow the
 
 HVAC operating profiles are scoped by component object index and loop ID.
 Typed containment supplies ancestors; exact node/circuit matches supply
-controllers and setpoints. The interface has three graphs: stacked Availability
-permissions, On / Off decisions and Parameter control. Each `operatingProfiles`
-entry retains source-backed `HVACControlSequence` records:
+controllers and setpoints. The interface has three panels: stacked Availability
+permissions, compact On / Off expressions and Parameter control source cards.
+Each `operatingProfiles` entry retains source-backed `HVACControlSequence` records:
 
 | Field | Meaning |
 | --- | --- |
 | `availabilityDefinitions` | Declared owner, assignment list, AvailabilityManager and schedule references; expanded supported schedule definitions |
 | `onOff` | Configured permission and demand conditions with explicit ON, OFF and unresolved branches |
 | `parameterControl` | External inputs, controllers/setpoints, manipulated control variables, calculated state variables and external outputs |
+
+`onOffExpression` is an additive `HVACOperatingExpression` AST for compact
+decision cards. `referenceId` binds an opaque condition to its exact `onOff.nodes`
+entry. The browser presents the full availability expression and the command
+expression as named formulas; only native `all`/`any` become nested AND/OR groups.
+Manager precedence, ordered first-non-NoAction selection and fan override retain
+their named operators and status domain. NoAction=0 is not Boolean OFF.
+The family activation condition stays opaque/source-backed; incoming demand,
+thermostat and dispatch relationships are dependencies, not an inferred AND.
+Continuous/default pumps retain mode-dependent activation; passive equipment
+retains passive flow rather than an invented ON/OFF command. Missing/dangling
+expression references remain unresolved and require reanalysis where necessary.
+
+Parameter control projects the existing source graph into four compact groups:
+inputs/targets, comparisons/controllers, commands and equipment response/outputs.
+Cards group exact source identities and node memberships; signed relationship
+chips retain the actual endpoint roles. Cyclic feedback is represented by source
+references, never recursive expansion or a guessed execution order. The compact
+presentation introduces no new control formula; supported native residuals and
+raw Action fields keep their separate meanings. Original graph records remain
+available to programmatic consumers. Numeric schedule badges retain the exact
+representative-day trace basis in a date/day-type tooltip; they do not claim an
+annual or constant target range.
 
 The additive `configuredAvailabilityLayers` and `configuredAvailability` fields
 use the existing layer/expression types for the minimum configured static
@@ -118,7 +141,7 @@ verified type, schema, assignment context and reference evidence. The legacy
 `finalAvailability` and
 control graph retain their full configured/runtime dependency semantics.
 Source definition records remain
-available programmatically; the view exposes no raw numeric
+available programmatically; Availability exposes no raw numeric
 schedule ranges, definition/parameter disclosures or algorithm nodes. Both
 availability evaluation and On / Off preserve all/any semantics, air/zone
 manager precedence and Plant availability-manager assignment priority rather than treating every
@@ -148,8 +171,9 @@ remain explicit external inputs with unresolved provider/value and comparison
 signs, except the supported pure-temperature residual convention.
 
 Legacy `availabilityLayers`, `finalAvailability` and `control` fields remain
-compatible. On / Off and Parameter control show a reanalysis hint when their
-new graphs are absent, rather than reclassifying the old mixed control diagram.
+compatible. On / Off requires its authored expression AST; missing metadata is
+unresolved rather than Boolean logic inferred from old graph edges. Parameter
+control shows a reanalysis hint when its source graph is absent.
 Availability treats the new configured fields as authoritative. A legacy full
 expression is reusable only when it has no opaque runtime dependency; otherwise
 the final row reports missing configuration metadata until reanalysis, without

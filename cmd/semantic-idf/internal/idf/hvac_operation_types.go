@@ -13,6 +13,7 @@ type HVACOperatingProfile struct {
 	Control                      HVACControlSequence     `json:"control"`
 	AvailabilityDefinitions      HVACControlSequence     `json:"availabilityDefinitions"`
 	OnOff                        HVACControlSequence     `json:"onOff"`
+	OnOffExpression              HVACOperatingExpression `json:"onOffExpression"`
 	ParameterControl             HVACControlSequence     `json:"parameterControl"`
 }
 
@@ -36,7 +37,10 @@ type HVACAvailabilityLayer struct {
 // override to its second child (the fan's own availability schedule). target
 // is central_fan or zone_fan where CycleOnZoneFansOnly needs disambiguation.
 // Unknown is never interchangeable with a known zero or an omitted schedule.
+// runtime_condition and passive_flow are declarative references to the same
+// profile's OnOff nodes. They are not executable Boolean schedule operators.
 type HVACOperatingExpression struct {
+	ReferenceID     string                    `json:"referenceId,omitempty"`
 	Source          *HVACOperatingSource      `json:"source,omitempty"`
 	AssignmentOwner *HVACOperatingSource      `json:"assignmentOwner,omitempty"`
 	Op              string                    `json:"op"`

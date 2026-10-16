@@ -107,7 +107,7 @@ rather than a guessed assignment.
 
 ## Read equipment availability and control {#component-values}
 
-Select equipment in the loop diagram to open three graphs: **Availability**,
+Select equipment in the loop diagram to open three panels: **Availability**,
 **On / Off decisions**, and **Parameter control**. Shared
 equipment is inspected in the selected loop's
 context, so another circuit's setpoint is not automatically its control target.
@@ -150,21 +150,34 @@ The detailed decision logic is shown in **On / Off decisions**.
 
 ### On / Off decisions {#on-off-decisions}
 
-Follow the configured permission and equipment request through decision nodes
-to ON, OFF or an unresolved branch. Branch labels describe the condition being
-tested. Availability alone does not establish a load request, dispatch selection
-or actual operation. A decision that needs runtime temperature, load or another
-unavailable input stays unresolved.
+Read **Final availability** and **On command** as nested expression cards.
+**AND / OR** groups retain the
+declared condition structure; a schedule test such as `Schedule > 0` is one
+source-backed leaf. The availability expression here contains the full permission
+logic, including runtime dependencies. The Availability timeline above shows
+the minimum static conditions.
 
-The graph preserves alternatives and combination rules. Air/Zone manager
-precedence and Plant manager assignment priority are different rules; several
-manager references do not imply a sequence of independent AND conditions.
-Limits and dispatch ranges use the declared source fields. They do not supply
-invented thresholds or a simulated decision for the inspection period.
+For supported active equipment, the command condition combines that permission
+with the equipment's activation condition. A runtime activation card names its
+source and dependencies; it does not invent a Boolean formula from every
+connected load, thermostat or dispatch object. Unknown inputs stay unresolved.
+Continuous/default pump mode does not turn “no flow request” into a proven OFF;
+passive equipment has no active ON/OFF command.
+
+Manager priority, first-non-NoAction selection and fan override appear as named
+rules with their original order/status meaning. They are not ordinary AND/OR
+groups; NoAction means no manager action, not OFF. Limits and ranges use source
+fields, and missing expression metadata requires reanalysis. These cards explain
+configured logic, not simulated status.
 
 ### Parameter control {#parameter-control}
 
-Trace how an equipment command is determined and what states result from it:
+Read four compact groups: **Inputs / targets**, **Comparison / controllers**,
+**Control commands**, and **Equipment response / outputs**. Related entries are
+collected under their actual source object, with key values and relationship
+chips. Schedule value badges summarize the representative day, not the annual
+range; hover to see the date/day type. Trace how a command is determined and
+what states result from it:
 
 | Role | Meaning and examples |
 | --- | --- |
@@ -182,16 +195,17 @@ evidence of a feedback controller. Performance curves
 and configured limits explain how states are determined; their presence does
 not make every calculated state a separately controlled variable.
 
-The graph's **Control variable** role means a manipulated command. EnergyPlus
+The **Control variable** role means a manipulated command. EnergyPlus
 Controller:WaterCoil uses the source field **Control Variable** for the sensed
 or regulated quantity, such as outlet air temperature. The raw field retains
 that native meaning; **Actuator Variable** identifies the manipulated flow.
 
-Signed links appear only where a supported rule establishes the sign. Read the
+Known **+ / −** signs appear only where a supported rule establishes them. Read the
 relation label together with the sign: a comparison sign and the controller's
 Normal/Reverse Action describe different parts of the control. An unknown sign
-does not imply positive feedback. Feedback arrows describe dependencies and
-may return to a sensor; their drawing order is not a simulation execution order.
+does not imply positive feedback. Feedback references retain their source and
+meaning without repeatedly expanding a cycle; card order is not simulation
+execution order.
 Use Simulation HVAC and actual output variables to inspect numerical operating
 states and convergence.
 

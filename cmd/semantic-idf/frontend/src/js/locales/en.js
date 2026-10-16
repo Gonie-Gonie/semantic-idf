@@ -1,4 +1,12 @@
 export default Object.freeze({
+  "hvac.operation.onCommand": "On command",
+  "hvac.operation.passiveTransfer": "Passive transfer",
+  "hvac.operation.compact.inputs": "Inputs / targets",
+  "hvac.operation.compact.controls": "Comparison / controllers",
+  "hvac.operation.compact.commands": "Control commands",
+  "hvac.operation.compact.response": "Equipment response / outputs",
+  "hvac.operation.compact.reanalyze": "Analyze the input again to resolve command logic.",
+  "hvac.operation.compact.scheduleBasis": "Representative day: {date} · {dayType}",
   "hvac.operation.operationSchemeMembership": "Operation scheme membership",
   "hvac.operation.reanalyzeAvailability": "Analyze the input again to resolve configured availability.",
   "hvac.operation.noSeparateSchedule": "No separate schedule",

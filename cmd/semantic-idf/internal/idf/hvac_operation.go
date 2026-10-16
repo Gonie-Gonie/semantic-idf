@@ -269,6 +269,7 @@ func (b *hvacOperatingBuilder) profile(occ hvacOperatingOccurrence) HVACOperatin
 	profile.Control = b.control(occ, profile.AvailabilityLayers)
 	profile.AvailabilityDefinitions = b.availabilityDefinitions(occ, profile.AvailabilityLayers)
 	profile.OnOff = b.onOffControl(occ, profile)
+	profile.OnOffExpression = hvacOperatingOnOffExpression(occ, profile.FinalAvailability)
 	profile.ParameterControl = b.parameterControl(occ, profile.Control)
 	return profile
 }

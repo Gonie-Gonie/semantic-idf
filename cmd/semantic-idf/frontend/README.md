@@ -6,8 +6,10 @@
 - `src/js`: feature modules for state, actions, views, navigation, settings, and analysis.
 - `src/js/hvac-operation.js` resolves exact calendar/day-type schedule traces
   for the selected equipment occurrence. `views/hvac-operation-view.js` renders
-  three separate graphs: Availability, On / Off decisions, and
-  parameter control with explicit external ports and control/state roles.
+  Availability timelines. `hvac-control-expressions.js` projects the authored
+  control records into compact cards; `views/hvac-control-expression-view.js`
+  renders nested On / Off expressions and grouped parameter-control sources
+  with explicit I/O and control/state roles.
   These consume `HVACReport.operatingProfiles` and `operatingSchedules` from
   `internal/idf/hvac_operation*.go`, independently of simulation results and the
   Profile tab's schedule approximations. Availability uses
@@ -20,9 +22,12 @@
   `hvac-availability-timeline.js` builds bounded, compressed permission timelines;
   `views/hvac-availability-view.js` owns representative day/week and annual
   binary patches with source owners, related input rows and a final configured
-  row, with shared
-  horizontal zoom/pan and a time cursor/status. Its only visible control is the
-  time-view selector; calendar APIs remain compatible for programmatic users.
+  row, with shared horizontal zoom/pan and a time cursor/status. Its only visible
+  control is the time-view selector; calendar APIs remain compatible for programmatic users.
+  On / Off consumes the authored `onOffExpression` AST, with AND/OR only for
+  explicit Boolean operators and named rules for manager priority/overrides.
+  Parameter cards retain exact graph memberships, signed references and native
+  Action fields; their compact grouping does not invent control equations.
 - `src/js/simulation-progress.js`: measured work, approximate remaining-time
   presentation, HTTP progress polling and response-byte progress. Unknown totals
   remain indeterminate; legacy stage-count percentages are not displayed as time.

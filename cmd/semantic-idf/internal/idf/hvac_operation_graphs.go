@@ -156,6 +156,23 @@ func (b *hvacOperatingBuilder) definitionSchedule(g *hvacOperatingControlBuilder
 	return id
 }
 
+// The full permission AST is already source-backed. The component's activation
+// rule is deliberately opaque: incoming thermostat, setpoint, dispatch and
+// request dependencies do not prove an AND/OR relation between those signals.
+// In particular, absence of a flow request does not prove a continuous pump OFF.
+func hvacOperatingOnOffExpression(occ hvacOperatingOccurrence, permission HVACOperatingExpression) HVACOperatingExpression {
+	source := hvacOperatingSource(occ.object)
+	family, _, _ := hvacOperatingRecipe(occ.object.Type)
+	if family == "passive" {
+		return HVACOperatingExpression{Op: "passive_flow", ReferenceID: "flow", Source: &source, Reason: "passive_has_no_on_off_command"}
+	}
+	activation := HVACOperatingExpression{Op: "runtime_condition", ReferenceID: "decision", Source: &source, Reason: "requires_runtime_control_decision"}
+	if family == "unresolved" {
+		activation = HVACOperatingExpression{Op: "unknown", ReferenceID: "unknown", Source: &source, Reason: "unresolved_control"}
+	}
+	return hvacOperatingCombine("all", permission, activation)
+}
+
 func (b *hvacOperatingBuilder) onOffControl(occ hvacOperatingOccurrence, profile HVACOperatingProfile) HVACControlSequence {
 	g := newHVACOperatingGraph()
 	family, inputCode, _ := hvacOperatingRecipe(occ.object.Type)

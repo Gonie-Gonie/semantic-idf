@@ -9,40 +9,48 @@
 .hvac-operation-panel.parameters { container-type: inline-size; }
 .hvac-operation-panel-heading { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 20px; }
 .hvac-operation-panel-heading h4 { margin: 0 0 6px; font-size: 15px; }
-.hvac-control-graph { position: relative; min-width: 0; padding: 0 26px 28px; }
-.hvac-control-connections { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.hvac-control-connections g > path { stroke: #927cba; stroke-width: 1.5; fill: none; opacity: .85; }
-.hvac-control-connections g > path { pointer-events: stroke; }
-.hvac-control-connections marker path { fill: #927cba; }
-.hvac-control-connections text { fill: #dfd1f1; font-size: 11px; font-weight: 600; paint-order: stroke; stroke: var(--panel, #182128); stroke-width: 5px; stroke-linejoin: round; }
-.hvac-control-level { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 30px 16px; margin-bottom: 48px; position: relative; }
-.hvac-control-level:last-of-type { margin-bottom: 0; }
-.hvac-control-node { min-width: 0; position: relative; border: 1px solid #3a4557; border-left: 3px solid #758ca5; border-radius: 7px; padding: 12px; background: var(--bg, #111b22); }
-.hvac-control-node.condition, .hvac-control-node.decision, .hvac-control-node.limit { border-left-color: #d2a867; }
-.onoff .hvac-control-node.decision, .onoff .hvac-control-node.condition { border-radius: 18px 5px 18px 5px; border-color: #8d734d; }
-.onoff .hvac-control-node { width: 100%; max-width: 420px; box-sizing: border-box; justify-self: center; }
-.hvac-control-node.outcome { border-radius: 20px; border-color: #677d8b; }
-.hvac-control-node.controller, .hvac-control-node.control, .hvac-control-node.modulation { border-left-color: #b79be9; }
-.hvac-control-node.control_variable, .hvac-control-node.actuator { border-left-color: #ebbc6c; }
-.hvac-control-node.state_variable, .hvac-control-node.equipment { border-left-color: #83b79a; }
-.hvac-control-node.schedule, .hvac-control-node.sensor, .hvac-control-node.setpoint, .hvac-control-node.external_input, .hvac-control-node.boundary-input { border-left-color: #51c5cf; }
-.hvac-control-node.external_output, .hvac-control-node.boundary-output { border-left-color: #93c99b; border-right: 3px solid #93c99b; }
-.hvac-control-kind { display: block; margin-bottom: 5px; color: var(--muted, #8aa4b5); font-size: 10px; line-height: 1.4; }
-.hvac-control-node h5 { font-size: 12px; margin: 0; font-weight: 600; line-height: 1.6; overflow-wrap: anywhere; }
-.hvac-control-source { display: block; margin: 5px 0 0; color: #b2c7d5; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
-.hvac-control-object-type { display: block; margin-top: 3px; color: var(--muted, #8aa4b5); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
-.hvac-control-values { display: flex; flex-wrap: wrap; gap: 5px; }
+.hvac-control-source { display: block; margin-top: 5px; color: #b2c7d5; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.hvac-control-object-type { display: block; margin-top: 3px; color: var(--muted, #8aa4b5); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.hvac-control-values { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .hvac-control-values:empty { display: none; }
-.hvac-control-value { margin-top: 7px; padding: 3px 6px; border-radius: 4px; background: #26323e; color: #c5d9e5; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
-.hvac-control-schedule-value { margin-top: 7px; color: #85dbe0; font-size: 15px; font-variant-numeric: tabular-nums; }
-.hvac-control-schedule-plot { display: block; width: 100%; max-height: 100px; margin-top: 5px; overflow: visible; }
-.hvac-control-schedule-plot path { fill: none; stroke: #51c5cf; stroke-width: 1.8; }
-.hvac-control-schedule-plot text { fill: var(--muted, #8aa4b5); font-size: 11px; }
-.hvac-control-schedule-unknown { color: #d2a867; font-size: 11px; line-height: 1.5; }
+.hvac-control-value { margin-top: 5px; padding: 2px 5px; border-radius: 4px; background: #26323e; color: #c5d9e5; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.hvac-control-value-label { color: #91a9ba; }
+.hvac-control-schedule-value { display: inline-block; margin-top: 4px; color: #85dbe0; font-size: 12px; font-variant-numeric: tabular-nums; }
 .hvac-operation-unresolved { padding: 16px 0; font-size: 12px; line-height: 1.7; color: var(--muted, #8aa4b5); }
-@container (min-width: 701px) {
-  .hvac-control-graph.parameters { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 34px; align-items: start; padding-inline: 0; }
-  .parameters .hvac-control-level { grid-template-columns: minmax(0, 1fr); gap: 20px; margin: 0; }
+.hvac-expression-stack { display: grid; gap: 12px; min-width: 0; }
+.hvac-expression-card { min-width: 0; padding: 14px; border: 1px solid var(--border, #2b404e); border-radius: 7px; background: var(--bg, #111b22); }
+.hvac-expression-formula { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; min-width: 0; font-size: 12px; line-height: 1.8; }
+.hvac-expression-lhs { color: #dce8ef; font-weight: 600; }
+.hvac-expression-equals { color: #a7bdce; font-weight: 600; }
+.hvac-expression-group { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 6px; max-width: 100%; padding: 5px 8px; border: 1px solid #45556a; border-radius: 6px; background: #24323e66; }
+.hvac-expression-group .hvac-expression-group { border-color: #635474; background: #453b592b; }
+.hvac-expression-terms { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.hvac-expression-operator { color: #d4b275; font-size: 11px; font-weight: 700; }
+.hvac-expression-parenthesis { color: #b8a0db; font-weight: 600; }
+.hvac-expression-leaf { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 5px; max-width: 100%; padding: 3px 6px; border-radius: 4px; background: #1c2933; overflow-wrap: anywhere; }
+.hvac-expression-source { display: block; margin-top: 5px; color: #91a9ba; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.hvac-expression-reference { color: #8bd0d7; font-weight: 600; overflow-wrap: anywhere; }
+.hvac-parameter-groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; min-width: 0; align-items: start; }
+.hvac-parameter-group { min-width: 0; display: grid; gap: 10px; }
+.hvac-parameter-group > h5 { margin: 0 0 3px; color: #b0c6d5; font-size: 12px; line-height: 1.5; }
+.hvac-parameter-source-card { min-width: 0; padding: 12px; border: 1px solid #3b4d5b; border-left: 3px solid #51c5cf; border-radius: 7px; background: var(--bg, #111b22); }
+.hvac-parameter-group.controls .hvac-parameter-source-card { border-left-color: #b79be9; }
+.hvac-parameter-group.commands .hvac-parameter-source-card { border-left-color: #ebbc6c; }
+.hvac-parameter-group.response .hvac-parameter-source-card { border-left-color: #93c99b; }
+.hvac-parameter-source-card > h6 { margin: 0; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.hvac-parameter-members { display: grid; gap: 8px; margin-top: 10px; }
+.hvac-parameter-member { min-width: 0; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.hvac-parameter-member + .hvac-parameter-member { padding-top: 8px; border-top: 1px solid var(--border, #2b404e); }
+.hvac-parameter-member-kind { color: var(--muted, #8aa4b5); font-size: 11px; }
+.hvac-parameter-member .hvac-control-value { margin-top: 4px; }
+.hvac-parameter-relations { display: grid; gap: 5px; margin-top: 10px; color: #aabfce; font-size: 11px; line-height: 1.5; }
+.hvac-parameter-polarity { color: #d4b275; font-weight: 700; }
+@container (max-width: 1000px) {
+  .hvac-parameter-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container (max-width: 600px) {
+  .hvac-parameter-groups { grid-template-columns: minmax(0, 1fr); }
+  .hvac-expression-card { padding: 10px; }
 }
 .hvac-availability-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; min-height: 30px; }
 .hvac-availability-toolbar select { border: 1px solid var(--border, #2b404e); border-radius: 5px; color: var(--text, #dce8ef); background: var(--bg, #111b22); font: inherit; font-size: 12px; padding: 5px 8px; height: 30px; box-sizing: border-box; }
@@ -76,3 +84,7 @@
   .hvac-availability-labels .hvac-availability-name { display: block; margin-top: 3px; color: var(--muted, #8aa4b5); }
   .hvac-availability-axis-label { grid-column: 1; }
 }
+.hvac-expression-inputs { display: flex; flex-wrap: wrap; gap: 5px; flex-basis: 100%; }
+.hvac-expression-input { padding: 3px 6px; border: 1px solid var(--border, #2b404e); border-radius: 4px; color: #9eb4c3; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.hvac-expression-rule-target { color: #9eb4c3; font-size: 11px; }
+.hvac-parameter-relation-label { color: var(--muted, #8aa4b5); }

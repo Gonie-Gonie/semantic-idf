@@ -377,3 +377,43 @@ func TestHVACOperatingImplicitHumidityManagersPreserveQuantityAndNodeEvidence(t 
 		t.Fatal("humidifying minimum target was treated as dehumidifying maximum target")
 	}
 }
+
+func TestHVACOperatingOnOffExpressionsKeepStatusRulesAndOpaqueActivation(t *testing.T) {
+	manager := hvacOperationTestRaw(3, "AvailabilityManager:NightCycle", "Night", "App", "Fan Hours", "CycleOnAny", "1", "FixedRunTime", "1800")
+	profile := hvacConfiguredTestNightCycleProfile(t, manager, nil, "AirLoopHVAC")
+	expression := profile.OnOffExpression
+	if expression.Op != "all" || len(expression.Children) != 2 || expression.Children[1].Op != "runtime_condition" || expression.Children[1].ReferenceID != "decision" {
+		t.Fatalf("on/off expression lost the permission/activation distinction: %#v", expression)
+	}
+	if hvacOperationExpressionJSON(t, expression.Children[0]) != hvacOperationExpressionJSON(t, profile.FinalAvailability) {
+		t.Fatal("compact on/off expression changed native manager status priority or fan override")
+	}
+	if !hvacConfiguredTestHasReason(expression.Children[0], "runtime_manager") {
+		t.Fatal("full on/off expression accidentally reused minimum configured permission")
+	}
+	activation := hvacGraphTestNode(t, profile.OnOff, expression.Children[1].ReferenceID)
+	if activation.Code != "fan_on_off" || expression.Children[1].Source == nil || expression.Children[1].Source.ObjectIndex != activation.Source.ObjectIndex || len(expression.Children[1].Children) != 0 {
+		t.Fatal("activation dependency was reinterpreted as a fabricated Boolean demand formula")
+	}
+	for _, mode := range []string{"Continuous", "Intermittent", ""} {
+		pump := hvacOperationTestObject(0, "Pump:VariableSpeed", "Pump", "Pump Control Type", mode)
+		profile = hvacOperationTestProfile(t, buildHVACOperatingProfiles(newHVACContext(Document{Objects: []Object{pump}}), nil, nil), 0, "")
+		activation := profile.OnOffExpression.Children[1]
+		if activation.Op != "runtime_condition" || len(activation.Children) != 0 || activation.Value != nil || activation.ScheduleName != "" {
+			t.Fatalf("pump %q gained a demand>0 or zero-request OFF condition: %#v", mode, activation)
+		}
+		hvacGraphTestNode(t, profile.OnOff, activation.ReferenceID)
+	}
+	pipe := hvacOperationTestRaw(0, "Pipe:Adiabatic", "Pipe", "In", "Out")
+	profile = hvacOperationTestProfile(t, buildHVACOperatingProfiles(newHVACContext(Document{Objects: []Object{pipe}}), nil, nil), 0, "")
+	if profile.OnOffExpression.Op != "passive_flow" || profile.OnOffExpression.ReferenceID != "flow" || len(profile.OnOffExpression.Children) != 0 {
+		t.Fatal("passive pipe gained an active ON/OFF Boolean formula")
+	}
+	hvacGraphTestNode(t, profile.OnOff, profile.OnOffExpression.ReferenceID)
+	unsupported := hvacOperationTestRaw(0, "PlantComponent:UserDefined", "Unsupported")
+	profile = hvacOperationTestProfile(t, buildHVACOperatingProfiles(newHVACContext(Document{Objects: []Object{unsupported}}), nil, nil), 0, "")
+	if profile.OnOffExpression.Op != "all" || profile.OnOffExpression.Children[1].Op != "unknown" || profile.OnOffExpression.Children[1].Reason != "unresolved_control" {
+		t.Fatal("unknown equipment family gained an invented control algorithm")
+	}
+	hvacGraphTestNode(t, profile.OnOff, profile.OnOffExpression.Children[1].ReferenceID)
+}

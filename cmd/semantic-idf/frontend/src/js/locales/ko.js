@@ -1,4 +1,12 @@
 export default Object.freeze({
+  "hvac.operation.onCommand": "가동 명령",
+  "hvac.operation.passiveTransfer": "Passive transfer",
+  "hvac.operation.compact.inputs": "입력 / 목표",
+  "hvac.operation.compact.controls": "비교식 / Controller",
+  "hvac.operation.compact.commands": "Control command",
+  "hvac.operation.compact.response": "설비 응답 / 출력",
+  "hvac.operation.compact.reanalyze": "입력을 다시 분석하면 가동 명령 조건을 확인할 수 있습니다.",
+  "hvac.operation.compact.scheduleBasis": "대표일: {date} · {dayType}",
   "hvac.operation.operationSchemeMembership": "운전 Scheme 소속",
   "hvac.operation.reanalyzeAvailability": "입력을 다시 분석하면 설정된 Availability를 확인할 수 있습니다.",
   "hvac.operation.noSeparateSchedule": "별도 스케줄 없음",

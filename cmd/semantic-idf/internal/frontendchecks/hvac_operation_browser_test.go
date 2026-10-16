@@ -258,7 +258,7 @@ try{
  const definitions=(equipment,names)=>({nodes:[...names.map((name,index)=>({id:'owner:'+index,kind:'definition',code:'availability_owner',source:source(index===0?(equipment===fan?air:plant):equipment),parameters:[{name:'Availability Schedule Name',value:name}]})),...names.map((name,index)=>({id:'schedule:'+index,kind:'schedule',code:'schedule_value',source:{objectIndex:60+index,objectType:'Schedule:Compact',objectName:name}}))],edges:names.map((_,index)=>({from:'owner:'+index,to:'schedule:'+index,relation:'declares_schedule'}))});
  const onOff=equipment=>({nodes:[{id:'permission',kind:'decision',code:'availability_permission',source:source(equipment)},{id:'decision',kind:'decision',code:'boiler_on_off',source:source(equipment)},{id:'on',kind:'outcome',code:'on_command',boundary:'output',source:source(equipment)},{id:'off',kind:'outcome',code:'off_command',boundary:'output',source:source(equipment)}],edges:[{from:'permission',to:'decision',relation:'permits',condition:'yes'},{from:'permission',to:'off',relation:'blocked',condition:'no'},{from:'decision',to:'on',relation:'requested',condition:'yes'},{from:'decision',to:'off',relation:'no_request',condition:'no'}]});
  const parameters=equipment=>({nodes:[{id:'input',kind:'external_input',code:'inlet_state',boundary:'input',source:source(plant)},{id:'setpoint',kind:'setpoint',code:'setpoint_manager',source:{objectIndex:50,objectType:'SetpointManager:Scheduled',objectName:'Supply <target> & reset'}},{id:'controller',kind:'controller',code:'feedback_controller',source:source(equipment),parameters:[{name:'Action',value:'Reverse'}]},{id:'command',kind:'control_variable',code:'water_flow_command',source:source(equipment)},{id:'equipment',kind:'equipment',code:'equipment_response',source:source(equipment),parameters:[{name:'Flow mode',value:'LeavingSetpointModulated'}]},{id:'state',kind:'state_variable',code:'outlet_state',source:source(equipment)},{id:'output',kind:'external_output',code:'outlet_state',boundary:'output',source:source(equipment)}],edges:[{from:'input',to:'equipment',relation:'inlet_conditions'},{from:'setpoint',to:'controller',relation:'sets_target',polarity:'negative'},{from:'controller',to:'command',relation:'determines_command'},{from:'command',to:'equipment',relation:'actuates'},{from:'equipment',to:'state',relation:'determines_state'},{from:'state',to:'controller',relation:'feedback',polarity:'unknown'},{from:'state',to:'output',relation:'outputs'}]});
- for(const [item,profile,names] of [[boiler,boilerProfile,['Loop hours','Boiler hours']],[pump,pumpProfile,['Loop hours','On']],[fan,fanProfile,['On','External file']]])Object.assign(profile,{availabilityDefinitions:definitions(item,names),configuredAvailabilityLayers:profile.availabilityLayers,configuredAvailability:profile.finalAvailability,onOff:onOff(item),parameterControl:parameters(item)});
+ for(const [item,profile,names] of [[boiler,boilerProfile,['Loop hours','Boiler hours']],[pump,pumpProfile,['Loop hours','On']],[fan,fanProfile,['On','External file']]])Object.assign(profile,{availabilityDefinitions:definitions(item,names),configuredAvailabilityLayers:profile.availabilityLayers,configuredAvailability:profile.finalAvailability,onOff:onOff(item),onOffExpression:all(profile.finalAvailability,{op:'runtime_condition',referenceId:'decision'}),parameterControl:parameters(item)});
  const calendar={month:1,day:1,dayType:'Monday'};
  const evaluated=evaluate(boilerProfile,schedules,calendar);
  const finalValues=expression=>evaluate({...boilerProfile,finalAvailability:expression},schedules,calendar).final.values;
@@ -334,26 +334,18 @@ try{
  check(new Set([...stack().querySelectorAll('[data-hvac-crosshair]')].map(line=>line.getAttribute('x1'))).size===1&&[...stack().querySelectorAll('[data-hvac-crosshair]')].every(line=>line.getAttribute('visibility')==='visible'),'availability crosshair is not synchronized');
  const onoff=()=>detail().querySelector('[data-hvac-operation-onoff]');
  const parameterPanel=()=>detail().querySelector('[data-hvac-operation-parameters]');
- check(onoff().querySelectorAll('[data-condition="yes"]').length===2&&onoff().querySelectorAll('[data-condition="no"]').length===2,'on/off branches were not explicitly labeled');
- check(!onoff().querySelector('[data-hvac-node-kind="control_variable"],[data-hvac-node-kind="state_variable"]'),'modulation leaked into on/off decisions');
+ check(onoff().querySelectorAll('[data-hvac-boolean-definition]').length===2&&onoff().querySelector('[data-hvac-boolean-definition="availability"] [data-hvac-expression-op="all"]'),'native permission did not render as a named AND formula');
+ check(onoff().querySelector('[data-hvac-expression-reference="availability"]')&&onoff().querySelector('[data-hvac-expression-reference="decision"]'),'command did not reuse availability and its actual runtime condition');
+ check(onoff().querySelectorAll('[data-hvac-expression-schedule]').length===2&&!onoff().querySelector('svg,[data-hvac-control-node],[data-hvac-schedule-plot]'),'schedule conditions expanded into flowchart nodes or duplicate plots');
  check(['external_input','controller','setpoint','control_variable','state_variable','external_output'].every(kind=>parameterPanel().querySelector('[data-hvac-node-kind="'+kind+'"]')),'parameter graph lost input/control/state/output roles');
  check(parameterPanel().querySelector('[data-control-value="LeavingSetpointModulated"]')&&parameterPanel().querySelector('[data-control-value="Reverse"]'),'equipment/controller fields are missing');
- check(parameterPanel().querySelector('[data-polarity="negative"] > text')?.textContent==='\u2212'&&parameterPanel().querySelector('[data-polarity="unknown"] > text')?.textContent==='?','proven and unresolved signs are not distinguished');
- const checkRoutes=()=>{
-  for(const operationGraph of detail().querySelectorAll('[data-hvac-operation-graph]')){
-   const boxes=[...operationGraph.querySelectorAll('[data-hvac-control-node]')].map(node=>({id:node.dataset.hvacControlNode,rect:node.getBoundingClientRect()}));
-   for(const edge of operationGraph.querySelectorAll('[data-hvac-control-edge]')){
-    const path=edge.querySelector('path');check(path?.getAttribute('d'),'relationship has no rendered connector');
-    const length=path.getTotalLength(),matrix=path.getScreenCTM();
-    for(let sample=1;sample<80;sample++){
-     const point=path.getPointAtLength(length*sample/80).matrixTransform(matrix);
-     const obstacle=boxes.find(({id,rect})=>id!==edge.dataset.from&&id!==edge.dataset.to&&point.x>rect.left+2&&point.x<rect.right-2&&point.y>rect.top+2&&point.y<rect.bottom-2);
-     check(!obstacle,'connector crossed unrelated node '+obstacle?.id+' for '+edge.dataset.from+' to '+edge.dataset.to);
-    }
-   }
-  }
+ check(parameterPanel().querySelector('[data-hvac-parameter-term][data-polarity="negative"] .hvac-parameter-polarity')?.textContent==='\u2212'&&parameterPanel().querySelector('[data-hvac-parameter-term][data-polarity="unknown"] .hvac-parameter-polarity')?.textContent==='?','proven and unresolved signs are not distinguished');
+ const checkCompactLayout=()=>{
+  check(parameterPanel().querySelectorAll('[data-hvac-parameter-group]').length===4&&!parameterPanel().querySelector('svg,details'),'parameters are not compressed into four source groups');
+  for(const member of parameterPanel().querySelectorAll('[data-hvac-control-node]'))check(member.getBoundingClientRect().width>0,'native parameter member is hidden');
+  check(!onoff().querySelector('svg,details'),'on/off expression regained expanded graphs/disclosures');
  };
- checkRoutes();
+ checkCompactLayout();
  let left=availability().getBoundingClientRect(),right=onoff().getBoundingClientRect();
  check(left.width>900&&right.width>900&&right.top>=left.bottom-1,'availability does not occupy the full readable width above control graphs');
  const changeView=async value=>{const input=detail().querySelector('[data-hvac-operation-calendar="timelineView"]');input.value=value;input.dispatchEvent(new Event('change',{bubbles:true}));await settle();};
@@ -383,20 +375,29 @@ try{
  check(detail()?.dataset.componentIndex==='11'&&!detail().textContent.includes(boiler.objectName),'keyboard selection retained previous equipment');
  expectSegments(schedulePlot('On'),[[0,1440,'on']],'pump selection retained boiler availability');
  for(const element of [document.querySelector('.hvac-layout'),document.querySelector('.hvac-main'),document.querySelector('#hvacSummary')])element.style.width='690px';
- await settle();connect(graph);checkRoutes();
- check(getComputedStyle(parameterPanel().querySelector('[data-hvac-operation-graph]')).gridAutoFlow!=='column','parameter graph did not use narrow layout near breakpoint');
+ await settle();connect(graph);checkCompactLayout();
+ check(getComputedStyle(parameterPanel().querySelector('.hvac-parameter-groups')).gridTemplateColumns.split(' ').length===2,'parameter cards did not use two columns near breakpoint');
  for(const element of [document.querySelector('.hvac-layout'),document.querySelector('.hvac-main'),document.querySelector('#hvacSummary')])element.style.width='400px';
  await settle();left=availability().getBoundingClientRect();right=onoff().getBoundingClientRect();
  check(right.top>=left.bottom-1&&Math.abs(left.left-right.left)<2,'narrow view does not stack graphs');
  check(detail().scrollWidth<=detail().clientWidth+1&&graph.scrollWidth<=graph.clientWidth+1,'narrow graphs overflow horizontally');
- connect(graph);checkRoutes();
+ connect(graph);checkCompactLayout();
+ check(getComputedStyle(parameterPanel().querySelector('.hvac-parameter-groups')).gridTemplateColumns.split(' ').length===1,'narrow parameter cards did not stack');
  view.navigateHVAC({view:'loop',loopID:'air',graphKey:'',context:{}},{pushHistory:true});await settle();await choose(fan);
  check(detail()?.dataset.componentIndex==='20','fan did not get shared operation detail');
  expectSegments(schedulePlot('External file'),[[0,1440,'unknown']],'external schedule fabricated binary availability');
- const legacy={...fanProfile};delete legacy.availabilityDefinitions;delete legacy.onOff;delete legacy.parameterControl;
+ const legacy={...fanProfile};delete legacy.availabilityDefinitions;delete legacy.onOff;delete legacy.onOffExpression;delete legacy.parameterControl;
  const {renderHVACOperationDetail:renderDetail}=await import('/src/js/views/hvac-operation-view.js');
  const legacyDOM=document.createElement('div');legacyDOM.innerHTML=renderDetail(legacy,schedules,{component:fan,calendar});
- check(legacyDOM.querySelectorAll('[data-hvac-graph-unavailable]').length===2&&!legacyDOM.querySelector('[data-hvac-operation-graph="onoff"],[data-hvac-operation-graph="parameters"]'),'legacy mixed control was relabeled as a precise new graph');
+ check(legacyDOM.querySelectorAll('[data-hvac-graph-unavailable]').length===1&&!legacyDOM.querySelector('[data-hvac-operation-graph="parameters"]'),'legacy mixed parameter control was relabeled as precise source groups');
+ check(legacyDOM.querySelector('[data-hvac-boolean-definition="command"] [data-hvac-expression-op="unknown"]')?.title.includes('Analyze'),'missing legacy command AST was guessed instead of marked for reanalysis');
+ const nested=all(positive('Loop hours'),{op:'any',children:[positive('Boiler hours'),positive('Off')]}),expressionHost=document.createElement('div');
+ expressionHost.innerHTML=renderDetail({...boilerProfile,finalAvailability:nested,onOffExpression:all(nested,{op:'runtime_condition',referenceId:'decision'})},schedules,{component:boiler,calendar});
+ check(expressionHost.querySelector('[data-hvac-expression-op="all"] [data-hvac-expression-op="any"]')&&expressionHost.textContent.includes('AND')&&expressionHost.textContent.includes('OR'),'nested AND/OR grouping or visible operators lost');
+ check(expressionHost.querySelectorAll('[data-hvac-boolean-definition="command"] [data-hvac-expression-schedule]').length===0,'named availability was duplicated in command formula');
+ expressionHost.innerHTML=renderDetail({...boilerProfile,finalAvailability:{op:'any',children:[]},onOffExpression:{op:'manager_gate',children:[{op:'always',value:0}]}},schedules,{component:boiler,calendar});
+ check(expressionHost.querySelector('[data-hvac-boolean-definition="availability"] [data-hvac-expression-op="always"]')?.textContent==='FALSE','empty OR normalized FALSE displayed TRUE');
+ check(expressionHost.querySelector('[data-hvac-boolean-definition="command"] [data-hvac-expression-op="always"]')?.textContent==='NoAction','manager NoAction was confused with Boolean OFF');
  const opaque={...boilerProfile,finalAvailability:{op:'manager_unknown',reason:'runtime_manager'}};delete opaque.configuredAvailability;delete opaque.configuredAvailabilityLayers;
  const opaqueDOM=document.createElement('div');opaqueDOM.innerHTML=renderDetail(opaque,schedules,{component:boiler,calendar});connect(opaqueDOM);
  const opaqueFinal=opaqueDOM.querySelector('[data-hvac-availability-kind="final"]');
@@ -470,21 +471,27 @@ try{
  const onoff=()=>detail().querySelector('[data-hvac-operation-onoff]');
  const valueAt=(plot,minute)=>({on:'1',off:'0',unknown:'unknown'})[[...plot.querySelectorAll('[data-hvac-patch-status]')].find(item=>Number(item.dataset.startMinute)<=minute&&Number(item.dataset.endMinute)>minute)?.dataset.hvacPatchStatus];
  const scheduleCard=(panel,name)=>[...panel.querySelectorAll('[data-hvac-timeline-row]')].find(node=>node.querySelector('strong')?.textContent===name&&node.dataset.hvacAvailabilityKind==='schedule');
- const checkBranchLabels=()=>{
-  const labels=[...onoff().querySelectorAll('[data-hvac-control-edge] > text')].map(node=>({text:node.textContent,rect:node.getBoundingClientRect()}));
-  check(labels.length>=3&&labels.every(label=>label.rect.width>0&&label.rect.height>0),'branch labels missing/invisible');
-  for(let first=0;first<labels.length;first++)for(let next=first+1;next<labels.length;next++){
-   const a=labels[first],b=labels[next];
-   check(Math.min(a.rect.right,b.rect.right)-Math.max(a.rect.left,b.rect.left)<.5||Math.min(a.rect.bottom,b.rect.bottom)-Math.max(a.rect.top,b.rect.top)<.5,'branch labels overlap: '+a.text+' / '+b.text);
-  }
+ const checkFormulaLabels=()=>{
+  const labels=[...onoff().querySelectorAll('.hvac-expression-lhs')];
+  check(labels.length===2&&labels.every(label=>label.getBoundingClientRect().width>0),'named Boolean formulas missing/invisible');
+  check(labels[0].textContent===t('hvac.operation.finalAvailability')&&labels[1].textContent===t('hvac.operation.onCommand'),'formula labels did not follow app language');
+  check(onoff().querySelector('[data-hvac-boolean-definition="command"] [data-hvac-expression-reference="availability"]'),'command formula did not reuse native availability expression');
+  check(!onoff().querySelector('svg,[data-hvac-control-node],[data-hvac-schedule-plot],details'),'on/off logic expanded into flowchart or duplicated plots');
  };
  const checkThreeGraphs=profile=>{
   check(detail().querySelectorAll('.hvac-operation-panel').length===3&&detail().querySelectorAll('[data-hvac-operation-graph]').length===3,'parsed source must render exactly three graphs');
-  for(const [key,mode] of [['onOff','onoff'],['parameterControl','parameters']]){
-   const panel=detail().querySelector('[data-hvac-operation-'+mode+']');
-   check(profile[key].nodes.every(node=>panel.querySelector('[data-hvac-control-node="'+CSS.escape(node.id)+'"]')),'parsed '+key+' node vanished');
-   check(profile[key].edges.length===panel.querySelectorAll('[data-hvac-control-edge]').length,'parsed '+key+' relationship vanished');
-   for(const node of profile[key].nodes)if(node.source.objectName)check(panel.querySelector('[data-hvac-control-node="'+CSS.escape(node.id)+'"] .hvac-control-source')?.textContent===node.source.objectName,'native source identity lost in '+key+': '+node.source.objectName);
+  check(profile.onOffExpression?.op,'native on/off expression missing from parsed transport');checkFormulaLabels();
+  const panel=parameters();
+  check(profile.parameterControl.nodes.length===panel.querySelectorAll('[data-hvac-control-node]').length,'native parameter member dropped or duplicated');
+  check(profile.parameterControl.edges.length===panel.querySelectorAll('[data-hvac-control-edge]').length,'parsed parameter relationship vanished');
+  for(const node of profile.parameterControl.nodes){
+   const member=panel.querySelector('[data-hvac-control-node="'+CSS.escape(node.id)+'"]');
+   check(member,'native parameter identity vanished: '+node.id);
+   if(node.source?.objectName){
+    check(member.dataset.hvacSourceName===node.source.objectName&&member.dataset.hvacSourceType===node.source.objectType&&member.dataset.hvacSourceIndex===String(node.source.objectIndex),'native source identity lost: '+node.source.objectName);
+    const visible=member.querySelector('.hvac-control-source')?.textContent||member.closest('[data-hvac-parameter-card]').querySelector('h6').textContent;
+    check(visible===node.source.objectName,'native source name is no longer visible: '+node.source.objectName);
+   }
   }
   for(const node of profile.parameterControl.nodes.filter(node=>node.code==='node_setpoint'))for(const parameter of node.parameters.filter(parameter=>/node.*name/i.test(parameter.name)))check(parameters().querySelector('[data-hvac-control-node="'+CSS.escape(node.id)+'"] [data-control-value="'+CSS.escape(parameter.value)+'"]'),'setpoint reference node identity lost from inline control fields');
   check(profile.configuredAvailability&&profile.configuredAvailabilityLayers,'parsed configured availability projection missing');
@@ -503,17 +510,21 @@ try{
   const expected=evaluate({...profile,finalAvailability:profile.configuredAvailability},state.report.hvac.operatingSchedules,{...calendar,...state.hvacOperationCalendar}).final.values;
   for(const minute of [0,420,540,720,1140,1260])check(valueAt(final.querySelector('svg'),minute)===(expected[minute]===null?'unknown':String(expected[minute])),'displayed final differs from configured minimum at '+minute);
   check(availability().querySelectorAll('select').length===1&&!detail().querySelector('details,[data-hvac-operation-calendar="month"],[data-hvac-operation-calendar="year"]'),'removed disclosure/calendar controls returned');
-  check([...detail().querySelectorAll('[data-hvac-control-edge] path')].every(path=>path.getAttribute('d')?.startsWith('M')),'parsed graph did not draw all relationships');
+  check(!parameters().querySelector('svg,details'),'compressed parameters regained unfolded wiring/details');
  };
- const checkParameterRoutes=()=>{
-  const nodes=[...parameters().querySelectorAll('[data-hvac-control-node]')].map(node=>({id:node.dataset.hvacControlNode,rect:node.getBoundingClientRect()}));
-  for(const edge of parameters().querySelectorAll('[data-hvac-control-edge]')){
-   const path=edge.querySelector('path'),length=path.getTotalLength(),matrix=path.getScreenCTM();
-   for(let index=1;index<100;index++){
-    const point=path.getPointAtLength(length*index/100).matrixTransform(matrix);
-    const obstacle=nodes.find(({id,rect})=>id!==edge.dataset.from&&id!==edge.dataset.to&&point.x>rect.left+2&&point.x<rect.right-2&&point.y>rect.top+2&&point.y<rect.bottom-2);
-    check(!obstacle,'parsed feedback relationship crosses '+obstacle?.id+' for '+edge.dataset.from+' to '+edge.dataset.to);
-   }
+ const checkParameterCards=()=>{
+  check(parameters().querySelectorAll('[data-hvac-parameter-group]').length===4,'actual controller groups lost inputs/control/commands/responses');
+  for(const member of parameters().querySelectorAll('[data-hvac-control-node]'))check(member.getBoundingClientRect().width>0&&member.getBoundingClientRect().height>0,'actual parameter member became hidden');
+  const bounds=parameters().getBoundingClientRect();
+  for(const card of parameters().querySelectorAll('[data-hvac-parameter-card]'))check(card.getBoundingClientRect().left>=bounds.left&&card.getBoundingClientRect().right<=bounds.right,'native source card overflowed its panel');
+ };
+ const checkEquipmentValues=(profile,names)=>{
+  const equipment=profile.parameterControl.nodes.find(node=>node.code==='equipment_response');
+  for(const pattern of names){
+   const parameter=equipment.parameters.find(parameter=>pattern.test(parameter.name));
+   check(parameter,'actual source lacks required equipment parameter '+pattern+': '+JSON.stringify(equipment.parameters));
+   const chip=parameters().querySelector('[data-hvac-control-node="'+CSS.escape(equipment.id)+'"] [data-control-parameter="'+CSS.escape(parameter.name)+'"]');
+   check(chip&&chip.dataset.controlValue===parameter.value&&chip.textContent.includes(parameter.name)&&chip.getBoundingClientRect().width>0,'core equipment value vanished: '+parameter.name);
   }
  };
  const plant=fixtures.plant,water=plant.hvac.loops.find(loop=>loop.name==='HeatSys1');check(water,'real hot-water loop missing');
@@ -525,23 +536,26 @@ try{
  const targetSchedule=boilerProfile.parameterControl.nodes.find(node=>node.kind==='schedule'&&node.source.objectName==='HW-Loop-Temp-Schedule');
  check(targetSchedule,'real boiler target schedule absent');
  view.initializeHVACControls();await setup(plant,water);await select(boiler.name);checkThreeGraphs(boilerProfile);
+ checkEquipmentValues(boilerProfile,[/^Nominal Capacity$/i,/Thermal Efficiency/i,/Design Water Flow Rate/i]);
  check(detail().dataset.componentIndex===String(boiler.index),'parsed object identity changed at selection');
  const targetValue=()=>parameters().querySelector('[data-hvac-control-node="'+CSS.escape(targetSchedule.id)+'"] .hvac-control-schedule-value')?.textContent;
- check(/82[.,]2\s*°C/.test(targetValue()||''),'boiler schedule lost actual winter 82.2 °C target');
+ check(/82[.,]2\s*°C/.test(targetValue()||''),'boiler schedule lost actual winter 82.2 °C target: '+targetValue()+' / '+parameters().querySelector('[data-hvac-control-node="'+CSS.escape(targetSchedule.id)+'"]')?.closest('[data-hvac-parameter-card]').textContent);
+ check(parameters().querySelector('[data-hvac-control-node="'+CSS.escape(targetSchedule.id)+'"] .hvac-control-schedule-value')?.title.includes('-01-01'),'target schedule value lacks representative-day date basis');
  const selectMonth=async(month)=>{state.hvacOperationCalendar={...calendar,year:2026,month};view.renderHVAC(plant.hvac);await settle();};
  await selectMonth(6);check(/65\s*°C/.test(targetValue()||''),'summer date did not update target');
  await selectMonth(1);check(/82[.,]2\s*°C/.test(targetValue()||''),'winter date retained summer target');
- checkBranchLabels();setLanguage('ko');view.renderHVAC(plant.hvac);await settle();checkBranchLabels();
- check([...onoff().querySelectorAll('[data-hvac-control-edge] > text')].some(node=>node.textContent==='예'),'Korean decision branches not localized');
+ checkFormulaLabels();setLanguage('ko');view.renderHVAC(plant.hvac);await settle();checkFormulaLabels();
  setLanguage(locale);view.renderHVAC(plant.hvac);await settle();
  const pump=water.supplySide.branches.flatMap(branch=>branch.components).find(component=>component.objectType.startsWith('Pump:'));
  check(pump,'real pump missing');await select(pump.objectName);
+ checkEquipmentValues(profile(plant,source(plant,pump.objectType,pump.objectName),water),[/Design Pump Head/i,/Design Maximum Flow Rate/i]);
  check(!detail().textContent.includes('HeatSys1 Operation Scheme'),'pump inherited boiler-only dispatch');
  const chiller=plant.objects.find(object=>object.type.startsWith('Chiller:'));check(chiller,'real chiller source missing');
  const chillerOccurrence=plant.hvac.operatingProfiles.find(item=>item.componentIndex===chiller.index&&plant.hvac.loops.some(loop=>loop.id===item.loopId&&loop.type==='PlantLoop'));
  check(chillerOccurrence,'real chiller supply occurrence missing');
  const chillerLoop=plant.hvac.loops.find(loop=>loop.id===chillerOccurrence.loopId);
  await setup(plant,chillerLoop);await select(chiller.name);checkThreeGraphs(chillerOccurrence);
+ checkEquipmentValues(chillerOccurrence,[/Reference Capacity/i,/Reference COP/i]);
  const ownDefault=[...availability().querySelectorAll('[data-hvac-availability-kind="layer"]')].find(row=>row.querySelector('[data-hvac-availability-owner]')?.dataset.objectIndex===String(chiller.index)&&row.querySelector('strong').textContent===t('hvac.operation.noSeparateSchedule'));
  check(ownDefault,'chiller own availability definition silently vanished instead of showing its unrestricted default');
  check(valueAt(ownDefault.querySelector('svg'),720)==='1','known chiller no-separate-schedule default became unknown');
@@ -552,14 +566,17 @@ try{
  check(coilOccurrence,'actual Controller:WaterCoil occurrence missing');
  const coilLoop=plant.hvac.loops.find(loop=>loop.id===coilOccurrence.loopId),coil=plant.objects.find(object=>object.index===coilOccurrence.componentIndex);
  await setup(plant,coilLoop);await select(coil.name);checkThreeGraphs(coilOccurrence);
- checkParameterRoutes();
+ checkParameterCards();
  check(parameters().querySelector('[data-hvac-node-kind="control_variable"]')&&parameters().querySelector('[data-hvac-node-kind="state_variable"]')&&parameters().querySelector('[data-hvac-node-kind="external_input"]')&&parameters().querySelector('[data-hvac-node-kind="external_output"]'),'water coil lost command/state or external I/O');
- check(parameters().querySelector('[data-polarity="positive"] > text')?.textContent==='+'&&parameters().querySelector('[data-polarity="negative"] > text')?.textContent==='−','native water-coil comparator signs missing');
- check(parameters().querySelector('[data-control-parameter="Action"]'),'water-coil Action evidence missing');
+ check(parameters().querySelector('[data-hvac-parameter-term][data-polarity="positive"] .hvac-parameter-polarity')?.textContent==='+'&&parameters().querySelector('[data-hvac-parameter-term][data-polarity="negative"] .hvac-parameter-polarity')?.textContent==='−','native water-coil comparator signs missing after source-card folding');
+ const controller=coilOccurrence.parameterControl.nodes.find(node=>node.code==='feedback_controller'),nativeAction=controller.parameters.find(parameter=>parameter.name==='Action').value;
+ check(parameters().querySelector('[data-control-parameter="Action"]')?.textContent.includes(nativeAction),'water-coil native Normal/Reverse Action was translated away');
+ const residual=coilOccurrence.parameterControl.nodes.find(node=>node.code==='sensed_minus_setpoint');
+ check(residual&&coilOccurrence.parameterControl.edges.filter(edge=>edge.to===residual.id&&edge.polarity).every(edge=>parameters().querySelector('[data-hvac-parameter-term][data-from="'+CSS.escape(edge.from)+'"][data-to="'+CSS.escape(edge.to)+'"][data-polarity="'+edge.polarity+'"]')),'folded comparator lost a signed input term');
  check(parameters().textContent.includes('Controller:WaterCoil')&&parameters().querySelector('[data-control-parameter="Sensor Node Name"]')&&parameters().querySelector('[data-control-parameter="Actuator Node Name"]'),'water-coil actual source and inline ports missing');
  for(const width of ['690px','400px']){
   for(const node of [document.querySelector('.hvac-layout'),document.querySelector('.hvac-main'),document.querySelector('#hvacSummary')])node.style.width=width;
-  await settle();connect(graph);checkParameterRoutes();
+  await settle();connect(graph);checkParameterCards();
   check(detail().scrollWidth<=detail().clientWidth+1,'parsed water-coil graph overflows at '+width);
  }
  for(const node of [document.querySelector('.hvac-layout'),document.querySelector('.hvac-main'),document.querySelector('#hvacSummary')])node.style.width='1400px';

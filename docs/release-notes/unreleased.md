@@ -18,11 +18,11 @@ The release script infers bump size from these sections:
 
 ## Changed
 
-- Loop equipment inspection separates three graphs: Availability,
-  configured On / Off decisions, and parameter control. Parameter
-  control distinguishes external inputs/outputs, manipulated commands and
-  calculated states, with signed comparisons only for supported rules.
-  Unresolved runtime decisions remain explicit.
+- Loop equipment inspection uses compact nested AND/OR and named-rule cards for
+  On / Off conditions, with source references and explicit runtime unknowns.
+  Parameter control groups inputs/targets, controllers/comparisons, commands
+  and equipment response/outputs into source cards, retaining supported signed
+  relationships and native Action meanings.
 - Availability stacks compact ON/OFF patches for the minimum configured static
   conditions, with owning objects at the left and the combined result at the
   bottom. Supported scheduled-manager rules and plant activation remain;
