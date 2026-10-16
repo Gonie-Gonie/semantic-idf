@@ -1,4 +1,8 @@
 export default Object.freeze({
+  "hvac.operation.operationSchemeMembership": "운전 Scheme 소속",
+  "hvac.operation.reanalyzeAvailability": "입력을 다시 분석하면 설정된 Availability를 확인할 수 있습니다.",
+  "hvac.operation.noSeparateSchedule": "별도 스케줄 없음",
+  "hvac.operation.ownerUnresolved": "정의 객체 미확인",
   "hvac.operation.plantDispatch": "설비 투입 조건",
   "hvac.operation.status.on": "ON",
   "hvac.operation.status.off": "OFF",

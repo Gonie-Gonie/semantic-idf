@@ -131,52 +131,89 @@ function binaryTimeline(timeline) {
   return timelineSummary(segments, timeline);
 }
 
-function availabilityInputs(profile) {
-  const graph = profile.availabilityDefinitions || {}, nodes = graph.nodes || [];
-  const byID = new Map(nodes.map((node) => [node.id, node])), rows = [], schedules = new Set(), unresolved = new Set();
-  const addSchedule = (node) => {
-    const identity = scheduleIdentity(node), key = `${identity.namespace}:${normalized(identity.name)}`;
-    if (schedules.has(key)) return;
-    schedules.add(key);
-    rows.push({ id: `schedule:${key}`, kind: "schedule", name: identity.name, source: node.source, node });
-  };
-  for (const node of nodes) {
-    if (node.kind !== "schedule" && node.code !== "unresolved_schedule_reference") continue;
-    // Week/day declarations are dependencies of their referenced root, not
-    // independent annual inputs. Their namespace remains in the raw resolver.
-    if ((graph.edges || []).some((edge) => edge.to === node.id && byID.get(edge.from)?.kind === "schedule")) continue;
-    addSchedule(node);
-  }
-  const addUnresolved = (expression, source) => {
-    const key = JSON.stringify([source?.objectIndex, source?.objectType, source?.objectName, expression.op, expression.reason]);
-    if (unresolved.has(key)) return;
-    unresolved.add(key);
-    rows.push({ id: `unresolved:${key}`, kind: "layer", name: source?.objectName || "", labelCode: "unresolvedAvailability", source, reason: expression.reason, expression });
-  };
-  const walk = (expression, source, depth = 0) => {
-    if (!expression || depth > 64) { addUnresolved({ op: "unknown", reason: "unresolved_expression" }, source); return; }
-    source = expression.source || source;
-    // Reports predating the definitions graph still retain exact annual
-    // references in their expressions; never search unrelated control graphs.
-    if (!nodes.length && expression.scheduleName) addSchedule({ source: { objectName: expression.scheduleName } });
-    if (expression.op === "unknown" || expression.op === "manager_unknown") addUnresolved(expression, source);
-    for (const child of expression.children || []) walk(child, source, depth + 1);
-  };
-  if (profile.availabilityLayers?.length) {
-    for (const layer of profile.availabilityLayers) {
-      // Dispatch membership can be a known restriction without a schedule.
-      // Retain that actual input, including explicit not-in-scheme zeroes.
-      if (layer.role === "plant_dispatch") rows.push({ id: `layer:${layer.id}`, kind: "layer", name: layer.owner?.objectName || "", labelCode: "plantDispatch", source: layer.owner, expression: layer.expression });
-      else walk(layer.expression, layer.owner);
-    }
-  } else if (profile.finalAvailability) walk(profile.finalAvailability);
-  return rows;
+const runtimeReasons = new Set(["runtime_manager", "runtime_dispatch", "airflow_path_requires_runtime"]);
+const sourceKey = (source) => JSON.stringify([source?.objectIndex, source?.objectType, source?.objectName]);
+
+function needsConfiguredReport(expression, depth = 0) {
+  if (!expression || depth > 64) return false;
+  return runtimeReasons.has(expression.reason) || (expression.children || []).some((child) => needsConfiguredReport(child, depth + 1));
 }
 
-/** Compact input states and the configured final permission on one calendar.
+function configuredContext(profile) {
+  const authoritative = Boolean(profile.configuredAvailability?.op);
+  const requiresReanalysis = !authoritative && needsConfiguredReport(profile.finalAvailability);
+  return {
+    layers: authoritative ? profile.configuredAvailabilityLayers || [] : profile.availabilityLayers || [],
+    expression: authoritative ? profile.configuredAvailability : requiresReanalysis
+      ? { op: "unknown", reason: "configured_availability_requires_reanalysis" } : profile.finalAvailability,
+    authoritative, requiresReanalysis,
+  };
+}
+
+function availabilityInputs(profile, schedules, context) {
+  const graph = profile.availabilityDefinitions || {}, nodes = graph.nodes || [], edges = graph.edges || [];
+  const byID = new Map(nodes.map((node) => [node.id, node])), rows = [], scheduleRows = new Map(), unresolved = new Set();
+  const roots = nodes.filter((node) => (node.kind === "schedule" || node.code === "unresolved_schedule_reference") &&
+    !edges.some((edge) => edge.to === node.id && byID.get(edge.from)?.kind === "schedule"));
+  const addOwner = (row, owner) => {
+    if (owner && !row.owners.some((candidate) => sourceKey(candidate) === sourceKey(owner))) row.owners.push(owner);
+  };
+  const addSchedule = (name, owner, explicitOwner) => {
+    const key = `annual:${normalized(name)}`;
+    let row = scheduleRows.get(key);
+    if (!row) {
+      let node = roots.find((candidate) => scheduleIdentity(candidate).namespace === "annual" && normalized(scheduleIdentity(candidate).name) === normalized(name));
+      if (!node) {
+        // Older reports may omit Plant activation definitions. Recover only
+        // the exact annual reference, preserving duplicate/missing ambiguity.
+        const matches = schedules.filter((schedule) => normalized(schedule.name) === normalized(name) && scheduleIdentity({ source: { objectType: schedule.objectType } }).namespace === "annual");
+        const schedule = matches.length === 1 ? matches[0] : null;
+        node = { parameters: [{ name: "Schedule Name", value: name }], ...(schedule ? { source: { objectIndex: schedule.objectIndex, objectType: schedule.objectType, objectName: schedule.name } } : {}) };
+      }
+      row = { id: `schedule:${key}`, kind: "schedule", name, source: node.source, node, owners: [] };
+      scheduleRows.set(key, row); rows.push(row);
+    }
+    if (!explicitOwner) {
+      const owners = edges.filter((edge) => edge.to === row.node.id).map((edge) => byID.get(edge.from)?.source).filter(Boolean);
+      // Do not reattach a runtime manager merely because it references the
+      // same schedule. Use the surviving declaring owner, or an unambiguous
+      // source reference when a legacy layer lacks per-expression provenance.
+      if (!owners.some((candidate) => sourceKey(candidate) === sourceKey(owner)) && owners.length === 1) owner = owners[0];
+    }
+    addOwner(row, owner);
+  };
+  const addUnresolved = (expression, owner) => {
+    const key = JSON.stringify([sourceKey(owner), expression.op, expression.reason]);
+    if (unresolved.has(key)) return;
+    unresolved.add(key);
+    rows.push({ id: `unresolved:${key}`, kind: "layer", name: "", labelCode: "unresolvedAvailability", owners: owner ? [owner] : [], source: owner, reason: expression.reason, expression });
+  };
+  const walk = (expression, owner, depth = 0) => {
+    if (!expression || depth > 64) { addUnresolved({ op: "unknown", reason: "unresolved_expression" }, owner); return; }
+    owner = expression.source || owner;
+    if (!context.authoritative && runtimeReasons.has(expression.reason)) return;
+    if (expression.scheduleName) addSchedule(expression.scheduleName, owner, Boolean(expression.source));
+    if (expression.op === "unknown" || expression.op === "manager_unknown") addUnresolved(expression, owner);
+    for (const child of expression.children || []) walk(child, owner, depth + 1);
+  };
+  const equipment = context.layers.find((layer) => layer.role === "equipment") || (profile.availabilityLayers || []).find((layer) => layer.role === "equipment");
+  for (const layer of context.layers) {
+    walk(layer.expression, layer.owner);
+    if (layer.role === "plant_dispatch" && layer.expression?.op === "always" && layer.expression.value === 0) rows.push({ id: `layer:${layer.id}`, kind: "layer", name: "", labelCode: "operationSchemeMembership", owners: layer.owner ? [layer.owner] : [], source: layer.owner, expression: layer.expression });
+  }
+  if (!context.layers.length && context.expression) walk(context.expression, equipment?.owner);
+  if (equipment && (nodes.some((node) => node.code === "no_availability_schedule" && sourceKey(node.source) === sourceKey(equipment.owner)) ||
+    equipment.expression?.op === "always" && equipment.expression.value !== 0)) {
+    rows.push({ id: `default:${equipment.id}`, kind: "layer", name: "", labelCode: "noSeparateSchedule", owners: [equipment.owner], source: equipment.owner, expression: { op: "always" } });
+  }
+  return { rows, equipment };
+}
+
+/** Compact static prerequisites and their combined permission on one calendar.
  * Source strips are positive/nonpositive predicates, not manager status codes.
- * The final row evaluates the original expression: it is never an AND of the
- * displayed strips. Runtime managers/dispatch remain unknown where required.
+ * The final row evaluates configuredAvailability, never a simulated operating
+ * status. Runtime manager/dispatch outcomes are excluded by the parsed model;
+ * malformed/missing references remain unknown rather than becoming defaults.
  * No demand or parameter-control schedule is added to the availability stack. */
 export function buildHVACAvailabilityStack(profile = {}, schedules = [], options = {}, { view: requestedView } = {}) {
   const calendar = normalizeHVACOperationCalendar(options);
@@ -198,8 +235,8 @@ export function buildHVACAvailabilityStack(profile = {}, schedules = [], options
     totalMinutes: days * MINUTES_PER_DAY, ticks: timelineTicks(start, days, view, calendar), resolutionMinutes: 1,
     basis: view === "year" ? "standard_gregorian_weekdays" : "selected_date_day_type",
   };
-  const rows = availabilityInputs(profile);
-  rows.push({ id: "final", kind: "final", name: "", labelCode: "finalAvailability", expression: profile.finalAvailability });
+  const context = configuredContext(profile), { rows, equipment } = availabilityInputs(profile, schedules, context);
+  rows.push({ id: "final", kind: "final", name: "", labelCode: "finalAvailability", owners: equipment?.owner ? [equipment.owner] : [], reason: context.expression?.reason, expression: context.expression });
   const computed = rows.filter((row) => row.kind !== "schedule").map((row) => ({ row, segments: [] }));
   const weekday = regularDays.indexOf(calendar.dayType), firstWeekday = weekday < 0 ? start.getUTCDay() : weekday;
   for (let index = 0; index < days; index++) {
@@ -219,7 +256,7 @@ export function buildHVACAvailabilityStack(profile = {}, schedules = [], options
   }
   for (const row of rows) if (row.kind === "schedule") row.timeline = binaryTimeline(buildHVACScheduleTimeline(row.node, schedules, calendar, { view }));
   for (const { row, segments } of computed) row.timeline = timelineSummary(segments, basis);
-  const result = { ...basis, rows };
+  const result = { ...basis, rows, requiresReanalysis: context.requiresReanalysis };
   const retainedSegments = rows.reduce((sum, row) => sum + row.timeline.segments.length, 0);
   if (retainedSegments <= MAX_CACHED_SEGMENTS) {
     while (cache.entries.size >= 8 || cache.segments + retainedSegments > MAX_CACHED_SEGMENTS) {

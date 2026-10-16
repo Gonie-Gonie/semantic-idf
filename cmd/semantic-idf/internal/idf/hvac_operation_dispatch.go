@@ -80,6 +80,7 @@ func (b *hvacOperatingBuilder) dispatch(occ hvacOperatingOccurrence) (hvacOperat
 		return hvacOperatingDispatch{owner: b.objects[occ.loop.ObjectIndex], permission: HVACOperatingExpression{Op: "unknown", Reason: "missing_operation_schemes"}}, true
 	}
 	result := hvacOperatingDispatch{owner: schemes}
+	schemeSource := hvacOperatingSource(schemes)
 	alternatives := []HVACOperatingExpression{}
 	for index := 1; index+2 < len(schemes.Fields); index += 3 {
 		typeName, name, schedule := hvacFieldValue(schemes, index), hvacFieldValue(schemes, index+1), hvacFieldValue(schemes, index+2)
@@ -88,8 +89,9 @@ func (b *hvacOperatingBuilder) dispatch(occ hvacOperatingOccurrence) (hvacOperat
 		}
 		operation, exists := b.exactObject(typeName, name)
 		permission := hvacOperatingSchedule(schedule)
+		permission.Source = &schemeSource
 		if schedule == "" {
-			permission = HVACOperatingExpression{Op: "unknown", Reason: "missing_dispatch_schedule"}
+			permission = HVACOperatingExpression{Op: "unknown", Reason: "missing_dispatch_schedule", Source: &schemeSource}
 		}
 		if !exists {
 			alternatives = append(alternatives, hvacOperatingCombine("all", permission, HVACOperatingExpression{Op: "unknown", Reason: "missing_operation_scheme"}))
@@ -113,7 +115,7 @@ func (b *hvacOperatingBuilder) dispatch(occ hvacOperatingOccurrence) (hvacOperat
 	}
 	if len(alternatives) == 0 {
 		zero := 0.0
-		result.permission = HVACOperatingExpression{Op: "always", Value: &zero, Reason: "not_in_operation_scheme"}
+		result.permission = HVACOperatingExpression{Op: "always", Value: &zero, Reason: "not_in_operation_scheme", Source: &schemeSource}
 	} else {
 		result.permission = hvacOperatingCombine("any", alternatives...)
 	}

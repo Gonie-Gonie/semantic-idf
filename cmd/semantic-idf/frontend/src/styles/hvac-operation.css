@@ -50,7 +50,11 @@
 .hvac-availability-timelines { touch-action: pan-y; cursor: grab; outline-offset: 3px; }
 .hvac-availability-timelines.dragging { cursor: grabbing; user-select: none; }
 .hvac-availability-timelines:focus-visible, .hvac-availability-toolbar select:focus-visible { outline: 2px solid #51c5cf; outline-offset: 2px; }
-.hvac-availability-timeline-row, .hvac-availability-axis-row { display: grid; grid-template-columns: minmax(90px, 210px) minmax(0, 1fr) 78px; gap: 10px; align-items: center; min-width: 0; }
+.hvac-availability-timeline-row, .hvac-availability-axis-row { display: grid; grid-template-columns: minmax(100px, 210px) minmax(90px, 210px) minmax(0, 1fr) 78px; gap: 10px; align-items: center; min-width: 0; }
+.hvac-availability-labels { display: contents; }
+.hvac-availability-owners { min-width: 0; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.hvac-availability-owners > span { display: block; }
+.hvac-availability-axis-label { grid-column: 1 / 3; }
 .hvac-availability-timeline-row { min-height: 32px; }
 .hvac-availability-timeline-row.final { border-top: 1px solid var(--border, #2b404e); margin-top: 5px; padding-top: 6px; }
 .hvac-availability-name { min-width: 0; font-size: 11px; font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; }
@@ -68,4 +72,7 @@
   .hvac-operation-heading { align-items: flex-start; }
   .hvac-operation-panel { padding: 14px; }
   .hvac-availability-timeline-row, .hvac-availability-axis-row { grid-template-columns: minmax(72px, 108px) minmax(0, 1fr) 58px; gap: 6px; }
+  .hvac-availability-labels { display: block; min-width: 0; padding: 4px 0; }
+  .hvac-availability-labels .hvac-availability-name { display: block; margin-top: 3px; color: var(--muted, #8aa4b5); }
+  .hvac-availability-axis-label { grid-column: 1; }
 }

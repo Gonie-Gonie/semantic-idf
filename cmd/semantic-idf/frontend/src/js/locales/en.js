@@ -1,4 +1,8 @@
 export default Object.freeze({
+  "hvac.operation.operationSchemeMembership": "Operation scheme membership",
+  "hvac.operation.reanalyzeAvailability": "Analyze the input again to resolve configured availability.",
+  "hvac.operation.noSeparateSchedule": "No separate schedule",
+  "hvac.operation.ownerUnresolved": "Owner unresolved",
   "hvac.operation.plantDispatch": "Equipment selection",
   "hvac.operation.status.on": "ON",
   "hvac.operation.status.off": "OFF",

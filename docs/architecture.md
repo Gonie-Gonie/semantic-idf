@@ -97,26 +97,40 @@ entry retains source-backed `HVACControlSequence` records:
 | `onOff` | Configured permission and demand conditions with explicit ON, OFF and unresolved branches |
 | `parameterControl` | External inputs, controllers/setpoints, manipulated control variables, calculated state variables and external outputs |
 
-The Availability view stacks root schedules referenced by
-`availabilityDefinitions` as binary source rows: positive is ON, nonpositive is
-OFF and unavailable is unknown. Additional unresolved runtime leaves and dispatch
-conditions remain visible where needed. The bottom row evaluates the actual
-`finalAvailability` expression, not an AND of the displayed source flags or a
-second set of applied layer curves. A source schedule's flag is not itself a
-manager status: ScheduledOff tests exact zero, and fan overrides and manager
-priority can change the final permission. Source definition records remain
+The additive `configuredAvailabilityLayers` and `configuredAvailability` fields
+use the existing layer/expression types for the minimum configured static
+conditions. Availability uses these fields, with source-owning object labels at
+the left of binary schedule rows and the combined configured result at the
+bottom. A source schedule is ON when positive, OFF when nonpositive, and unknown
+when unavailable. A source flag is not itself a manager status: ScheduledOff
+tests exact zero, and supported scheduled-manager overrides and priority remain
+part of the combined result.
+
+The configured projection excludes verified runtime managers such as NightCycle,
+temperature/load decisions and actual dispatch selection. Their unknown runtime
+state does not contaminate the static result. Preserve operation-scheme activation
+schedules and exact equipment membership, supported own-field defaults and known
+scheduled manager rules. An absent separate own availability schedule is an
+explicit unrestricted equipment row, not the omission of plant/loop conditions.
+Detected missing, duplicate, unsupported or malformed configuration stays unknown; never
+convert arbitrary unknown expressions to true. Runtime-manager exclusion requires
+verified type, schema, assignment context and reference evidence. The legacy
+`finalAvailability` and
+control graph retain their full configured/runtime dependency semantics.
+Source definition records remain
 available programmatically; the view exposes no raw numeric
 schedule ranges, definition/parameter disclosures or algorithm nodes. Both
 availability evaluation and On / Off preserve all/any semantics, air/zone
-manager precedence and plant assignment priority rather than treating every
-manager as another AND gate. A branch describes configured logic; runtime
-loads, temperatures, external/EMS schedules and unsupported conditions remain
-unresolved. It never asserts that equipment actually ran.
+manager precedence and Plant availability-manager assignment priority rather than treating every
+manager as another AND gate. On / Off retains unresolved runtime decisions that
+the static Availability view excludes. Neither view asserts that equipment ran.
 
 Graph nodes retain source identities and parameter object/field indexes.
 Availability expressions may additionally retain their declaring `source`, so
 an inherited fan override keeps the loop/parent manager's actual owner rather
 than guessing it from the selected fan or manager-list position.
+Manager `assignmentOwner` retains its actual loop/equipment attachment for
+validating supported assignment context before excluding a runtime contribution.
 `boundary` identifies `input`/`output`; edges may carry `condition` (`yes`, `no`,
 `unknown`) and `polarity` (`positive`, `negative`, `unknown`). A feedback sign
 requires a supported comparison or response rule, not an equipment name or a
@@ -136,6 +150,10 @@ signs, except the supported pure-temperature residual convention.
 Legacy `availabilityLayers`, `finalAvailability` and `control` fields remain
 compatible. On / Off and Parameter control show a reanalysis hint when their
 new graphs are absent, rather than reclassifying the old mixed control diagram.
+Availability treats the new configured fields as authoritative. A legacy full
+expression is reusable only when it has no opaque runtime dependency; otherwise
+the final row reports missing configuration metadata until reanalysis, without
+reintroducing runtime-result rows or assuming those unknowns are true.
 `operatingSchedules` retains exact supported calendar rules. The Availability
 toolbar exposes only Rep. day, Rep. week and Annual. Representative views use
 January 1/current year and a Monday anchor; Annual uses that year's regular

@@ -176,6 +176,9 @@ Schedule:Constant, Review Fan Off, Fraction, 0;
 			{"furnace-annual-narrow-ko.png", "?capture=narrow&equipment=furnace&time=year&lang=ko", "480,1600"},
 			{"vav-availability-wide.png", "?capture=wide&equipment=vav&time=year", "1480,700"},
 			{"vav-availability-narrow-ko.png", "?capture=narrow&equipment=vav&time=year&lang=ko", "480,800"},
+			{"chiller-availability-wide.png", "?capture=wide&equipment=chiller&time=year", "1480,700"},
+			{"chiller-availability-wide-ko.png", "?capture=wide&equipment=chiller&time=year&lang=ko", "1480,700"},
+			{"chiller-availability-narrow-ko.png", "?capture=narrow&equipment=chiller&time=year&lang=ko", "480,800"},
 		} {
 			if filter := os.Getenv("HVAC_OPERATION_CAPTURE_FILTER"); filter != "" {
 				matched := false
@@ -252,10 +255,10 @@ try{
  const boilerProfile={componentIndex:10,loopId:'plant',availabilityLayers:[layer('loop',plant,'loop',positive('Loop hours')),layer('equipment',boiler,'equipment',positive('Boiler hours'))],finalAvailability:all(positive('Loop hours'),positive('Boiler hours')),control:sequence(boiler,'boiler')};
  const pumpProfile={componentIndex:11,loopId:'plant',availabilityLayers:[layer('loop',plant,'loop',positive('Loop hours')),layer('equipment',pump,'equipment',positive('On'))],finalAvailability:all(positive('Loop hours'),positive('On')),control:sequence(pump,'pump')};
  const fanProfile={componentIndex:20,loopId:'air',availabilityLayers:[layer('loop',air,'loop',positive('On')),layer('equipment',fan,'equipment',positive('External file'))],finalAvailability:all(positive('On'),positive('External file')),control:sequence(fan,'fan')};
- const definitions=(equipment,names)=>({nodes:[{id:'owner',kind:'definition',code:'availability_owner',source:source(equipment),parameters:[{name:'Availability Schedule Name',value:names.at(-1)}]},...names.map((name,index)=>({id:'schedule:'+index,kind:'schedule',code:'schedule_value',source:{objectIndex:60+index,objectType:'Schedule:Compact',objectName:name}}))],edges:names.map((_,index)=>({from:'owner',to:'schedule:'+index,relation:'declares_schedule'}))});
+ const definitions=(equipment,names)=>({nodes:[...names.map((name,index)=>({id:'owner:'+index,kind:'definition',code:'availability_owner',source:source(index===0?(equipment===fan?air:plant):equipment),parameters:[{name:'Availability Schedule Name',value:name}]})),...names.map((name,index)=>({id:'schedule:'+index,kind:'schedule',code:'schedule_value',source:{objectIndex:60+index,objectType:'Schedule:Compact',objectName:name}}))],edges:names.map((_,index)=>({from:'owner:'+index,to:'schedule:'+index,relation:'declares_schedule'}))});
  const onOff=equipment=>({nodes:[{id:'permission',kind:'decision',code:'availability_permission',source:source(equipment)},{id:'decision',kind:'decision',code:'boiler_on_off',source:source(equipment)},{id:'on',kind:'outcome',code:'on_command',boundary:'output',source:source(equipment)},{id:'off',kind:'outcome',code:'off_command',boundary:'output',source:source(equipment)}],edges:[{from:'permission',to:'decision',relation:'permits',condition:'yes'},{from:'permission',to:'off',relation:'blocked',condition:'no'},{from:'decision',to:'on',relation:'requested',condition:'yes'},{from:'decision',to:'off',relation:'no_request',condition:'no'}]});
  const parameters=equipment=>({nodes:[{id:'input',kind:'external_input',code:'inlet_state',boundary:'input',source:source(plant)},{id:'setpoint',kind:'setpoint',code:'setpoint_manager',source:{objectIndex:50,objectType:'SetpointManager:Scheduled',objectName:'Supply <target> & reset'}},{id:'controller',kind:'controller',code:'feedback_controller',source:source(equipment),parameters:[{name:'Action',value:'Reverse'}]},{id:'command',kind:'control_variable',code:'water_flow_command',source:source(equipment)},{id:'equipment',kind:'equipment',code:'equipment_response',source:source(equipment),parameters:[{name:'Flow mode',value:'LeavingSetpointModulated'}]},{id:'state',kind:'state_variable',code:'outlet_state',source:source(equipment)},{id:'output',kind:'external_output',code:'outlet_state',boundary:'output',source:source(equipment)}],edges:[{from:'input',to:'equipment',relation:'inlet_conditions'},{from:'setpoint',to:'controller',relation:'sets_target',polarity:'negative'},{from:'controller',to:'command',relation:'determines_command'},{from:'command',to:'equipment',relation:'actuates'},{from:'equipment',to:'state',relation:'determines_state'},{from:'state',to:'controller',relation:'feedback',polarity:'unknown'},{from:'state',to:'output',relation:'outputs'}]});
- for(const [item,profile,names] of [[boiler,boilerProfile,['Loop hours','Boiler hours']],[pump,pumpProfile,['Loop hours','On']],[fan,fanProfile,['On','External file']]])Object.assign(profile,{availabilityDefinitions:definitions(item,names),onOff:onOff(item),parameterControl:parameters(item)});
+ for(const [item,profile,names] of [[boiler,boilerProfile,['Loop hours','Boiler hours']],[pump,pumpProfile,['Loop hours','On']],[fan,fanProfile,['On','External file']]])Object.assign(profile,{availabilityDefinitions:definitions(item,names),configuredAvailabilityLayers:profile.availabilityLayers,configuredAvailability:profile.finalAvailability,onOff:onOff(item),parameterControl:parameters(item)});
  const calendar={month:1,day:1,dayType:'Monday'};
  const evaluated=evaluate(boilerProfile,schedules,calendar);
  const finalValues=expression=>evaluate({...boilerProfile,finalAvailability:expression},schedules,calendar).final.values;
@@ -317,6 +320,9 @@ try{
  check(availability().querySelectorAll('select').length===1&&!availability().querySelector('input,button,p,legend,.hvac-availability-legend,.hvac-availability-presence,b'),'availability contains calendar/reset/descriptive/numeric clutter');
  check(!detail().querySelector('[data-hvac-operation-calendar="month"],[data-hvac-operation-calendar="day"],[data-hvac-operation-calendar="dayType"],[data-hvac-operation-calendar="year"]'),'removed date controls remain visible');
  check(rows().length===3&&finalRow().dataset.hvacAvailabilityKind==='final','related availability inputs and final row are not stacked in order');
+ check(sourceRow('Loop hours').querySelector('[data-hvac-availability-owner]')?.textContent===plant.name&&sourceRow('Boiler hours').querySelector('[data-hvac-availability-owner]')?.textContent===boiler.objectName,'leftmost owner names do not match source declarations');
+ check(sourceRow('Loop hours').querySelector('[data-hvac-availability-owner]').dataset.objectIndex==='1'&&sourceRow('Boiler hours').querySelector('[data-hvac-availability-owner]').dataset.objectIndex==='10','owner source identities changed');
+ check(finalRow().querySelector('[data-hvac-availability-owner]')?.dataset.objectIndex==='10','final configured availability lost selected equipment owner');
  expectSegments(schedulePlot('Loop hours'),[[0,480,'off'],[480,1200,'on'],[1200,1440,'off']],'parent availability patches wrong');
  expectSegments(schedulePlot('Boiler hours'),[[0,600,'off'],[600,1080,'on'],[1080,1440,'off']],'equipment availability patches wrong');
  expectSegments(finalPlot(),[[0,600,'off'],[600,1080,'on'],[1080,1440,'off']],'final availability is not the native combined permission');
@@ -391,8 +397,12 @@ try{
  const {renderHVACOperationDetail:renderDetail}=await import('/src/js/views/hvac-operation-view.js');
  const legacyDOM=document.createElement('div');legacyDOM.innerHTML=renderDetail(legacy,schedules,{component:fan,calendar});
  check(legacyDOM.querySelectorAll('[data-hvac-graph-unavailable]').length===2&&!legacyDOM.querySelector('[data-hvac-operation-graph="onoff"],[data-hvac-operation-graph="parameters"]'),'legacy mixed control was relabeled as a precise new graph');
- const denseSchedule={name:'Minute values',objectType:'Schedule:Day:Interval',kind:'day',status:'supported',intervals:Array.from({length:1440},(_,index)=>({untilMinute:index+1,value:index%2?.5:0}))};
- const denseProfile={availabilityDefinitions:{nodes:[{id:'dense',kind:'schedule',code:'schedule_value',source:{objectType:'Schedule:Day:Interval',objectName:'Minute values'}}],edges:[]},finalAvailability:{op:'unknown'},onOff:fanProfile.onOff,parameterControl:fanProfile.parameterControl};
+ const opaque={...boilerProfile,finalAvailability:{op:'manager_unknown',reason:'runtime_manager'}};delete opaque.configuredAvailability;delete opaque.configuredAvailabilityLayers;
+ const opaqueDOM=document.createElement('div');opaqueDOM.innerHTML=renderDetail(opaque,schedules,{component:boiler,calendar});connect(opaqueDOM);
+ const opaqueFinal=opaqueDOM.querySelector('[data-hvac-availability-kind="final"]');
+ check(opaqueFinal.title.includes('Analyze')&&opaqueFinal.querySelector('[data-hvac-patch-status="unknown"]')&&!opaqueFinal.querySelector('[data-hvac-patch-status="on"],[data-hvac-patch-status="off"]'),'legacy runtime-only report guessed configured availability or omitted reanalysis hover');
+ const denseSchedule={name:'Minute values',objectType:'Schedule:Compact',kind:'compact',status:'supported',rules:[{startDay:1,endDay:366,selector:'AllDays',intervals:Array.from({length:1440},(_,index)=>({untilMinute:index+1,value:index%2?.5:0}))}]};
+ const denseProfile={componentIndex:fan.objectIndex,availabilityDefinitions:{nodes:[{id:'dense',kind:'schedule',code:'schedule_value',source:{objectType:'Schedule:Compact',objectName:'Minute values'}}],edges:[]},configuredAvailabilityLayers:[{id:'dense',role:'equipment',owner:source(fan),expression:positive('Minute values')}],configuredAvailability:positive('Minute values'),finalAvailability:{op:'unknown'},onOff:fanProfile.onOff,parameterControl:fanProfile.parameterControl};
  const denseHost=document.createElement('div');denseHost.style.width='1000px';document.body.append(denseHost);
  denseHost.innerHTML=renderDetail(denseProfile,[denseSchedule],{component:fan,calendar:{year:2026,timelineView:'year'}});connect(denseHost);await settle();
  const denseGraph=denseHost.querySelector('[data-hvac-timeline-id]'),denseSVG=denseGraph.querySelector('svg');
@@ -411,7 +421,8 @@ try{
   {name:'Mixed signed values',objectType:'Schedule:Compact',kind:'compact',status:'supported',rules:[{startDay:1,endDay:366,selector:'AllDays',intervals:[{untilMinute:720,value:-100},{untilMinute:1440,value:.0001}]}]},
   {name:'Partial zero',objectType:'Schedule:Compact',kind:'compact',status:'supported',rules:[{startDay:1,endDay:366,selector:'Weekdays',intervals:[{untilMinute:1440,value:0}]}]},
  ];
- const tinyProfile={...denseProfile,availabilityDefinitions:{nodes:tinySchedules.map((schedule,index)=>({id:'tiny:'+index,kind:'schedule',code:'schedule_value',source:{objectType:schedule.objectType,objectName:schedule.name}})),edges:[]}};
+ const tinyExpression=all(...tinySchedules.map(schedule=>positive(schedule.name)));
+ const tinyProfile={...denseProfile,configuredAvailabilityLayers:[{id:'tiny',role:'equipment',owner:source(fan),expression:tinyExpression}],configuredAvailability:tinyExpression,availabilityDefinitions:{nodes:tinySchedules.map((schedule,index)=>({id:'tiny:'+index,kind:'schedule',code:'schedule_value',source:{objectType:schedule.objectType,objectName:schedule.name}})),edges:[]}};
  denseHost.innerHTML=renderDetail(tinyProfile,tinySchedules,{component:fan,calendar:{year:2026,dayType:'Monday',timelineView:'week'}});connect(denseHost);await settle();
  const tinyGraph=denseHost.querySelector('[data-hvac-timeline-id]'),tinyRows=[...tinyGraph.querySelectorAll('[data-hvac-timeline-row]')];
  const tinyRow=name=>tinyRows.find(row=>row.querySelector('strong').textContent===name),tinySVG=tinyRow('Tiny positive').querySelector('svg');
@@ -436,7 +447,7 @@ const hvacOperationParsedBrowserHTML = `<!doctype html>
 const check=(value,message)=>{if(!value)throw Error(message)};
 const settle=()=>new Promise(resolve=>setTimeout(resolve,60));
 try{
- const [{state},view,{evaluateHVACOperation:evaluate},{renderHVACOperationDetail:renderDetail,connectHVACOperationDetail:connect},{setLanguage}]=await Promise.all([
+ const [{state},view,{evaluateHVACOperation:evaluate},{renderHVACOperationDetail:renderDetail,connectHVACOperationDetail:connect},{setLanguage,t}]=await Promise.all([
   import('/src/js/state.js'),import('/src/js/views/hvac-views.js'),import('/src/js/hvac-operation.js'),import('/src/js/views/hvac-operation-view.js'),import('/src/js/i18n.js')]);
  const locale=new URLSearchParams(location.search).get('lang')||'en';setLanguage(locale);
  const fixtures=await(await fetch('/fixtures')).json(),original=JSON.stringify(fixtures),calendar={month:1,day:1,dayType:'Monday'};
@@ -476,13 +487,21 @@ try{
    for(const node of profile[key].nodes)if(node.source.objectName)check(panel.querySelector('[data-hvac-control-node="'+CSS.escape(node.id)+'"] .hvac-control-source')?.textContent===node.source.objectName,'native source identity lost in '+key+': '+node.source.objectName);
   }
   for(const node of profile.parameterControl.nodes.filter(node=>node.code==='node_setpoint'))for(const parameter of node.parameters.filter(parameter=>/node.*name/i.test(parameter.name)))check(parameters().querySelector('[data-hvac-control-node="'+CSS.escape(node.id)+'"] [data-control-value="'+CSS.escape(parameter.value)+'"]'),'setpoint reference node identity lost from inline control fields');
-  const scheduleNodes=profile.availabilityDefinitions.nodes.filter(node=>node.kind==='schedule'),scheduleIDs=new Set(scheduleNodes.map(node=>node.id));
-  const roots=scheduleNodes.filter(node=>!profile.availabilityDefinitions.edges.some(edge=>edge.to===node.id&&scheduleIDs.has(edge.from)));
-  check(roots.every(node=>scheduleCard(availability(),node.source.objectName)),'native availability schedule identity vanished');
+  check(profile.configuredAvailability&&profile.configuredAvailabilityLayers,'parsed configured availability projection missing');
+  const referenceNames=new Set();
+  const references=expression=>{if(expression?.scheduleName)referenceNames.add(expression.scheduleName.trim().toLowerCase());for(const child of expression?.children||[])references(child);};
+  for(const layer of profile.configuredAvailabilityLayers)references(layer.expression);
+  const displayed=[...availability().querySelectorAll('[data-hvac-availability-kind="schedule"]')];
+  check([...referenceNames].every(name=>displayed.some(row=>row.querySelector('strong').textContent.trim().toLowerCase()===name)),'configured availability schedule identity vanished');
+  check(displayed.every(row=>referenceNames.has(row.querySelector('strong').textContent.trim().toLowerCase())),'runtime/control schedule leaked into configured availability');
+  for(const owner of availability().querySelectorAll('[data-hvac-availability-owner]')){
+   const native=state.report.objects.find(object=>String(object.index)===owner.dataset.objectIndex);
+   check(native&&owner.textContent===native.name&&owner.dataset.objectType===native.type,'availability declaring owner lost native identity');
+  }
   const final=[...availability().querySelectorAll('[data-hvac-timeline-row]')].at(-1);
-  check(final.dataset.hvacAvailabilityKind==='final','final availability is not last');
-  const expected=evaluate(profile,state.report.hvac.operatingSchedules,{...calendar,...state.hvacOperationCalendar}).final.values;
-  for(const minute of [0,420,540,720,1140,1260])check(valueAt(final.querySelector('svg'),minute)===(expected[minute]===null?'unknown':String(expected[minute])),'displayed final permission differs from native manager/dispatch expression at '+minute);
+  check(final.dataset.hvacAvailabilityKind==='final'&&final.querySelector('[data-hvac-availability-owner]')?.dataset.objectIndex===String(profile.componentIndex),'final configured availability is not last or lost equipment owner');
+  const expected=evaluate({...profile,finalAvailability:profile.configuredAvailability},state.report.hvac.operatingSchedules,{...calendar,...state.hvacOperationCalendar}).final.values;
+  for(const minute of [0,420,540,720,1140,1260])check(valueAt(final.querySelector('svg'),minute)===(expected[minute]===null?'unknown':String(expected[minute])),'displayed final differs from configured minimum at '+minute);
   check(availability().querySelectorAll('select').length===1&&!detail().querySelector('details,[data-hvac-operation-calendar="month"],[data-hvac-operation-calendar="year"]'),'removed disclosure/calendar controls returned');
   check([...detail().querySelectorAll('[data-hvac-control-edge] path')].every(path=>path.getAttribute('d')?.startsWith('M')),'parsed graph did not draw all relationships');
  };
@@ -500,7 +519,8 @@ try{
  const plant=fixtures.plant,water=plant.hvac.loops.find(loop=>loop.name==='HeatSys1');check(water,'real hot-water loop missing');
  const boiler=source(plant,'Boiler:HotWater','HeatSys1 Boiler');check(boiler,'real boiler source missing');
  const boilerProfile=profile(plant,boiler,water);check(boilerProfile,'real boiler operating profile missing');
- check(!boilerProfile.availabilityDefinitions.nodes.some(node=>node.source.objectName==='HeatSys1 Operation Scheme'),'plant dispatch leaked into availability definitions');
+ check(!boilerProfile.availabilityDefinitions.nodes.some(node=>['decision','controller','dispatch'].includes(node.kind)),'runtime algorithms leaked into availability definitions');
+ check(!JSON.stringify(boilerProfile.configuredAvailability).includes('runtime_dispatch')&&!JSON.stringify(boilerProfile.configuredAvailability).includes('runtime_manager'),'runtime outcome polluted configured minimum availability');
  check(boilerProfile.onOff.nodes.some(node=>node.source.objectName==='HeatSys1 Operation Scheme'),'real plant dispatch lost its on/off role');
  const targetSchedule=boilerProfile.parameterControl.nodes.find(node=>node.kind==='schedule'&&node.source.objectName==='HW-Loop-Temp-Schedule');
  check(targetSchedule,'real boiler target schedule absent');
@@ -517,6 +537,17 @@ try{
  const pump=water.supplySide.branches.flatMap(branch=>branch.components).find(component=>component.objectType.startsWith('Pump:'));
  check(pump,'real pump missing');await select(pump.objectName);
  check(!detail().textContent.includes('HeatSys1 Operation Scheme'),'pump inherited boiler-only dispatch');
+ const chiller=plant.objects.find(object=>object.type.startsWith('Chiller:'));check(chiller,'real chiller source missing');
+ const chillerOccurrence=plant.hvac.operatingProfiles.find(item=>item.componentIndex===chiller.index&&plant.hvac.loops.some(loop=>loop.id===item.loopId&&loop.type==='PlantLoop'));
+ check(chillerOccurrence,'real chiller supply occurrence missing');
+ const chillerLoop=plant.hvac.loops.find(loop=>loop.id===chillerOccurrence.loopId);
+ await setup(plant,chillerLoop);await select(chiller.name);checkThreeGraphs(chillerOccurrence);
+ const ownDefault=[...availability().querySelectorAll('[data-hvac-availability-kind="layer"]')].find(row=>row.querySelector('[data-hvac-availability-owner]')?.dataset.objectIndex===String(chiller.index)&&row.querySelector('strong').textContent===t('hvac.operation.noSeparateSchedule'));
+ check(ownDefault,'chiller own availability definition silently vanished instead of showing its unrestricted default');
+ check(valueAt(ownDefault.querySelector('svg'),720)==='1','known chiller no-separate-schedule default became unknown');
+ const chillerFinal=[...availability().querySelectorAll('[data-hvac-timeline-row]')].at(-1);
+ check(valueAt(chillerFinal.querySelector('svg'),720)==='1','runtime chiller load dispatch polluted configured minimum availability');
+
  const coilOccurrence=plant.hvac.operatingProfiles.find(item=>item.parameterControl.nodes.some(node=>node.code==='feedback_controller'&&node.source.objectType==='Controller:WaterCoil')&&plant.hvac.loops.some(loop=>loop.id===item.loopId&&loop.type==='AirLoopHVAC'));
  check(coilOccurrence,'actual Controller:WaterCoil occurrence missing');
  const coilLoop=plant.hvac.loops.find(loop=>loop.id===coilOccurrence.loopId),coil=plant.objects.find(object=>object.index===coilOccurrence.componentIndex);
@@ -541,10 +572,10 @@ try{
  graph.innerHTML=renderDetail(fanProfile,furnace.hvac.operatingSchedules,{component:{objectIndex:fan.index,objectType:fan.type,objectName:fan.name},calendar});connect(graph);await settle();checkThreeGraphs(fanProfile);
  const rawFan=scheduleCard(availability(),'Review Fan Off');check(rawFan&&valueAt(rawFan.querySelector('[data-hvac-schedule-plot]'),720)==='0','availability definitions overrode literal fan schedule with manager algorithm');
  check(JSON.stringify(fixtures)===original,'real-source inspection mutated report');
- const captureParams=new URLSearchParams(location.search),capture=captureParams.get('capture'),capturingCoil=captureParams.get('equipment')==='coil',capturingFurnace=captureParams.get('equipment')==='furnace',capturingVAV=captureParams.get('equipment')==='vav';
+ const captureParams=new URLSearchParams(location.search),capture=captureParams.get('capture'),capturingCoil=captureParams.get('equipment')==='coil',capturingFurnace=captureParams.get('equipment')==='furnace',capturingVAV=captureParams.get('equipment')==='vav',capturingChiller=captureParams.get('equipment')==='chiller';
  if(capture){
   state.hvacOperationCalendar={...calendar,year:2026,timelineView:captureParams.get('time')||'day'};
-  await setup(capturingFurnace?furnace:plant,capturingFurnace?air:capturingCoil||capturingVAV?coilLoop:water);await select(capturingFurnace?unit.name:capturingCoil||capturingVAV?coil.name:boiler.name);
+  await setup(capturingFurnace?furnace:plant,capturingFurnace?air:capturingCoil||capturingVAV?coilLoop:capturingChiller?chillerLoop:water);await select(capturingFurnace?unit.name:capturingCoil||capturingVAV?coil.name:capturingChiller?chiller.name:boiler.name);
   const width=capture==='narrow'?'400px':'1400px';
   for(const node of [document.querySelector('.hvac-layout'),document.querySelector('.hvac-main'),document.querySelector('#hvacSummary')])node.style.width=width;
   await settle();
@@ -554,7 +585,7 @@ try{
    const parameterPanel=inspection.querySelector('[data-hvac-operation-parameters]');
    inspection.querySelector('.hvac-operation-columns').replaceChildren(parameterPanel);connect(document.body);await settle();
   }
-  if(capturingFurnace||capturingVAV){
+  if(capturingFurnace||capturingVAV||capturingChiller){
    const availabilityPanel=inspection.querySelector('[data-hvac-operation-availability]');
    inspection.querySelector('.hvac-operation-columns').replaceChildren(availabilityPanel);connect(document.body);await settle();
    const strip=availabilityPanel.querySelector('.hvac-availability-timeline-plot'),bounds=strip.getBoundingClientRect();

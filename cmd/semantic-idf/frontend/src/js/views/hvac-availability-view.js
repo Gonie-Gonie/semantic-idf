@@ -9,7 +9,19 @@ let nextID = 0;
 
 function rowName(row) {
   if (row.kind === "final") return copy("finalAvailability", "Final availability");
-  return row.name || row.source?.objectName || copy(row.labelCode || "unresolvedAvailability", "Availability unresolved");
+  if (row.name) return row.name;
+  if (row.labelCode) return copy(row.labelCode, "Availability unresolved");
+  return row.source?.objectName || copy("unresolvedAvailability", "Availability unresolved");
+}
+
+function ownerLabel(row) {
+  const owners = row.owners || [];
+  return owners.map((owner) => owner.objectName || owner.objectType).filter(Boolean).join(" · ") || copy("ownerUnresolved", "Owner unresolved");
+}
+
+function renderOwners(row) {
+  const owners = (row.owners || []).filter((owner) => owner.objectName || owner.objectType);
+  return `<span class="hvac-availability-owners" title="${safe(ownerLabel(row))}">${owners.length ? owners.map((owner) => `<span data-hvac-availability-owner data-object-index="${safe(owner.objectIndex ?? "")}" data-object-type="${safe(owner.objectType || "")}" title="${safe([owner.objectType, owner.objectName].filter(Boolean).join(" · "))}">${safe(owner.objectName || owner.objectType)}</span>`).join("") : safe(copy("ownerUnresolved", "Owner unresolved"))}</span>`;
 }
 
 function statusLabel(row, value) {
@@ -24,8 +36,8 @@ export function renderHVACAvailability(profile, schedules, calendar) {
   while (models.size > 2) models.delete(models.keys().next().value);
   return `<div class="hvac-availability-graph" data-hvac-operation-graph="availability" data-hvac-timeline-id="${id}" role="group" aria-label="${safe(copy("availability", "Availability"))}">
     <div class="hvac-availability-toolbar"><select data-hvac-operation-calendar="timelineView" aria-label="${safe(copy("timelineView", "View"))}">${[["day", "representativeDay", "Representative day"], ["week", "representativeWeek", "Representative week"], ["year", "annual", "Annual"]].map(([value, key, label]) => `<option value="${value}"${value === model.view ? " selected" : ""}>${safe(copy(key, label))}</option>`).join("")}</select><span data-hvac-timeline-hover aria-live="polite"></span></div>
-    <div class="hvac-availability-timelines" tabindex="0" role="group" aria-label="${safe(copy("availability", "Availability"))}" aria-keyshortcuts="ArrowLeft ArrowRight + - Home">${model.rows.map((row, index) => `<article class="hvac-availability-timeline-row ${row.kind === "final" ? "final" : ""}" data-hvac-timeline-row="${index}" data-hvac-availability-row="${safe(row.id)}" data-hvac-availability-kind="${safe(row.kind)}"><strong class="hvac-availability-name" title="${safe(rowName(row))}">${safe(rowName(row))}</strong><svg class="hvac-availability-timeline-plot" data-hvac-schedule-plot role="img" aria-label="${safe(rowName(row))}" viewBox="0 0 800 28"></svg><span class="hvac-availability-row-status" data-hvac-row-status></span></article>`).join("")}
-      <div class="hvac-availability-axis-row"><span></span><svg class="hvac-availability-time-axis" aria-hidden="true" viewBox="0 0 800 26"></svg><span></span></div>
+    <div class="hvac-availability-timelines" tabindex="0" role="group" aria-label="${safe(copy("availability", "Availability"))}" aria-keyshortcuts="ArrowLeft ArrowRight + - Home">${model.rows.map((row, index) => `<article class="hvac-availability-timeline-row ${row.kind === "final" ? "final" : ""}" data-hvac-timeline-row="${index}" data-hvac-availability-row="${safe(row.id)}" data-hvac-availability-kind="${safe(row.kind)}"${row.kind === "final" && model.requiresReanalysis ? ` title="${safe(copy("reanalyzeAvailability", "Analyze the input again to resolve configured availability."))}"` : ""}><span class="hvac-availability-labels">${renderOwners(row)}<strong class="hvac-availability-name" title="${safe(rowName(row))}">${safe(rowName(row))}</strong></span><svg class="hvac-availability-timeline-plot" data-hvac-schedule-plot role="img" aria-label="${safe(`${ownerLabel(row)} · ${rowName(row)}`)}" viewBox="0 0 800 28"></svg><span class="hvac-availability-row-status" data-hvac-row-status></span></article>`).join("")}
+      <div class="hvac-availability-axis-row"><span class="hvac-availability-axis-label"></span><svg class="hvac-availability-time-axis" aria-hidden="true" viewBox="0 0 800 26"></svg><span></span></div>
     </div>
   </div>`;
 }

@@ -112,24 +112,36 @@ Select equipment in the loop diagram to open three graphs: **Availability**,
 equipment is inspected in the selected loop's
 context, so another circuit's setpoint is not automatically its control target.
 
-Missing, unsupported or runtime-dependent inputs remain unresolved. Older saved
-analysis may need reanalysis of its source input to show the new control graphs.
+Missing or unsupported configuration remains unresolved. Older saved analysis
+may need reanalysis of its source input for the updated availability/control views.
 
 ### Availability {#availability-definitions}
 
-Related availability schedules are stacked as **ON / OFF** time bands, with
-**Final availability** at the bottom. A source schedule is ON when positive and
-OFF otherwise; unavailable inputs remain distinct. These source flags are not
-individual manager decisions. The final row applies the modeled manager rules
-and overrides, so it is not a simple AND of the rows. For example, a CycleOn
-manager can override a fan's own OFF schedule. Final ON permits operation and
-Final OFF blocks it; neither establishes whether the equipment actually ran.
+The leftmost label identifies the object that owns each availability condition.
+Related schedules are stacked as **ON / OFF** bands, with **Final availability**
+at the bottom. A source schedule is ON when positive and OFF otherwise. The final
+row combines the minimum configured static conditions, including supported
+scheduled-manager overrides; it is not a simple AND of every source flag.
+
+NightCycle decisions, runtime temperatures/loads and actual equipment dispatch decisions
+are excluded from this view. They do not turn the static result into Unknown.
+Missing or ambiguous references and unresolved configuration remain Unknown.
+When the equipment has no separate availability schedule, its own row shows
+**No separate schedule** with an unrestricted band. This does not remove loop or
+plant-operation
+activation conditions. Final availability describes the static configuration;
+actual runtime control and whether the equipment ran belong to simulation.
+
+For example, Chiller:Electric:ReformulatedEIR has no own Availability Schedule
+field. Its unrestricted own row is expected; the PlantEquipmentOperationSchemes
+activation schedule and exact equipment-list membership still restrict its
+configured availability. See the [EnergyPlus chiller reference](https://bigladdersoftware.com/epx/docs/24-2/input-output-reference/group-plant-equipment.html#chillerelectricreformulatedeir)
+and [plant operation controls](https://bigladdersoftware.com/epx/docs/24-2/input-output-reference/group-plant-condenser-control.html).
 
 Choose **Rep. day**, **Rep. week** or **Annual**. Representative views start on
 January 1 of the current year, using Monday as the representative starting day;
 Annual follows that year's regular Gregorian weekdays. The calendar does not
-apply simulation holidays, daylight saving or runtime overrides. Managers that
-need unknown temperatures, loads or external inputs stay unresolved.
+apply simulation holidays, daylight saving or runtime overrides.
 
 Use the wheel to zoom the time axis and drag to pan. All rows share the time
 range and cursor; hover to compare their statuses at the same time. Source

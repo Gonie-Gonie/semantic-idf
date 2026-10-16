@@ -44,7 +44,7 @@ func TestHVACAvailabilitySourceTimelineBrowser(t *testing.T) {
 const hvacAvailabilityTimelineBrowserHTML = `<!doctype html><html><body data-timeline-status="pending"><pre id="result"></pre><script type="module">
 try {
   const {buildHVACScheduleTimeline:build,buildHVACAvailabilityStack:stack}=await import('/src/js/hvac-availability-timeline.js');
-  const {normalizeHVACOperationCalendar:normalize}=await import('/src/js/hvac-operation.js');
+  const {normalizeHVACOperationCalendar:normalize,evaluateHVACOperation:evaluate}=await import('/src/js/hvac-operation.js');
   const check=(condition,message)=>{if(!condition)throw new Error(message);};
   const node=(name,type='Schedule:Constant')=>({kind:'schedule',source:{objectName:name,objectType:type}});
   const constant=(name,value)=>({name,objectType:'Schedule:Constant',kind:'constant',status:'supported',value});
@@ -87,6 +87,7 @@ try {
   const input=(name,id=name)=>({id,kind:'schedule',source:{objectName:name,objectType:'Schedule:Constant'}});
   const profile=(expression,names=['Off'],layers)=>({availabilityDefinitions:{nodes:names.map(name=>input(name)),edges:[]},
     availabilityLayers:layers||[{id:'equipment',owner,role:'equipment',expression}],finalAvailability:expression});
+  const configured=(report,expression=report.finalAvailability,layers=report.availabilityLayers)=>({...report,configuredAvailability:expression,configuredAvailabilityLayers:layers});
   const last=result=>result.rows.at(-1).timeline;
   const only=(timeline,value)=>timeline.segments.length===1&&timeline.segments[0].value===value;
   const extra=[...schedules,constant('On',1),constant('Tiny',.0001)];
@@ -108,11 +109,43 @@ try {
   }
   const runtime={op:'manager_unknown',reason:'runtime_manager',source:{objectIndex:8,objectType:'AvailabilityManager:NightCycle',objectName:'Night Cycle'}};
   const unknown=stack(profile({op:'manager_gate',children:[runtime]},['On']),extra,calendar);
-  check(unknown.rows.length===3&&unknown.rows[1].kind==='layer'&&unknown.rows[1].name==='Night Cycle'&&only(unknown.rows[1].timeline,null)&&only(last(unknown),null),'Runtime manager input disappeared or became known');
-  check(only(last(stack(profile(together(positive('Off'),{op:'manager_gate',children:[runtime]}),['Off']),extra,calendar)),0),'Known OFF no longer masks unknown permission');
+  check(unknown.requiresReanalysis&&unknown.rows.length===1&&only(last(unknown),null),'Legacy runtime outcomes were reused or incomplete configuration silently accepted');
+  const scheduledOwner={objectIndex:9,objectType:'AvailabilityManager:Scheduled',objectName:'Scheduled Manager'};
+  const staticOwn={...positive('Off'),source:owner};
+  const baseline={op:'fan_gate',target:'central_fan',children:[{op:'always',value:0,source:runtime.source},staticOwn]};
+  const runtimeProfile=profile({op:'fan_gate',target:'central_fan',children:[runtime,staticOwn]},['On','Off']);
+  const runtimeConfigured=configured(runtimeProfile,baseline,[{id:'equipment',owner,role:'equipment',expression:baseline}]);
+  const beforeRuntime=JSON.stringify(runtimeConfigured),minimum=stack(runtimeConfigured,extra,calendar);
+  check(minimum.rows.length===2&&minimum.rows[0].name==='Off'&&only(last(minimum),0)&&!minimum.requiresReanalysis,'Runtime-only manager/input polluted configured minimum permission');
+  check(minimum.rows[0].owners.length===1&&minimum.rows[0].owners[0].objectIndex===owner.objectIndex&&minimum.rows.at(-1).owners[0].objectIndex===owner.objectIndex,'Configured input/final owner lost');
+  check(evaluate(runtimeConfigured,extra,calendar).final.values.every(value=>value===null)&&JSON.stringify(runtimeConfigured)===beforeRuntime,'Configured stack changed native runtime semantics or source report');
+  const partialConfigured={...runtimeConfigured};delete partialConfigured.configuredAvailabilityLayers;
+  const partialMinimum=stack(partialConfigured,extra,calendar);
+  check(partialMinimum.rows.length===2&&partialMinimum.rows[0].name==='Off'&&only(last(partialMinimum),0)&&partialMinimum.rows.at(-1).owners[0].objectIndex===owner.objectIndex,'Partial configured report mixed legacy runtime layers into static prerequisites');
+  for(const reason of ['missing_manager','missing_manager_list','missing_schedule','unsupported_manager','unresolved_availability_schema']) {
+    const expression={op:'manager_unknown',reason,source:scheduledOwner};
+    const failure=stack(configured(profile(expression,[])),extra,calendar);
+    check(failure.rows.length===2&&only(failure.rows[0].timeline,null)&&only(last(failure),null)&&failure.rows[0].owners[0].objectIndex===scheduledOwner.objectIndex,'Actual configuration error was excluded: '+reason);
+  }
+  const sharedExpression=together({...positive('On'),source:owner},{...positive('On'),source:scheduledOwner});
+  const sharedProfile=configured(profile(sharedExpression,['On']));
+  sharedProfile.availabilityDefinitions.nodes.push({id:'runtimeOwner',kind:'definition',source:runtime.source});
+  sharedProfile.availabilityDefinitions.edges.push({from:'runtimeOwner',to:'On'});
+  const shared=stack(sharedProfile,extra,calendar);
+  check(shared.rows[0].owners.map(source=>source.objectIndex).join('|')==='7|9'&&shared.rows.length===2,'Shared source lost surviving owners or reattached excluded runtime owner');
   const dispatch={op:'always',value:0,reason:'not_in_operation_scheme'};
-  const dispatched=stack(profile(together(positive('On'),dispatch),['On'],[{id:'dispatch',owner,role:'plant_dispatch',expression:dispatch}]),extra,calendar);
+  const dispatched=stack(profile(together(positive('On'),dispatch),['On'],[{id:'equipment',owner,role:'equipment',expression:positive('On')},{id:'dispatch',owner,role:'plant_dispatch',expression:dispatch}]),extra,calendar);
   check(dispatched.rows[1].kind==='layer'&&only(dispatched.rows[1].timeline,0)&&only(last(dispatched),0),'Explicit zero dispatch membership became missing or unknown');
+  const chiller={objectIndex:10,objectType:'Chiller:Electric:ReformulatedEIR',objectName:'Chiller 1'};
+  const scheme={objectIndex:11,objectType:'PlantEquipmentOperationSchemes',objectName:'Cooling operation schemes'};
+  const activation={...positive('On'),source:scheme};
+  const chillerReport=configured(profile(together(activation,{op:'unknown',reason:'runtime_dispatch'}),['On']),activation,[
+    {id:'dispatch',owner:scheme,role:'plant_dispatch',expression:activation},
+    {id:'equipment',owner:chiller,role:'equipment',expression:{op:'always',source:chiller}},
+  ]);
+  chillerReport.availabilityDefinitions.nodes.push({id:'chillerDefault',kind:'definition',code:'no_availability_schedule',source:chiller});
+  const chillerStack=stack(chillerReport,extra,calendar);
+  check(chillerStack.rows.length===3&&chillerStack.rows[0].owners[0].objectIndex===scheme.objectIndex&&chillerStack.rows[1].labelCode==='noSeparateSchedule'&&chillerStack.rows[1].owners[0].objectIndex===chiller.objectIndex&&only(chillerStack.rows[1].timeline,1)&&only(last(chillerStack),1),'Chiller default or Plant activation schedule vanished into runtime dispatch');
   const unresolvedProfile=profile(positive('Missing'),[]);
   unresolvedProfile.availabilityDefinitions.nodes=[{id:'missing',kind:'unknown',code:'unresolved_schedule_reference',source:owner,parameters:[{name:'Schedule Name',value:'Missing'}]}];
   const unresolved=stack(unresolvedProfile,extra,calendar);
@@ -130,7 +163,7 @@ try {
   const partialFinal=last(stack(profile(positive('Missing weekends'),['Missing weekends']),extra,calendar,{view:'year'}));
   check(partialFinal.status==='partial'&&partialFinal.allOff===null&&partialFinal.unknownMinutes>0,'Final unknown calendar interval was rendered as known OFF');
   const legacy=stack({finalAvailability:positive('Tiny')},extra,calendar);
-  check(legacy.rows[0].name==='Tiny'&&!legacy.rows[0].source.objectType&&only(last(legacy),1),'Legacy exact references were lost or source type fabricated');
+  check(legacy.rows[0].name==='Tiny'&&legacy.rows[0].source.objectType===extra.find(schedule=>schedule.name==='Tiny').objectType&&only(last(legacy),1),'Legacy exact references or actual compiled schedule identity were lost');
   check(only(last(stack({},extra,calendar)),null),'Absent final availability became unrestricted');
   check(JSON.stringify(schedules)===before,'Availability stack mutated original schedules');
   document.body.dataset.timelineStatus='passed';document.querySelector('#result').textContent='passed';

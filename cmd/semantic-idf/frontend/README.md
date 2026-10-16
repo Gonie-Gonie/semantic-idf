@@ -10,14 +10,17 @@
   parameter control with explicit external ports and control/state roles.
   These consume `HVACReport.operatingProfiles` and `operatingSchedules` from
   `internal/idf/hvac_operation*.go`, independently of simulation results and the
-  Profile tab's schedule approximations. Availability shows binary source
-  schedules and evaluates the native final permission expression with manager
-  precedence/overrides; runtime inputs stay unknown.
+  Profile tab's schedule approximations. Availability uses
+  `configuredAvailabilityLayers` / `configuredAvailability` for minimum static
+  conditions, retaining supported schedule/manager rules and plant activation
+  membership while excluding runtime decisions. Configuration errors stay
+  unknown; runtime unknowns remain in On / Off and the legacy expression API.
   Exact object IDs, typed containment and circuit ports scope each profile;
   raw setpoint/performance schedules do not become binary availability gates.
   `hvac-availability-timeline.js` builds bounded, compressed permission timelines;
   `views/hvac-availability-view.js` owns representative day/week and annual
-  binary patches, related input rows and a final permission row, with shared
+  binary patches with source owners, related input rows and a final configured
+  row, with shared
   horizontal zoom/pan and a time cursor/status. Its only visible control is the
   time-view selector; calendar APIs remain compatible for programmatic users.
 - `src/js/simulation-progress.js`: measured work, approximate remaining-time

@@ -47,7 +47,8 @@ func (b *hvacOperatingBuilder) availabilityDefinitions(occ hvacOperatingOccurren
 	seenOwners := map[int]bool{}
 	for _, layer := range layers {
 		if layer.Role == "plant_dispatch" {
-			continue // Dispatch is a command condition, not an availability declaration.
+			b.dispatchAvailabilityDefinitions(&g, occ, layer)
+			continue // Only its authored activation references, never load/range algorithms.
 		}
 		owner, exists := b.objects[layer.Owner.ObjectIndex]
 		if !exists {

@@ -4,14 +4,16 @@ package idf
 // dependencies for one equipment occurrence. It does not assert simulated run
 // status. The same component may have different profiles on different loops.
 type HVACOperatingProfile struct {
-	ComponentIndex          int                     `json:"componentIndex"`
-	LoopID                  string                  `json:"loopId,omitempty"`
-	AvailabilityLayers      []HVACAvailabilityLayer `json:"availabilityLayers"`
-	FinalAvailability       HVACOperatingExpression `json:"finalAvailability"`
-	Control                 HVACControlSequence     `json:"control"`
-	AvailabilityDefinitions HVACControlSequence     `json:"availabilityDefinitions"`
-	OnOff                   HVACControlSequence     `json:"onOff"`
-	ParameterControl        HVACControlSequence     `json:"parameterControl"`
+	ComponentIndex               int                     `json:"componentIndex"`
+	LoopID                       string                  `json:"loopId,omitempty"`
+	AvailabilityLayers           []HVACAvailabilityLayer `json:"availabilityLayers"`
+	FinalAvailability            HVACOperatingExpression `json:"finalAvailability"`
+	ConfiguredAvailability       HVACOperatingExpression `json:"configuredAvailability"`
+	ConfiguredAvailabilityLayers []HVACAvailabilityLayer `json:"configuredAvailabilityLayers"`
+	Control                      HVACControlSequence     `json:"control"`
+	AvailabilityDefinitions      HVACControlSequence     `json:"availabilityDefinitions"`
+	OnOff                        HVACControlSequence     `json:"onOff"`
+	ParameterControl             HVACControlSequence     `json:"parameterControl"`
 }
 
 type HVACOperatingSource struct {
@@ -35,13 +37,14 @@ type HVACAvailabilityLayer struct {
 // is central_fan or zone_fan where CycleOnZoneFansOnly needs disambiguation.
 // Unknown is never interchangeable with a known zero or an omitted schedule.
 type HVACOperatingExpression struct {
-	Source       *HVACOperatingSource      `json:"source,omitempty"`
-	Op           string                    `json:"op"`
-	ScheduleName string                    `json:"scheduleName,omitempty"`
-	Value        *float64                  `json:"value,omitempty"`
-	Children     []HVACOperatingExpression `json:"children,omitempty"`
-	Target       string                    `json:"target,omitempty"`
-	Reason       string                    `json:"reason,omitempty"`
+	Source          *HVACOperatingSource      `json:"source,omitempty"`
+	AssignmentOwner *HVACOperatingSource      `json:"assignmentOwner,omitempty"`
+	Op              string                    `json:"op"`
+	ScheduleName    string                    `json:"scheduleName,omitempty"`
+	Value           *float64                  `json:"value,omitempty"`
+	Children        []HVACOperatingExpression `json:"children,omitempty"`
+	Target          string                    `json:"target,omitempty"`
+	Reason          string                    `json:"reason,omitempty"`
 }
 
 type HVACControlSequence struct {

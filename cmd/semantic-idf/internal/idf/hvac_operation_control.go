@@ -235,6 +235,16 @@ func hvacOperatingFallbackFieldName(obj Object, index int) string {
 		return "Equipment Name"
 	case lower == "plantequipmentoperation:uncontrolled" && index == 1:
 		return "Equipment List Name"
+	case lower == "plantequipmentoperationschemes" || lower == "condenserequipmentoperationschemes":
+		number := (index-1)/3 + 1
+		switch index % 3 {
+		case 1:
+			return fmt.Sprintf("Control Scheme %d Object Type", number)
+		case 2:
+			return fmt.Sprintf("Control Scheme %d Name", number)
+		default:
+			return fmt.Sprintf("Control Scheme %d Schedule Name", number)
+		}
 	case lower == "plantequipmentoperation:heatingload" || lower == "plantequipmentoperation:coolingload":
 		switch index % 3 {
 		case 1:

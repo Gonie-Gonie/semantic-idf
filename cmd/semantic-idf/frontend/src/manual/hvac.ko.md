@@ -105,25 +105,37 @@ EquipmentList에 말단이 있다는 것만으로 완전히 일치한 노드 사
 문맥으로 확인하므로
 다른 회로의 setpoint를 해당 설비의 제어 목표로 임의 연결하지 않습니다.
 
-누락, 미지원 또는 실행 중 상태에 의존하는 입력은 미해석으로 남습니다.
-오래된 분석 자료는 새 제어 그래프를 표시하기 위해 원본 입력을 다시
+누락되거나 지원되지 않는 설정은 미해석으로 남습니다.
+오래된 분석 자료는 갱신된 availability·제어 화면을 표시하기 위해 원본 입력을 다시
 분석해야 할 수 있습니다.
 
 ### Availability {#availability-definitions}
 
-관련 availability 스케줄을 **ON / OFF** 시간 패치로 쌓고 맨 아래에
-**최종 Availability**를 표시합니다. 원본 스케줄은 양수이면 ON, 그 외에는
-OFF이며 미확인 입력은 구분합니다. 이 표시가 개별 manager의 판단은
-아닙니다. 최종 행은 모델의 manager 규칙과 override를 적용하므로 모든
-행의 단순 AND가 아닙니다. 예를 들어 CycleOn manager는 팬 자체의 OFF
-스케줄을 덮어쓸 수 있습니다. 최종 ON은 운전 허용, OFF는 차단을 뜻하며
-실제 설비가 운전했는지는 별도입니다.
+맨 왼쪽에는 각 availability 조건을 정의한 객체를 표시합니다. 관련
+스케줄을 **ON / OFF** 시간 패치로 쌓고 맨 아래에 **최종 Availability**를
+표시합니다. 원본 스케줄은 양수이면 ON, 그 외에는 OFF입니다. 최종 행은
+지원되는 scheduled-manager override를 포함한 최소 정적 설정 조건을
+조합하므로 모든 원본 플래그의 단순 AND가 아닙니다.
+
+NightCycle의 운전 판단, 실행 중 온도·부하와 실제 장비 dispatch 판단은 이 화면에서
+제외하며 정적 결과를 미확인으로 만들지 않습니다. 누락·중복 참조나
+미해석 설정은 미확인으로 남습니다. 설비에 별도 availability 스케줄이
+없으면 설비 자체 행에 **별도 스케줄 없음**과 제한 없는 패치를 표시합니다.
+루프나 plant operation의
+활성화 조건까지 없어지는 것은 아닙니다. 최종 Availability는 정적 설정을
+설명하며 실제 실행 제어와 설비 운전 여부는 시뮬레이션에서 확인합니다.
+
+예를 들어 Chiller:Electric:ReformulatedEIR에는 자체 Availability Schedule
+필드가 없으므로 설비 자체 행의 제한 없음 표시는 정상입니다.
+PlantEquipmentOperationSchemes의 활성화 스케줄과 정확한 equipment-list
+포함 관계는 정적 availability를 계속 제한합니다.
+[EnergyPlus Chiller 설명](https://bigladdersoftware.com/epx/docs/24-2/input-output-reference/group-plant-equipment.html#chillerelectricreformulatedeir)과
+[Plant operation 제어](https://bigladdersoftware.com/epx/docs/24-2/input-output-reference/group-plant-condenser-control.html)를 참고합니다.
 
 **Rep. day**, **Rep. week**, **Annual** 중에서 선택합니다. 대표일·대표주는
 현재 연도의 1월 1일부터 시작하고 대표 시작 요일은 월요일입니다.
 연간 보기는 해당 연도의 일반 Gregorian 요일을 따릅니다. 시뮬레이션의
-공휴일, daylight saving, runtime override는 반영하지 않습니다. 미확인
-온도, 부하나 외부 입력이 필요한 manager는 미해석으로 남습니다.
+공휴일, daylight saving, runtime override는 반영하지 않습니다.
 
 휠로 시간축을 확대·축소하고 드래그하여 이동합니다. 모든 행은 시간
 범위와 커서를 공유하므로 hover하여 같은 시각의 상태를 비교합니다.

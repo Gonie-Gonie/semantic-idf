@@ -23,10 +23,12 @@ The release script infers bump size from these sections:
   control distinguishes external inputs/outputs, manipulated commands and
   calculated states, with signed comparisons only for supported rules.
   Unresolved runtime decisions remain explicit.
-- Availability stacks compact ON/OFF patches for related conditions and final
-  configured permission. Rep. day/week and Annual share time-axis zoom/pan and
-  a cursor for comparing statuses. Manager overrides and unknown runtime inputs
-  are preserved; the calendar remains a static inspection basis.
+- Availability stacks compact ON/OFF patches for the minimum configured static
+  conditions, with owning objects at the left and the combined result at the
+  bottom. Supported scheduled-manager rules and plant activation remain;
+  runtime managers/load selection are excluded, while configuration errors stay
+  unknown. Equipment without a separate schedule has an explicit unrestricted
+  row. Rep. day/week and Annual share time-axis zoom/pan and a status cursor.
 - Energy Path separates thermal gains/losses and storage/release before native
   interval aggregation. Directional cards show one positive gross magnitude with
   gain/loss in the label, including nonzero exchange with zero load. Ribbons
