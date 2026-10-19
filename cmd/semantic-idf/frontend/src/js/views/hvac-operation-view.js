@@ -2,10 +2,11 @@ import { escapeHTML } from "../state.js";
 import { t } from "../i18n.js";
 import { evaluateHVACOperation } from "../hvac-operation.js";
 import { renderHVACAvailability, connectHVACAvailability } from "./hvac-availability-view.js";
-import { renderHVACControlExpressions } from "./hvac-control-expression-view.js";
+import { renderHVACControlExpressions, connectHVACControlExpressions } from "./hvac-control-expression-view.js";
 
 const copy = (key, fallback) => t(`hvac.operation.${key}`, {}, fallback);
 let disconnectAvailability = null;
+let disconnectControls = null;
 
 export function renderHVACOperationDetail(profile, schedules = [], { component = {}, calendar = {} } = {}) {
   const model = evaluateHVACOperation(profile || {}, schedules, calendar);
@@ -23,5 +24,7 @@ export function renderHVACOperationDetail(profile, schedules = [], { component =
 
 export function connectHVACOperationDetail(container) {
   disconnectAvailability?.();
+  disconnectControls?.();
   disconnectAvailability = connectHVACAvailability(container);
+  disconnectControls = connectHVACControlExpressions(container);
 }

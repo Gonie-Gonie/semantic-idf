@@ -150,34 +150,58 @@ The detailed decision logic is shown in **On / Off decisions**.
 
 ### On / Off decisions {#on-off-decisions}
 
-Read **Final availability** and **On command** as nested expression cards.
-**AND / OR** groups retain the
-declared condition structure; a schedule test such as `Schedule > 0` is one
-source-backed leaf. The availability expression here contains the full permission
-logic, including runtime dependencies. The Availability timeline above shows
-the minimum static conditions.
+Start with **Final availability**: the conditions that permit this equipment to
+operate. **On command** combines that permission with its activation condition,
+for example `Final availability AND airflow request`. **AND** requires every
+condition; **OR** requires at least one. Schedule comparisons retain the original
+schedule name. These expressions describe the configured control logic; they do
+not report that the equipment is actually running.
 
-For supported active equipment, the command condition combines that permission
-with the equipment's activation condition. A runtime activation card names its
-source and dependencies; it does not invent a Boolean formula from every
-connected load, thermostat or dispatch object. Unknown inputs stay unresolved.
-Continuous/default pump mode does not turn “no flow request” into a proven OFF;
-passive equipment has no active ON/OFF command.
+Repeated manager rules have one named definition, referenced from the conditions
+that use them. Read the manager's source object and inputs there rather than
+expanding the same rule at every reference. A NightCycle definition, for example,
+shows its declared applicability schedule, fan schedule, control type, tolerance
+and cycling settings when present. Its response also depends on runtime zone
+temperatures, thermostat conditions and cycle timing. **Requires simulation**
+therefore means that the definition is present but its resulting status cannot
+be determined from schedules alone. A missing or unresolved source is a separate
+configuration problem.
 
-Manager priority, first-non-NoAction selection and fan override appear as named
-rules with their original order/status meaning. They are not ordinary AND/OR
-groups; NoAction means no manager action, not OFF. Limits and ranges use source
-fields, and missing expression metadata requires reanalysis. These cards explain
-configured logic, not simulated status.
+Managers return a status before that status is converted into equipment
+permission. Read the result as follows:
+
+| Manager status | Permission |
+| --- | --- |
+| ForceOff | Blocked |
+| CycleOn | Allowed |
+| CycleOnZoneFansOnly | Zone fans allowed; central fan blocked |
+| NoAction | Follow the fan's own schedule; a manager-only permission condition imposes no further restriction |
+
+NoAction means that the manager does not intervene. A fan override can therefore
+allow a fan despite its own schedule, or block it despite an ON schedule. Other
+permission conditions still apply. Air/zone manager selection uses the priority
+**ForceOff → CycleOnZoneFansOnly → CycleOn → NoAction**. Plant manager selection
+uses the first non-NoAction result in the declared list order. Named rules keep
+these meanings; they are not ordinary AND/OR combinations of manager statuses.
+
+For supported active equipment, the activation condition names its source and
+dependencies. Connected load, thermostat and dispatch objects are inputs to that
+decision, not automatically separate AND conditions. Continuous/default pump
+mode does not turn “no flow request” into a proven OFF; passive equipment has no
+active ON/OFF command. Unknown inputs stay unresolved, and missing expression
+metadata requires reanalysis. The Availability timeline above continues to show
+only the minimum static conditions.
 
 ### Parameter control {#parameter-control}
 
-Read four compact groups: **Inputs / targets**, **Comparison / controllers**,
-**Control commands**, and **Equipment response / outputs**. Related entries are
-collected under their actual source object, with key values and relationship
-chips. Schedule value badges summarize the representative day, not the annual
-range; hover to see the date/day type. Trace how a command is determined and
-what states result from it:
+Follow the arrows through four groups: **Inputs / targets**, **Comparison /
+controllers**, **Control commands**, and **Equipment response / outputs**.
+Each compact block represents a source object. Arrows show the declared signal
+relationships; returning links make feedback visible. Select a block to inspect
+its original fields, ports, members and connections below the diagram. The main
+view keeps these details out of the flow so that the command and resulting state
+are easy to trace. A schedule summary in the inspector describes the
+representative day, not its annual range.
 
 | Role | Meaning and examples |
 | --- | --- |
@@ -204,7 +228,7 @@ Known **+ / −** signs appear only where a supported rule establishes them. Rea
 relation label together with the sign: a comparison sign and the controller's
 Normal/Reverse Action describe different parts of the control. An unknown sign
 does not imply positive feedback. Feedback references retain their source and
-meaning without repeatedly expanding a cycle; card order is not simulation
+meaning without repeatedly expanding a cycle; diagram order is not simulation
 execution order.
 Use Simulation HVAC and actual output variables to inspect numerical operating
 states and convergence.

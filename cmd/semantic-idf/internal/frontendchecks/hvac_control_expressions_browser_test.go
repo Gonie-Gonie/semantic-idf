@@ -44,6 +44,7 @@ func TestHVACControlExpressionModelBrowser(t *testing.T) {
 const hvacControlExpressionModelHTML = `<!doctype html><html><body data-expression-status="pending"><pre id="result"></pre><script type="module">
 try {
  const {buildHVACControlExpressions:build}=await import('/src/js/hvac-control-expressions.js');
+ const {buildHVACOnOffPresentation:present}=await import('/src/js/hvac-onoff-presentation.js');
  const check=(condition,message)=>{if(!condition)throw Error(message);};
  const owner={objectIndex:1,objectType:'Fan:VariableVolume',objectName:'Supply fan'};
  const manager={objectIndex:2,objectType:'AvailabilityManager:Scheduled',objectName:'Loop manager'};
@@ -91,6 +92,79 @@ try {
  const bounded=build({...profile,finalAvailability:wide,onOffExpression:all(wideCopy,{op:'runtime_condition',referenceId:'decision'})});
  const flattened=[];for(const formula of bounded.onOff){const pending=[formula.expression];while(pending.length){const current=pending.pop();flattened.push(current);pending.push(...current.children||[]);}}
  check(flattened.length<8300&&flattened.some(item=>item.reason==='expression_truncated'),'Wide malformed expression exceeded the normalization budget');
+ const loopOwner=source(20,'AirLoopHVAC','Air loop'),listSource=source(21,'AvailabilityManagerAssignmentList','Loop managers');
+ const managerList={op:'air_managers',source:listSource,assignmentOwner:loopOwner,children:[{op:'manager_unknown',source:manager,assignmentOwner:loopOwner,reason:'runtime_manager'}]};
+ const managerGate=(tree,target='central_fan')=>({op:'manager_gate',target,children:[tree]});
+ const fanGate=(tree,target='central_fan',own=positive('Own'))=>({op:'fan_gate',target,children:[tree,own]});
+ const managerWrapper=tree=>({op:'air_managers',children:[tree]});
+ const presented=(...expressions)=>build({...profile,finalAvailability:all(...expressions),onOffExpression:undefined}).onOffPresentation;
+ const nativeFan=all(managerGate(managerList),fanGate(managerWrapper(managerList))),nativeFanBefore=JSON.stringify(nativeFan);
+ const named=presented(...nativeFan.children),namedAvailability=named.formulas[0].expression;
+ check(namedAvailability.op==='rule_reference'&&named.rules.length===2&&named.rules.filter(rule=>rule.kind==='manager').length===1,'Repeated sourced manager became nested priority wrappers or duplicate permission operands');
+ const managerRule=named.rules.find(rule=>rule.kind==='manager'),permissionRule=named.rules.find(rule=>rule.kind==='permission');
+ check(managerRule.expression.source===listSource&&managerRule.expression.assignmentOwner===loopOwner&&permissionRule.managerId===managerRule.id&&permissionRule.op==='fan_gate'&&permissionRule.target==='central_fan'&&permissionRule.otherwise.scheduleName==='Own'&&permissionRule.source===owner,'Named override lost exact source, target, or NoAction schedule fallback');
+ check(named.formulas[0].id==='availability'&&named.formulas[0].code==='finalAvailability'&&named.formulas[0].source===owner,'Presentation renamed native formula identity or owner');
+ check(JSON.stringify(nativeFan)===nativeFanBefore,'Manager canonicalization mutated the native availability tree');
+ // Independent status-mask truth table includes runtime uncertainty, rather
+ // than treating the four manager statuses as ordinary Boolean operands.
+ const statusValues=mask=>[0,1,2,3].filter(status=>mask&(1<<status));
+ const agree=values=>values.every(value=>value===0)?0:values.every(value=>value===1)?1:null;
+ const permissionValue=(status,target,otherwise)=>status===1?0:status===2?1:status===3?target==='zone_fan'?1:0:otherwise;
+ const evaluateNative=(tree,mask,own)=>{
+  if(tree.op==='schedule_positive')return own;
+  if(tree.op==='always')return tree.booleanValue===false||tree.value===0?0:1;
+  if(tree.op==='manager_gate'||tree.op==='fan_gate')return agree(statusValues(mask).map(status=>permissionValue(status,tree.target,tree.op==='fan_gate'?evaluateNative(tree.children[1],mask,own):1)));
+  const values=tree.children.map(child=>evaluateNative(child,mask,own));
+  return tree.op==='all'?values.includes(0)?0:values.includes(null)?null:1:values.includes(1)?1:values.includes(null)?null:0;
+ };
+ const evaluatePresented=(tree,presentation,mask,own)=>{
+  if(tree.op==='all'||tree.op==='any'){
+   const values=tree.children.map(child=>evaluatePresented(child,presentation,mask,own));
+   return tree.op==='all'?values.includes(0)?0:values.includes(null)?null:1:values.includes(1)?1:values.includes(null)?null:0;
+  }
+  if(tree.op!=='rule_reference')return evaluateNative(tree,mask,own);
+  const rule=presentation.rules.find(item=>item.id===tree.referenceId);
+  check(rule?.kind==='permission'&&presentation.rules.some(item=>item.id===rule.managerId&&item.kind==='manager'),'Permission reference has no exact named manager definition');
+  const fallback=evaluatePresented(rule.otherwise,presentation,mask,own);
+  return agree(statusValues(mask).map(status=>permissionValue(status,rule.target,fallback)));
+ };
+ let truthCases=0;
+ for(const target of ['central_fan','zone_fan'])for(let mask=1;mask<16;mask++)for(const own of [0,1,null]){
+  const native=all(managerGate(managerList,target),fanGate(managerWrapper(managerList),target));
+  const projected=presented(...native.children);
+  check(evaluateNative(native,mask,own)===evaluatePresented(projected.formulas[0].expression,projected,mask,own),'Named fan permission changed status-mask truth table: '+[target,mask,own].join('/'));
+  truthCases++;
+ }
+ check(truthCases===90,'Manager override truth table omitted a runtime status mask');
+ const retainDistinct=(first,second,message)=>{
+  const result=presented(managerGate(first),fanGate(second));
+  check(result.formulas[0].expression.op==='all'&&result.formulas[0].expression.children.length===2&&result.rules.filter(rule=>rule.kind==='manager').length===2,message);
+ };
+ retainDistinct(managerList,{...managerList,source:{...listSource,objectIndex:22}},'Different manager source identity was merged');
+ retainDistinct(managerList,{...managerList,assignmentOwner:{...loopOwner,objectIndex:23}},'Same-named manager lists assigned to different owners were merged');
+ const ordered={...managerList,op:'plant_managers',children:[{op:'always',value:1,source:manager},{op:'always',value:2,source:{...manager,objectIndex:24}}]};
+ retainDistinct(ordered,{...ordered,children:[...ordered.children].reverse()},'Authored plant manager order was discarded');
+ retainDistinct(managerList,{op:'air_managers',source:source(25,'AvailabilityManagerAssignmentList','Outer list'),children:[managerList]},'Sourced manager wrapper was silently removed');
+ retainDistinct(managerList,{op:'air_managers',assignmentOwner:loopOwner,children:[managerList]},'Manager assignment wrapper was silently removed');
+ const differentTarget=presented(managerGate(managerList,'zone_fan'),fanGate(managerList,'central_fan'));
+ check(differentTarget.formulas[0].expression.op==='all'&&differentTarget.rules.filter(rule=>rule.kind==='permission').length===2,'Central and zone fan permission were conflated');
+ const orProfile=build({...profile,finalAvailability:any(managerGate(managerList),fanGate(managerList)),onOffExpression:undefined}).onOffPresentation;
+ check(orProfile.formulas[0].expression.op==='any'&&orProfile.formulas[0].expression.children.length===2,'AND-only redundant gate rule was incorrectly applied to OR');
+ const repeated=presented(fanGate(managerList),fanGate(managerWrapper(managerList)));
+ check(repeated.rules.filter(rule=>rule.kind==='manager').length===1&&repeated.rules.filter(rule=>rule.kind==='permission').length===1,'Exact repeated override definitions were not shared');
+ const managerOnly=presented(managerGate(managerList)).rules.find(rule=>rule.kind==='permission');
+ check(managerOnly.otherwise.op==='always'&&managerOnly.otherwise.booleanValue===true,'Manager-only permission lost its allowed NoAction fallback');
+ const directCycle={op:'all',domain:'boolean',children:[]};directCycle.children.push(directCycle);
+ const directBounded=present([{id:'cycle',code:'cycle',source:owner,expression:directCycle},{id:'wide',code:'wide',source:owner,expression:wide}]);
+ const projectedNodes=[];for(const formula of directBounded.formulas){const pending=[formula.expression];while(pending.length){const current=pending.pop();projectedNodes.push(current);pending.push(...current.children||[]);}}
+ check(projectedNodes.length<4200&&projectedNodes.some(item=>item.reason==='unresolved_expression')&&projectedNodes.some(item=>item.reason==='expression_truncated'),'Public presentation projection expanded cyclic/wide input without bounds');
+ let deepManager={op:'manager_unknown',domain:'manager',source:manager,reason:'runtime_manager'};
+ for(let level=0;level<60;level++)deepManager={op:'air_managers',domain:'manager',source:source(100+level,'AvailabilityManagerAssignmentList','Level '+level),children:[deepManager]};
+ const deepPresentation=present([{id:'deep',expression:{op:'manager_gate',domain:'boolean',target:'central_fan',children:[deepManager]}}]);
+ let deepDepth=0,deepLeaf=deepPresentation.rules.find(rule=>rule.kind==='manager').expression;
+ while(deepLeaf.children?.length){deepDepth++;deepLeaf=deepLeaf.children[0];}
+ check(deepDepth<=49&&deepLeaf.op==='unknown'&&deepLeaf.reason==='unresolved_expression','Deep sourced manager signatures exceeded their structural budget');
+ check(JSON.stringify(profile)===before,'Named-rule projection changed native expressions or source references');
  const spm=source(10,'SetpointManager:Scheduled','Supply target'),schedule=source(11,'Schedule:Compact','Supply temperature'),controller=source(12,'Controller:WaterCoil','Coil controller');
  const parameterNodes=[
   {...node('inlet','external_input','inlet_state'),boundary:'input'},node('schedule','schedule','schedule_value',schedule),

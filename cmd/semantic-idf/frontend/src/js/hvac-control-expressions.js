@@ -1,5 +1,7 @@
 // Presentation-only compression. Boolean operators come from the native AST;
 // signal dependencies remain relationships, never invented Boolean operands.
+import { buildHVACOnOffPresentation } from "./hvac-onoff-presentation.js";
+
 const MAX_DEPTH = 48;
 const MAX_EXPRESSIONS = 4096;
 const managerOps = new Set(["air_managers", "plant_managers", "manager_scheduled", "manager_scheduled_on", "manager_scheduled_off", "manager_unknown"]);
@@ -136,5 +138,6 @@ function parameterGroups(graph = {}) {
 }
 
 export function buildHVACControlExpressions(profile = {}, { component = {} } = {}) {
-  return { onOff: onOffFormulas(profile, component), parameters: parameterGroups(profile.parameterControl) };
+  const onOff = onOffFormulas(profile, component);
+  return { onOff, onOffPresentation: buildHVACOnOffPresentation(onOff), parameters: parameterGroups(profile.parameterControl) };
 }

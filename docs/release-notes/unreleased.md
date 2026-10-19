@@ -18,11 +18,14 @@ The release script infers bump size from these sections:
 
 ## Changed
 
-- Loop equipment inspection uses compact nested AND/OR and named-rule cards for
-  On / Off conditions, with source references and explicit runtime unknowns.
-  Parameter control groups inputs/targets, controllers/comparisons, commands
-  and equipment response/outputs into source cards, retaining supported signed
-  relationships and native Action meanings.
+- Loop equipment inspection shows On / Off conditions as short AND/OR formulas
+  with named manager definitions, source inputs and explicit permission rules.
+  Repeated rules are defined once; runtime-dependent manager results are
+  distinguished from missing or unresolved configuration.
+  Parameter control connects inputs/targets, controllers/comparisons, commands
+  and equipment response/outputs with directed signal and feedback links.
+  Selecting a compact source block opens its original fields and ports while
+  preserving supported comparison signs and native Action meanings.
 - Availability stacks compact ON/OFF patches for the minimum configured static
   conditions, with owning objects at the left and the combined result at the
   bottom. Supported scheduled-manager rules and plant activation remain;
