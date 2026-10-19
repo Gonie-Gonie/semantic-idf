@@ -98,7 +98,7 @@ function onOffFormulas(profile, component) {
   else if (authored.op === "all" && authored.children?.length === 2 && sameExpression(authored.children[0], profile.finalAvailability)) {
     command = { op: "all", domain: "boolean", children: [{ op: "reference", domain: "boolean", referenceId: "availability" }, normalizeExpression(authored.children[1], graph, index)] };
   } else command = normalizeExpression(authored, graph, index);
-  return [formula("availability", "finalAvailability", permission), formula("command", "onCommand", command)];
+  return [formula("availability", "runPermission", permission), formula("command", "onCommand", command)];
 }
 
 function parameterGroups(graph = {}) {

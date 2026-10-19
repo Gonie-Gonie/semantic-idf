@@ -218,7 +218,7 @@ const check=(condition,message)=>{if(!condition)throw Error(message)};
 const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
 try{
  const {state}=await import('/src/js/state.js');
- const {setLanguage}=await import('/src/js/i18n.js');setLanguage('en');
+ const {setLanguage,t}=await import('/src/js/i18n.js');setLanguage('en');
  const view=await import('/src/js/views/hvac-views.js');
  const {evaluateHVACOperation:evaluate}=await import('/src/js/hvac-operation.js');
  const {connectHVACOperationDetail:connect}=await import('/src/js/views/hvac-operation-view.js');
@@ -420,6 +420,64 @@ try{
  check(expressionHost.querySelector('[data-hvac-boolean-definition="command"] [data-hvac-rule-reference]'),'native manager permission was not replaced by its named rule reference');
  connect(expressionHost);expressionHost.querySelector('[data-hvac-inspect-rule^="manager-rule-"]')?.click();
  check(expressionHost.querySelector('[data-hvac-control-inspector]')?.textContent.includes('NoAction'),'manager NoAction was confused with Boolean OFF');
+ const conditionCases=[
+  ['runtime_dispatch','Dispatch selection','운전 장비 선택'],
+  ['runtime_manager','Runtime manager decision','Manager 실행 중 판정'],
+  ['requires_runtime_control_decision','Runtime control decision','실행 중 제어 판정'],
+  ['airflow_path_requires_runtime','Airflow path unresolved','공기 경로 미확인'],
+  ['on_off_expression_requires_reanalysis','Reanalysis required','재분석 필요'],
+  ['unsupported_expression','Unsupported control rule','미지원 제어 규칙'],
+  ['missing_manager','Reference unresolved','참조 미확인'],
+  ['unresolved_control_reference','Reference unresolved','참조 미확인'],
+  ['invalid_runtime_manager_definition','Definition unresolved','정의 미확인'],
+  ['empty_manager_list','Definition unresolved','정의 미확인'],
+  ['expression_truncated','Analysis incomplete','분석 미완료'],
+  ['unrecognized_reason','Condition unresolved','조건 미확인']
+ ];
+ const reasonHost=document.createElement('div');
+ const managerSource={objectIndex:84,objectType:'AvailabilityManager:NightCycle',objectName:'Definition review manager'},assignmentOwner=source(air);
+ const runtimeManager={op:'manager_unknown',reason:'runtime_manager',source:managerSource,assignmentOwner};
+ const managerPermission={op:'manager_gate',children:[{op:'air_managers',children:[runtimeManager]}]};
+ const invalidManager={...runtimeManager,reason:'invalid_runtime_manager_definition'};
+ const invalidManagerProfile={...boilerProfile,finalAvailability:managerPermission,configuredAvailability:invalidManager,configuredAvailabilityLayers:[layer('invalid-manager',air,'manager',invalidManager)],onOffExpression:all(managerPermission,{op:'runtime_condition',referenceId:'decision'})};
+ const invalidManagerBefore=JSON.stringify(invalidManagerProfile);
+ const unsupportedCondition={op:'unknown',referenceId:'unknown',reason:'unresolved_control',source:source(boiler)};
+ const unsupportedProfile={...boilerProfile,onOff:{nodes:[{id:'unknown',kind:'outcome',code:'runtime_status_unknown',source:source(boiler)}],edges:[]},onOffExpression:all(boilerProfile.finalAvailability,unsupportedCondition)};
+ const oldManagerCondition={op:'unknown',reason:'runtime_manager',source:managerSource,assignmentOwner};
+ const oldManagerProfile={...boilerProfile,finalAvailability:oldManagerCondition,onOffExpression:all(oldManagerCondition,{op:'runtime_condition',referenceId:'decision'})};
+ delete oldManagerProfile.configuredAvailability;delete oldManagerProfile.configuredAvailabilityLayers;
+ const oldManagerBefore=JSON.stringify(oldManagerProfile),unsupportedBefore=JSON.stringify(unsupportedProfile);
+ for(const language of ['en','ko']){
+  setLanguage(language);const labels=new Set();
+  for(const [reason,english,korean] of conditionCases){
+   const condition={op:'unknown',reason,source:managerSource},expected=language==='ko'?korean:english;
+   reasonHost.innerHTML=renderDetail({...boilerProfile,finalAvailability:condition,onOffExpression:all(condition,{op:'runtime_condition',referenceId:'decision'})},schedules,{component:boiler,calendar});
+   const leaf=reasonHost.querySelector('[data-hvac-boolean-definition="availability"] [data-hvac-condition-reason="'+reason+'"]');
+   check(leaf?.textContent===expected,'condition reason lost its distinct localized label: '+language+' / '+reason+' / '+leaf?.textContent);
+   check(leaf.title.length>expected.length&&leaf.title!==reason,'condition reason lacks a useful hover explanation: '+reason);
+   check(language==='ko'?/[가-힣]/.test(leaf.title):!/[가-힣]/.test(leaf.title),'condition explanation did not follow app language: '+reason);
+   labels.add(leaf.textContent);
+  }
+  check(labels.size===10,'different runtime, reference and definition conditions collapsed into generic unresolved');
+  const missingManager={op:'unknown',reason:'runtime_manager'};
+  reasonHost.innerHTML=renderDetail({...boilerProfile,finalAvailability:missingManager,onOffExpression:all(missingManager,{op:'runtime_condition',referenceId:'decision'})},schedules,{component:boiler,calendar});
+  check(reasonHost.querySelector('[data-hvac-condition-reason="unresolved_manager_source"]')?.textContent===(language==='ko'?'참조 미확인':'Reference unresolved'),'missing manager source was mislabeled as an ordinary runtime-only decision');
+  reasonHost.innerHTML=renderDetail(unsupportedProfile,schedules,{component:boiler,calendar});connect(reasonHost);
+  const unsupportedLeaf=reasonHost.querySelector('[data-hvac-condition-reason="unresolved_control"]'),unsupportedButton=unsupportedLeaf?.querySelector('[data-hvac-inspect-condition="unknown"]');
+  check(unsupportedLeaf?.textContent===(language==='ko'?'미지원 제어 규칙':'Unsupported control rule'),'native outcome node replaced the unsupported control reason with generic runtime status');
+  check(unsupportedButton?.dataset.hvacExpressionReference==='unknown','reason labeling dropped the native inspectable outcome reference');
+  unsupportedButton.click();check(reasonHost.querySelector('[data-hvac-control-inspector]')?.textContent.includes(boiler.objectName),'native unsupported outcome lost its selected source detail');
+  reasonHost.innerHTML=renderDetail(oldManagerProfile,schedules,{component:boiler,calendar});
+  const oldManagerLeaf=reasonHost.querySelector('[data-hvac-condition-reason="manager_definition_requires_reanalysis"]');
+  check(oldManagerLeaf?.textContent===(language==='ko'?'재분석 필요':'Reanalysis required'),'older report without manager definition diagnostics was described as ordinary runtime-only control');
+  check(oldManagerLeaf.title===t('hvac.operation.conditionDetail.manager_reanalysis')&&oldManagerLeaf.title!==t('hvac.operation.conditionDetail.on_off_expression_requires_reanalysis'),'manager reanalysis hover reused the missing command metadata explanation');
+  reasonHost.innerHTML=renderDetail(invalidManagerProfile,schedules,{component:boiler,calendar});connect(reasonHost);
+  const managerButton=reasonHost.querySelector('[data-hvac-manager-rule]');check(managerButton,'invalid runtime manager lost its source rule');managerButton.click();
+  const selectedManager=reasonHost.querySelector('[data-hvac-control-inspector]');
+  check(!selectedManager.hidden&&selectedManager.textContent.includes(language==='ko'?'정의 미확인':'Definition unresolved'),'malformed manager definition was described as an ordinary runtime-only decision');
+  check(selectedManager.textContent.includes(managerSource.objectName),'manager definition diagnostic lost native source identity');
+ }
+ setLanguage('en');check(JSON.stringify(invalidManagerProfile)===invalidManagerBefore&&JSON.stringify(oldManagerProfile)===oldManagerBefore&&JSON.stringify(unsupportedProfile)===unsupportedBefore,'reason labeling mutated native runtime/configured manager expressions or outcome references');
  const opaque={...boilerProfile,finalAvailability:{op:'manager_unknown',reason:'runtime_manager'}};delete opaque.configuredAvailability;delete opaque.configuredAvailabilityLayers;
  const opaqueDOM=document.createElement('div');opaqueDOM.innerHTML=renderDetail(opaque,schedules,{component:boiler,calendar});connect(opaqueDOM);
  const opaqueFinal=opaqueDOM.querySelector('[data-hvac-availability-kind="final"]');
@@ -470,7 +528,7 @@ const hvacOperationParsedBrowserHTML = `<!doctype html>
 const check=(value,message)=>{if(!value)throw Error(message)};
 const settle=()=>new Promise(resolve=>setTimeout(resolve,60));
 try{
- const [{state},view,{evaluateHVACOperation:evaluate},{renderHVACOperationDetail:renderDetail,connectHVACOperationDetail:connect},{setLanguage,t}]=await Promise.all([
+ const [{state},view,{evaluateHVACOperation:evaluate},{renderHVACOperationDetail:renderDetail,connectHVACOperationDetail:connect},{setLanguage,getLanguage,t}]=await Promise.all([
   import('/src/js/state.js'),import('/src/js/views/hvac-views.js'),import('/src/js/hvac-operation.js'),import('/src/js/views/hvac-operation-view.js'),import('/src/js/i18n.js')]);
  const locale=new URLSearchParams(location.search).get('lang')||'en';setLanguage(locale);
  const fixtures=await(await fetch('/fixtures')).json(),original=JSON.stringify(fixtures),calendar={month:1,day:1,dayType:'Monday'};
@@ -508,8 +566,12 @@ try{
  const checkFormulaLabels=()=>{
   const labels=[...onoff().querySelectorAll('.hvac-expression-lhs')];
   check(labels.length===2&&labels.every(label=>label.getBoundingClientRect().width>0),'named Boolean formulas missing/invisible');
-  check(labels[0].textContent===t('hvac.operation.finalAvailability')&&labels[1].textContent===t('hvac.operation.onCommand'),'formula labels did not follow app language');
-  check(onoff().querySelector('[data-hvac-boolean-definition="command"] [data-hvac-expression-reference="availability"]'),'command formula did not reuse native availability expression');
+  const korean=getLanguage()==='ko',runPermission=korean?'운전 허용 조건':'Run permission',configuredAvailability=korean?'최소 가동 허용 조건':'Configured availability';
+  check(labels[0].textContent===runPermission&&labels[1].textContent===t('hvac.operation.onCommand'),'runtime permission and ON command labels did not follow app language');
+  const permissionReference=onoff().querySelector('[data-hvac-boolean-definition="command"] [data-hvac-expression-reference="availability"]');
+  check(permissionReference?.textContent===runPermission,'native availability reference must retain its ID but display run permission');
+  check(availability().querySelector('[data-hvac-availability-kind="final"] strong')?.textContent===configuredAvailability,'static configured availability and runtime permission use ambiguous matching names');
+  check(!onoff().innerText.includes(configuredAvailability)&&!availability().innerText.includes(runPermission),'configured minimum and runtime permission naming leaked across panels');
   check(!onoff().querySelector('[data-hvac-control-node],[data-hvac-schedule-plot],details'),'on/off logic expanded into old flowchart or duplicated plots');
  };
  const checkThreeGraphs=profile=>{
@@ -577,9 +639,15 @@ try{
  check(!boilerProfile.availabilityDefinitions.nodes.some(node=>['decision','controller','dispatch'].includes(node.kind)),'runtime algorithms leaked into availability definitions');
  check(!JSON.stringify(boilerProfile.configuredAvailability).includes('runtime_dispatch')&&!JSON.stringify(boilerProfile.configuredAvailability).includes('runtime_manager'),'runtime outcome polluted configured minimum availability');
  check(boilerProfile.onOff.nodes.some(node=>node.source.objectName==='HeatSys1 Operation Scheme'),'real plant dispatch lost its on/off role');
+ const checkDispatchLabel=()=>{
+  const dispatch=onoff().querySelector('[data-hvac-condition-reason="runtime_dispatch"]');
+  check(dispatch?.textContent===(getLanguage()==='ko'?'운전 장비 선택':'Dispatch selection'),'real plant dispatch became a generic unresolved condition');
+  check(dispatch.title.length>dispatch.textContent.length,'real plant dispatch lacks its runtime decision explanation');
+  check(!availability().querySelector('[data-hvac-condition-reason="runtime_dispatch"]'),'runtime dispatch was mislabeled as configured minimum availability');
+ };
  const targetSchedule=boilerProfile.parameterControl.nodes.find(node=>node.kind==='schedule'&&node.source.objectName==='HW-Loop-Temp-Schedule');
  check(targetSchedule,'real boiler target schedule absent');
- view.initializeHVACControls();await setup(plant,water);await select(boiler.name);checkThreeGraphs(boilerProfile);
+ view.initializeHVACControls();await setup(plant,water);await select(boiler.name);checkThreeGraphs(boilerProfile);checkDispatchLabel();
  checkEquipmentValues(boilerProfile,[/^Nominal Capacity$/i,/Thermal Efficiency/i,/Design Water Flow Rate/i]);
  check(detail().dataset.componentIndex===String(boiler.index),'parsed object identity changed at selection');
  const targetValue=()=>inspectParameter(targetSchedule.id).querySelector('.hvac-control-schedule-value')?.textContent;
@@ -588,7 +656,7 @@ try{
  const selectMonth=async(month)=>{state.hvacOperationCalendar={...calendar,year:2026,month};view.renderHVAC(plant.hvac);await settle();};
  await selectMonth(6);check(/65\s*°C/.test(targetValue()||''),'summer date did not update target');
  await selectMonth(1);check(/82[.,]2\s*°C/.test(targetValue()||''),'winter date retained summer target');
- checkFormulaLabels();setLanguage('ko');view.renderHVAC(plant.hvac);await settle();checkFormulaLabels();
+ checkFormulaLabels();checkDispatchLabel();setLanguage('ko');view.renderHVAC(plant.hvac);await settle();checkFormulaLabels();checkDispatchLabel();
  setLanguage(locale);view.renderHVAC(plant.hvac);await settle();
  const pump=water.supplySide.branches.flatMap(branch=>branch.components).find(component=>component.objectType.startsWith('Pump:'));
  check(pump,'real pump missing');await select(pump.objectName);
@@ -651,6 +719,9 @@ try{
   check(inspector.textContent.includes(vavManager.name),'manager selection lost actual declaring object');
   for(const value of ['ALWAYS_ON','HVACOperationSchd','CycleOnAny','FixedRunTime','1800'])check(inspector.textContent.includes(value),'NightCycle detail lost actual model input: '+value);
   inspect(permissionRule);
+  const permissionLabel=getLanguage()==='ko'?'Fan 가동 허용':'Fan permission',permissionResult=getLanguage()==='ko'?'허용 결과':'Permission result';
+  check(permissionRule.querySelector('span')?.textContent===permissionLabel,'fan override was labeled as generic permission or configured availability');
+  check(inspector.querySelector('thead th:last-child')?.textContent===permissionResult,'manager action table did not distinguish its permission result');
   for(const status of ['ForceOff','CycleOn','CycleOnZoneFansOnly','NoAction'])check(inspector.querySelector('[data-hvac-permission-status="'+status+'"]'),'fan override detail lacks explicit '+status+' case');
   for(const rule of [...managerRules,...permissionRules]){
    const id=rule.dataset.hvacManagerRule||rule.dataset.hvacPermissionRule;

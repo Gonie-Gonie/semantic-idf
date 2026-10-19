@@ -26,6 +26,9 @@ The release script infers bump size from these sections:
   and equipment response/outputs with directed signal and feedback links.
   Selecting a compact source block opens its original fields and ports while
   preserving supported comparison signs and native Action meanings.
+  The timeline's Configured availability is distinguished from the broader
+  Run permission and On command; manager/fan permission rules and unresolved
+  runtime decisions versus configuration problems use distinct names.
 - Availability stacks compact ON/OFF patches for the minimum configured static
   conditions, with owning objects at the left and the combined result at the
   bottom. Supported scheduled-manager rules and plant activation remain;

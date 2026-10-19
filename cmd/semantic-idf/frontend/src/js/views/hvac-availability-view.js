@@ -8,7 +8,7 @@ const models = new Map();
 let nextID = 0;
 
 function rowName(row) {
-  if (row.kind === "final") return copy("finalAvailability", "Final availability");
+  if (row.kind === "final") return copy("finalAvailability", "Configured availability");
   if (row.name) return row.name;
   if (row.labelCode) return copy(row.labelCode, "Availability unresolved");
   return row.source?.objectName || copy("unresolvedAvailability", "Availability unresolved");

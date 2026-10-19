@@ -103,7 +103,7 @@ try {
  check(namedAvailability.op==='rule_reference'&&named.rules.length===2&&named.rules.filter(rule=>rule.kind==='manager').length===1,'Repeated sourced manager became nested priority wrappers or duplicate permission operands');
  const managerRule=named.rules.find(rule=>rule.kind==='manager'),permissionRule=named.rules.find(rule=>rule.kind==='permission');
  check(managerRule.expression.source===listSource&&managerRule.expression.assignmentOwner===loopOwner&&permissionRule.managerId===managerRule.id&&permissionRule.op==='fan_gate'&&permissionRule.target==='central_fan'&&permissionRule.otherwise.scheduleName==='Own'&&permissionRule.source===owner,'Named override lost exact source, target, or NoAction schedule fallback');
- check(named.formulas[0].id==='availability'&&named.formulas[0].code==='finalAvailability'&&named.formulas[0].source===owner,'Presentation renamed native formula identity or owner');
+ check(named.formulas[0].id==='availability'&&named.formulas[0].code==='runPermission'&&named.formulas[0].source===owner,'Run permission label changed native formula identity or owner');
  check(JSON.stringify(nativeFan)===nativeFanBefore,'Manager canonicalization mutated the native availability tree');
  // Independent status-mask truth table includes runtime uncertainty, rather
  // than treating the four manager statuses as ordinary Boolean operands.

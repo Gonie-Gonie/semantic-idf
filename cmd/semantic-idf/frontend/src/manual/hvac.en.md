@@ -118,7 +118,7 @@ may need reanalysis of its source input for the updated availability/control vie
 ### Availability {#availability-definitions}
 
 The leftmost label identifies the object that owns each availability condition.
-Related schedules are stacked as **ON / OFF** bands, with **Final availability**
+Related schedules are stacked as **ON / OFF** bands, with **Configured availability**
 at the bottom. A source schedule is ON when positive and OFF otherwise. The final
 row combines the minimum configured static conditions, including supported
 scheduled-manager overrides; it is not a simple AND of every source flag.
@@ -129,7 +129,7 @@ Missing or ambiguous references and unresolved configuration remain Unknown.
 When the equipment has no separate availability schedule, its own row shows
 **No separate schedule** with an unrestricted band. This does not remove loop or
 plant-operation
-activation conditions. Final availability describes the static configuration;
+activation conditions. Configured availability describes the static configuration;
 actual runtime control and whether the equipment ran belong to simulation.
 
 For example, Chiller:Electric:ReformulatedEIR has no own Availability Schedule
@@ -150,25 +150,30 @@ The detailed decision logic is shown in **On / Off decisions**.
 
 ### On / Off decisions {#on-off-decisions}
 
-Start with **Final availability**: the conditions that permit this equipment to
-operate. **On command** combines that permission with its activation condition,
-for example `Final availability AND airflow request`. **AND** requires every
+Start with **Run permission**: the full gate for allowing this equipment to
+operate, including manager overrides and runtime plant-equipment selection.
+This is broader than the minimum static conditions in **Configured availability**.
+**On command** combines run permission with the equipment's activation condition,
+for example `Run permission AND airflow request`. **AND** requires every
 condition; **OR** requires at least one. Schedule comparisons retain the original
-schedule name. These expressions describe the configured control logic; they do
-not report that the equipment is actually running.
+schedule name. These expressions describe control logic, not simulated ON/OFF
+results.
 
 Repeated manager rules have one named definition, referenced from the conditions
 that use them. Read the manager's source object and inputs there rather than
 expanding the same rule at every reference. A NightCycle definition, for example,
 shows its declared applicability schedule, fan schedule, control type, tolerance
 and cycling settings when present. Its response also depends on runtime zone
-temperatures, thermostat conditions and cycle timing. **Requires simulation**
-therefore means that the definition is present but its resulting status cannot
-be determined from schedules alone. A missing or unresolved source is a separate
-configuration problem.
+temperatures, thermostat conditions and cycle timing, so schedules alone cannot
+determine the resulting status. **Runtime manager decision**, **Dispatch
+selection**, and **Runtime control decision** identify where runtime inputs are
+needed. Missing references, unsupported definitions and reanalysis requirements
+have separate names. **Airflow path unresolved** means that the analysis cannot
+establish the connection; it is not an ordinary runtime input.
 
-Managers return a status before that status is converted into equipment
-permission. Read the result as follows:
+**Manager permission** converts a manager status into equipment permission;
+**Fan permission** also applies the fan's schedule and manager override. Read
+the manager status as follows:
 
 | Manager status | Permission |
 | --- | --- |
