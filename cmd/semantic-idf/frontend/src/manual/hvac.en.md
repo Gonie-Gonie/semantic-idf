@@ -201,9 +201,12 @@ only the minimum static conditions.
 
 Follow the arrows through four groups: **Inputs / targets**, **Comparison /
 controllers**, **Control commands**, and **Equipment response / outputs**.
-Each compact block represents a source object. Nearby connections use short,
-smooth paths, with the main controller, command and response aligned where their
-connections allow. In the wide layout, longer direct inputs use upper lanes;
+Each compact block represents a source object. Blocks share a width sized to
+their labels. Full labels and source names wrap when needed, and block heights
+grow to keep the text visible. Once the blocks have enough width, a wider panel
+adds space around and between them for the connecting paths. Nearby connections
+use short, smooth paths, with the main controller, command and response aligned
+where their connections allow. In the wide layout, longer direct inputs use upper lanes;
 long returning references and feedback use lower lanes with broad rounded turns.
 Hover or focus a path or block to emphasize its connections and endpoints. Select
 a block to inspect its original fields, ports, members and connections below the

@@ -109,13 +109,12 @@
 .hvac-parameter-flow-badge[hidden] { display: none; }
 .hvac-parameter-flow-badge rect { fill: var(--panel, #18232b); stroke: var(--flow-color); stroke-width: 1; }
 .hvac-parameter-flow-sign { fill: var(--text, #dce8ef); font-size: 12px; font-weight: 700; }
-.hvac-parameter-flow-tile > button { width: 100%; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; padding: 8px 10px; border: 1px solid #3b4d5b; border-left: 3px solid #51c5cf; border-radius: 6px; background: var(--bg, #111b22); color: var(--text, #dce8ef); font: inherit; cursor: pointer; text-align: left; }
+.hvac-parameter-flow-tile > button { width: 100%; height: auto; min-height: 76px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; padding: 8px 10px; border: 1px solid #3b4d5b; border-left: 3px solid #51c5cf; border-radius: 6px; background: var(--bg, #111b22); color: var(--text, #dce8ef); font: inherit; cursor: pointer; text-align: left; }
 .controls .hvac-parameter-flow-tile > button { border-left-color: #b79be9; }
 .commands .hvac-parameter-flow-tile > button { border-left-color: #ebbc6c; }
 .response .hvac-parameter-flow-tile > button { border-left-color: #93c99b; }
-.hvac-parameter-flow-tile strong, .hvac-parameter-flow-tile span { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; }
-.hvac-parameter-flow-tile strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: 12px; line-height: 1.4; }
-.hvac-parameter-flow-tile span { white-space: nowrap; }
+.hvac-parameter-flow-tile strong, .hvac-parameter-flow-tile span { display: block; width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.hvac-parameter-flow-tile strong { font-size: 12px; line-height: 1.4; }
 .hvac-parameter-flow-tile span { margin-top: 4px; color: var(--muted, #8aa4b5); font-size: 11px; }
 .hvac-parameter-flow-tile > button[aria-expanded="true"] { border-color: var(--teal); background: var(--teal-soft); }
 .hvac-parameter-flow-tile.is-source > button { border-color: var(--teal); box-shadow: 0 0 0 1px var(--teal); }

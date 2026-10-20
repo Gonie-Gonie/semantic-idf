@@ -112,6 +112,27 @@ function flowRoute(from, to) {
   return to > from ? "bypass" : "return";
 }
 
+function preferredCardWidth(tiles) {
+  const context = document.createElement("canvas").getContext("2d");
+  let width = 220;
+  for (const tile of tiles) {
+    const button = tile.querySelector("button"), box = getComputedStyle(button);
+    const inset = [box.paddingLeft, box.paddingRight, box.borderLeftWidth, box.borderRightWidth]
+      .reduce((sum, value) => sum + (parseFloat(value) || 0), 0);
+    for (const text of button.querySelectorAll("strong, span")) {
+      const style = getComputedStyle(text);
+      if (context) context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      for (const line of text.textContent.split(/\r?\n/)) {
+        const measured = context ? context.measureText(line).width : line.length * parseFloat(style.fontSize);
+        const spacing = (parseFloat(style.letterSpacing) || 0) * Math.max(0, line.length - 1);
+        width = Math.max(width, measured + spacing + inset + 4);
+      }
+    }
+  }
+  // Unbounded object names wrap rather than forcing every card to grow forever.
+  return Math.min(360, Math.ceil(width));
+}
+
 function layoutFlow(shell) {
   const svg = shell.querySelector("[data-hvac-parameter-flow]");
   if (!svg) return;
@@ -138,7 +159,7 @@ function layoutFlow(shell) {
       register(plan.route === "return" ? plan.toGroup : plan.toGroup - 1, `${plan.index}:to`);
     }
   });
-  const gap = Math.max(72, ...[...gutters.values()].map((entries) => entries.length * 8 + 24));
+  let gap = Math.max(72, ...[...gutters.values()].map((entries) => entries.length * 8 + 24));
   let leftMargin = Math.max(28, (gutters.get(-1)?.length || 0) * 8 + 24), rightMargin = 24;
   const vertical = width < 960 || (width - leftMargin - rightMargin - gap * (groups.length - 1)) / groups.length < 150;
   const leftPlans = plans.filter((plan) => plan.toGroup <= plan.fromGroup);
@@ -147,7 +168,22 @@ function layoutFlow(shell) {
     leftMargin = Math.min(width * .25, 20 + leftPlans.length * 8);
     rightMargin = Math.min(width * .25, 20 + rightPlans.length * 8);
   }
-  const tileWidth = (width - leftMargin - rightMargin - (vertical ? 0 : gap * (groups.length - 1))) / (vertical ? 1 : Math.max(1, groups.length));
+  const columns = vertical ? 1 : Math.max(1, groups.length);
+  const available = width - leftMargin - rightMargin - (vertical ? 0 : gap * (columns - 1));
+  const tileWidth = Math.min(preferredCardWidth(tiles), available / columns);
+  const surplus = Math.max(0, available - columns * tileWidth);
+  // Half a spacing unit at each outer edge balances the full intercolumn units.
+  leftMargin += surplus / (columns * 2);
+  rightMargin += surplus / (columns * 2);
+  if (!vertical) gap += surplus / columns;
+  // Set all widths before measuring wrapped text, then stack actual heights.
+  tiles.forEach((tile) => tile.setAttribute("width", tileWidth));
+  const heights = new Map(tiles.map((tile) => {
+    // CSS box dimensions stay in SVG coordinates while an old viewBox is being
+    // resized; screen-space rectangles would temporarily scale the card height.
+    const height = parseFloat(getComputedStyle(tile.querySelector("button")).height) || 76;
+    return [tile, Math.max(76, Math.ceil(height))];
+  }));
   const bypasses = plans.filter((plan) => plan.route === "bypass");
   const returns = plans.filter((plan) => plan.route === "return");
   const positions = new Map();
@@ -159,13 +195,15 @@ function layoutFlow(shell) {
     const heading = group.querySelector("text");
     setGeometry(heading, { x: left, y: vertical ? cursor + 15 : 23 });
     heading.querySelectorAll("tspan").forEach((line) => line.setAttribute("x", left));
-    members.forEach((tile, index) => {
-      const position = { x: left, y: (vertical ? cursor + 45 : start) + index * 96, width: tileWidth, height: 76 };
+    let rowTop = vertical ? cursor + 45 : start;
+    members.forEach((tile) => {
+      const position = { x: left, y: rowTop, width: tileWidth, height: heights.get(tile) };
       setGeometry(tile, position);
       positions.set(tile, position);
       bottom = Math.max(bottom, position.y + position.height + 24);
+      rowTop += position.height + 20;
     });
-    cursor += 45 + members.length * 96 + 24;
+    cursor = rowTop + 24;
   });
   if (!vertical) {
     // Align the controller/command/response spine with its actual incoming
@@ -324,9 +362,18 @@ export function connectHVACParameterFlow(container) {
     };
     const handlers = { click, pointerover, pointerout, focusin, focusout, keydown };
     Object.entries(handlers).forEach(([type, handler]) => shell.addEventListener(type, handler));
-    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(() => layoutFlow(shell)) : null;
-    observer?.observe(shell); layoutFlow(shell); trace();
+    let lastWidth = -1, disconnected = false;
+    const resize = () => {
+      const width = Math.round(shell.getBoundingClientRect().width);
+      if (width === lastWidth) return;
+      lastWidth = width;
+      layoutFlow(shell);
+    };
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(resize) : null;
+    observer?.observe(shell); resize(); trace();
+    document.fonts?.ready.then(() => { if (!disconnected) layoutFlow(shell); });
     const disconnect = () => {
+      disconnected = true;
       observer?.disconnect();
       Object.entries(handlers).forEach(([type, handler]) => shell.removeEventListener(type, handler));
       if (flowConnections.get(shell) === disconnect) flowConnections.delete(shell);

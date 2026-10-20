@@ -33,6 +33,8 @@ The release script infers bump size from these sections:
   Aligned control blocks, short smooth connections and separate rounded lanes
   simplify direct inputs and returning references. Hover and keyboard focus
   emphasize connected paths and their endpoints.
+  Blocks use a common content-sized width and wrap full labels and source names;
+  extra panel width expands the outer margins and connection gaps.
   The timeline's Configured availability is distinguished from the broader
   Run permission and On command; manager/fan permission rules and unresolved
   runtime decisions versus configuration problems use distinct names.

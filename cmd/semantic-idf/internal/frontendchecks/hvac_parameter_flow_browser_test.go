@@ -2,13 +2,12 @@ package frontendchecks
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"html"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -84,45 +83,68 @@ func TestHVACParameterFlowTraceBrowser(t *testing.T) {
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
-	runBrowser := func(action, query, viewport string) ([]byte, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-		return exec.CommandContext(ctx, chrome,
-			"--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check",
-			"--force-device-scale-factor=1", "--window-size="+viewport, "--virtual-time-budget=15000",
-			"--user-data-dir="+t.TempDir(), action, server.URL+"/parameter-flow"+query).CombinedOutput()
-	}
-	for _, width := range []int{1480, 690, 400} {
-		t.Run(fmt.Sprint(width), func(t *testing.T) {
-			output, err := runBrowser("--dump-dom", fmt.Sprintf("?width=%d", width), fmt.Sprintf("%d,1200", width))
-			if err != nil || !strings.Contains(string(output), `data-parameter-flow-status="passed"`) {
-				failure := string(output)
-				if _, result, ok := strings.Cut(failure, `<pre id="result">`); ok {
-					message, _, _ := strings.Cut(result, `</pre>`)
-					failure = html.UnescapeString(message)
-				}
-				t.Fatalf("parameter flow trace acceptance failed: %v\n%s", err, failure)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	browser := epath201FreshBrowser(t, ctx, chrome)
+	browser.call("Page.enable", map[string]any{}, nil)
+	browser.call("Emulation.setFocusEmulationEnabled", map[string]any{"enabled": true}, nil)
+	// Native ResizeObserver frames must complete before inspecting text bounds;
+	// a virtual-time DOM dump may finish before a pending layout frame arrives.
+	runBrowser := func(t *testing.T, query string, width, height int) {
+		t.Helper()
+		browser.call("Emulation.setDeviceMetricsOverride", map[string]any{"width": width, "height": height, "deviceScaleFactor": 1, "mobile": false}, nil)
+		// A navigation response can precede document replacement. Only the new
+		// page may report completion, including when reloading the same URL.
+		browser.evaluate(`if(document.body) document.body.dataset.parameterFlowStatus='navigating'`)
+		browser.call("Page.navigate", map[string]any{"url": server.URL + "/parameter-flow" + query}, nil)
+		browser.call("Input.dispatchMouseEvent", map[string]any{"type": "mouseMoved", "x": 0, "y": 0}, nil)
+		for deadline := time.Now().Add(20 * time.Second); ; {
+			status := string(browser.evaluate(`document.body?.dataset.parameterFlowStatus`))
+			if status == `"passed"` {
+				return
 			}
+			if status == `"failed"` || time.Now().After(deadline) {
+				t.Fatalf("parameter flow trace acceptance %s: %s", status, browser.evaluate(`document.getElementById('result')?.textContent`))
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	for _, width := range []int{1480, 3200, 690, 400} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			runBrowser(t, fmt.Sprintf("?width=%d", width), width, 1200)
 		})
 	}
 	if captureDir := os.Getenv("HVAC_PARAMETER_CAPTURE_DIR"); captureDir != "" {
 		if err := os.MkdirAll(captureDir, 0755); err != nil {
 			t.Fatal(err)
 		}
-		for _, capture := range []struct{ name, query, viewport string }{
-			{"coil-wide.png", "?width=1480&capture=overview", "1480,1100"},
-			{"coil-reference.png", "?width=1480&capture=reference", "1480,1100"},
-			{"coil-narrow.png", "?width=400&capture=overview", "400,2000"},
-			{"coil-light.png", "?width=1480&capture=overview&theme=light", "1480,1100"},
-			{"fan-wide.png", "?width=1480&capture=overview&family=fan", "1480,1100"},
-			{"chiller-wide.png", "?width=1480&capture=overview&family=chiller", "1480,1100"},
+		for _, capture := range []struct {
+			name, query   string
+			width, height int
+		}{
+			{"coil-wide.png", "?width=1480&capture=overview", 1480, 1100},
+			{"coil-expanded.png", "?width=2400&capture=overview", 2400, 1100},
+			{"coil-reference.png", "?width=1480&capture=reference", 1480, 1100},
+			{"coil-narrow.png", "?width=400&capture=overview", 400, 2000},
+			{"coil-light.png", "?width=1480&capture=overview&theme=light", 1480, 1100},
+			{"fan-wide.png", "?width=1480&capture=overview&family=fan", 1480, 1100},
+			{"chiller-wide.png", "?width=1480&capture=overview&family=chiller", 1480, 1100},
 		} {
 			path, err := filepath.Abs(filepath.Join(captureDir, capture.name))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if output, err := runBrowser("--screenshot="+path, capture.query, capture.viewport); err != nil {
-				t.Fatalf("parameter flow screenshot %s failed: %v\n%s", path, err, output)
+			runBrowser(t, capture.query, capture.width, capture.height)
+			var screenshot struct {
+				Data string `json:"data"`
+			}
+			browser.call("Page.captureScreenshot", map[string]any{"format": "png", "fromSurface": true, "captureBeyondViewport": false}, &screenshot)
+			data, err := base64.StdEncoding.DecodeString(screenshot.Data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, data, 0600); err != nil {
+				t.Fatal(err)
 			}
 			t.Logf("parameter flow visual review: %s", path)
 		}
@@ -136,13 +158,12 @@ const hvacParameterFlowTraceBrowserHTML = `<!doctype html>
 </head><body data-parameter-flow-status="pending"><section id="host" class="hvac-operation-panel parameters"></section><pre id="result">pending</pre>
 <script type="module">
 const check=(value,message)=>{if(!value)throw Error(message)};
-const settle=()=>new Promise(resolve=>setTimeout(resolve,80));
+const settle=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 try{
  const [{buildHVACControlExpressions:build},{renderHVACParameterFlow:render,connectHVACParameterFlow:connect},{setLanguage}]=await Promise.all([
   import('/src/js/hvac-control-expressions.js'),import('/src/js/views/hvac-parameter-flow-view.js'),import('/src/js/i18n.js')]);
  const fixtures=await(await fetch('/fixture')).json(),original=JSON.stringify(fixtures),host=document.querySelector('#host');
- // Chrome may enforce a minimum outer window width. Preserve the requested
- // content width so the 400px acceptance still exercises that actual layout.
+ // Preserve the requested content width inside the page's outer padding.
  host.style.maxWidth=(Number(new URLSearchParams(location.search).get('width'))-32)+'px';
  let disconnect;
  const renderFlow=async(language,fixture,model)=>{disconnect?.();setLanguage(language);host.innerHTML=render(model,{component:fixture.component});disconnect=connect(host);await settle();};
@@ -150,6 +171,66 @@ try{
  const feedbackRelations=new Set(['feedback','adds_measurement']);
  const inspect=()=>host.querySelector('[data-hvac-parameter-inspector]');
  const near=(left,right)=>Math.abs(left-right)<.2;
+ const assertCardLayout=()=>{
+  const svg=host.querySelector('[data-hvac-parameter-flow]'),cards=[...svg.querySelectorAll('[data-hvac-flow-card]')];
+  const rects=cards.map(card=>({card,x:Number(card.getAttribute('x')),y:Number(card.getAttribute('y')),w:Number(card.getAttribute('width')),h:Number(card.getAttribute('height'))}));
+  check(Math.max(...rects.map(rect=>rect.w))-Math.min(...rects.map(rect=>rect.w))<.2,'cards no longer share one diagram-wide width');
+  check(rects.every(rect=>rect.w>0&&rect.w<=360.2),'cards keep stretching beyond a readable content width');
+  for(const {card} of rects){
+   const button=card.querySelector('button');
+   check(button.scrollWidth<=button.clientWidth+1&&button.scrollHeight<=button.clientHeight+1,'card content exceeds its measured button height/width: '+cardID(card));
+   check(Math.abs(button.getBoundingClientRect().height-card.getBoundingClientRect().height)<1,'visible button and SVG endpoint boundary disagree after text measurement/resize');
+   for(const text of button.querySelectorAll('strong,span')){
+    const style=getComputedStyle(text);
+    check(style.textOverflow!=='ellipsis'&&['none','0',''].includes(style.webkitLineClamp),'card still truncates its full label/source: '+text.textContent);
+    check(text.scrollWidth<=text.clientWidth+1&&text.scrollHeight<=text.clientHeight+1,'label/source text is clipped: '+text.textContent);
+   }
+  }
+  for(let first=0;first<rects.length;first++)for(let second=first+1;second<rects.length;second++){
+   const a=rects[first],b=rects[second];
+   check(!(a.x<b.x+b.w-.5&&b.x<a.x+a.w-.5&&a.y<b.y+b.h-.5&&b.y<a.y+a.h-.5),'expanded card text overlaps another card');
+  }
+  check(host.scrollWidth<=host.clientWidth+1&&document.documentElement.scrollWidth<=innerWidth+1,'wrapped parameter diagram overflows its viewport');
+  const columns=[...new Set(rects.map(rect=>rect.x))].sort((a,b)=>a-b),cardWidth=rects[0].w;
+  return{cardWidth,left:Math.min(...rects.map(rect=>rect.x)),right:svg.viewBox.baseVal.width-Math.max(...rects.map(rect=>rect.x+rect.w)),gap:columns.length>1?Math.min(...columns.slice(1).map((x,index)=>x-columns[index]-cardWidth)):0};
+ };
+ const assertResizedRoutes=()=>{
+  const svg=host.querySelector('[data-hvac-parameter-flow]'),rects=[...svg.querySelectorAll('[data-hvac-flow-card]')].map(card=>({id:cardID(card),x:Number(card.getAttribute('x')),y:Number(card.getAttribute('y')),w:Number(card.getAttribute('width')),h:Number(card.getAttribute('height'))}));
+  for(const edge of svg.querySelectorAll('[data-hvac-flow-edge]')){
+   const path=edge.querySelector('.hvac-parameter-wire'),length=path.getTotalLength();
+   check(length>0,'text measurement/resize collapsed a dependency');
+   for(let distance=0;distance<=length;distance+=3){
+    const point=path.getPointAtLength(distance);
+    for(const rect of rects){
+     if([edge.dataset.fromCard,edge.dataset.toCard].includes(rect.id))continue;
+     check(!(point.x>rect.x+.7&&point.x<rect.x+rect.w-.7&&point.y>rect.y+.7&&point.y<rect.y+rect.h-.7),'resized route crosses expanded text card '+rect.id);
+    }
+    check(point.x>=-.2&&point.y>=-.2&&point.x<=svg.viewBox.baseVal.width+.2&&point.y<=svg.viewBox.baseVal.height+.2,'text measurement/resize routed a dependency outside the SVG');
+   }
+  }
+ };
+ const assertWideResize=async()=>{
+  if(innerWidth<3100)return;
+  const snapshots=[];
+  for(const width of [1448,2368,3168]){
+   host.style.maxWidth=width+'px';
+   // ResizeObserver delivery follows rendering frames; the SVG and visible
+   // host must share a coordinate frame before measuring cards and paths.
+   for(let attempt=0;attempt<20;attempt++){
+    await settle();
+    const shell=host.querySelector('[data-hvac-parameter-flow-shell]'),svg=shell.querySelector('svg');
+    if(Math.abs(svg.viewBox.baseVal.width-Math.round(shell.getBoundingClientRect().width))<1)break;
+   }
+   const shell=host.querySelector('[data-hvac-parameter-flow-shell]');
+   check(Math.abs(shell.querySelector('svg').viewBox.baseVal.width-Math.round(shell.getBoundingClientRect().width))<1,'resize observer did not update the diagram coordinate frame');
+   snapshots.push(assertCardLayout());assertResizedRoutes();
+  }
+  check(near(snapshots[1].cardWidth,snapshots[2].cardWidth),'cards still expand after their common content width is satisfied');
+  for(let index=1;index<snapshots.length;index++){
+   const before=snapshots[index-1],after=snapshots[index];
+   check(after.left>before.left+20&&after.right>before.right+20&&after.gap>before.gap+20,'extra viewport width was not distributed to both outer margins and arrow gutters: '+JSON.stringify(snapshots));
+  }
+ };
  for(const fixture of fixtures){
  const native=fixture.profile.parameterControl,model=build(fixture.profile,{component:fixture.component}).parameters;
  const nativeCard=new Map(model.groups.flatMap(group=>group.cards.flatMap(card=>card.members.map(node=>[node.id,card.id]))));
@@ -160,6 +241,7 @@ try{
   await renderFlow(language,fixture,model);
   const shell=host.querySelector('[data-hvac-parameter-flow-shell]'),svg=host.querySelector('[data-hvac-parameter-flow]');
   const cards=[...svg.querySelectorAll('[data-hvac-flow-card]')],edges=[...svg.querySelectorAll('[data-hvac-flow-edge]')];
+  assertCardLayout();
   const rects=new Map(cards.map(card=>[cardID(card),{x:Number(card.getAttribute('x')),y:Number(card.getAttribute('y')),w:Number(card.getAttribute('width')),h:Number(card.getAttribute('height'))}]));
   check(edges.length>0,'parsed '+fixture.family+' lost visible dependency links');
   if(fixture.family==='coil')check(edges.length>=8,'multi-manager coil lost visible dependency links');
@@ -239,23 +321,40 @@ try{
   check(shell.dataset.flowFocus==='card'&&selected.classList.contains('is-related'),'card hover did not isolate its incident links');
   check(edges.every(edge=>edge.classList.contains('is-highlighted')===[edge.dataset.fromCard,edge.dataset.toCard].includes(cardID(selected))),'card trace highlighted a nonincident dependency');
   button.dispatchEvent(new PointerEvent('pointerout',{bubbles:true,relatedTarget:svg}));
-  reference.focus();await assertEdgeFocus(reference);
+  reference.focus({preventScroll:true});await assertEdgeFocus(reference);
   check(document.activeElement===reference,'raising the traced edge discarded real keyboard focus');
   reference.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
   check(shell.dataset.flowFocus==='card'&&inspect().innerHTML===inspectorBefore,'Escape did not restore selected-card trace without discarding native details');
   reference.blur();
   for(const key of ['Enter',' ']){
-   reference.focus();reference.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));reference.blur();await settle();
+   reference.focus({preventScroll:true});reference.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));reference.blur();await settle();
    await assertEdgeFocus(reference);check(reference.getAttribute('aria-pressed')==='true','keyboard edge activation did not retain its trace');
    reference.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
    check(shell.dataset.flowFocus==='card'&&reference.getAttribute('aria-pressed')==='false'&&inspect().innerHTML===inspectorBefore,'Escape did not release pinned keyboard trace while preserving native details');
   }
   inspect().querySelector('[data-hvac-close-parameter]').click();
   check(inspect().hidden&&button.getAttribute('aria-expanded')==='false','closing native source inspector left stale selection');
+  await assertWideResize();
   check(JSON.stringify(fixtures)===original,'routing/tracing mutated native parsed profile identities or signs');
  }
  }
  const coil=fixtures.find(item=>item.family==='coil'),coilModel=build(coil.profile,{component:coil.component}).parameters;
+ // An owned display-model clone exercises unusually long words and labels
+ // without rewriting real source identities or the parsed fixture evidence.
+ const longModel=JSON.parse(JSON.stringify(coilModel)),longCard=longModel.groups.find(group=>group.id==='controls').cards[0];
+ const longLabel='Detailed temperature comparison and controller operating condition with independently supplied reference and measured feedback';
+ const longSource='ControllerSource_WithAnUnusuallyLongUnbrokenEquipmentAndCircuitReference_'.repeat(3);
+ longCard.source.objectName=longSource;
+ for(const node of longCard.members){
+  node.code=longLabel;node.source.objectName=longSource;
+  const native=longModel.nodes.find(item=>item.id===node.id);native.code=longLabel;native.source.objectName=longSource;
+ }
+ const longOriginal=JSON.stringify(longModel);
+ await renderFlow('en',coil,longModel);assertCardLayout();assertResizedRoutes();await assertWideResize();
+ const expanded=host.querySelector('[data-hvac-flow-card="'+CSS.escape(longCard.id)+'"]'),expandedButton=expanded.querySelector('button');
+ check(Number(expanded.getAttribute('height'))>100,'long source text did not expand the card height');
+ check(expandedButton.querySelector('strong').textContent.includes(longLabel)&&expandedButton.querySelector('span').textContent===longSource,'wrapping shortened or rewrote full title/source text');
+ check(JSON.stringify(longModel)===longOriginal&&JSON.stringify(fixtures)===original,'text measurement mutated the owned display model or native profiles');
  document.documentElement.dataset.theme='light';await renderFlow('en',coil,coilModel);
  const luminance=color=>{
   const rgb=(color.match(/[\d.]+/g)||[]).slice(0,3).map(value=>{const channel=Number(value)/255;return channel<=.04045?channel/12.92:((channel+.055)/1.055)**2.4;});
@@ -277,7 +376,7 @@ try{
   await renderFlow('en',fixture,model);
   if(capture==='reference'){
    const edge=host.querySelector('[data-hvac-flow-edge].reference[data-flow-route="return"]')||host.querySelector('[data-hvac-flow-edge].reference');
-   edge.focus();edge.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+   edge.focus({preventScroll:true});edge.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
   }
  }else disconnect?.();
  document.body.dataset.parameterFlowStatus='passed';document.querySelector('#result').textContent='passed';
