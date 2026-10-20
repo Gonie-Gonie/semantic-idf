@@ -43,6 +43,8 @@ export default Object.freeze({
   "hvac.operation.flow.target": "Target / setpoint",
   "hvac.operation.flow.representativeSchedule": "Representative-day schedule",
   "hvac.operation.flow.closeDetails": "Close details",
+  "hvac.operation.flow.performanceModel": "Performance model",
+  "hvac.operation.flow.performanceModelDetail": "Curves describing equipment response under operating conditions.",
   "hvac.operation.flow.inspect": "Hover or focus to trace paths; select a block for details.",
   "hvac.operation.flow.signalPath": "Signal",
   "hvac.operation.flow.setpointPath": "Setpoint / target",

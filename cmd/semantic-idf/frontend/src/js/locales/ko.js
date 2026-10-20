@@ -43,6 +43,8 @@ export default Object.freeze({
   "hvac.operation.flow.target": "목표 / Setpoint",
   "hvac.operation.flow.representativeSchedule": "대표일 스케줄",
   "hvac.operation.flow.closeDetails": "상세 닫기",
+  "hvac.operation.flow.performanceModel": "성능 모델",
+  "hvac.operation.flow.performanceModelDetail": "운전 조건에 따른 장비 응답을 계산하는 성능 곡선입니다.",
   "hvac.operation.flow.inspect": "마우스나 키보드 포커스로 연결을 강조하고, 블록을 선택해 상세 정보를 확인합니다.",
   "hvac.operation.flow.signalPath": "신호",
   "hvac.operation.flow.setpointPath": "설정값 / 목표값",

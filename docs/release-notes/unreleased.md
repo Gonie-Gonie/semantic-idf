@@ -38,6 +38,10 @@ The release script infers bump size from these sections:
   Connection styles distinguish signals, setpoints/targets, calculation measurement
   inputs and controller feedback using their native relationship, independently
   of card placement. Legend tooltips explain the four meanings.
+  Performance-only curves with a declared equipment owner move into the response
+  inspector's Performance model section, keeping the main diagram focused on
+  control flow. Curve sources, coefficients, unresolved references and native
+  target relationships remain available alongside rated equipment settings.
   The timeline's Configured availability is distinguished from the broader
   Run permission and On command; manager/fan permission rules and unresolved
   runtime decisions versus configuration problems use distinct names.

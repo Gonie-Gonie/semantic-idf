@@ -107,6 +107,18 @@ function parameterGroups(graph = {}) {
   const groupFor = (node) => ["controller", "control", "comparison", "condition", "decision"].includes(node.kind) ? "controls"
     : ["control_variable", "actuator", "modulation"].includes(node.kind) ? "commands"
     : node.boundary === "output" || ["external_output", "state_variable", "equipment", "parameter"].includes(node.kind) ? "response" : "inputs";
+  const curveCodes = new Set(["performance_curve", "unresolved_curve_reference"]);
+  const performanceLinks = new Map();
+  for (const node of nodes) {
+    if (!curveCodes.has(node.code)) continue;
+    const links = edges.filter((edge) => edge.from === node.id || edge.to === node.id);
+    // Only move an exclusively performance-model dependency with a proven
+    // response owner. Other uses and unresolved ownership remain visible.
+    if (links.length && links.every((edge) => {
+      const target = index.get(edge.to);
+      return edge.from === node.id && edge.relation === "modifies_performance" && target && !curveCodes.has(target.code) && groupFor(target) === "response";
+    })) performanceLinks.set(node.id, links);
+  }
   const destinations = new Map(nodes.map((node) => [node.id, { group: groupFor(node), source: node.source }]));
   for (const node of nodes) {
     // A single-use schedule can share its actual target/provider's input card.
@@ -122,6 +134,7 @@ function parameterGroups(graph = {}) {
   }
   const cards = new Map();
   for (const node of nodes) {
+    if (performanceLinks.has(node.id)) continue;
     const destination = destinations.get(node.id), key = `${destination.group}:${sourceKey(destination.source)}`;
     let card = cards.get(key);
     if (!card) {
@@ -129,6 +142,19 @@ function parameterGroups(graph = {}) {
       cards.set(key, card); groups.find((group) => group.id === destination.group).cards.push(card);
     }
     card.members.push(node);
+  }
+  const cardForNode = new Map([...cards.values()].flatMap((card) => card.members.map((node) => [node.id, card])));
+  for (const [id, links] of performanceLinks) {
+    for (const edge of links) {
+      const card = cardForNode.get(edge.to);
+      card.performanceModels ||= [];
+      let model = card.performanceModels.find((entry) => entry.node.id === id);
+      if (!model) {
+        model = { node: index.get(id), relationships: [] };
+        card.performanceModels.push(model);
+      }
+      model.relationships.push(edge);
+    }
   }
   for (const card of cards.values()) {
     const ids = new Set(card.members.map((node) => node.id));

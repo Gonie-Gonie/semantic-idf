@@ -64,6 +64,58 @@ func TestHVACParameterFlowTraceBrowser(t *testing.T) {
 			component := idf.HVACOperatingSource{ObjectIndex: profile.ComponentIndex, ObjectType: object.Type, ObjectName: object.Fields[0].Value}
 			fixtures = append(fixtures, map[string]any{"family": family.name, "profile": profile, "component": component})
 			t.Logf("parsed %s: %s, %d native nodes / %d native relationships", family.name, component.ObjectName, len(profile.ParameterControl.Nodes), len(profile.ParameterControl.Edges))
+			if family.name == "chiller" {
+				// Reparse an owned document before changing one curve reference. The
+				// browser must preserve the parser's real unresolved-reference node,
+				// rather than a hand-written stand-in or altered bundled fixture.
+				missingDoc, err := idf.Parse(string(input))
+				if err != nil {
+					t.Fatal(err)
+				}
+				curveName := ""
+				for _, node := range profile.ParameterControl.Nodes {
+					if node.Code == "performance_curve" {
+						curveName = node.Source.ObjectName
+						break
+					}
+				}
+				if curveName == "" {
+					t.Fatal("bundled chiller has no native performance curve")
+				}
+				replaced := false
+				for field := range missingDoc.Objects[profile.ComponentIndex].Fields {
+					if strings.EqualFold(missingDoc.Objects[profile.ComponentIndex].Fields[field].Value, curveName) {
+						missingDoc.Objects[profile.ComponentIndex].Fields[field].Value = "Undefined Performance Curve"
+						replaced = true
+						break
+					}
+				}
+				if !replaced {
+					t.Fatal("bundled chiller curve is not referenced by its native equipment fields")
+				}
+				missingReport := idf.AnalyzeHVAC(missingDoc)
+				var missingProfile *idf.HVACOperatingProfile
+				for candidate := range missingReport.OperatingProfiles {
+					item := &missingReport.OperatingProfiles[candidate]
+					if item.ComponentIndex == profile.ComponentIndex && item.LoopID == profile.LoopID {
+						missingProfile = item
+						break
+					}
+				}
+				if missingProfile == nil {
+					t.Fatal("missing-curve chiller profile disappeared")
+				}
+				unresolved := false
+				for _, node := range missingProfile.ParameterControl.Nodes {
+					if node.Kind == "unknown" && node.Code == "unresolved_curve_reference" {
+						unresolved = true
+					}
+				}
+				if !unresolved {
+					t.Fatal("missing curve fixture did not produce native unresolved-reference evidence")
+				}
+				fixtures = append(fixtures, map[string]any{"family": "chiller-missing-curve", "profile": missingProfile, "component": component})
+			}
 			found = true
 			break
 		}
@@ -129,6 +181,9 @@ func TestHVACParameterFlowTraceBrowser(t *testing.T) {
 			{"coil-light.png", "?width=1480&capture=overview&theme=light", 1480, 1100},
 			{"fan-wide.png", "?width=1480&capture=overview&family=fan", 1480, 1100},
 			{"chiller-wide.png", "?width=1480&capture=overview&family=chiller", 1480, 1100},
+			{"chiller-performance.png", "?width=1480&capture=performance&family=chiller", 1480, 2000},
+			{"chiller-performance-ko-light.png", "?width=1480&capture=performance&family=chiller&language=ko&theme=light", 1480, 2000},
+			{"chiller-missing-curve.png", "?width=1480&capture=performance&family=chiller-missing-curve", 1480, 2000},
 		} {
 			path, err := filepath.Abs(filepath.Join(captureDir, capture.name))
 			if err != nil {
@@ -235,6 +290,49 @@ try{
    check(after.left>before.left+20&&after.right>before.right+20&&after.gap>before.gap+20,'extra viewport width was not distributed to both outer margins and arrow gutters: '+JSON.stringify(snapshots));
   }
  };
+ const isCurve=node=>['performance_curve','unresolved_curve_reference'].includes(node.code);
+ const assertNativeMember=(node,member)=>{
+  check(member&&member.dataset.hvacNodeKind===node.kind&&member.dataset.hvacSourceName===node.source.objectName&&member.dataset.hvacSourceType===node.source.objectType&&member.dataset.hvacSourceIndex===String(node.source.objectIndex),'source inspector changed native node identity: '+node.id);
+  const fields=[...member.querySelectorAll('[data-control-parameter]')];
+  check(fields.length===(node.parameters||[]).length,'source inspector dropped or invented native parameter fields: '+node.id);
+  for(const parameter of node.parameters||[])check(fields.some(field=>field.dataset.controlParameter===parameter.name&&field.dataset.controlValue===parameter.value&&field.dataset.controlSourceIndex===String(parameter.objectIndex)&&field.dataset.controlFieldIndex===String(parameter.fieldIndex)),'source inspector changed exact native parameter or field identity: '+node.id+' / '+parameter.name);
+ };
+ const assertPerformanceModels=(fixture,model,language)=>{
+  const native=fixture.profile.parameterControl,allCards=model.groups.flatMap(group=>group.cards),curves=native.nodes.filter(isCurve),curveIDs=new Set(curves.map(node=>node.id));
+  check(JSON.stringify(model.nodes)===JSON.stringify(native.nodes)&&JSON.stringify(model.relationships)===JSON.stringify(native.edges),'presentation removed native performance evidence instead of separating its display');
+  check(allCards.every(card=>card.members.every(node=>!curveIDs.has(node.id))),'a native performance curve still occupies a main control-flow card');
+  check([...host.querySelectorAll('[data-hvac-flow-edge]')].every(edge=>edge.dataset.relation!=='modifies_performance'&&!curveIDs.has(edge.dataset.from)&&!curveIDs.has(edge.dataset.to)),'performance-model dependency is still drawn as a command/control wire');
+  if(fixture.family==='chiller')check(curves.length>=3,'real chiller no longer exercises separate capacity/temperature/part-load performance curves');
+  const byTarget=new Map();
+  for(const node of curves){
+   const incident=native.edges.filter(edge=>edge.from===node.id||edge.to===node.id);
+   check(incident.length>0&&incident.every(edge=>edge.from===node.id&&edge.relation==='modifies_performance'),'parsed curve fixture no longer has model-only native dependencies');
+   for(const edge of incident){
+    const card=allCards.find(card=>card.members.some(member=>member.id===edge.to));
+    check(card&&model.groups.find(group=>group.cards.includes(card)).id==='response','performance curve is not associated with a declared equipment-response owner');
+    const entries=byTarget.get(card.id)||[];entries.push({node,edge});byTarget.set(card.id,entries);
+   }
+  }
+  for(const card of allCards){
+   const entries=byTarget.get(card.id)||[],models=card.performanceModels||[];
+   check(models.length===new Set(entries.map(entry=>entry.node.id)).size,'performance model count does not match the original response owner: '+card.id);
+   if(!entries.length)continue;
+   for(const {node,edge} of entries)check(models.some(model=>model.node===node&&model.relationships.includes(edge)),'performance association copied or changed its original native curve/relationship references');
+   host.querySelector('[data-hvac-inspect-parameter="'+CSS.escape(card.id)+'"]').click();
+   const section=inspect().querySelector('[data-hvac-performance-model]');
+   check(section&&section.textContent.includes(language==='ko'?'\uc131\ub2a5 \ubaa8\ub378':'Performance model'),'response inspector lacks its localized performance-model section');
+   const expectedNodes=[...new Map(entries.map(entry=>[entry.node.id,entry.node])).values()],members=[...section.querySelectorAll('[data-hvac-control-node]')];
+   check(members.length===expectedNodes.length&&new Set(members.map(member=>member.dataset.hvacControlNode)).size===expectedNodes.length,'distinct curve definitions were merged, duplicated or assigned to the wrong response');
+   for(const node of expectedNodes){
+    const member=members.find(member=>member.dataset.hvacControlNode===node.id);assertNativeMember(node,member);
+    if(node.code==='unresolved_curve_reference')check(member.textContent.includes(language==='ko'?'\uc131\ub2a5 \uace1\uc120 \ucc38\uc870 \ubbf8\ud655\uc778':'Performance curve reference unresolved')&&member.textContent.includes('Undefined Performance Curve'),'missing curve reference is concealed or presented as a resolved performance definition');
+   }
+   const relations=[...section.querySelectorAll('[data-hvac-parameter-term]')];
+   check(relations.length===entries.length,'performance inspector dropped or invented a native equipment-model dependency');
+   for(const {edge} of entries)check(relations.some(relation=>relation.dataset.from===edge.from&&relation.dataset.to===edge.to&&relation.dataset.relation===edge.relation&&(relation.dataset.polarity||'')===(edge.polarity||'')&&(relation.dataset.condition||'')===(edge.condition||'')),'performance inspector changed the original dependency endpoint/relation/sign');
+   inspect().querySelector('[data-hvac-close-parameter]').click();
+  }
+ };
  for(const fixture of fixtures){
  const native=fixture.profile.parameterControl,model=build(fixture.profile,{component:fixture.component}).parameters;
  const nativeCard=new Map(model.groups.flatMap(group=>group.cards.flatMap(card=>card.members.map(node=>[node.id,card.id]))));
@@ -252,6 +350,7 @@ try{
   check(edges.length>0,'parsed '+fixture.family+' lost visible dependency links');
   if(fixture.family==='coil')check(edges.length>=8,'multi-manager coil lost visible dependency links');
   check(!shell.hasAttribute('data-flow-focus')&&inspect().hidden,'initial diagram starts with selected-path clutter');
+  assertPerformanceModels(fixture,model,language);
   check(host.scrollWidth<=host.clientWidth+1&&document.documentElement.scrollWidth<=innerWidth+1,'parameter diagram overflowed viewport at '+innerWidth);
   const ports=new Map(),longLanes=[],physicalLanes=[];
   for(const edge of edges){
@@ -360,6 +459,34 @@ try{
   check(JSON.stringify(fixtures)===original,'routing/tracing mutated native parsed profile identities or signs');
  }
  }
+ const chiller=fixtures.find(item=>item.family==='chiller');
+ // An owned graph clone exercises one curve shared by distinct response
+ // owners. It must appear in each proven owner's inspector, without changing
+ // the original graph or assigning the curve to the control-command stage.
+ const sharedProfile=JSON.parse(JSON.stringify(chiller.profile)),sharedGraph=sharedProfile.parameterControl;
+ const sharedCurve=sharedGraph.nodes.find(isCurve),sharedEdge=sharedGraph.edges.find(edge=>edge.from===sharedCurve.id&&edge.relation==='modifies_performance');
+ const secondary={...sharedGraph.nodes.find(node=>node.id===sharedEdge.to),id:'synthetic-secondary-response',source:{objectIndex:-42,objectType:'Synthetic:EquipmentResponse',objectName:'Secondary modeled response'},parameters:[]};
+ sharedGraph.nodes.push(secondary);sharedGraph.edges.push({from:sharedCurve.id,to:secondary.id,relation:'modifies_performance',condition:'Synthetic response selection'});
+ const sharedOriginal=JSON.stringify(sharedProfile),sharedFixture={family:'shared-performance',profile:sharedProfile,component:chiller.component},sharedModel=build(sharedProfile,{component:chiller.component}).parameters;
+ for(const language of ['en','ko']){
+  await renderFlow(language,sharedFixture,sharedModel);assertCardLayout();assertResizedRoutes();assertPerformanceModels(sharedFixture,sharedModel,language);
+ }
+ check(sharedModel.groups.flatMap(group=>group.cards).filter(card=>(card.performanceModels||[]).some(model=>model.node.id===sharedCurve.id)).length===2,'a shared curve was attached to only one response owner');
+ check(JSON.stringify(sharedProfile)===sharedOriginal,'separating shared model dependencies mutated the owned native-shaped graph');
+ // A curve without a proven response owner, or with an additional control
+ // dependency, must remain explicit rather than disappearing into an unrelated
+ // equipment inspector. Only the exclusive native model relationship is moved.
+ for(const variant of ['orphan','mixed-role','unknown-owner']){
+  const profile=JSON.parse(JSON.stringify(chiller.profile)),graph=profile.parameterControl,curve=graph.nodes.find(isCurve);
+  if(variant==='orphan')graph.edges=graph.edges.filter(edge=>edge.from!==curve.id&&edge.to!==curve.id);
+  if(variant==='mixed-role')graph.edges.push({from:curve.id,to:graph.nodes.find(node=>node.kind==='control_variable').id,relation:'sets_parameter'});
+  if(variant==='unknown-owner')for(const edge of graph.edges)if(edge.from===curve.id)edge.to='unresolved-response-owner';
+  const originalProfile=JSON.stringify(profile),model=build(profile,{component:chiller.component}).parameters,card=model.groups.flatMap(group=>group.cards).find(card=>card.members.some(node=>node.id===curve.id));
+  check(card&&!model.groups.flatMap(group=>group.cards).some(card=>(card.performanceModels||[]).some(model=>model.node.id===curve.id)),'curve with '+variant+' ownership was silently hidden or assigned to an unproven response');
+  await renderFlow('en',chiller,model);assertCardLayout();assertResizedRoutes();
+  check(host.querySelector('[data-hvac-flow-card="'+CSS.escape(card.id)+'"]'),'curve with '+variant+' ownership disappeared from the main diagram');
+  check(JSON.stringify(profile)===originalProfile,'classifying '+variant+' performance ownership changed the original graph');
+ }
  const coil=fixtures.find(item=>item.family==='coil'),coilModel=build(coil.profile,{component:coil.component}).parameters;
  // An owned display-model clone exercises unusually long words and labels
  // without rewriting real source identities or the parsed fixture evidence.
@@ -400,10 +527,15 @@ try{
  if(capture){
   const family=new URLSearchParams(location.search).get('family')||'coil',fixture=fixtures.find(item=>item.family===family),model=build(fixture.profile,{component:fixture.component}).parameters;
   document.documentElement.dataset.theme=new URLSearchParams(location.search).get('theme')||'dark';
-  await renderFlow('en',fixture,model);
+  await renderFlow(new URLSearchParams(location.search).get('language')||'en',fixture,model);
   if(capture==='setpoint'){
    const edge=host.querySelector('[data-hvac-flow-edge].setpoint[data-relation="references_setpoint"]')||host.querySelector('[data-hvac-flow-edge].setpoint');
    edge.focus({preventScroll:true});edge.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+  }
+  if(capture==='performance'){
+   const card=model.groups.flatMap(group=>group.cards).find(card=>card.performanceModels?.length);
+   host.querySelector('[data-hvac-inspect-parameter="'+CSS.escape(card.id)+'"]').click();
+   inspect().querySelector('[data-hvac-performance-model]').scrollIntoView({block:'start'});window.scrollBy(0,-16);await settle();
   }
  }else disconnect?.();
  document.body.dataset.parameterFlowStatus='passed';document.querySelector('#result').textContent='passed';

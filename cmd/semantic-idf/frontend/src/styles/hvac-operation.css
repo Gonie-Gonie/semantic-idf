@@ -141,4 +141,8 @@
 .hvac-parameter-inspector-heading { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
 .hvac-parameter-inspector-heading > button { padding: 2px 8px; border: 0; background: transparent; color: var(--muted, #8aa4b5); font-size: 20px; cursor: pointer; }
 .hvac-parameter-detail-member h6 { margin: 8px 0; font-size: 12px; }
+.hvac-parameter-performance { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border, #2b404e); }
+.hvac-parameter-performance > h5 { margin: 0 0 6px; }
+.hvac-parameter-performance > p { margin: 0 0 12px; color: var(--muted); }
+.hvac-parameter-performance-entry + .hvac-parameter-performance-entry { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border, #2b404e); }
 @container (max-width: 600px) { .hvac-onoff-rule-columns { gap: 32px; } .hvac-flow-tile { padding: 10px; } }

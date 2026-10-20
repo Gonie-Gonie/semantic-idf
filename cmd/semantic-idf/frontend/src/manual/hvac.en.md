@@ -213,6 +213,18 @@ a block to inspect its original fields, ports, members and connections below the
 diagram. A schedule summary in the inspector describes the representative day,
 not its annual range.
 
+The main diagram follows the control flow from inputs and targets through the
+controller and command to the equipment response. Select an **Equipment response**
+block to inspect its **Performance model** section: curves used exclusively for
+the declared equipment performance appear here with their source objects,
+coefficients, reference fields and actual target connections. A curve changes the
+equipment's response calculation; it is not a separate controller or flow command.
+Rated capacity, COP and other equipment settings remain in the same inspector.
+Shared curves appear under every declared equipment owner. An unresolved curve
+reference retains its original field and value; unsupported or unowned connections
+remain visible without an assumed owner. Equipment without associated curves has
+no empty Performance model section.
+
 The legend follows the declared relationship, independently of card placement
 or arrow routing:
 
@@ -242,8 +254,8 @@ specific source, destination and relationship.
 External ports use the selected equipment/circuit context and retain the
 declared node/field identity when resolved. Unresolved occurrence ports do not
 justify borrowing another circuit's ports. A physical flow path is not by itself
-evidence of a feedback controller. Performance curves
-and configured limits explain how states are determined; their presence does
+evidence of a feedback controller. Performance curves and configured limits
+explain how states are determined; their presence does
 not make every calculated state a separately controlled variable.
 
 The **Control variable** role means a manipulated command. EnergyPlus
