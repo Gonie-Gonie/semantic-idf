@@ -30,6 +30,9 @@ The release script infers bump size from these sections:
   and equipment response/outputs with directed signal and feedback links.
   Selecting a compact source block opens its original fields and ports while
   preserving supported comparison signs and native Action meanings.
+  Aligned control blocks, short smooth connections and separate rounded lanes
+  simplify direct inputs and returning references. Hover and keyboard focus
+  emphasize connected paths and their endpoints.
   The timeline's Configured availability is distinguished from the broader
   Run permission and On command; manager/fan permission rules and unresolved
   runtime decisions versus configuration problems use distinct names.

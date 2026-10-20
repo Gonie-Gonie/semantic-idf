@@ -1,0 +1,285 @@
+package frontendchecks
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"html"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/idf"
+)
+
+// Use the multi-manager water coil that exposed tangled return links, plus
+// other real equipment families. Native identities and signs remain authoritative
+// while the display routes dependencies around cards and permits tracing.
+func TestHVACParameterFlowTraceBrowser(t *testing.T) {
+	if testing.Short() {
+		t.Skip("parsed HVAC parameter flow geometry and interaction acceptance")
+	}
+	chrome := phaseHChromeExecutable()
+	if chrome == "" {
+		t.Skip("Chrome/Chromium/Edge is not installed")
+	}
+	input, err := os.ReadFile(repoPath("frontend/src/samples/RefBldgLargeOfficeNew2004_Chicago.idf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := idf.Parse(string(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := idf.AnalyzeHVAC(doc)
+	loopTypes := map[string]string{}
+	for _, loop := range report.Loops {
+		loopTypes[loop.ID] = loop.Type
+	}
+	fixtures := []any{}
+	for _, family := range []struct{ name, objectType, objectName, loopType string }{
+		{"coil", "Coil:Heating:Water", "VAV_5_HeatC", "AirLoopHVAC"},
+		{"fan", "Fan:VariableVolume", "VAV_5_Fan", "AirLoopHVAC"},
+		{"chiller", "Chiller:", "", "PlantLoop"},
+		{"pump", "Pump:", "", "PlantLoop"},
+		{"boiler", "Boiler:", "", "PlantLoop"},
+	} {
+		found := false
+		for index := range report.OperatingProfiles {
+			profile := &report.OperatingProfiles[index]
+			if profile.ComponentIndex < 0 || profile.ComponentIndex >= len(doc.Objects) || loopTypes[profile.LoopID] != family.loopType {
+				continue
+			}
+			object := doc.Objects[profile.ComponentIndex]
+			if !strings.HasPrefix(object.Type, family.objectType) || len(object.Fields) == 0 || family.objectName != "" && object.Fields[0].Value != family.objectName {
+				continue
+			}
+			if len(profile.ParameterControl.Edges) == 0 {
+				t.Fatalf("bundled %s parameter graph is missing", family.name)
+			}
+			component := idf.HVACOperatingSource{ObjectIndex: profile.ComponentIndex, ObjectType: object.Type, ObjectName: object.Fields[0].Value}
+			fixtures = append(fixtures, map[string]any{"family": family.name, "profile": profile, "component": component})
+			t.Logf("parsed %s: %s, %d native nodes / %d native relationships", family.name, component.ObjectName, len(profile.ParameterControl.Nodes), len(profile.ParameterControl.Edges))
+			found = true
+			break
+		}
+		if !found {
+			t.Fatalf("bundled %s operating profile is missing", family.name)
+		}
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/src/", http.StripPrefix("/src/", http.FileServer(http.Dir(repoPath("frontend/src")))))
+	mux.HandleFunc("/fixture", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(fixtures)
+	})
+	mux.HandleFunc("/parameter-flow", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(w, hvacParameterFlowTraceBrowserHTML)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	runBrowser := func(action, query, viewport string) ([]byte, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		return exec.CommandContext(ctx, chrome,
+			"--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check",
+			"--force-device-scale-factor=1", "--window-size="+viewport, "--virtual-time-budget=15000",
+			"--user-data-dir="+t.TempDir(), action, server.URL+"/parameter-flow"+query).CombinedOutput()
+	}
+	for _, width := range []int{1480, 690, 400} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			output, err := runBrowser("--dump-dom", fmt.Sprintf("?width=%d", width), fmt.Sprintf("%d,1200", width))
+			if err != nil || !strings.Contains(string(output), `data-parameter-flow-status="passed"`) {
+				failure := string(output)
+				if _, result, ok := strings.Cut(failure, `<pre id="result">`); ok {
+					message, _, _ := strings.Cut(result, `</pre>`)
+					failure = html.UnescapeString(message)
+				}
+				t.Fatalf("parameter flow trace acceptance failed: %v\n%s", err, failure)
+			}
+		})
+	}
+	if captureDir := os.Getenv("HVAC_PARAMETER_CAPTURE_DIR"); captureDir != "" {
+		if err := os.MkdirAll(captureDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		for _, capture := range []struct{ name, query, viewport string }{
+			{"coil-wide.png", "?width=1480&capture=overview", "1480,1100"},
+			{"coil-reference.png", "?width=1480&capture=reference", "1480,1100"},
+			{"coil-narrow.png", "?width=400&capture=overview", "400,2000"},
+			{"coil-light.png", "?width=1480&capture=overview&theme=light", "1480,1100"},
+			{"fan-wide.png", "?width=1480&capture=overview&family=fan", "1480,1100"},
+			{"chiller-wide.png", "?width=1480&capture=overview&family=chiller", "1480,1100"},
+		} {
+			path, err := filepath.Abs(filepath.Join(captureDir, capture.name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if output, err := runBrowser("--screenshot="+path, capture.query, capture.viewport); err != nil {
+				t.Fatalf("parameter flow screenshot %s failed: %v\n%s", path, err, output)
+			}
+			t.Logf("parameter flow visual review: %s", path)
+		}
+	}
+}
+
+const hvacParameterFlowTraceBrowserHTML = `<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Water-coil parameter tracing</title>
+<link rel="stylesheet" href="/src/styles/base.css"><link rel="stylesheet" href="/src/styles/hvac.css">
+<style>body{display:block;margin:0;padding:16px;overflow:auto;height:auto;box-sizing:border-box}#host{width:100%;min-width:0}#result{display:none}</style>
+</head><body data-parameter-flow-status="pending"><section id="host" class="hvac-operation-panel parameters"></section><pre id="result">pending</pre>
+<script type="module">
+const check=(value,message)=>{if(!value)throw Error(message)};
+const settle=()=>new Promise(resolve=>setTimeout(resolve,80));
+try{
+ const [{buildHVACControlExpressions:build},{renderHVACParameterFlow:render,connectHVACParameterFlow:connect},{setLanguage}]=await Promise.all([
+  import('/src/js/hvac-control-expressions.js'),import('/src/js/views/hvac-parameter-flow-view.js'),import('/src/js/i18n.js')]);
+ const fixtures=await(await fetch('/fixture')).json(),original=JSON.stringify(fixtures),host=document.querySelector('#host');
+ // Chrome may enforce a minimum outer window width. Preserve the requested
+ // content width so the 400px acceptance still exercises that actual layout.
+ host.style.maxWidth=(Number(new URLSearchParams(location.search).get('width'))-32)+'px';
+ let disconnect;
+ const renderFlow=async(language,fixture,model)=>{disconnect?.();setLanguage(language);host.innerHTML=render(model,{component:fixture.component});disconnect=connect(host);await settle();};
+ const cardID=card=>card.getAttribute('data-hvac-flow-card');
+ const feedbackRelations=new Set(['feedback','adds_measurement']);
+ const inspect=()=>host.querySelector('[data-hvac-parameter-inspector]');
+ const near=(left,right)=>Math.abs(left-right)<.2;
+ for(const fixture of fixtures){
+ const native=fixture.profile.parameterControl,model=build(fixture.profile,{component:fixture.component}).parameters;
+ const nativeCard=new Map(model.groups.flatMap(group=>group.cards.flatMap(card=>card.members.map(node=>[node.id,card.id]))));
+ const nativeStage=new Map(model.groups.flatMap((group,index)=>group.cards.map(card=>[card.id,index])));
+ document.body.dataset.family=fixture.family;
+ if(fixture.family==='coil')check(model.groups.length===4&&model.groups.find(group=>group.id==='inputs').cards.length>=4,'real multi-manager coil fixture no longer exercises stacked targets');
+ for(const language of ['en','ko']){
+  await renderFlow(language,fixture,model);
+  const shell=host.querySelector('[data-hvac-parameter-flow-shell]'),svg=host.querySelector('[data-hvac-parameter-flow]');
+  const cards=[...svg.querySelectorAll('[data-hvac-flow-card]')],edges=[...svg.querySelectorAll('[data-hvac-flow-edge]')];
+  const rects=new Map(cards.map(card=>[cardID(card),{x:Number(card.getAttribute('x')),y:Number(card.getAttribute('y')),w:Number(card.getAttribute('width')),h:Number(card.getAttribute('height'))}]));
+  check(edges.length>0,'parsed '+fixture.family+' lost visible dependency links');
+  if(fixture.family==='coil')check(edges.length>=8,'multi-manager coil lost visible dependency links');
+  check(!shell.hasAttribute('data-flow-focus')&&inspect().hidden,'initial diagram starts with selected-path clutter');
+  check(host.scrollWidth<=host.clientWidth+1&&document.documentElement.scrollWidth<=innerWidth+1,'parameter diagram overflowed viewport at '+innerWidth);
+  const ports=new Map(),longLanes=[],physicalLanes=[];
+  for(const edge of edges){
+   const wire=edge.querySelector('.hvac-parameter-wire'),hit=edge.querySelector('.hvac-parameter-hit');
+   check(wire&&hit&&wire.getAttribute('d')===hit.getAttribute('d'),'visible and accessible edge hit paths diverged');
+   check(edge.dataset.flowRoute,'edge has no explicit routed path classification');
+   check(edge.getAttribute('tabindex')==='0'&&edge.getAttribute('aria-label'),'edge cannot be traced directly with keyboard');
+   const matching=native.edges.find(item=>item.from===edge.dataset.from&&item.to===edge.dataset.to&&item.relation===edge.dataset.relation&&item.polarity===(edge.dataset.polarity||undefined)&&item.condition===(edge.dataset.condition||undefined));
+   check(matching,'display edge invented a native relation or changed its exact sign');
+   check(nativeCard.get(matching.from)===edge.dataset.fromCard&&nativeCard.get(matching.to)===edge.dataset.toCard,'native edge attached to wrong source card');
+   check(edge.classList.contains('feedback')===feedbackRelations.has(matching.relation),'native measured feedback and backward reference semantics were conflated');
+   const from=rects.get(edge.dataset.fromCard),to=rects.get(edge.dataset.toCard),length=wire.getTotalLength();
+   check(length>0,'edge route collapsed');
+   for(let distance=0;distance<=length;distance+=2){
+    const point=wire.getPointAtLength(distance);
+    for(const [id,rect] of rects){
+     if(id===edge.dataset.fromCard||id===edge.dataset.toCard)continue;
+     check(!(point.x>rect.x+.7&&point.x<rect.x+rect.w-.7&&point.y>rect.y+.7&&point.y<rect.y+rect.h-.7),'route crosses unrelated card '+id+' via '+edge.dataset.from+' -> '+edge.dataset.to+' at '+point.x+','+point.y);
+    }
+    check(point.x>=-.2&&point.y>=-.2&&point.x<=svg.viewBox.baseVal.width+.2&&point.y<=svg.viewBox.baseVal.height+.2,'route escaped the visible SVG');
+   }
+   for(const [id,rect,distance] of [[edge.dataset.fromCard,from,0],[edge.dataset.toCard,to,length]]){
+    const point=wire.getPointAtLength(distance),onVertical=(near(point.x,rect.x)||near(point.x,rect.x+rect.w))&&point.y>=rect.y-.2&&point.y<=rect.y+rect.h+.2,onHorizontal=(near(point.y,rect.y)||near(point.y,rect.y+rect.h))&&point.x>=rect.x-.2&&point.x<=rect.x+rect.w+.2;
+    check(onVertical||onHorizontal,'edge endpoint does not meet its actual card boundary');
+    const key=id+'|'+point.x.toFixed(1)+'|'+point.y.toFixed(1);
+    check(!ports.has(key),'multiple dependencies share one ambiguous card port: '+key);ports.set(key,edge);
+    check([...edge.querySelectorAll('circle')].some(circle=>near(Number(circle.getAttribute('cx')),point.x)&&near(Number(circle.getAttribute('cy')),point.y)),'edge endpoint lacks a visible connection marker');
+   }
+   if(!['adjacent','adjacent-return'].includes(edge.dataset.flowRoute)){
+    check(edge.dataset.flowLane!==undefined,'long/return dependency has no separate routing lane');longLanes.push(edge.dataset.flowLane);
+    const bounds=wire.getBBox(),route=edge.dataset.flowRoute,coordinate=route==='bypass'?bounds.y:route==='return'?bounds.y+bounds.height:route==='vertical'?bounds.x+bounds.width:bounds.x;
+    physicalLanes.push(route+'|'+coordinate.toFixed(1));
+   }
+   const sign=matching.polarity==='positive'?'+':matching.polarity==='negative'?'\u2212':matching.polarity==='unknown'?'?':'';
+   check(edge.querySelector('text')?.textContent===sign,'native comparator sign was lost or reinterpreted');
+  }
+  check(new Set(longLanes).size===longLanes.length,'long/return links overlap the same perimeter lane');
+  if(fixture.family==='coil')check(longLanes.length>=4,'multi-manager coil no longer exercises several long/return lanes');
+  check(new Set(physicalLanes).size===physicalLanes.length,'different lane IDs conceal coincident long/return path geometry');
+  const measuredFeedback=edges.find(edge=>edge.dataset.relation==='adds_measurement'&&edge.dataset.polarity==='positive'),backwardReference=edges.find(edge=>nativeStage.get(edge.dataset.fromCard)>nativeStage.get(edge.dataset.toCard)&&!feedbackRelations.has(edge.dataset.relation));
+  if(fixture.family==='coil')check(measuredFeedback&&backwardReference,'real coil no longer tests distinct positive measured feedback and backward reference semantics');
+  if(measuredFeedback&&backwardReference){
+   const feedbackStyle=getComputedStyle(measuredFeedback.querySelector('.hvac-parameter-wire')),referenceStyle=getComputedStyle(backwardReference.querySelector('.hvac-parameter-wire'));
+   check(feedbackStyle.stroke!==referenceStyle.stroke&&feedbackStyle.strokeDasharray!=='none'&&referenceStyle.strokeDasharray!=='none','feedback and backward reference paths lack distinct visible styling');
+  }
+  const feedback=measuredFeedback||edges[0],reference=backwardReference||edges.at(-1);
+  const relatedCards=edge=>cards.filter(card=>[edge.dataset.fromCard,edge.dataset.toCard].includes(cardID(card)));
+  const opacity=element=>{let value=1;for(let item=element;item&&item!==shell;item=item.parentElement)value*=Number(getComputedStyle(item).opacity);return value;};
+  const assertEdgeFocus=async edge=>{
+   await settle();
+   check(shell.dataset.flowFocus==='edge'&&edge.classList.contains('is-highlighted'),'edge hover/focus did not isolate its path: '+edge.dataset.from+' -> '+edge.dataset.to+' / '+shell.dataset.flowFocus+' / active '+document.activeElement?.outerHTML?.slice(0,200));
+   check(edges.filter(item=>item.classList.contains('is-highlighted')).length===1,'edge trace highlighted unrelated paths');
+   check(cards.filter(card=>card.classList.contains('is-related')).length===relatedCards(edge).length,'edge trace did not isolate exact endpoint cards');
+   check(cards.find(card=>cardID(card)===edge.dataset.fromCard).classList.contains('is-source')&&cards.find(card=>cardID(card)===edge.dataset.toCard).classList.contains('is-target'),'edge trace lacks directional endpoint emphasis');
+   const description=shell.querySelector('[data-hvac-flow-description]');
+   check(description&&!description.hidden&&description.textContent.trim()&&description.textContent.includes('\u2192'),'traced edge has no readable endpoint/relation description');
+   if(edges.length>1)check(opacity(edges.find(item=>item!==edge).querySelector('.hvac-parameter-wire'))<opacity(edge.querySelector('.hvac-parameter-wire')),'unrelated paths are not visually subdued');
+  };
+  const selected=cards.find(card=>card.querySelector('button')&&model.groups.flatMap(group=>group.cards).find(item=>item.id===cardID(card)).members.some(node=>node.kind==='controller'))||cards[0],button=selected.querySelector('button');
+  button.click();check(!inspect().hidden&&button.getAttribute('aria-expanded')==='true','card click lost native source inspector');
+  const inspectorBefore=inspect().innerHTML,selectedModel=model.groups.flatMap(group=>group.cards).find(item=>item.id===cardID(selected));
+  for(const node of selectedModel.members){
+   const member=inspect().querySelector('[data-hvac-control-node="'+CSS.escape(node.id)+'"]');
+   check(member&&member.dataset.hvacSourceName===node.source.objectName&&member.dataset.hvacSourceType===node.source.objectType&&member.dataset.hvacSourceIndex===String(node.source.objectIndex),'selected source inspector changed native node identity');
+   for(const parameter of node.parameters||[])check([...member.querySelectorAll('[data-control-parameter]')].some(field=>field.dataset.controlParameter===parameter.name&&field.dataset.controlValue===parameter.value&&field.dataset.controlSourceIndex===String(parameter.objectIndex)&&field.dataset.controlFieldIndex===String(parameter.fieldIndex)),'source inspector changed exact native parameter or field identity: '+node.id+' / '+parameter.name);
+  }
+  if(fixture.family==='coil')check(inspect().textContent.includes('Controller:WaterCoil')&&inspect().querySelector('[data-control-parameter="Action"]')&&inspect().querySelector('[data-control-parameter="Sensor Node Name"]')&&inspect().querySelector('[data-control-parameter="Actuator Node Name"]'),'source inspector lost exact controller I/O ports');
+  feedback.dispatchEvent(new PointerEvent('pointerover',{bubbles:true,relatedTarget:svg}));await assertEdgeFocus(feedback);
+  check(inspect().innerHTML===inspectorBefore,'temporary edge tracing replaced selected source details');
+  feedback.dispatchEvent(new PointerEvent('pointerout',{bubbles:true,relatedTarget:svg}));
+  check(shell.dataset.flowFocus==='card'&&inspect().innerHTML===inspectorBefore,'leaving an edge did not restore the selected-card trace and persistent inspector');
+  button.dispatchEvent(new PointerEvent('pointerover',{bubbles:true,relatedTarget:svg}));
+  check(shell.dataset.flowFocus==='card'&&selected.classList.contains('is-related'),'card hover did not isolate its incident links');
+  check(edges.every(edge=>edge.classList.contains('is-highlighted')===[edge.dataset.fromCard,edge.dataset.toCard].includes(cardID(selected))),'card trace highlighted a nonincident dependency');
+  button.dispatchEvent(new PointerEvent('pointerout',{bubbles:true,relatedTarget:svg}));
+  reference.focus();await assertEdgeFocus(reference);
+  check(document.activeElement===reference,'raising the traced edge discarded real keyboard focus');
+  reference.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+  check(shell.dataset.flowFocus==='card'&&inspect().innerHTML===inspectorBefore,'Escape did not restore selected-card trace without discarding native details');
+  reference.blur();
+  for(const key of ['Enter',' ']){
+   reference.focus();reference.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));reference.blur();await settle();
+   await assertEdgeFocus(reference);check(reference.getAttribute('aria-pressed')==='true','keyboard edge activation did not retain its trace');
+   reference.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+   check(shell.dataset.flowFocus==='card'&&reference.getAttribute('aria-pressed')==='false'&&inspect().innerHTML===inspectorBefore,'Escape did not release pinned keyboard trace while preserving native details');
+  }
+  inspect().querySelector('[data-hvac-close-parameter]').click();
+  check(inspect().hidden&&button.getAttribute('aria-expanded')==='false','closing native source inspector left stale selection');
+  check(JSON.stringify(fixtures)===original,'routing/tracing mutated native parsed profile identities or signs');
+ }
+ }
+ const coil=fixtures.find(item=>item.family==='coil'),coilModel=build(coil.profile,{component:coil.component}).parameters;
+ document.documentElement.dataset.theme='light';await renderFlow('en',coil,coilModel);
+ const luminance=color=>{
+  const rgb=(color.match(/[\d.]+/g)||[]).slice(0,3).map(value=>{const channel=Number(value)/255;return channel<=.04045?channel/12.92:((channel+.055)/1.055)**2.4;});
+  return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;
+ };
+ const contrast=(first,second)=>{const values=[luminance(first),luminance(second)].sort((left,right)=>right-left);return(values[0]+.05)/(values[1]+.05);};
+ const surface=getComputedStyle(host).backgroundColor;
+ for(const button of host.querySelectorAll('[data-hvac-inspect-parameter]')){
+  const style=getComputedStyle(button);
+  check(contrast(style.color,style.backgroundColor)>=4.5,'light theme makes source tile text unreadable');
+  check(contrast(getComputedStyle(button.querySelector('span')).color,style.backgroundColor)>=4.5,'light theme makes source identity too faint');
+ }
+ for(const wire of host.querySelectorAll('.hvac-parameter-wire'))check(contrast(getComputedStyle(wire).stroke,surface)>=3,'light theme makes a signal/reference/feedback path too faint');
+ document.documentElement.dataset.theme='dark';
+ const capture=new URLSearchParams(location.search).get('capture');
+ if(capture){
+  const family=new URLSearchParams(location.search).get('family')||'coil',fixture=fixtures.find(item=>item.family===family),model=build(fixture.profile,{component:fixture.component}).parameters;
+  document.documentElement.dataset.theme=new URLSearchParams(location.search).get('theme')||'dark';
+  await renderFlow('en',fixture,model);
+  if(capture==='reference'){
+   const edge=host.querySelector('[data-hvac-flow-edge].reference[data-flow-route="return"]')||host.querySelector('[data-hvac-flow-edge].reference');
+   edge.focus();edge.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+  }
+ }else disconnect?.();
+ document.body.dataset.parameterFlowStatus='passed';document.querySelector('#result').textContent='passed';
+}catch(error){document.body.dataset.parameterFlowStatus='failed';document.querySelector('#result').textContent='Family '+document.body.dataset.family+': '+(error.stack||String(error))}
+</script></body></html>`

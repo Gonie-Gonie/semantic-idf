@@ -4,7 +4,7 @@
 .hvac-operation-object-type { color: var(--muted, #8aa4b5); font-size: 12px; overflow-wrap: anywhere; }
 .hvac-operation-columns { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
 .hvac-operation-panel { min-width: 0; padding: 18px; border: 1px solid var(--border, #2b404e); border-radius: 10px; background: var(--panel, #182128); }
-.hvac-operation-panel.parameters { grid-column: 1 / -1; }
+.hvac-operation-panel.parameters { grid-column: 1 / -1; --panel: var(--surface); --text: var(--ink); --border: var(--line); color: var(--ink); }
 .hvac-operation-panel.availability { grid-column: 1 / -1; }
 .hvac-operation-panel.parameters { container-type: inline-size; }
 .hvac-operation-panel-heading { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 20px; }
@@ -89,18 +89,44 @@
 .hvac-parameter-flow-shell { min-width: 0; }
 .hvac-parameter-flow { display: block; width: 100%; overflow: visible; font-family: inherit; }
 .hvac-parameter-flow-heading { fill: var(--muted, #8aa4b5); font-size: 12px; }
-.hvac-parameter-flow-links path { fill: none; stroke: #69c5d0; stroke-width: 1.5; }
-.hvac-parameter-flow-links .feedback path { stroke: #e6b874; stroke-dasharray: 4 3; }
-.hvac-parameter-flow-links .selected path { stroke-width: 2.4; }
+.hvac-parameter-flow-links > g { --flow-color: var(--teal, #69c5d0); cursor: pointer; }
+.hvac-parameter-flow-links .feedback { --flow-color: var(--amber, #e6b874); }
+.hvac-parameter-flow-links .reference { --flow-color: var(--focus, #b79be9); }
+.hvac-parameter-flow-links path { fill: none; stroke-linejoin: round; stroke-linecap: round; }
+.hvac-parameter-wire { stroke: var(--flow-color); stroke-width: 2; pointer-events: none; }
+.hvac-parameter-halo { stroke: var(--panel, #18232b); stroke-width: 6; pointer-events: none; }
+.hvac-parameter-hit { stroke: transparent; stroke-width: 14; pointer-events: stroke; }
+.feedback .hvac-parameter-wire { stroke-dasharray: 7 4; }
+.reference .hvac-parameter-wire { stroke-dasharray: 2 4; }
+.hvac-parameter-flow-links circle { fill: var(--flow-color); stroke: var(--panel, #18232b); stroke-width: 1; pointer-events: none; }
+.hvac-parameter-flow-links .is-highlighted .hvac-parameter-wire { stroke-width: 3; }
+.hvac-parameter-flow-links .is-highlighted .hvac-parameter-halo { stroke-width: 8; }
+.hvac-parameter-flow-links > g:focus { outline: none; }
+.hvac-parameter-flow-links > g:focus-visible .hvac-parameter-wire { stroke-width: 3; filter: drop-shadow(0 0 2px var(--flow-color)); }
+.hvac-parameter-flow-shell[data-flow-focus] [data-hvac-flow-edge]:not(.is-highlighted) { opacity: .12; }
+.hvac-parameter-flow-shell[data-flow-focus] .hvac-parameter-flow-tile:not(.is-related) { opacity: .38; }
+.hvac-parameter-flow-badge { pointer-events: none; }
+.hvac-parameter-flow-badge[hidden] { display: none; }
+.hvac-parameter-flow-badge rect { fill: var(--panel, #18232b); stroke: var(--flow-color); stroke-width: 1; }
 .hvac-parameter-flow-sign { fill: var(--text, #dce8ef); font-size: 12px; font-weight: 700; }
 .hvac-parameter-flow-tile > button { width: 100%; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; padding: 8px 10px; border: 1px solid #3b4d5b; border-left: 3px solid #51c5cf; border-radius: 6px; background: var(--bg, #111b22); color: var(--text, #dce8ef); font: inherit; cursor: pointer; text-align: left; }
 .controls .hvac-parameter-flow-tile > button { border-left-color: #b79be9; }
 .commands .hvac-parameter-flow-tile > button { border-left-color: #ebbc6c; }
 .response .hvac-parameter-flow-tile > button { border-left-color: #93c99b; }
-.hvac-parameter-flow-tile strong, .hvac-parameter-flow-tile span { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hvac-parameter-flow-tile strong { font-size: 12px; }
+.hvac-parameter-flow-tile strong, .hvac-parameter-flow-tile span { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.hvac-parameter-flow-tile strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: 12px; line-height: 1.4; }
+.hvac-parameter-flow-tile span { white-space: nowrap; }
 .hvac-parameter-flow-tile span { margin-top: 4px; color: var(--muted, #8aa4b5); font-size: 11px; }
-.hvac-parameter-flow-tile > button[aria-expanded="true"] { border-color: #51c5cf; background: #20313c; }
+.hvac-parameter-flow-tile > button[aria-expanded="true"] { border-color: var(--teal); background: var(--teal-soft); }
+.hvac-parameter-flow-tile.is-source > button { border-color: var(--teal); box-shadow: 0 0 0 1px var(--teal); }
+.hvac-parameter-flow-tile.is-target > button { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber); }
+.hvac-parameter-flow-legend { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 8px; color: var(--muted, #8aa4b5); font-size: 11px; }
+.hvac-parameter-flow-legend > span { display: inline-flex; align-items: center; gap: 7px; }
+.hvac-parameter-flow-legend i { width: 24px; border-top: 2px solid var(--teal); }
+.hvac-parameter-flow-legend .feedback i { border-top: 2px dashed var(--amber); }
+.hvac-parameter-flow-legend .reference i { border-top: 2px dotted var(--focus); }
+.parameters .hvac-control-source, .parameters .hvac-parameter-detail-relations { color: var(--muted); }
+.hvac-parameter-flow-hint { min-height: 1.6em; margin: 8px 0 0; color: var(--muted, #8aa4b5); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
 .hvac-parameter-flow-tile > button:focus-visible, .hvac-flow-tile:focus-visible, .hvac-expression-reference:focus-visible { outline: 2px solid #51c5cf; outline-offset: 2px; }
 .hvac-parameter-detail-member + .hvac-parameter-detail-member { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border, #2b404e); }
 .hvac-parameter-detail-role { color: var(--muted, #8aa4b5); font-size: 11px; }

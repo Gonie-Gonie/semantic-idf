@@ -201,12 +201,20 @@ only the minimum static conditions.
 
 Follow the arrows through four groups: **Inputs / targets**, **Comparison /
 controllers**, **Control commands**, and **Equipment response / outputs**.
-Each compact block represents a source object. Arrows show the declared signal
-relationships; returning links make feedback visible. Select a block to inspect
-its original fields, ports, members and connections below the diagram. The main
-view keeps these details out of the flow so that the command and resulting state
-are easy to trace. A schedule summary in the inspector describes the
-representative day, not its annual range.
+Each compact block represents a source object. Nearby connections use short,
+smooth paths, with the main controller, command and response aligned where their
+connections allow. In the wide layout, longer direct inputs use upper lanes;
+long returning references and feedback use lower lanes with broad rounded turns.
+Hover or focus a path or block to emphasize its connections and endpoints. Select
+a block to inspect its original fields, ports, members and connections below the
+diagram. A schedule summary in the inspector describes the representative day,
+not its annual range.
+
+The legend distinguishes **Signal**, **Reference** and **Measured feedback**.
+Measured feedback includes a measurement entering a supported comparison with
+**+**. Backward measurement or setpoint references remain references unless the
+native relationship identifies feedback. A **?** marks an unknown polarity, not
+a missing connection or proven positive feedback.
 
 | Role | Meaning and examples |
 | --- | --- |
