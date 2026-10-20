@@ -776,7 +776,7 @@ func TestFrontendProfileAxesUseSemanticHTMLResponsiveDensityAndSeparateHeatmapSc
 		`class="profile-heatmap-scale-title"`,
 		`class="profile-heatmap-scale-bar"`,
 		`class="profile-heatmap-scale-ticks"`,
-		"formatAxisTick(max / 2)",
+		"formatAxisTick((max + min) / 2)",
 		"formatAxisTick(max)",
 	} {
 		if !strings.Contains(heatmap, required) {

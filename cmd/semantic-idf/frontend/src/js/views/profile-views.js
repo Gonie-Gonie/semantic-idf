@@ -706,7 +706,11 @@ function renderProfileOverlay(series, options) {
 function renderProfileAnnualHeatmaps(series, options) {
   return `<div class="profile-annual-stack">${profileMetricSeriesGroups(series, options)
     .map((group) => {
-      const max = sharedProfileMetricMax(group.items, options);
+      const maximum = sharedProfileMetricMax(group.items, options);
+      const minimum = profileTemperatureMinimum(group.items, maximum);
+      const padding = profileIsTemperatureDimension(group.dimension) ? Math.max((maximum - minimum) * 0.05, 0.5) : 0;
+      const max = maximum + padding;
+      const min = minimum - padding;
       return `
         <section class="profile-annual-panel" data-profile-dimension="${escapeHTML(group.dimension)}">
           <div class="profile-graph-panel-head">
@@ -718,7 +722,7 @@ function renderProfileAnnualHeatmaps(series, options) {
               <article class="profile-annual-heatmap-card navigable-row" data-profile-series-id="${escapeHTML(item.id)}"
                 ${profileSemanticAttributes(profileSeriesSemanticTargets(item), { occurrenceContext: "zone_profile" })}>
                 <strong><i style="background:${color}"></i>${escapeHTML(profileSeriesScopeLabel(item))}</strong>
-                ${renderHeatmap(metric.values, max, group.label, group.unit)}
+                ${renderHeatmap(metric.values, max, group.label, group.unit, min)}
               </article>`).join("")}
           </div>
           ${renderProfileSeriesLegend(group.items)}
@@ -736,8 +740,8 @@ function profileMetricSeriesGroups(series, options) {
     const metric = profileSeriesMetric(item, options);
     const key = `${item.dimension || "unknown"}\u0000${item.metricId || ""}\u0000${metric.unit || ""}`;
     if (!groups.has(key)) {
-      const dimensionLabel = item.dimensionLabel || profileDimensionLabel(item.dimension);
-      const metricLabel = item.metricLabel || "";
+      const dimensionLabel = profileDimensionLabel(item.dimension);
+      const metricLabel = profileMetricLabel(item.dimension, item.metricId, item.metricLabel || dimensionLabel);
       groups.set(key, {
         dimension: item.dimension || "unknown",
         metricId: item.metricId || "",
@@ -756,12 +760,30 @@ function profileMetricSeriesGroups(series, options) {
 }
 
 function sharedProfileMetricMax(items, options) {
+  const temperature = items.some(({ series }) => profileIsTemperatureDimension(series.dimension));
   return Math.max(...items.map(({ series, metric }) => (
     graphScaleMaxForSeries(metric.values, series, {
       ...options,
       scaleMode: options.scaleMode === "shared" ? "auto" : options.scaleMode,
     })
-  )), 1e-9);
+  )), temperature ? -Infinity : 1e-9);
+}
+
+function profileIsTemperatureDimension(dimension) {
+  return dimension === "heating_setpoint" || dimension === "cooling_setpoint";
+}
+
+function profileTemperatureMinimum(items, max) {
+  if (!items.some(({ series }) => profileIsTemperatureDimension(series.dimension))) return 0;
+  let minimum = Infinity;
+  items.forEach(({ metric }) => metric.values.forEach((value) => {
+    if (profileHasValue(value)) minimum = Math.min(minimum, Number(value));
+  }));
+  return Number.isFinite(minimum) ? minimum : Math.min(0, max);
+}
+
+function profileHasValue(value) {
+  return value !== null && value !== undefined && Number.isFinite(Number(value));
 }
 
 function profileSeriesScopeLabel(series) {
@@ -865,20 +887,23 @@ function renderProfileSeriesLegend(items) {
     .join("")}</div>`;
 }
 
-function profileYAxisScale(maximum) {
-  const finiteMax = Math.max(Number(maximum) || 0, 1e-9);
-  const rawStep = finiteMax / 5;
+function profileYAxisScale(maximum, minimum = 0) {
+  const finiteMin = Number(minimum) || 0;
+  const finiteMax = Math.max(Number(maximum) || 0, finiteMin + 1e-9);
+  const rawStep = (finiteMax - finiteMin) / 5;
   const magnitude = 10 ** Math.floor(Math.log10(rawStep));
   const normalized = rawStep / magnitude;
   const stepFactor = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 2.5 ? 2.5 : normalized <= 7.5 ? 5 : 10;
   const step = stepFactor * magnitude;
   const axisMax = Math.ceil(finiteMax / step) * step;
-  const count = Math.max(1, Math.round(axisMax / step));
+  const axisMin = Math.floor(finiteMin / step) * step;
+  const count = Math.max(1, Math.round((axisMax - axisMin) / step));
   const midpointIndex = Math.round(count / 2);
   return {
     max: axisMax,
+    min: axisMin,
     ticks: Array.from({ length: count + 1 }, (_, index) => ({
-      value: index * step,
+      value: axisMin + index * step,
       density: index === 0 || index === count ? "base" : index === midpointIndex ? "medium" : "full",
     })),
   };
@@ -956,7 +981,7 @@ function renderProfileYAxisTicks(axis) {
   return axis.ticks
     .map((tick) => renderProfileAxisTick({
       label: formatAxisTick(tick.value),
-      position: 100 - (tick.value / axis.max) * 100,
+      position: 100 - ((tick.value - axis.min) / (axis.max - axis.min)) * 100,
       density: tick.density,
     }))
     .join("");
@@ -990,17 +1015,28 @@ function renderOverlayGraph(items, max, unit = "", timeView = "year") {
   const plot = { left: 0, right: 600, top: 0, bottom: 200 };
   const width = plot.right - plot.left;
   const height = plot.bottom - plot.top;
-  const yAxis = profileYAxisScale(max);
+  const temperature = items.some(({ series }) => profileIsTemperatureDimension(series.dimension));
+  const min = profileTemperatureMinimum(items, max);
+  const padding = temperature ? Math.max((max - min) * 0.05, 0.5) : 0;
+  const yAxis = profileYAxisScale(max + padding, min - padding);
   const xAxis = profileXAxisSpec(timeView, Math.max(...items.map(({ metric }) => metric.values.length), 1));
-  const y = (value) => plot.bottom - (clampGraphValue(value, yAxis.max) / yAxis.max) * height;
+  const y = (value) => plot.bottom - ((Math.min(yAxis.max, Math.max(yAxis.min, value)) - yAxis.min) / (yAxis.max - yAxis.min)) * height;
   const renderedPaths = items
     .map((item, index) => {
       const { series, metric, color } = item;
       const data = metric.values.length > 420 ? downsampleValues(metric.values, 420) : metric.values;
+      let connected = false;
       const path = data
         .map((value, valueIndex) => {
-          const x = plot.left + (valueIndex / Math.max(data.length - 1, 1)) * width;
-          return `${valueIndex === 0 ? "M" : "L"}${x.toFixed(2)},${y(value).toFixed(2)}`;
+          if (!profileHasValue(value)) {
+            connected = false;
+            return "";
+          }
+          const x = plot.left + (valueIndex / (temperature ? data.length : Math.max(data.length - 1, 1))) * width;
+          const command = connected ? "L" : "M";
+          connected = true;
+          const point = `${command}${x.toFixed(2)},${y(value).toFixed(2)}`;
+          return temperature ? `${point} L${(plot.left + ((valueIndex + 1) / data.length) * width).toFixed(2)},${y(value).toFixed(2)}` : point;
         })
         .join(" ");
       return { item, index, path, series, color: color || profileSeriesColor(index) };
@@ -1031,7 +1067,7 @@ function renderOverlayGraph(items, max, unit = "", timeView = "year") {
     .join("");
   const horizontalGrid = yAxis.ticks
     .map((tick) => {
-      const position = plot.bottom - (tick.value / yAxis.max) * height;
+      const position = y(tick.value);
       return `<line class="profile-grid-line ${profileAxisDensityClass(tick.density)}" x1="${plot.left}" y1="${position.toFixed(2)}" x2="${plot.right}" y2="${position.toFixed(2)}"></line>`;
     })
     .join("");
@@ -1090,7 +1126,7 @@ function renderProfileGraphSummary(group, dimensions) {
     </div>`;
 }
 
-function renderHeatmap(values, max, label, unit = "") {
+function renderHeatmap(values, max, label, unit = "", min = 0) {
   profileHeatmapSequence += 1;
   const key = `profile-heatmap-${profileHeatmapSequence}`;
   const hourAxisTitle = t("profile.axisHourOfDay", {}, "Hour of day [h]");
@@ -1098,7 +1134,8 @@ function renderHeatmap(values, max, label, unit = "") {
   const valueAxisTitle = profileValueAxisTitle(unit);
   profileHeatmapPaintQueue.set(key, {
     values: [...values],
-    max: Math.max(Number(max) || 0, 1e-9),
+    max: Math.max(Number(max) || 0, min + 1e-9),
+    min,
   });
   return `
     <div class="profile-heatmap-frame" role="img" aria-label="${escapeHTML(`${label} ${t("graph.annualHeatmap")}; ${hourAxisTitle}; ${monthAxisTitle}; ${valueAxisTitle}`)}">
@@ -1115,8 +1152,8 @@ function renderHeatmap(values, max, label, unit = "") {
         <span class="profile-heatmap-scale-title">${escapeHTML(valueAxisTitle)}</span>
         <span class="profile-heatmap-scale-bar" aria-hidden="true"></span>
         <span class="profile-heatmap-scale-ticks" aria-hidden="true">
-          <span>0</span>
-          <span class="profile-axis-density-medium">${escapeHTML(formatAxisTick(max / 2))}</span>
+          <span>${escapeHTML(formatAxisTick(min))}</span>
+          <span class="profile-axis-density-medium">${escapeHTML(formatAxisTick((max + min) / 2))}</span>
           <span>${escapeHTML(formatAxisTick(max))}</span>
         </span>
       </div>
@@ -1132,7 +1169,8 @@ function paintProfileHeatmaps() {
     }
     context.clearRect(0, 0, 365, 24);
     queued.values.slice(0, 8760).forEach((value, index) => {
-      context.fillStyle = heatColor(value, queued.max);
+      if (!profileHasValue(value)) return;
+      context.fillStyle = heatColor(value - queued.min, queued.max - queued.min);
       context.fillRect(Math.floor(index / 24), index % 24, 1, 1);
     });
   });
@@ -1229,6 +1267,13 @@ function profileSeriesMetric(series, options) {
     };
   }
   const timeView = options.timeView || "year";
+  if (profileIsTemperatureDimension(series.dimension)) {
+    const field = { day: "dayValueProfile", week: "weekValueProfile", month: "monthValueProfile", duration: "durationValueProfile" }[timeView] || "annualValueProfile";
+    return {
+      unit: "°C",
+      values: Array.isArray(series[field]) ? series[field].map((value) => profileHasValue(value) ? Number(value) : null) : [],
+    };
+  }
   const multiplier = profileSeriesMultiplier(series, timeView);
   let values = multiplier.map((value) => value * (Number(series.designValue) || 0));
   const unit = series.unit || "";
@@ -1245,13 +1290,13 @@ function averageProfileMetricValues(valueSets) {
     let total = 0;
     let count = 0;
     valueSets.forEach((values) => {
-      const value = Number(values[index]);
-      if (Number.isFinite(value)) {
-        total += value;
+      const value = values[index];
+      if (profileHasValue(value)) {
+        total += Number(value);
         count += 1;
       }
     });
-    return count ? total / count : 0;
+    return count ? total / count : null;
   });
 }
 
@@ -1271,6 +1316,10 @@ function profileSeriesMultiplier(series, timeView) {
 }
 
 function graphScaleMaxForSeries(values, series, options) {
+  if (profileIsTemperatureDimension(series.dimension)) {
+    const known = values.filter(profileHasValue);
+    return known.length ? Math.max(...known) : 1;
+  }
   if (options.scaleMode === "multiplier_0_1") {
 		return Math.max(Number(series.designValue) || 0, 1e-9);
   }
@@ -1300,7 +1349,7 @@ function percentileValue(values, percentile) {
 function downsampleValues(values, targetLength) {
   if (values.length <= targetLength) return values;
   const step = values.length / targetLength;
-  return Array.from({ length: targetLength }, (_, index) => values[Math.floor(index * step)] || 0);
+  return Array.from({ length: targetLength }, (_, index) => values[Math.floor(index * step)] ?? null);
 }
 
 function profileSeriesColor(index) {
@@ -1321,13 +1370,6 @@ function heatColor(value, max) {
   const local = scaled - index;
   const color = stops[index].map((start, channel) => Math.round(start + (stops[index + 1][channel] - start) * local));
   return `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
-}
-
-function clampGraphValue(value, max) {
-  if (!Number.isFinite(value) || value < 0) {
-    return 0;
-  }
-  return Math.min(value, max);
 }
 
 function renderProfileWarning(warning) {
@@ -1878,7 +1920,7 @@ function openProfileApplyDialog() {
   elements.profileApplyStatus.textContent = t("status.reviewBeforeApplying");
   const sourceZones = new Set(group.zoneNames);
   const targets = (profile.zoneProfiles || []).filter((zone) => !sourceZones.has(zone.zoneName));
-  const dimensions = (profile.dimensions || []).filter((dimension) => state.profileSettings.enabledDimensions.includes(dimension.id));
+  const dimensions = (profile.dimensions || []).filter((dimension) => state.profileSettings.enabledDimensions.includes(dimension.id) && !profileIsTemperatureDimension(dimension.id));
   elements.profileApplyBody.innerHTML = `
     <section>
       <h4>${escapeHTML(group.name)}</h4>
@@ -2230,6 +2272,11 @@ function profileMetricCandidates(zone, items, dimension, preferredMetricID) {
 }
 
 function aggregateProfileMetricCandidate(zone, items, dimension, metricID, direct) {
+  if (profileIsTemperatureDimension(dimension)) {
+    return items.length === 1
+      ? { ...direct, unit: "°C" }
+      : { ...direct, value: 0, resolvedCount: 0, completeCount: 0, unit: "°C" };
+  }
   const sumMetric = (sourceItems, id) => {
     let value = 0;
     let resolvedCount = 0;

@@ -53,6 +53,9 @@ func buildProfileGraphDataset(report ProfileReport) ProfileGraphDataset {
 }
 
 func profileGraphSeriesForDimension(scopeType string, group ProfileGroup, zoneName string, dimension ProfileDimensionSummary, itemMap map[string]ProfileItem, schedules profileScheduleIndex) ProfileGraphSeries {
+	if profileIsSetpointDimension(dimension.Dimension) {
+		return profileSetpointGraphSeries(scopeType, group, zoneName, dimension, itemMap)
+	}
 	schedule := schedules.forDimension(dimension)
 	annualMultiplier := annualMultiplierProfile(schedule)
 	if len(annualMultiplier) == 0 {
@@ -328,6 +331,9 @@ func buildProfileScheduleClusters(report ProfileReport, series []ProfileGraphSer
 		if item.ScheduleHash == "" {
 			continue
 		}
+		if profileIsSetpointDimension(item.Dimension) {
+			continue
+		}
 		for _, hash := range strings.Split(item.ScheduleHash, "+") {
 			hash = strings.TrimSpace(hash)
 			state := states[hash]
@@ -412,6 +418,9 @@ func robustProfileValueOutliers(report ProfileReport) []ProfileOutlierHint {
 	byDimension := map[string][]valueRow{}
 	for _, zone := range report.ZoneProfiles {
 		for _, dimension := range zone.Dimensions {
+			if profileIsSetpointDimension(dimension.Dimension) {
+				continue
+			}
 			if dimension.Status == metricStatusMissing {
 				continue
 			}
@@ -469,6 +478,9 @@ func profileGroupConsistencyHints(report ProfileReport) []ProfileOutlierHint {
 			continue
 		}
 		for _, option := range report.Dimensions {
+			if profileIsSetpointDimension(option.ID) {
+				continue
+			}
 			values := map[string]bool{}
 			schedules := map[string]bool{}
 			var sourceIDs []string
@@ -540,6 +552,9 @@ func profileScheduleConsistencyHints(series []ProfileGraphSeries, clusters []Pro
 		if item.ScopeType != "zone" || item.ScheduleHash == "" {
 			continue
 		}
+		if profileIsSetpointDimension(item.Dimension) {
+			continue
+		}
 		key := item.Dimension + "|" + item.ScheduleHash
 		if buckets[key] == nil {
 			buckets[key] = &bucket{}
@@ -577,6 +592,9 @@ func profileScheduleConsistencyHints(series []ProfileGraphSeries, clusters []Pro
 func profileOperationHints(series []ProfileGraphSeries) []ProfileOutlierHint {
 	var hints []ProfileOutlierHint
 	for _, item := range series {
+		if profileIsSetpointDimension(item.Dimension) {
+			continue
+		}
 		if item.ScopeType != "zone" {
 			continue
 		}
@@ -624,6 +642,9 @@ func buildProfileParameterCandidates(report ProfileReport, series []ProfileGraph
 	}
 	states := map[string]*state{}
 	for _, item := range series {
+		if profileIsSetpointDimension(item.Dimension) {
+			continue
+		}
 		if item.ScopeType != "zone" || item.Dimension == "" || item.DesignValue <= 0 {
 			continue
 		}

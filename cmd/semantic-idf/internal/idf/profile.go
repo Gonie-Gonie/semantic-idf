@@ -11,12 +11,14 @@ import (
 )
 
 const (
-	ProfileDimensionOccupancy    = "occupancy"
-	ProfileDimensionLighting     = "lighting"
-	ProfileDimensionEquipment    = "equipment"
-	ProfileDimensionInfiltration = "infiltration"
-	ProfileDimensionVentilation  = "ventilation"
-	ProfileDimensionOutdoorAir   = "outdoor_air"
+	ProfileDimensionOccupancy       = "occupancy"
+	ProfileDimensionLighting        = "lighting"
+	ProfileDimensionEquipment       = "equipment"
+	ProfileDimensionInfiltration    = "infiltration"
+	ProfileDimensionVentilation     = "ventilation"
+	ProfileDimensionOutdoorAir      = "outdoor_air"
+	ProfileDimensionHeatingSetpoint = "heating_setpoint"
+	ProfileDimensionCoolingSetpoint = "cooling_setpoint"
 )
 
 type ProfileReport struct {
@@ -99,6 +101,7 @@ type ProfileItem struct {
 	DisplayMetric        ProfileMetric    `json:"displayMetric"`
 	CloneEligible        bool             `json:"cloneEligible"`
 	Warnings             []ProfileWarning `json:"warnings,omitempty"`
+	setpointValues       []*float64
 }
 
 type ProfileMetric struct {
@@ -331,22 +334,28 @@ func defaultProfileAnalysisSettings() ProfileAnalysisSettings {
 			ProfileDimensionInfiltration,
 			ProfileDimensionVentilation,
 			ProfileDimensionOutdoorAir,
+			ProfileDimensionHeatingSetpoint,
+			ProfileDimensionCoolingSetpoint,
 		},
 		DisplayMetrics: map[string]string{
-			ProfileDimensionOccupancy:    "people_per_area",
-			ProfileDimensionLighting:     "power_per_area",
-			ProfileDimensionEquipment:    "power_per_area",
-			ProfileDimensionInfiltration: "ach",
-			ProfileDimensionVentilation:  "flow_per_person",
-			ProfileDimensionOutdoorAir:   "flow_per_person",
+			ProfileDimensionOccupancy:       "people_per_area",
+			ProfileDimensionLighting:        "power_per_area",
+			ProfileDimensionEquipment:       "power_per_area",
+			ProfileDimensionInfiltration:    "ach",
+			ProfileDimensionVentilation:     "flow_per_person",
+			ProfileDimensionOutdoorAir:      "flow_per_person",
+			ProfileDimensionHeatingSetpoint: "temperature",
+			ProfileDimensionCoolingSetpoint: "temperature",
 		},
 		GroupingMetrics: map[string]string{
-			ProfileDimensionOccupancy:    "people_per_area",
-			ProfileDimensionLighting:     "power_per_area",
-			ProfileDimensionEquipment:    "power_per_area",
-			ProfileDimensionInfiltration: "ach",
-			ProfileDimensionVentilation:  "flow_per_person",
-			ProfileDimensionOutdoorAir:   "flow_per_person",
+			ProfileDimensionOccupancy:       "people_per_area",
+			ProfileDimensionLighting:        "power_per_area",
+			ProfileDimensionEquipment:       "power_per_area",
+			ProfileDimensionInfiltration:    "ach",
+			ProfileDimensionVentilation:     "flow_per_person",
+			ProfileDimensionOutdoorAir:      "flow_per_person",
+			ProfileDimensionHeatingSetpoint: "temperature",
+			ProfileDimensionCoolingSetpoint: "temperature",
 		},
 		NumericTolerance:    0.001,
 		ScheduleCompareMode: "name",
@@ -374,11 +383,15 @@ func profileDimensionOptions() []ProfileDimensionOption {
 		{ID: ProfileDimensionInfiltration, Label: "Infiltration"},
 		{ID: ProfileDimensionVentilation, Label: "Ventilation"},
 		{ID: ProfileDimensionOutdoorAir, Label: "Outdoor Air"},
+		{ID: ProfileDimensionHeatingSetpoint, Label: "Heating setpoint"},
+		{ID: ProfileDimensionCoolingSetpoint, Label: "Cooling setpoint"},
 	}
 }
 
 func profileMetricOptions() []ProfileMetricOption {
 	return []ProfileMetricOption{
+		{Dimension: ProfileDimensionHeatingSetpoint, ID: "temperature", Label: "Setpoint temperature", Unit: "degC"},
+		{Dimension: ProfileDimensionCoolingSetpoint, ID: "temperature", Label: "Setpoint temperature", Unit: "degC"},
 		{Dimension: ProfileDimensionOccupancy, ID: "count", Label: "People", Unit: "people"},
 		{Dimension: ProfileDimensionOccupancy, ID: "people_per_area", Label: "People density", Unit: "people/m2"},
 		{Dimension: ProfileDimensionOccupancy, ID: "area_per_person", Label: "Area per person", Unit: "m2/person"},
@@ -796,7 +809,7 @@ func (ctx profileContext) targetBasisForZone(obj Object, zone profileZoneContext
 }
 
 func (ctx *profileContext) collectProfileItems() []ProfileItem {
-	var items []ProfileItem
+	items := ctx.collectProfileSetpointItems()
 	for _, obj := range ctx.doc.Objects {
 		dimension := profileDimensionForObject(obj.Type)
 		if dimension == "" {
@@ -2358,6 +2371,9 @@ func aggregateProfileMetricCandidates(allItems []ProfileItem, dimensionItems []P
 }
 
 func aggregateProfileMetric(allItems []ProfileItem, dimensionItems []ProfileItem, dimension string, metricID string, zone profileZoneContext) profileMetricAggregate {
+	if profileIsSetpointDimension(dimension) {
+		return profileSetpointMetricAggregate(dimensionItems, metricID)
+	}
 	value, resolved, complete, label, unit := sumProfileItemMetric(dimensionItems, metricID)
 	candidate := profileMetricAggregate{id: metricID, label: label, unit: unit, value: value, resolvedCount: resolved, completeCount: complete}
 	if candidate.label == "" {

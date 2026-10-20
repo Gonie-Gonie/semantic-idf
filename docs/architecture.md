@@ -85,6 +85,16 @@ HVAC and Simulation keep standalone selections. The internal Semantic projection
 supports identity and indexing; it is not an exposed input tab. Follow the
 [navigation contract](semantic-navigation.md) when adding another participant.
 
+Profile's `cooling_setpoint` and `heating_setpoint` dimensions carry configured
+thermostat targets using the `temperature` metric in `degC`. Preserve actual
+temperatures and native thermostat/schedule identity; never sum them as loads
+or convert inactive/missing hours to zero. Their summary is the mean of known
+active hourly values. They are comparison dimensions, not Profile Apply targets.
+Graph series use nullable actual-temperature arrays `dayValueProfile`,
+`weekValueProfile`, `monthValueProfile`, `annualValueProfile` and
+`durationValueProfile`, separately from the existing load-multiplier arrays.
+Null means an inactive or unresolved target; numeric zero remains a real 0 °C.
+
 HVAC operating profiles are scoped by component object index and loop ID.
 Typed containment supplies ancestors; exact node/circuit matches supply
 controllers and setpoints. The interface has three panels: stacked Availability

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/idf"
 )
 
 func TestSettingsInputPreferenceRoundTripPreservesProfileTimeView(t *testing.T) {
@@ -34,6 +36,51 @@ func TestSettingsInputPreferenceRoundTripPreservesProfileTimeView(t *testing.T) 
 	if defaultAppSettings().Storage.AutoClean {
 		t.Fatal("automatic cleanup must require an explicit setting")
 	}
+	t.Run("setpoint preferences", func(t *testing.T) {
+		settings := defaultAppSettings()
+		settings.Profile.EnabledDimensions = []string{" COOLING_SETPOINT ", "heating_setpoint", "cooling_setpoint", "unknown"}
+		settings.Profile.DisplayMetrics = nil
+		settings.Profile.GroupingMetrics = nil
+		if _, err := app.SaveSettings(settings); err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := app.GetSettings()
+		if err != nil {
+			t.Fatal(err)
+		}
+		profile := loaded.Settings.Profile
+		if got := strings.Join(profile.EnabledDimensions, ","); got != "cooling_setpoint,heating_setpoint" {
+			t.Fatalf("setpoint selections changed during save/load: %q", got)
+		}
+		for _, dimension := range []string{idf.ProfileDimensionCoolingSetpoint, idf.ProfileDimensionHeatingSetpoint} {
+			if profile.DisplayMetrics[dimension] != "temperature" || profile.GroupingMetrics[dimension] != "temperature" {
+				t.Fatalf("setpoint metric defaults lost for %s: %#v", dimension, profile)
+			}
+		}
+	})
+	t.Run("legacy selections", func(t *testing.T) {
+		settings := defaultAppSettings()
+		settings.Profile.EnabledDimensions = []string{"lighting", "occupancy"}
+		delete(settings.Profile.DisplayMetrics, idf.ProfileDimensionCoolingSetpoint)
+		delete(settings.Profile.DisplayMetrics, idf.ProfileDimensionHeatingSetpoint)
+		delete(settings.Profile.GroupingMetrics, idf.ProfileDimensionCoolingSetpoint)
+		delete(settings.Profile.GroupingMetrics, idf.ProfileDimensionHeatingSetpoint)
+		if _, err := app.SaveSettings(settings); err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := app.GetSettings()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Join(loaded.Settings.Profile.EnabledDimensions, ","); got != "lighting,occupancy" {
+			t.Fatalf("new dimensions changed existing checked selections: %q", got)
+		}
+		for _, dimension := range []string{idf.ProfileDimensionCoolingSetpoint, idf.ProfileDimensionHeatingSetpoint} {
+			if loaded.Settings.Profile.DisplayMetrics[dimension] != "temperature" || loaded.Settings.Profile.GroupingMetrics[dimension] != "temperature" {
+				t.Fatalf("legacy preferences did not gain selectable metric defaults for %s", dimension)
+			}
+		}
+	})
 }
 
 func TestConcurrentSettingsWritesKeepCompleteJSONAndLeaveNoTemporaryFiles(t *testing.T) {

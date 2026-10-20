@@ -64,7 +64,7 @@ export const defaultAppSettings = {
     },
   },
   profile: {
-    enabledDimensions: ["occupancy", "lighting", "equipment", "infiltration", "ventilation", "outdoor_air"],
+    enabledDimensions: ["occupancy", "lighting", "equipment", "infiltration", "ventilation", "outdoor_air", "cooling_setpoint", "heating_setpoint"],
     displayMetrics: {
       occupancy: "people_per_area",
       lighting: "power_per_area",
@@ -72,6 +72,8 @@ export const defaultAppSettings = {
       infiltration: "ach",
       ventilation: "flow_per_person",
       outdoor_air: "flow_per_person",
+      cooling_setpoint: "temperature",
+      heating_setpoint: "temperature",
     },
     groupingMetrics: {
       occupancy: "people_per_area",
@@ -80,6 +82,8 @@ export const defaultAppSettings = {
       infiltration: "ach",
       ventilation: "flow_per_person",
       outdoor_air: "flow_per_person",
+      cooling_setpoint: "temperature",
+      heating_setpoint: "temperature",
     },
     numericTolerance: 0.001,
     scheduleCompareMode: "name",

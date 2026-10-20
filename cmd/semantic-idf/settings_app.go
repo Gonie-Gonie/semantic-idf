@@ -299,12 +299,14 @@ func normalizeAnalysisTabOrder(values []string, fallback []string) []string {
 
 func normalizeProfileSettings(settings idf.ProfileAnalysisSettings, defaults idf.ProfileAnalysisSettings) idf.ProfileAnalysisSettings {
 	allowedDimensions := map[string]bool{
-		idf.ProfileDimensionOccupancy:    true,
-		idf.ProfileDimensionLighting:     true,
-		idf.ProfileDimensionEquipment:    true,
-		idf.ProfileDimensionInfiltration: true,
-		idf.ProfileDimensionVentilation:  true,
-		idf.ProfileDimensionOutdoorAir:   true,
+		idf.ProfileDimensionOccupancy:       true,
+		idf.ProfileDimensionLighting:        true,
+		idf.ProfileDimensionEquipment:       true,
+		idf.ProfileDimensionInfiltration:    true,
+		idf.ProfileDimensionVentilation:     true,
+		idf.ProfileDimensionOutdoorAir:      true,
+		idf.ProfileDimensionCoolingSetpoint: true,
+		idf.ProfileDimensionHeatingSetpoint: true,
 	}
 	settings.EnabledDimensions = normalizeProfileChoiceList(settings.EnabledDimensions, defaults.EnabledDimensions, allowedDimensions)
 	if settings.DisplayMetrics == nil {

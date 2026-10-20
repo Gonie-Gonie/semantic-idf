@@ -25,6 +25,11 @@ type ProfileGraphSeries struct {
 	ScheduleHash              string           `json:"scheduleHash,omitempty"`
 	SchedulePattern           string           `json:"schedulePattern,omitempty"`
 	Values                    []float64        `json:"values,omitempty"`
+	DayValueProfile           []*float64       `json:"dayValueProfile,omitempty"`
+	WeekValueProfile          []*float64       `json:"weekValueProfile,omitempty"`
+	MonthValueProfile         []*float64       `json:"monthValueProfile,omitempty"`
+	AnnualValueProfile        []*float64       `json:"annualValueProfile,omitempty"`
+	DurationValueProfile      []*float64       `json:"durationValueProfile,omitempty"`
 	DayMultiplierProfile      []float64        `json:"dayMultiplierProfile,omitempty"`
 	WeekMultiplierProfile     []float64        `json:"weekMultiplierProfile,omitempty"`
 	MonthMultiplierProfile    []float64        `json:"monthMultiplierProfile,omitempty"`

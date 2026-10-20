@@ -14,7 +14,11 @@ The release script infers bump size from these sections:
 
 ## Added
 
-- _None._
+- Profile adds Cooling setpoint and Heating setpoint as independent checkbox
+  dimensions alongside existing loads and airflow. Configured thermostat targets
+  are shown in °C, with gaps for inactive, missing or unsupported values rather
+  than invented zero temperatures. These dimensions support comparison, not
+  thermostat editing through Profile Apply.
 
 ## Changed
 

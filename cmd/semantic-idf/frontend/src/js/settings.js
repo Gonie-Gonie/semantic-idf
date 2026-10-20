@@ -30,7 +30,7 @@ const colorControls = [
   ["window", "settings.color.window"],
   ["selected", "settings.color.selected"],
 ];
-const profileDimensions = ["occupancy", "lighting", "equipment", "infiltration", "ventilation", "outdoor_air"];
+const profileDimensions = ["occupancy", "lighting", "equipment", "infiltration", "ventilation", "outdoor_air", "cooling_setpoint", "heating_setpoint"];
 const shortcutControls = [
   ["save", "shortcut.save"],
   ["open", "shortcut.open"],
@@ -97,6 +97,8 @@ const profileMetricOptions = {
     ["flow_per_person", "Flow per person", "m3/s-person"],
     ["ach", "Air changes", "ACH"],
   ],
+  cooling_setpoint: [["temperature", "Cooling setpoint", "°C"]],
+  heating_setpoint: [["temperature", "Heating setpoint", "°C"]],
 };
 
 let loadedPath = "";

@@ -1,8 +1,8 @@
 # Metrics and operational Profile
 
 Metrics summarizes the input model without running EnergyPlus. Profile resolves
-design loads and schedules into comparable Zone profiles. These reports answer
-what the model declares and how supported inputs are scheduled; simulation
+design loads, thermostat targets and schedules into comparable Zone profiles.
+These reports answer what the model declares and how supported inputs are scheduled; simulation
 answers what the engine predicts under weather, controls and system dynamics.
 
 ## Read a metric correctly {#reading-metrics}
@@ -232,7 +232,9 @@ all schedules and not a resolved building occupancy calendar.
 
 Open **Profile** and choose **Profiles** to inspect grouped Zones or **Zones**
 to inspect individual Zones. Enable the dimensions relevant to the question:
-Occupancy, Lighting, Equipment, Infiltration, Ventilation and Outdoor Air.
+Occupancy, Lighting, Equipment, Infiltration, Ventilation, Outdoor Air,
+Cooling setpoint and Heating setpoint. Each has its own checkbox at the same
+level; cooling and heating targets can be compared independently.
 Select the rows to compare, then inspect their graphs and fidelity indicators.
 
 Settings select display/grouping metrics, numeric tolerance, schedule comparison,
@@ -255,6 +257,28 @@ identical series and identify their member Zones rather than multiply a density
 by the number of Zones.
 
 ## Profile algorithms and graph meanings {#profile-algorithms}
+
+Cooling setpoint and Heating setpoint show configured Zone thermostat targets
+in °C, not simulated indoor temperatures. Temperature schedules supply actual
+values rather than load multipliers, so a 24 °C target stays 24 °C instead of
+being normalized by area, people or a design peak. Thermostat control-type
+schedules determine which heating/cooling target applies at each time.
+Inactive, missing and unsupported targets remain gaps; they are not 0 °C.
+A genuine 0 °C target remains a value. The dimension summary is the mean of
+known active hourly targets, not their sum; an entirely unresolved/inactive
+channel has no summary temperature. Within an hour, known active step segments
+are averaged by duration; an unresolved active segment leaves that hour blank.
+
+Targets follow `ZoneControl:Thermostat` and its referenced
+`ThermostatSetpoint:SingleHeating`, `SingleCooling`, `SingleHeatingOrCooling`
+or `DualSetpoint`. Control type 0 is inactive, 1 selects heating, 2 cooling,
+3 the shared heating/cooling target and 4 separate heating/cooling targets.
+`ZoneControl:Thermostat:StagedDualSetpoint` supplies its configured base heating
+and cooling schedules; runtime stage offsets and hysteresis are not applied.
+The configured calendar has 365 days with January 1 treated as Monday; holidays,
+DST and runtime overrides are not applied. Missing references, ambiguous
+thermostats and unsupported schedule definitions remain visible as incomplete
+evidence instead of a guessed temperature.
 
 Load dimensions normalize resolved count, power and airflow to the selected
 Zone basis. ACH is `flow [m³/s] × 3600 / volume [m³]`. Per-person flow needs a
@@ -303,6 +327,9 @@ objects for targets; shared mode uses supported shared targets. ZoneList creatio
 or modification follows the selected settings. Replace/Keep/Duplicate controls
 how existing target objects are handled. A duplicate can add an additional load;
 it is not merely a second visual reference.
+
+Cooling and heating setpoint dimensions support inspection and comparison;
+Profile Apply does not copy or edit their thermostat configuration.
 
 Changing an apply setting or edit invalidates the previous preview. Review the
 fresh preview, skipped/unsupported objects and warnings before applying. The
