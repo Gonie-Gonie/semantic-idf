@@ -130,8 +130,6 @@ function renderPendingResultTab(tab) {
       });
       elements.hvacSummary.innerHTML = `<div class="empty status-loading">${t("hvac.running", {}, "Resolving HVAC service paths")}</div>`;
       elements.hvacGraph.innerHTML = `<div class="empty">${t("hvac.readySoon", {}, "HVAC graph will appear when this stage is ready.")}</div>`;
-      elements.hvacInspectorStats.textContent = t("hvac.pending", {}, "HVAC pending");
-      elements.hvacInspector.innerHTML = `<div class="empty">${t("hvac.readySoon", {}, "HVAC graph will appear when this stage is ready.")}</div>`;
       return true;
     default:
       return false;

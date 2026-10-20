@@ -46,11 +46,11 @@ func TestFrontendPerformanceTimingContracts(t *testing.T) {
 		t.Fatal("English render timing must preserve its tab and duration placeholders")
 	}
 	views := readTestFile(t, "frontend/src/js/views/analysis-views.js")
+	// Pending UI is covered by the real workspace stage-queue browser harness;
+	// timing does not depend on placeholder wording or a removed inspector.
 	for _, term := range []string{
 		"recordRenderTiming(tab",
 		"function renderPendingResultTab",
-		"Building profile graphs",
-		"HVAC pending",
 		"performance.now",
 		"refreshStatusTitle()",
 	} {

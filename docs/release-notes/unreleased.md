@@ -35,6 +35,9 @@ The release script infers bump size from these sections:
   emphasize connected paths and their endpoints.
   Blocks use a common content-sized width and wrap full labels and source names;
   extra panel width expands the outer margins and connection gaps.
+  Connection styles distinguish signals, setpoints/targets, calculation measurement
+  inputs and controller feedback using their native relationship, independently
+  of card placement. Legend tooltips explain the four meanings.
   The timeline's Configured availability is distinguished from the broader
   Run permission and On command; manager/fan permission rules and unresolved
   runtime decisions versus configuration problems use distinct names.
@@ -53,6 +56,9 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
+- Restoring or opening input with HVAC selected no longer stops quick analysis
+  with a `textContent` error from the removed inspector. Input views remain usable
+  while the remaining analysis stages load.
 - Default four-purpose simulation results no longer exceed the native WebView
   text limit on the bundled Large Office case: repeated Heat Flow and Thermal
   Topology arrays are transferred once, preserving every value and observation.

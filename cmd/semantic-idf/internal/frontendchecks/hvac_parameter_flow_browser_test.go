@@ -124,7 +124,7 @@ func TestHVACParameterFlowTraceBrowser(t *testing.T) {
 		}{
 			{"coil-wide.png", "?width=1480&capture=overview", 1480, 1100},
 			{"coil-expanded.png", "?width=2400&capture=overview", 2400, 1100},
-			{"coil-reference.png", "?width=1480&capture=reference", 1480, 1100},
+			{"coil-setpoint.png", "?width=1480&capture=setpoint", 1480, 1100},
 			{"coil-narrow.png", "?width=400&capture=overview", 400, 2000},
 			{"coil-light.png", "?width=1480&capture=overview&theme=light", 1480, 1100},
 			{"fan-wide.png", "?width=1480&capture=overview&family=fan", 1480, 1100},
@@ -169,6 +169,10 @@ try{
  const renderFlow=async(language,fixture,model)=>{disconnect?.();setLanguage(language);host.innerHTML=render(model,{component:fixture.component});disconnect=connect(host);await settle();};
  const cardID=card=>card.getAttribute('data-hvac-flow-card');
  const feedbackRelations=new Set(['feedback','adds_measurement']);
+ const setpointRelations=new Set(['references_setpoint','sets_target','subtracts_target']);
+ const flowKind=relation=>feedbackRelations.has(relation)?'feedback':relation==='measures'?'measurement':setpointRelations.has(relation)?'setpoint':'signal';
+ const flowKinds=['signal','setpoint','measurement','feedback'];
+ const edgeIdentity=edge=>JSON.stringify([edge.dataset.from,edge.dataset.to,edge.dataset.relation,edge.dataset.polarity||'',edge.dataset.condition||'']);
  const inspect=()=>host.querySelector('[data-hvac-parameter-inspector]');
  const near=(left,right)=>Math.abs(left-right)<.2;
  const assertCardLayout=()=>{
@@ -234,13 +238,15 @@ try{
  for(const fixture of fixtures){
  const native=fixture.profile.parameterControl,model=build(fixture.profile,{component:fixture.component}).parameters;
  const nativeCard=new Map(model.groups.flatMap(group=>group.cards.flatMap(card=>card.members.map(node=>[node.id,card.id]))));
- const nativeStage=new Map(model.groups.flatMap((group,index)=>group.cards.map(card=>[card.id,index])));
  document.body.dataset.family=fixture.family;
  if(fixture.family==='coil')check(model.groups.length===4&&model.groups.find(group=>group.id==='inputs').cards.length>=4,'real multi-manager coil fixture no longer exercises stacked targets');
  for(const language of ['en','ko']){
   await renderFlow(language,fixture,model);
   const shell=host.querySelector('[data-hvac-parameter-flow-shell]'),svg=host.querySelector('[data-hvac-parameter-flow]');
   const cards=[...svg.querySelectorAll('[data-hvac-flow-card]')],edges=[...svg.querySelectorAll('[data-hvac-flow-edge]')];
+  const legend=[...shell.querySelectorAll('.hvac-parameter-flow-legend > span')];
+  const labels=language==='ko'?['신호','설정값 / 목표값','측정값 입력','제어 피드백']:['Signal','Setpoint / target','Measured input','Control feedback'];
+  check(legend.length===flowKinds.length&&legend.every((item,index)=>item.classList.contains(flowKinds[index])&&item.textContent.trim()===labels[index]&&item.title.trim()),'legend does not explain the four source-backed signal meanings');
   assertCardLayout();
   const rects=new Map(cards.map(card=>[cardID(card),{x:Number(card.getAttribute('x')),y:Number(card.getAttribute('y')),w:Number(card.getAttribute('width')),h:Number(card.getAttribute('height'))}]));
   check(edges.length>0,'parsed '+fixture.family+' lost visible dependency links');
@@ -256,7 +262,8 @@ try{
    const matching=native.edges.find(item=>item.from===edge.dataset.from&&item.to===edge.dataset.to&&item.relation===edge.dataset.relation&&item.polarity===(edge.dataset.polarity||undefined)&&item.condition===(edge.dataset.condition||undefined));
    check(matching,'display edge invented a native relation or changed its exact sign');
    check(nativeCard.get(matching.from)===edge.dataset.fromCard&&nativeCard.get(matching.to)===edge.dataset.toCard,'native edge attached to wrong source card');
-   check(edge.classList.contains('feedback')===feedbackRelations.has(matching.relation),'native measured feedback and backward reference semantics were conflated');
+   const kind=flowKind(matching.relation);
+   check(edge.dataset.flowKind===kind&&flowKinds.every(item=>edge.classList.contains(item)===(item===kind)),'native relationship meaning was inferred from geometry or conflated with another category: '+matching.relation);
    const from=rects.get(edge.dataset.fromCard),to=rects.get(edge.dataset.toCard),length=wire.getTotalLength();
    check(length>0,'edge route collapsed');
    for(let distance=0;distance<=length;distance+=2){
@@ -285,13 +292,27 @@ try{
   check(new Set(longLanes).size===longLanes.length,'long/return links overlap the same perimeter lane');
   if(fixture.family==='coil')check(longLanes.length>=4,'multi-manager coil no longer exercises several long/return lanes');
   check(new Set(physicalLanes).size===physicalLanes.length,'different lane IDs conceal coincident long/return path geometry');
-  const measuredFeedback=edges.find(edge=>edge.dataset.relation==='adds_measurement'&&edge.dataset.polarity==='positive'),backwardReference=edges.find(edge=>nativeStage.get(edge.dataset.fromCard)>nativeStage.get(edge.dataset.toCard)&&!feedbackRelations.has(edge.dataset.relation));
-  if(fixture.family==='coil')check(measuredFeedback&&backwardReference,'real coil no longer tests distinct positive measured feedback and backward reference semantics');
-  if(measuredFeedback&&backwardReference){
-   const feedbackStyle=getComputedStyle(measuredFeedback.querySelector('.hvac-parameter-wire')),referenceStyle=getComputedStyle(backwardReference.querySelector('.hvac-parameter-wire'));
-   check(feedbackStyle.stroke!==referenceStyle.stroke&&feedbackStyle.strokeDasharray!=='none'&&referenceStyle.strokeDasharray!=='none','feedback and backward reference paths lack distinct visible styling');
+  const measuredFeedback=edges.find(edge=>edge.dataset.relation==='adds_measurement'&&edge.dataset.polarity==='positive'),setpointReference=edges.find(edge=>edge.dataset.relation==='references_setpoint'),measuredInput=edges.find(edge=>edge.dataset.relation==='measures');
+  if(fixture.family==='coil'){
+   check(measuredFeedback&&setpointReference&&measuredInput,'real coil no longer tests separate control feedback, setpoint reference and measured input semantics');
+   const samples=flowKinds.map(kind=>edges.find(edge=>edge.dataset.flowKind===kind));
+   check(samples.every(Boolean),'real coil no longer exercises all four native relationship categories');
+   const styles=samples.map(edge=>getComputedStyle(edge.querySelector('.hvac-parameter-wire')));
+   check(new Set(styles.map(style=>style.stroke+'|'+style.strokeDasharray)).size===flowKinds.length,'different native relationship categories lack distinct visible styling');
   }
-  const feedback=measuredFeedback||edges[0],reference=backwardReference||edges.at(-1);
+  // Reorder only an owned presentation clone. Connection meaning must remain
+  // native even when the same endpoints move to the opposite screen direction.
+  const reordered=JSON.parse(JSON.stringify(model));reordered.groups.reverse();
+  const reorderedOriginal=JSON.stringify(reordered),reorderedHost=document.createElement('div');
+  reorderedHost.innerHTML=render(reordered,{component:fixture.component});
+  const reorderedEdges=[...reorderedHost.querySelectorAll('[data-hvac-flow-edge]')],originalEdges=new Map(edges.map(edge=>[edgeIdentity(edge),edge]));
+  check(reorderedEdges.length===edges.length,'changing presentation order removed or invented native relationships');
+  for(const edge of reorderedEdges){
+   const originalEdge=originalEdges.get(edgeIdentity(edge)),kind=flowKind(edge.dataset.relation);
+   check(originalEdge&&edge.dataset.flowKind===originalEdge.dataset.flowKind&&edge.dataset.flowKind===kind&&edge.classList.contains(kind),'screen direction changed a native relationship category');
+  }
+  check(JSON.stringify(reordered)===reorderedOriginal,'classifying relationships mutated the owned presentation clone');
+  const feedback=measuredFeedback||edges[0],reference=setpointReference||measuredInput||edges.at(-1);
   const relatedCards=edge=>cards.filter(card=>[edge.dataset.fromCard,edge.dataset.toCard].includes(cardID(card)));
   const opacity=element=>{let value=1;for(let item=element;item&&item!==shell;item=item.parentElement)value*=Number(getComputedStyle(item).opacity);return value;};
   const assertEdgeFocus=async edge=>{
@@ -302,6 +323,7 @@ try{
    check(cards.find(card=>cardID(card)===edge.dataset.fromCard).classList.contains('is-source')&&cards.find(card=>cardID(card)===edge.dataset.toCard).classList.contains('is-target'),'edge trace lacks directional endpoint emphasis');
    const description=shell.querySelector('[data-hvac-flow-description]');
    check(description&&!description.hidden&&description.textContent.trim()&&description.textContent.includes('\u2192'),'traced edge has no readable endpoint/relation description');
+   check(description.textContent.startsWith(labels[flowKinds.indexOf(edge.dataset.flowKind)])&&edge.querySelector('title').textContent===edge.getAttribute('aria-label'),'trace tooltip/keyboard description omits or changes the native relationship category');
    if(edges.length>1)check(opacity(edges.find(item=>item!==edge).querySelector('.hvac-parameter-wire'))<opacity(edge.querySelector('.hvac-parameter-wire')),'unrelated paths are not visually subdued');
   };
   const selected=cards.find(card=>card.querySelector('button')&&model.groups.flatMap(group=>group.cards).find(item=>item.id===cardID(card)).members.some(node=>node.kind==='controller'))||cards[0],button=selected.querySelector('button');
@@ -367,15 +389,20 @@ try{
   check(contrast(style.color,style.backgroundColor)>=4.5,'light theme makes source tile text unreadable');
   check(contrast(getComputedStyle(button.querySelector('span')).color,style.backgroundColor)>=4.5,'light theme makes source identity too faint');
  }
- for(const wire of host.querySelectorAll('.hvac-parameter-wire'))check(contrast(getComputedStyle(wire).stroke,surface)>=3,'light theme makes a signal/reference/feedback path too faint');
+ const lightKinds=new Set();
+ for(const edge of host.querySelectorAll('[data-hvac-flow-edge]')){
+  lightKinds.add(edge.dataset.flowKind);
+  check(contrast(getComputedStyle(edge.querySelector('.hvac-parameter-wire')).stroke,surface)>=3,'light theme makes a '+edge.dataset.flowKind+' path too faint');
+ }
+ check(flowKinds.every(kind=>lightKinds.has(kind)),'light-theme contrast acceptance missed a relationship category');
  document.documentElement.dataset.theme='dark';
  const capture=new URLSearchParams(location.search).get('capture');
  if(capture){
   const family=new URLSearchParams(location.search).get('family')||'coil',fixture=fixtures.find(item=>item.family===family),model=build(fixture.profile,{component:fixture.component}).parameters;
   document.documentElement.dataset.theme=new URLSearchParams(location.search).get('theme')||'dark';
   await renderFlow('en',fixture,model);
-  if(capture==='reference'){
-   const edge=host.querySelector('[data-hvac-flow-edge].reference[data-flow-route="return"]')||host.querySelector('[data-hvac-flow-edge].reference');
+  if(capture==='setpoint'){
+   const edge=host.querySelector('[data-hvac-flow-edge].setpoint[data-relation="references_setpoint"]')||host.querySelector('[data-hvac-flow-edge].setpoint');
    edge.focus({preventScroll:true});edge.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
   }
  }else disconnect?.();

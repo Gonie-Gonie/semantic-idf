@@ -213,11 +213,22 @@ a block to inspect its original fields, ports, members and connections below the
 diagram. A schedule summary in the inspector describes the representative day,
 not its annual range.
 
-The legend distinguishes **Signal**, **Reference** and **Measured feedback**.
-Measured feedback includes a measurement entering a supported comparison with
-**+**. Backward measurement or setpoint references remain references unless the
-native relationship identifies feedback. A **?** marks an unknown polarity, not
-a missing connection or proven positive feedback.
+The legend follows the declared relationship, independently of card placement
+or arrow routing:
+
+| Connection | Meaning |
+| --- | --- |
+| Signal | A model input, command or other calculation dependency |
+| Setpoint / target | A target is supplied, referenced or subtracted in a comparison |
+| Measured input | A sensed node condition is used in a calculation, such as MixedAir SetpointManager compensation |
+| Control feedback | A sensed value enters a controller or its comparison |
+
+Control feedback includes the **+** measured input to a supported residual
+comparison. It identifies a configured sensor relationship; it does not report
+recorded simulation values or imply that the entire control loop is drawn.
+A **?** marks an unknown polarity, not a missing connection or proven positive
+feedback. Hover a legend entry for its meaning, or trace a path to inspect the
+specific source, destination and relationship.
 
 | Role | Meaning and examples |
 | --- | --- |

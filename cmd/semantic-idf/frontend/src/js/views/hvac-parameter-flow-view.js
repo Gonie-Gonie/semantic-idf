@@ -9,6 +9,24 @@ const role = (node = {}) => node.boundary === "input" ? "external_input" : node.
 const polarity = (edge) => edge.polarity === "positive" ? "+" : edge.polarity === "negative" ? "−" : edge.polarity === "unknown" ? "?" : "";
 let instance = 0;
 const flowConnections = new WeakMap();
+const flowKinds = [
+  ["signal", "signalPath", "Signal"],
+  ["setpoint", "setpointPath", "Setpoint / target"],
+  ["measurement", "measurementPath", "Measured input"],
+  ["feedback", "feedbackPath", "Control feedback"],
+];
+
+function edgeKind(relation) {
+  if (["feedback", "adds_measurement"].includes(relation)) return "feedback";
+  if (relation === "measures") return "measurement";
+  if (["references_setpoint", "sets_target", "subtracts_target"].includes(relation)) return "setpoint";
+  return "signal";
+}
+
+function kindLabel(kind) {
+  const [, key, fallback] = flowKinds.find(([value]) => value === kind);
+  return copy(`flow.${key}`, fallback);
+}
 
 function sourceTitle(source = {}) {
   return [source.objectType, source.objectName].filter(Boolean).join(" · ");
@@ -36,7 +54,7 @@ function edgeTitle(bundle, byID) {
     const node = byID.get(id);
     return [nodeLabel(node), node?.source?.objectName].filter(Boolean).join(" · ");
   };
-  return bundle.nativeEdges.map((edge) => `${endpoint(edge.from)} → ${endpoint(edge.to)}: ${copy(`relation.${edge.relation}`, human(edge.relation))}${edge.polarity ? ` (${polarity(edge)})` : ""}${edge.condition ? ` · ${edge.condition}` : ""}`).join("\n");
+  return `${kindLabel(bundle.kind)} · ${bundle.nativeEdges.map((edge) => `${endpoint(edge.from)} → ${endpoint(edge.to)}: ${copy(`relation.${edge.relation}`, human(edge.relation))}${edge.polarity ? ` (${polarity(edge)})` : ""}${edge.condition ? ` · ${edge.condition}` : ""}`).join("\n")}`;
 }
 
 function memberDetails(node, card, byID, calendar) {
@@ -59,13 +77,11 @@ function inspectorTemplate(card, byID, calendar) {
   return `<template data-hvac-parameter-details="${safe(card.id)}"><header class="hvac-parameter-inspector-heading"><div><h5>${safe(card.source?.objectName || card.source?.objectType || copy("unresolved", "Unresolved control"))}</h5><span class="hvac-control-object-type">${safe(card.source?.objectType || "")}</span></div><button type="button" data-hvac-close-parameter aria-label="${safe(copy("flow.closeDetails", "Close details"))}">×</button></header><div class="hvac-parameter-detail-members">${card.members.map((node) => memberDetails(node, card, byID, calendar)).join("")}</div>${card.relationships.length ? `<div class="hvac-parameter-detail-relations">${card.relationships.map((edge) => `<div data-hvac-parameter-term data-from="${safe(edge.from)}" data-to="${safe(edge.to)}"${edge.polarity ? ` data-polarity="${safe(edge.polarity)}"` : ""}><strong class="hvac-parameter-polarity">${safe(polarity(edge))}</strong> ${safe(nodeLabel(byID.get(edge.from)))} → ${safe(nodeLabel(byID.get(edge.to)))} <span>${safe(copy(`relation.${edge.relation}`, human(edge.relation)))}</span>${edge.condition ? ` <span>${safe(edge.condition)}</span>` : ""}</div>`).join("")}</div>` : ""}</template>`;
 }
 
-// Keep native edges as relationships between source tiles. A returning arrow is
-// a dependency/feedback reference, not an inferred simulation execution order.
+// Native relation defines the meaning; direction only chooses the drawn route.
 export function renderHVACParameterFlow(model = {}, { component = {}, calendar = {} } = {}) {
   const groups = model.groups || [], cards = groups.flatMap((group) => group.cards);
   const byID = new Map((model.nodes || []).map((node) => [node.id, node]));
   const cardForNode = new Map(cards.flatMap((card) => card.members.map((node) => [node.id, card])));
-  const groupForCard = new Map(groups.flatMap((group, index) => group.cards.map((card) => [card.id, index])));
   const prefix = `hvac-parameter-${++instance}`;
   const bundles = new Map();
   for (const edge of model.relationships || []) {
@@ -74,13 +90,11 @@ export function renderHVACParameterFlow(model = {}, { component = {}, calendar =
     const key = JSON.stringify([from.id, to.id, edge.relation, edge.polarity || "", edge.condition || ""]);
     const existing = bundles.get(key);
     if (existing) { existing.nativeEdges.push(edge); continue; }
-    const feedback = ["feedback", "adds_measurement"].includes(edge.relation);
-    const reference = !feedback && from !== to && groupForCard.get(from.id) >= groupForCard.get(to.id);
-    bundles.set(key, { ...edge, fromCard: from.id, toCard: to.id, feedback, reference, nativeEdges: [edge] });
+    bundles.set(key, { ...edge, fromCard: from.id, toCard: to.id, kind: edgeKind(edge.relation), nativeEdges: [edge] });
   }
   const edges = [...bundles.values()];
   const label = copy("parameterControl", "Parameter control");
-  return `<div class="hvac-parameter-flow-shell" data-hvac-parameter-flow-shell><svg class="hvac-parameter-flow" data-hvac-parameter-flow role="group" aria-label="${safe([label, component.objectName].filter(Boolean).join(" · "))}" xmlns="http://www.w3.org/2000/svg"><defs><marker id="${prefix}-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker></defs><g class="hvac-parameter-flow-links">${edges.map((edge) => `<g data-hvac-flow-edge data-from-card="${safe(edge.fromCard)}" data-to-card="${safe(edge.toCard)}" data-hvac-control-edge data-from="${safe(edge.from)}" data-to="${safe(edge.to)}" data-relation="${safe(edge.relation)}"${edge.polarity ? ` data-polarity="${safe(edge.polarity)}"` : ""}${edge.condition ? ` data-condition="${safe(edge.condition)}"` : ""} class="${edge.feedback ? "feedback" : edge.reference ? "reference" : "signal"}" tabindex="0" role="button" aria-pressed="false" aria-label="${safe(edgeTitle(edge, byID))}"><title>${safe(edgeTitle(edge, byID))}</title><path class="hvac-parameter-halo"/><path class="hvac-parameter-wire" marker-end="url(#${prefix}-arrow)"/><path class="hvac-parameter-hit"/><circle data-flow-port="source" r="2.5"/><circle data-flow-port="target" r="2.5"/><g class="hvac-parameter-flow-badge"${polarity(edge) ? "" : " hidden"}><rect x="-8" y="-9" width="16" height="18" rx="4"/><text class="hvac-parameter-flow-sign" text-anchor="middle" y="4">${safe(polarity(edge))}</text></g></g>`).join("")}</g>${groups.map((group, groupIndex) => `<g class="hvac-parameter-flow-stage ${safe(group.id)}" data-hvac-flow-group="${groupIndex}" data-hvac-parameter-group="${safe(group.id)}">${stageHeading(group)}${group.cards.map((card, index) => `<foreignObject data-hvac-flow-card="${safe(card.id)}" data-hvac-parameter-card="${safe(card.id)}" data-flow-group="${groupIndex}" data-flow-order="${index}" class="hvac-parameter-flow-tile"><button xmlns="http://www.w3.org/1999/xhtml" type="button" data-hvac-inspect-parameter="${safe(card.id)}" aria-expanded="false" title="${safe(sourceTitle(card.source))}"><strong>${safe(tileLabel(card, group))}</strong><span>${safe(card.source?.objectName || card.source?.objectType || copy("unresolved", "Unresolved control"))}</span></button></foreignObject>`).join("")}</g>`).join("")}</svg><div class="hvac-parameter-flow-legend">${[["signal", "flow.signalPath", "Signal"], ["feedback", "relation.feedback", "Measured feedback"], ["reference", "flow.referencePath", "Reference"]].map(([kind, key, text]) => `<span class="${kind}"><i aria-hidden="true"></i>${safe(copy(key, text))}</span>`).join("")}</div><p class="hvac-parameter-flow-hint"><span data-hvac-flow-hint>${safe(copy("flow.inspect", "Hover or focus to trace paths; select a block for details."))}</span><span data-hvac-flow-description hidden aria-live="polite"></span></p><section class="hvac-parameter-inspector" data-hvac-parameter-inspector hidden aria-live="polite"></section>${cards.map((card) => inspectorTemplate(card, byID, calendar)).join("")}</div>`;
+  return `<div class="hvac-parameter-flow-shell" data-hvac-parameter-flow-shell><svg class="hvac-parameter-flow" data-hvac-parameter-flow role="group" aria-label="${safe([label, component.objectName].filter(Boolean).join(" · "))}" xmlns="http://www.w3.org/2000/svg"><defs><marker id="${prefix}-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker></defs><g class="hvac-parameter-flow-links">${edges.map((edge) => `<g data-hvac-flow-edge data-from-card="${safe(edge.fromCard)}" data-to-card="${safe(edge.toCard)}" data-hvac-control-edge data-from="${safe(edge.from)}" data-to="${safe(edge.to)}" data-relation="${safe(edge.relation)}"${edge.polarity ? ` data-polarity="${safe(edge.polarity)}"` : ""}${edge.condition ? ` data-condition="${safe(edge.condition)}"` : ""} class="${edge.kind}" data-flow-kind="${edge.kind}" tabindex="0" role="button" aria-pressed="false" aria-label="${safe(edgeTitle(edge, byID))}"><title>${safe(edgeTitle(edge, byID))}</title><path class="hvac-parameter-halo"/><path class="hvac-parameter-wire" marker-end="url(#${prefix}-arrow)"/><path class="hvac-parameter-hit"/><circle data-flow-port="source" r="2.5"/><circle data-flow-port="target" r="2.5"/><g class="hvac-parameter-flow-badge"${polarity(edge) ? "" : " hidden"}><rect x="-8" y="-9" width="16" height="18" rx="4"/><text class="hvac-parameter-flow-sign" text-anchor="middle" y="4">${safe(polarity(edge))}</text></g></g>`).join("")}</g>${groups.map((group, groupIndex) => `<g class="hvac-parameter-flow-stage ${safe(group.id)}" data-hvac-flow-group="${groupIndex}" data-hvac-parameter-group="${safe(group.id)}">${stageHeading(group)}${group.cards.map((card, index) => `<foreignObject data-hvac-flow-card="${safe(card.id)}" data-hvac-parameter-card="${safe(card.id)}" data-flow-group="${groupIndex}" data-flow-order="${index}" class="hvac-parameter-flow-tile"><button xmlns="http://www.w3.org/1999/xhtml" type="button" data-hvac-inspect-parameter="${safe(card.id)}" aria-expanded="false" title="${safe(sourceTitle(card.source))}"><strong>${safe(tileLabel(card, group))}</strong><span>${safe(card.source?.objectName || card.source?.objectType || copy("unresolved", "Unresolved control"))}</span></button></foreignObject>`).join("")}</g>`).join("")}</svg><div class="hvac-parameter-flow-legend">${flowKinds.map(([kind, key, text]) => `<span class="${kind}" title="${safe(copy(`flow.${key}Detail`, ""))}"><i aria-hidden="true"></i>${safe(copy(`flow.${key}`, text))}</span>`).join("")}</div><p class="hvac-parameter-flow-hint"><span data-hvac-flow-hint>${safe(copy("flow.inspect", "Hover or focus to trace paths; select a block for details."))}</span><span data-hvac-flow-description hidden aria-live="polite"></span></p><section class="hvac-parameter-inspector" data-hvac-parameter-inspector hidden aria-live="polite"></section>${cards.map((card) => inspectorTemplate(card, byID, calendar)).join("")}</div>`;
 }
 
 function setGeometry(node, values) {
