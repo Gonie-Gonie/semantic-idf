@@ -3,7 +3,8 @@ import { t } from "../i18n.js";
 import { prepareHVACInspection, hvacInspectionSnapshots, hvacInspectionTrace, hvacInspectionBasicProperties } from "../hvac-inspection-data.js";
 import { renderHVACInspectionChart, updateHVACInspectionChartFrame, hvacInspectionChartYRanges } from "../hvac-inspection-charts.js";
 import { renderHVACInspectionTopology } from "./hvac-inspection-topology.js";
-import { renderHVACRuntimeInspection, handleHVACRuntimeEvent, connectHVACRuntimeInspection, disconnectHVACRuntimeInspection } from "./hvac-runtime-view.js";
+import { renderHVACRuntimeInspection, handleHVACRuntimeEvent, connectHVACRuntimeInspection, disconnectHVACRuntimeInspection, updateHVACRuntimeInspection } from "./hvac-runtime-view.js";
+import { prepareHVACRuntimeInspection } from "../hvac-runtime-data.js";
 
 const copy = (key, fallback) => t(`simulation.hvacInspect${key}`, {}, fallback);
 const option = (value, label, selected, disabled = false) => `<option value="${escapeHTML(value)}"${selected ? " selected" : ""}${disabled ? " disabled" : ""}>${escapeHTML(label)}</option>`;
@@ -19,7 +20,7 @@ function normalize(model, ui) {
   ui.basicYLimits ||= {};
   ui.mode = ui.mode === "scatter" ? "scatter" : "line";
   if (!model.entities.some((entity) => entity.id === ui.selectedComponent)) ui.selectedComponent = "";
-  if (!model.entities.some((entity) => entity.id === ui.selectedNode)) ui.selectedNode = ui.selectedComponent ? "" : model.entities.find((entity) => entity.kind === "node")?.id || "";
+  if (!model.entities.some((entity) => entity.id === ui.selectedNode)) ui.selectedNode = ui.selectedComponent || ui.runtimeSelected ? "" : model.entities.find((entity) => entity.kind === "node")?.id || "";
   if (!Array.isArray(ui.rows)) {
     const properties = model.entities.flatMap((entity) => entity.properties);
     const first = properties.find((property) => property.kind === "power") || properties.find((property) => property.kind === "flow") || properties[0];
@@ -41,11 +42,15 @@ function selectedProperties(model, ui) {
 function renderSnapshot(model, ui) {
   const snapshots = hvacInspectionSnapshots(model, ui.frameIndex, ui);
   if (model.loop.topology) return renderHVACInspectionTopology({ loop: model.loop.topology, ...snapshots,
-    selectedNode: ui.selectedNode, selectedComponent: ui.selectedComponent });
+    selectedNode: ui.selectedNode, selectedComponent: ui.selectedComponent,
+    operatingProfiles: prepareHVACRuntimeInspection(model.loop).profiles,
+    selectedProfile: ui.runtimeSelected ? ui.logic?.profileID : "" });
   // Older results can retain observations without the executed model graph.
   // Present the chosen point's values without inventing connections.
   const entity = [...snapshots.nodes, ...snapshots.components].find((item) => item.id === (ui.selectedComponent || ui.selectedNode));
-  return `${renderHVACInspectionTopology({ loop: null, ...snapshots })}${entity ? `<article class="hvac-inspection-legacy-frame"><strong>${escapeHTML(entity.name)}</strong><div>${entity.metrics.map((metric) => `<span>${escapeHTML(metric.label)} <b>${escapeHTML(typeof metric.value === "number" && Number.isFinite(metric.value) ? metric.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " " + metric.unit : "—")}</b></span>`).join("")}</div></article>` : ""}`;
+  const profiles = model.loop.loopType === "ZoneHVAC" ? prepareHVACRuntimeInspection(model.loop).profiles.filter((profile) => !profile.definition.loopId) : [];
+  const localEquipment = profiles.length ? `<div class="hvac-inspection-local-equipment" role="group" aria-label="${escapeHTML(copy("Equipment", "Equipment"))}">${profiles.map((profile) => `<button type="button" data-hvac-inspect-native-component="${escapeHTML(profile.source.objectIndex)}" aria-pressed="${ui.runtimeSelected && ui.logic?.profileID === profile.id}" title="${escapeHTML(profile.source.objectType)}">${escapeHTML(profile.source.objectName)}</button>`).join("")}</div>` : renderHVACInspectionTopology({ loop: null, ...snapshots });
+  return `${localEquipment}${entity ? `<article class="hvac-inspection-legacy-frame"><strong>${escapeHTML(entity.name)}</strong><div>${entity.metrics.map((metric) => `<span>${escapeHTML(metric.label)} <b>${escapeHTML(typeof metric.value === "number" && Number.isFinite(metric.value) ? metric.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " " + metric.unit : "—")}</b></span>`).join("")}</div></article>` : ""}`;
 }
 
 function renderBasicCharts(model, ui) {
@@ -152,47 +157,48 @@ function renderCustomControls(model, ui) {
     ${ui.mode === "line" ? `<button type="button" data-hvac-inspect-add${ui.rows.length >= 8 ? " disabled" : ""}>${escapeHTML(copy("Add", "Add series"))}</button>` : ""}`;
 }
 
+function selectRuntimeEquipment(loop, model, ui, entityID, objectIndex) {
+  const entity = model.entities.find((item) => item.kind === "component" && item.id === entityID);
+  const normalizeSource = (value) => String(value || "").trim().toLowerCase();
+  const profiles = prepareHVACRuntimeInspection(loop).profiles.filter((profile) => (profile.definition.loopId || "") === (loop.topology?.id || ""));
+  const matches = profiles.filter((profile) => objectIndex !== undefined ? profile.source.objectIndex === objectIndex
+    : entity && normalizeSource(profile.source.objectType) === normalizeSource(entity.type) && normalizeSource(profile.source.objectName) === normalizeSource(entity.name));
+  const profile = matches.length === 1 ? matches[0] : null;
+  ui.runtimeSelected = true;
+  (ui.logic ||= {}).profileID = profile?.id || "";
+  ui.selectedComponent = entity?.id || model.entities.find((item) => profile && item.kind === "component"
+    && normalizeSource(item.type) === normalizeSource(profile.source.objectType) && normalizeSource(item.name) === normalizeSource(profile.source.objectName))?.id || "";
+  ui.selectedNode = "";
+}
+
 export function renderHVACInspection(loop, ui = {}) {
-  if (!["loop", "logic"].includes(ui.inspectionView)) ui.inspectionView = loop.operatingProfiles?.length && !loop.series?.length && !loop.components?.some((component) => component.series?.length) ? "logic" : "loop";
-  const viewPicker = `<label class="hvac-inspection-view-picker"><span>${escapeHTML(copy("View", "View"))}</span><select data-hvac-inspect-view>${option("loop", copy("LoopValues", "Loop values"), ui.inspectionView === "loop")}${option("logic", copy("OperatingLogic", "Operating logic"), ui.inspectionView === "logic")}</select></label>`;
-  if (ui.inspectionView === "logic") return `<div class="hvac-inspection" data-hvac-inspection>${viewPicker}${renderHVACRuntimeInspection(loop, ui)}</div>`;
   const model = prepareHVACInspection(loop);
   normalize(model, ui);
-  return `<div class="hvac-inspection" data-hvac-inspection>${viewPicker}
-    <div class="hvac-inspection-frame-control"><label for="hvac-inspection-frame">${escapeHTML(copy("Frame", "Frame"))}</label>
-      <input id="hvac-inspection-frame" data-simulation-hvac-frame type="range" min="0" max="${Math.max(0, model.frames.length - 1)}" value="${ui.frameIndex}"${model.frames.length ? "" : " disabled"}/>
-      <output data-hvac-inspect-frame-label for="hvac-inspection-frame">${escapeHTML(model.frames[ui.frameIndex]?.label || copy("NoFrame", "No frame"))}</output>
-    </div>
+  return `<div class="hvac-inspection" data-hvac-inspection>
     <div data-hvac-inspect-snapshot>${renderSnapshot(model, ui)}</div>
+    <div data-hvac-inspect-runtime>${ui.runtimeSelected ? renderHVACRuntimeInspection(loop, ui, model) : ""}</div>
     <section class="hvac-inspection-basic"><h4>${escapeHTML(copy("NodeGraphs", "Node graphs"))}</h4>
       <div class="hvac-inspection-node-toggles" role="group" aria-label="${escapeHTML(copy("Nodes", "Nodes"))}">
         ${model.entities.filter((entity) => entity.kind === "node").map((entity) => `<label><input type="checkbox" data-hvac-inspect-node-visible="${escapeHTML(entity.id)}"${ui.visibleNodes[entity.id] !== false ? " checked" : ""}/><span>${escapeHTML(entity.name)}</span></label>`).join("")}
       </div><div data-hvac-inspect-basic-charts>${renderBasicCharts(model, ui)}</div>
     </section>
     <section class="hvac-inspection-custom"><div data-hvac-inspect-custom-controls>${renderCustomControls(model, ui)}</div><div data-hvac-inspect-custom-chart>${renderCustomChart(model, ui)}</div></section>
+    <div class="hvac-inspection-frame-control hvac-inspection-frame-footer"><label for="hvac-inspection-frame">${escapeHTML(copy("Frame", "Frame"))}</label>
+      <input id="hvac-inspection-frame" data-simulation-hvac-frame type="range" min="0" max="${Math.max(0, model.frames.length - 1)}" step="1" value="${ui.frameIndex}"${model.frames.length ? "" : " disabled"}/>
+      <output data-hvac-inspect-frame-label for="hvac-inspection-frame" title="${escapeHTML(model.reportingFrequency || "Hourly")}">${escapeHTML(model.frames[ui.frameIndex]?.label || copy("NoFrame", "No frame"))}</output>
+    </div>
   </div>`;
 }
 
 export function handleHVACInspectionEvent(event, container, loop, ui) {
-  if (handleHVACRuntimeEvent(event, container, loop, ui)) return true;
-  const view = event.target.closest?.("[data-hvac-inspect-view]");
-  if (view && container.contains(view) && ["input", "change"].includes(event.type)) {
-    event.stopPropagation();
-    if (ui.inspectionView === view.value) return true;
-    ui.inspectionView = view.value;
-    disconnectHVACRuntimeInspection(container);
-    container.querySelector("[data-hvac-inspection]").outerHTML = renderHVACInspection(loop, ui);
-    connectHVACRuntimeInspection(container, loop, ui);
-    container.querySelector("[data-hvac-inspect-view]")?.focus({ preventScroll: true });
-    return true;
-  }
-  const target = event.target.closest?.("[data-simulation-hvac-frame], [data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-node-visible], [data-hvac-inspect-entity], [data-hvac-inspect-property], [data-hvac-inspect-mode], [data-hvac-inspect-add], [data-hvac-inspect-remove], [data-hvac-inspect-y-bound], [data-hvac-inspect-y-reset]");
+  const model = prepareHVACInspection(loop);
+  if (handleHVACRuntimeEvent(event, container, loop, ui, model)) return true;
+  const target = event.target.closest?.("[data-simulation-hvac-frame], [data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-native-component], [data-hvac-inspect-node-visible], [data-hvac-inspect-entity], [data-hvac-inspect-property], [data-hvac-inspect-mode], [data-hvac-inspect-add], [data-hvac-inspect-remove], [data-hvac-inspect-y-bound], [data-hvac-inspect-y-reset]");
   if (!target || !container.contains(target)) return false;
-  const isClick = event.type === "click", clickControl = target.matches("[data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-add], [data-hvac-inspect-remove], [data-hvac-inspect-y-reset]");
+  const isClick = event.type === "click", clickControl = target.matches("[data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-native-component], [data-hvac-inspect-add], [data-hvac-inspect-remove], [data-hvac-inspect-y-reset]");
   if (isClick !== clickControl || !isClick && event.type !== "input" && event.type !== "change") return false;
   event.stopPropagation();
   if (isClick) event.preventDefault();
-  const model = prepareHVACInspection(loop);
   normalize(model, ui);
   const data = target.dataset;
   if (data.hvacInspectYBound !== undefined) {
@@ -228,12 +234,14 @@ export function handleHVACInspectionEvent(event, container, loop, ui) {
     container.querySelector("[data-hvac-inspect-frame-label]").textContent = model.frames[ui.frameIndex]?.label || copy("NoFrame", "No frame");
     refreshSnapshot(container, model, ui);
     updateHVACInspectionChartFrame(container, model.frames[ui.frameIndex]?.x);
+    updateHVACRuntimeInspection(container, loop, ui, model);
     return true;
   }
-  if (data.hvacInspectNode !== undefined || data.hvacInspectComponent !== undefined) {
-    if (data.hvacInspectNode !== undefined) { ui.selectedNode = data.hvacInspectNode; ui.selectedComponent = ""; }
-    if (data.hvacInspectComponent !== undefined) { ui.selectedComponent = data.hvacInspectComponent; ui.selectedNode = ""; }
+  if (data.hvacInspectNode !== undefined || data.hvacInspectComponent !== undefined || data.hvacInspectNativeComponent !== undefined) {
+    if (data.hvacInspectNode !== undefined) { ui.selectedNode = data.hvacInspectNode; ui.selectedComponent = ""; ui.runtimeSelected = false; }
+    else selectRuntimeEquipment(loop, model, ui, data.hvacInspectComponent, data.hvacInspectNativeComponent !== undefined ? Number(data.hvacInspectNativeComponent) : undefined);
     refreshSnapshot(container, model, ui);
+    updateHVACRuntimeInspection(container, loop, ui, model);
     const attribute = [...target.attributes].find((item) => item.name.startsWith("data-hvac-inspect-"));
     if (attribute) container.querySelector(`[${attribute.name}="${CSS.escape(attribute.value)}"]`)?.focus({ preventScroll: true });
     return true;
@@ -266,5 +274,5 @@ function refreshSnapshot(container, model, ui) {
   if (next) { next.scrollTop = top; next.scrollLeft = left; }
 }
 
-export function connectHVACInspection(container, loop, ui) { connectHVACRuntimeInspection(container, loop, ui); }
+export function connectHVACInspection(container, loop, ui) { connectHVACRuntimeInspection(container, loop, ui, prepareHVACInspection(loop)); }
 export function disconnectHVACInspection(container) { disconnectHVACRuntimeInspection(container); }

@@ -697,7 +697,7 @@ export function initializeSimulationControls() {
   elements.simulationHVACLoopResults?.addEventListener("input", handleSimulationHVACResultsInput);
   elements.simulationHVACLoopResults?.addEventListener("change", handleSimulationHVACResultsInput);
   elements.simulationHVACLoopResults?.addEventListener("keydown", (event) => {
-    if (["Enter", " "].includes(event.key) && event.target.matches("[data-hvac-inspect-node], [data-hvac-inspect-component]")) {
+    if (["Enter", " "].includes(event.key) && event.target.matches("[data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-native-component]")) {
       event.preventDefault();
       event.target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     }
@@ -1513,7 +1513,7 @@ function simulationResultViewAvailability(result) {
       (isEnergyPathV2(energyExplanation) && energyPathHasPayload(energyExplanation))
     ),
     zone_heat_flow: Boolean((heatFlow.zones || []).length),
-    hvac_loops: Boolean(hvacLoops.some((loop) => (loop.series || []).length || hvacComponentSeriesCount(loop.components || []))),
+    hvac_loops: Boolean(hvacLoops.some((loop) => (loop.series || []).length || hvacComponentSeriesCount(loop.components || []) || loop.operatingProfiles?.length)),
     comfort: Boolean((comfort.zones || []).length || (comfort.series || []).length),
     series: Boolean((result.series || []).length),
   };

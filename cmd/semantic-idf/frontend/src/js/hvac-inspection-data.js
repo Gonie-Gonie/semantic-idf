@@ -1,5 +1,8 @@
 import { getLanguage, t } from "./i18n.js";
 import { hasHVACTemperatureSetpoint } from "./hvac-setpoint.js";
+import { selectHVACInspectionTimestepSeries, matchHVACRuntimeFrame } from "./hvac-inspection-cadence.js";
+import { prepareHVACRuntimeInspection } from "./hvac-runtime-data.js";
+export { matchHVACRuntimeFrame };
 
 const cache = new WeakMap();
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
@@ -89,6 +92,62 @@ export function prepareHVACInspection(loop = {}) {
   };
   (loop.series || []).forEach((series) => add(series, "node"));
   (loop.components || []).forEach((component) => (component.series || []).forEach((series) => add(series, "component", component)));
+  let model = buildInspectionModel(loop, language, waterLoop, candidates, "Hourly");
+  const properties = model.entities.flatMap((entity) => entity.properties);
+  const timestep = selectHVACInspectionTimestepSeries(loop, properties);
+  if (timestep) {
+    const promotedEntities = new Map();
+    const promotedCandidates = properties.map((property) => {
+      const series = timestep.get(property), parts = columnParts(series), converted = measurement(parts.name, parts.unit);
+      if (!pointList(series).length || converted.kind !== property.kind || converted.unit !== property.unit) return null;
+      if (!promotedEntities.has(property.entity.id)) promotedEntities.set(property.entity.id, { ...property.entity, properties: [] });
+      return { series, ...parts, entity: promotedEntities.get(property.entity.id), propertyID: property.id };
+    });
+    if (promotedCandidates.every(Boolean)) {
+      const promoted = buildInspectionModel(loop, language, waterLoop, promotedCandidates, "Timestep");
+      if (promoted.frames.length && promoted.entities.flatMap((entity) => entity.properties).length === properties.length
+        && preservesInspectionObservations(model, promoted)) model = promoted;
+    }
+  }
+  if (!model.entities.length && !model.frames.length && !loop.topology && token(loop.loopType) === "zonehvac") {
+    const profiles = loop.operatingProfiles || [];
+    const current = profiles.length && profiles.every((profile) => !profile.loopId && Number.isInteger(profile.componentIndex));
+    const owners = new Set(profiles.map((profile) => profile.componentIndex));
+    if (current && (loop.controlSignals || []).every((signal) => !signal.loopId && owners.has(signal.componentIndex))) {
+      const runtime = prepareHVACRuntimeInspection(loop);
+      if (runtime.profiles.every((profile) => profile.source.objectIndex === profile.definition.componentIndex
+        && profile.source.objectType && profile.source.objectName) && runtime.frames.length
+        && runtime.frames.every((frame) => ["timestep", "zone timestep"].includes(token(frame.frequency)))) {
+        const frames = runtime.frames.map((frame) => ({ ...frame })), byLabel = new Map();
+        for (const frame of frames) byLabel.set(frame.label, byLabel.has(frame.label) ? null : frame);
+        model = { ...model, primary: runtime.primary, frames, byRow: new Map(frames.map((frame) => [frame.row, frame])), byLabel,
+          calendarValid: runtime.calendarValid, reportingFrequency: "Timestep", interval: runtime.interval };
+      }
+    }
+  }
+  cache.set(loop, model);
+  return model;
+}
+
+// A finer series must retain each already-visible observation time. Hourly
+// means and Timestep values need not agree, but neither gaps nor ambiguous
+// timestamps may remove a valid node/equipment observation during promotion.
+function preservesInspectionObservations(original, promoted) {
+  const targets = new Map(promoted.entities.flatMap((entity) => entity.properties).map((property) => [property.id, property]));
+  const frames = original.frames.map((frame) => promoted.frames[matchHVACRuntimeFrame(promoted, original, frame.index)]);
+  for (const property of original.entities.flatMap((entity) => entity.properties)) {
+    const target = targets.get(property.id);
+    if (!target) return false;
+    const before = propertyValues(original, property), after = propertyValues(promoted, target);
+    for (const frame of original.frames) {
+      if (finite(before.get(frame.x)) && (!frames[frame.index] || !finite(after.get(frames[frame.index].x)))) return false;
+    }
+  }
+  return true;
+}
+
+function buildInspectionModel(loop, language, waterLoop, candidates, reportingFrequency) {
+  const entities = new Map(candidates.map((item) => [item.entity.id, item.entity]));
   const files = new Map();
   for (const item of candidates) files.set(fileKey(item.series), (files.get(fileKey(item.series)) || 0) + 1);
   const primary = [...files].sort((a, b) => Number(b[0].endsWith(".sql")) - Number(a[0].endsWith(".sql")) || b[1] - a[1])[0]?.[0];
@@ -115,17 +174,23 @@ export function prepareHVACInspection(loop = {}) {
   const seen = new Set();
   candidates.sort((a, b) => Number(fileKey(b.series) === primary) - Number(fileKey(a.series) === primary));
   for (const item of candidates) {
-    const id = `${item.entity.id}|${token(item.name)}|${token(item.unit)}`;
+    const id = item.propertyID || `${item.entity.id}|${token(item.name)}|${token(item.unit)}`;
     if (seen.has(id)) continue;
     seen.add(id);
     item.entity.properties.push({ id, name: item.name, ...measurement(item.name, item.unit), series: item.series, entity: item.entity });
   }
-  const model = { language, loop, waterLoop, primary, entities: [...entities.values()].filter((entity) => entity.properties.length), frames, byRow, byLabel, calendarValid };
+  let interval = reportingFrequency === "Hourly" ? 1 : undefined;
+  if (reportingFrequency === "Timestep" && calendarValid && frames.length > 1) {
+    for (let index = 1; index < frames.length; index++) {
+      const difference = frames[index].x - frames[index - 1].x;
+      interval = interval === undefined ? difference : Math.min(interval, difference);
+    }
+  }
+  const model = { language, loop, waterLoop, primary, entities: [...entities.values()].filter((entity) => entity.properties.length), frames, byRow, byLabel, calendarValid, reportingFrequency, interval };
   // A requested output exists for every node, including nodes with no setpoint.
   // Offer this property only when at least one aligned observation is defined.
   for (const entity of model.entities) entity.properties = entity.properties.filter((property) => property.kind !== "setpoint" || [...propertyValues(model, property).values()].some(finite));
   model.entities = model.entities.filter((entity) => entity.properties.length);
-  cache.set(loop, model);
   return model;
 }
 
@@ -158,7 +223,7 @@ function propertyValues(model, property) {
 export function hvacInspectionTrace(model, property) {
   const values = propertyValues(model, property);
   return { id: property.id, label: `${property.entity.name} · ${property.label}`, unit: property.unit,
-    ...(model.calendarValid ? { interval: 1 } : {}),
+    ...(model.calendarValid && finite(model.interval) ? { interval: model.interval } : {}),
     points: model.frames.map((frame) => ({ x: frame.x, label: frame.label, value: values.get(frame.x) ?? null })) };
 }
 

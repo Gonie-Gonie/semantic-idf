@@ -166,6 +166,25 @@ try {
  booleanDefinition.availabilityLayers.unshift({id:'explicit-stop',role:'equipment',owner:booleanDefinition.availabilityLayers[0].owner,expression:{op:'always',value:0}});
  observed=runtimeSnapshot(prepareRuntime(booleanStop),fanProfile.id,0);check(observed.permission.state==='blocked','Boolean constant zero inherited manager NoAction semantics');
 
+ const {buildHVACRuntimeAvailability:availabilityStack}=await import('/src/js/hvac-runtime-availability.js');
+ for(const [captured,expected,kind] of [[fanLoop,'blocked','schedule'],[cycle,'allowed','manager'],[forced,'blocked','manager'],[mixedManager,'mixed','manager']]){
+  const before=JSON.stringify(captured),prepared=prepareRuntime(captured),profile=selectedRuntimeProfile(prepared,fanFixture),stack=availabilityStack(prepared,profile.id,prepared.frames,0);
+  const final=stack.rows.at(-1),own=stack.rows.find(row=>row.kind==='schedule'&&row.label.toLowerCase()===ownSchedule.toLowerCase());
+  check(final.id==='final-availability'&&final.kind==='permission'&&final.current.state===expected,'stack final disagrees with native manager/fan override');
+  check(stack.rows.some(row=>row.kind===kind&&row.decisive)&&stack.rows.every(row=>row.owner&&row.current.label),'stack lost deciding source or owning equipment');
+  if(kind==='manager')check(!own?.decisive,'override still attributes decision to ignored own schedule');
+  check(stack.rows.filter(row=>row.kind==='schedule').length===new Set(stack.rows.filter(row=>row.kind==='schedule').map(row=>row.label.toLowerCase())).size,'same schedule is repeated instead of retaining owners');
+  const later=availabilityStack(prepared,profile.id,prepared.frames,1);
+  check(stack.rows.every((row,index)=>row.points===later.rows[index].points&&row.points.length===4),'moving current frame rebuilt/sampled availability history');
+  const absent=availabilityStack(prepared,profile.id,prepared.frames,-1);
+  check(!absent.frame&&absent.rows.every(row=>row.current.state==='error'&&row.current.value===null&&!row.decisive),'unmatched shared frame borrowed first observation');
+  check(!availabilityStack(prepared,'wrong-profile').profile&&!availabilityStack(prepared,'wrong-profile').rows.length,'invalid explicit equipment borrowed another profile');
+  check(JSON.stringify(captured)===before,'stack mutated native definitions or observations');
+ }
+ const constantManagerStack=availabilityStack(prepareRuntime(noOverride),fanProfile.id);
+ check(constantManagerStack.rows.at(-1).current.state==='allowed'&&!constantManagerStack.rows.some(row=>row.kind==='condition'&&row.operator==='always'),'manager NoAction0 became Boolean OFF condition');
+ check(availabilityStack(prepareRuntime(booleanStop),fanProfile.id).rows.at(-1).current.state==='blocked','stack Boolean0 lost distinct false permission');
+
  const coilFixture=fixtures.find(fixture=>fixture.family==='coil'),coilLoop=runtimeClone(fixtures,'coil');
  setReported(coilLoop,signal=>signal.role==='sensor'&&/temperature/i.test(signal.variableName),[22]);setReported(coilLoop,signal=>signal.role==='setpoint',[20]);
  setReported(coilLoop,signal=>signal.role==='actuator_request',[.8]);setReported(coilLoop,signal=>signal.role==='actuator',[.3]);
@@ -240,6 +259,55 @@ try {
  check(rowReads<=nativeRows.length*4,'the shared reporting timeline was rescanned for every runtime binding');
  check(lazyPoints(),'snapshot or trace materialized canonical controlSeries points/displayPoints');
  const oldRuntime=prepareRuntime({name:'Old saved loop',series:loop.series,components:loop.components});check(!oldRuntime.profiles.length&&!oldRuntime.frames.length,'legacy loop values fabricated runtime definitions/observations');
+
+ // Reuse available observations only when every existing property is covered.
+ const promotion=runtimeClone(fixtures,'fan'),nativeTemp=promotion.controlSignals.find(signal=>signal.graph==='parameterControl'&&signal.role==='sensor'&&signal.variableName==='System Node Temperature'),nativeFlow=promotion.controlSignals.find(signal=>signal.keyValue===nativeTemp?.keyValue&&signal.variableName==='System Node Mass Flow Rate'),nativeActivity=promotion.controlSignals.find(signal=>signal.role==='activity');
+ check(nativeTemp&&nativeFlow&&nativeActivity,'native fan lacks complete cadence-promotion fixture');
+ const asHourly=binding=>{const original=promotion.controlSeries.find(series=>series.sourceId===binding.seriesId),captured=structuredClone(original);delete captured.displayPoints;delete captured.displayColumn;delete captured.displayUnit;captured.sourceId='legacy-'+binding.seriesId;captured.reportingFrequency='Hourly';captured.column=captured.column.replace(/\([^()]*\)\s*$/,'(Hourly)');captured.points=[{x:1,label:'01-01 01:00',value:17}];return captured;};
+ promotion.series=[asHourly(nativeTemp),asHourly(nativeFlow)];promotion.components=[{componentName:fanFixture.component.objectName,componentType:fanFixture.component.objectType,inletNodes:[nativeTemp.keyValue],series:[asHourly(nativeActivity)]}];
+ const promoted=prepare(promotion),promotionBefore=JSON.stringify(promotion);
+ check(promoted.reportingFrequency==='Timestep'&&promoted.frames.length===4&&promoted.interval===.25,'fully covered legacy properties did not reuse existing native Timestep series');
+ check(snapshot(promoted,0).nodes.find(node=>node.name===nativeTemp.keyValue)?.metrics.find(metric=>metric.id==='temperature')?.value===20,'promoted snapshot reused Hourly row1 instead of actual Timestep source');
+ const fallback=structuredClone(promotion);fallback.series.push(series('System Node Relative Humidity','%',[point(1,40,'01-01 01:00')],nativeTemp.keyValue));
+ const fallbackModel=prepare(fallback);
+ check(fallbackModel.reportingFrequency==='Hourly'&&fallbackModel.frames.length===1&&snapshot(fallbackModel,0).nodes[0].metrics.find(metric=>metric.id==='temperature').value===17,'one missing property did not retain whole-loop Hourly semantics');
+ const originalIDs=fallbackModel.entities.map(entity=>[entity.id,entity.properties.filter(property=>property.kind!=='relativeHumidity').map(property=>property.id)]);
+ check(JSON.stringify(promoted.entities.map(entity=>[entity.id,entity.properties.map(property=>property.id)]))===JSON.stringify(originalIDs),'cadence promotion changed stable equipment/node/property IDs');
+ for(const variant of ['duplicate','hourly','foreign']){
+  const captured=structuredClone(promotion);
+  if(variant==='duplicate')captured.controlSeries.push(structuredClone(captured.controlSeries.find(series=>series.sourceId===nativeTemp.seriesId)));
+  if(variant==='hourly')captured.controlSeries.forEach(series=>series.reportingFrequency='Hourly');
+  if(variant==='foreign')captured.controlSignals.forEach(signal=>signal.loopId='another-native-circuit');
+  check(prepare(captured).reportingFrequency==='Hourly','cadence promotion borrowed '+variant+' diagnostic observations');
+ }
+ const completeHours=structuredClone(promotion);
+ for(const series of [...completeHours.series,...completeHours.components.flatMap(component=>component.series)])series.points=[1,2,3].map((hour,index)=>({x:hour,label:'01-01 0'+hour+':00',value:17+index}));
+ for(const series of completeHours.controlSeries){
+  const source=series.points;delete series.displayPoints;delete series.displayColumn;delete series.displayUnit;
+  series.points=Array.from({length:12},(_,index)=>{const minutes=(index+1)*15;return {x:index+1,label:'01-01 '+String(Math.floor(minutes/60)).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0'),value:source[index%source.length].value};});
+ }
+ check(prepare(completeHours).reportingFrequency==='Timestep'&&prepare(completeHours).frames.length===12,'complete native Timestep counterparts did not preserve every known Hourly observation time');
+ for(const missingHour of ['01-01 02:00','01-01 03:00']){
+  const captured=structuredClone(completeHours),counterpart=captured.controlSeries.find(series=>series.sourceId===nativeTemp.seriesId);
+  counterpart.points=counterpart.points.filter(point=>point.label!==missingHour);
+  const retained=prepare(captured),temperature=retained.entities.find(entity=>entity.kind==='node'&&entity.name===nativeTemp.keyValue)?.properties.find(property=>property.kind==='temperature');
+  check(retained.reportingFrequency==='Hourly'&&retained.frames.length===3&&trace(retained,temperature).points.map(point=>point.value).join(',')==='17,18,19','partial Timestep counterpart discarded existing middle/last Hourly observation: '+missingHour);
+ }
+ const {matchHVACRuntimeFrame:matchRuntimeFrame}=await import('/src/js/hvac-inspection-data.js'),promotionRuntime=prepareRuntime(promotion);
+ check(matchRuntimeFrame(promotionRuntime,fallbackModel,0)===3,'same SQL row number was used across Hourly/Timestep axes');
+ const noCommon={...fallbackModel,frames:[{...fallbackModel.frames[0],label:'01-01 02:00'}]};
+ check(matchRuntimeFrame(promotionRuntime,noCommon,0)===-1&&matchRuntimeFrame(promotionRuntime,fallbackModel,-1)===-1,'missing current timestep was replaced by a nearby/first observation');
+ const repeatedRuntime={...promotionRuntime,frames:[...promotionRuntime.frames,{...promotionRuntime.frames[3],key:'another-environment:5',index:4}]};
+ check(matchRuntimeFrame(repeatedRuntime,fallbackModel,0)===-1,'repeated runtime timestamp joined an arbitrary environment');
+ check(matchRuntimeFrame(promotionRuntime,{...fallbackModel,frames:[...fallbackModel.frames,{...fallbackModel.frames[0],row:99}]},0)===-1,'repeated inspection timestamp joined an arbitrary environment');
+ check(matchRuntimeFrame(promotionRuntime,{...fallbackModel,frames:[{...fallbackModel.frames[0],label:'01/01 01:00'}]},0)===3,'equivalent native timestamp formats failed normalized matching');
+ check(JSON.stringify(promotion)===promotionBefore,'promotion/alignment mutated original native results');
+ const local=runtimeClone(fixtures,'local'),localBefore=JSON.stringify(local),localInspection=prepare(local);
+ check(local.loopType==='ZoneHVAC'&&!local.topology&&!localInspection.entities.length&&localInspection.reportingFrequency==='Timestep'&&localInspection.frames.length===4,'control-only native local equipment lost common axis or gained invented loop/entities');
+ check(localInspection.frames.every((frame,index)=>matchRuntimeFrame(prepareRuntime(local),localInspection,index)===index),'local common frame diverged from its original native control axis');
+ const foreignLocal=structuredClone(local);foreignLocal.controlSignals.forEach(signal=>signal.loopId='another-native-circuit');
+ check(!prepare(foreignLocal).frames.length,'control-only local axis borrowed a foreign occurrence');
+ check(JSON.stringify(local)===localBefore,'local common axis mutated native input/results');
  check(JSON.stringify(fixtures)===fixturesBefore,'runtime inspection mutated native captured fixtures');
 
  const {setLanguage,getLanguage}=await import('/src/js/i18n.js');setLanguage('ko');

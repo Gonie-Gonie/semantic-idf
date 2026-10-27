@@ -126,7 +126,7 @@ export function prepareHVACRuntimeInspection(loop = {}) {
     alignedValues.set(signal.series, values); return values;
   };
   for (const signal of signals) Object.defineProperty(signal, "values", { enumerable: true, get: () => align(signal) });
-  const profiles = (loop.operatingProfiles || []).map((definition) => ({ id: String(definition.componentIndex), definition, availabilityExpression: runtimeAvailability(definition), source: profileSource(definition),
+  const profiles = (loop.operatingProfiles || []).filter((definition) => !loop.topology?.id || definition.loopId === loop.topology.id).map((definition) => ({ id: String(definition.componentIndex), definition, availabilityExpression: runtimeAvailability(definition), source: profileSource(definition),
     signals: signals.filter((signal) => signal.componentIndex === definition.componentIndex && (!signal.loopId || signal.loopId === definition.loopId)) }));
   let interval;
   if (calendarValid && frames.length > 1) for (let i = 1; i < frames.length; i++) { const next = frames[i].x - frames[i - 1].x; interval = interval === undefined ? next : Math.min(interval, next); }
@@ -203,8 +203,9 @@ function evaluatePermission(profile, observed, expression, depth = 0, domain = "
 
 export function hvacRuntimePermission(profile, signals, expression, domain = "boolean") { return evaluatePermission(profile, signals, expression, 0, domain); }
 
-export function hvacRuntimeSnapshot(model, profileID, frameIndex) {
-  const profile = model.profiles.find((entry) => entry.id === String(profileID)) || model.profiles[0], frame = model.frames[Math.max(0, Math.min(model.frames.length - 1, Number(frameIndex) || 0))];
+export function hvacRuntimeSnapshot(model, profileID, frameIndex = 0) {
+  const profile = profileID === undefined ? model.profiles[0] : model.profiles.find((entry) => entry.id === String(profileID));
+  const frame = Number.isInteger(frameIndex) && frameIndex >= 0 ? model.frames[frameIndex] : undefined;
   if (!profile) return { profile: null, frame, errors: [], signals: [], availability: [], residuals: [] };
   const observed = profile.signals.map((signal) => ({ ...signal, value: frame ? signal.values.get(frame.key) ?? null : null }));
   const errors = observed.filter((signal) => signal.required && (signal.status !== "collected" || !finite(signal.value)

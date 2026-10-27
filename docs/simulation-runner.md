@@ -465,9 +465,10 @@ checks; valid zero/negative setpoints remain. Missing setpoints alone create
 no control alert. Older results without executed topology show unavailable
 topology alongside retained observations.
 
-The result HVAC selector separates **Loop values** (legacy Hourly frames) and
-**Operating logic** (control Timestep frames), with independent frame/chart
-state. Each `HVACLoopRunResult` adds:
+The result HVAC view retains the default loop schematic, node controls/charts
+and custom plots. Equipment selection opens its availability stack and control
+sequence inline. One bottom Frame control drives the loop and equipment values.
+Each `HVACLoopRunResult` includes:
 
 | Field | Contract |
 | --- | --- |
@@ -496,21 +497,30 @@ Ventilation has a separate domain. Native manager precedence and overrides
 remain part of permission evaluation. Timestep averages, including fractional
 or apparently integral statuses, cannot reconstruct an instantaneous event
 sequence, cycling timers, adaptive history or solver iterations.
-**Availability with manager actions** evaluates the minimum permission
-projection; native plant dispatch rules and their reported load/environment
-inputs appear as separate dispatch context rather than an unproven Boolean
-permission condition.
+The final availability row evaluates the minimum permission projection with
+reported manager actions. Source schedules, managers and effective native gates
+stack above it; decisive rows trace the current native priority/AND/OR branch.
+Plant demand and control observations stay separate from permission.
 
-Operating logic shares a selected Day/Week/Full run interval across status
-patches, formulas, source definitions and controller values. The source table
-supports up to four checked history signals and two units. Valid sensor/target
-pairs show a same-cadence residual; reported requested flow, actual flow, limits,
-demand and equipment response provide evidence without an invented causal
-diagnosis. Performance-only curves stay in the response inspector's
-Performance model details. Required acquisition gaps explicitly request a
-rerun, rather than becoming OFF or a routine unknown condition. Old saved
-results lacking executed profiles/control outputs retain Loop values and need
-a new HVAC Loop Check for Operating logic.
+The main view promotes to already-loaded Timestep series only when every
+existing visible node/component property has one source-backed counterpart and
+every previously valid observation time retains a valid value for that property.
+This changes no SQL request or read. Otherwise the complete original Hourly
+inspection remains. Property/entity IDs, node toggles, Y limits and custom plot
+behavior are preserved. Runtime values match only a unique exact timestamp,
+never a raw row number from another cadence or a nearest/previous observation.
+Control history preserves all Timestep points in either mode. Repeated native
+environment labels, missing frames and conflicting channels cannot alias.
+
+Day/Week/Full run windows apply to the stacked patches and control history.
+Sequence cards show current values; related unit groups below provide checkbox
+selection, current values and time-series plots with the shared frame marker.
+Selecting a card selects its related observations without exposing a raw
+variable/parameter table. Valid sensor/target pairs show a same-cadence residual;
+requested flow, actual flow and equipment response retain distinct meanings.
+Required gaps and invalid definitions remain explicit diagnostics, with exact
+source evidence on the error indicator. Old saved results keep the original
+loop/node inspection and require a new HVAC Loop Check for control diagnostics.
 
 Profiles without physical loop membership form a **Zone / local equipment**
 display group (`loopType: "ZoneHVAC"`, nil topology). Their profile `loopId`

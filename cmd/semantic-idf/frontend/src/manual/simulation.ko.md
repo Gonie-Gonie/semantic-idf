@@ -355,61 +355,45 @@ History는 원본 프레임을 stride sampling이나 평균화 없이 모두 그
 
 ## 시뮬레이션 후 HVAC 운전 로직 {#hvac-runtime-control}
 
-**HVAC Loop Check**를 실행한 뒤 결과의 HVAC 화면에서 **Operating logic**을
-선택합니다. ExpandObjects 결과를 포함하여 실제 실행한 입력의 availability,
-On / Off, parameter control 정의를 사용합니다. 실행 후 편집 모델을 바꾸어도
-해당 결과를 설명하는 로직은 바뀌지 않습니다.
+**HVAC Loop Check** 실행 후 **HVAC Loops**를 엽니다. 기본 화면은 기존 loop 계통도,
+node 그래프, 표시 체크박스, Y축 범위와 사용자 그래프를 유지합니다.
+공통 **Frame** 슬라이더는 화면 아래에 있습니다.
 
-HVAC Loop Check는 실행 사본에 필요한 원천별 **Timestep** 출력을 추가합니다.
-Schedule 값, 실제 manager·loop 상태, 관련 온도와 설정값, demand, actuator
-관측값, 장비 활동량을 수집합니다. 기존 **Loop values** 화면은 Hourly 관측값을
-유지합니다. 두 화면의 선택 시각과 그래프 상태는 별도로 유지되며, 같은 프레임
-번호가 같은 시각이나 보고 간격을 뜻하지 않습니다. Zone / local equipment는
-물리적 루프나 계통도를 만들어 붙이지 않고도 검사할 수 있습니다.
+계통도의 장비 또는 장비 관측값을 누르면 loop 아래에 해당 장비의
+**Availability** stack과 **제어 sequence**가 표시됩니다. Node를 선택하면 기존
+node 조회로 돌아갑니다. 장비 정의는 ExpandObjects 결과를 포함한 실제 실행
+입력에서 가져오며, 이후 편집 내용이 저장된 결과를 바꾸지 않습니다.
 
-장비와 **Day**, **Week**, **Full run** 범위를 선택합니다. 슬라이더, 이전·다음
-버튼, availability patch는 같은 보고 구간을 선택합니다. 상태 행에는 소유 객체와
-실제 출력이 표시됩니다. 원천 이름을 누르면 schedule, manager의 tolerance와
-cycling 설정, controller parameter 등 원래 정의를 확인할 수 있습니다.
-최대 네 관측값을 체크하여 시계열로 비교하며, 단위는 최대 두 가지를 사용합니다.
+Availability 행에는 소유 객체, schedule 또는 manager 동작, 유효한 허용 조건이
+쌓이고 마지막 행에 최종 Availability가 표시됩니다. 강조된 행은 현재 결정에
+기여한 조건입니다. AND는 실패한 조건으로 차단되고, OR는 허용된 분기로 충족될
+수 있습니다. Manager 우선순위와 fan override는 실제 정의를 따릅니다.
+**NoAction**은 override 없음이며 OFF가 아닙니다. **ForceOff**, **CycleOn**,
+**Zone fans only**는 서로 다른 동작입니다. 장비 응답은 별도 사실이므로
+허용 상태만으로 실제 운전을 확정하지 않습니다.
 
-서로 관련되지만 다른 판단을 구분해서 읽어야 합니다.
+제어 카드에는 현재 측정값, 목표값, 유효한 비교값, 명령과 응답을 표시합니다.
+**요청 유량**과 **실제 유량**은 구분합니다. Sequence 아래 plot은 관련 변수를
+단위별로 묶으며, 체크 항목에는 현재 값, plot에는 loop와 같은 선택 시각을
+표시합니다. 제어 카드를 선택하면 관련 관측값이 선택됩니다. Day, Week,
+Full run은 표시 범위만 바꾸며 원본 Timestep 관측값을 생략하지 않습니다.
 
-- **Configured permission**은 설정된 최소 조건을 검사합니다.
-  **Manager 동작을 반영한 허용 조건**에는 보고된 manager 동작과 실제 override 우선순위도
-  적용됩니다. Manager의 **NoAction**은 override를 요구하지 않는다는 뜻이며
-  OFF를 뜻하지 않습니다. **ForceOff**, **CycleOn**, **Zone fans only**는
-  서로 다른 상태입니다. Hybrid ventilation은 별도의 상태 의미를 사용합니다.
-- **Plant 장비 배분 입력**은 장비 선택과 Availability를 구분합니다.
-  운전전략의 실제 범위와 장비 목록, 보고된 loop 부하와 해당 전략에 필요한
-  입력을 함께 보여줍니다. 칠러가 허용된 상태라도 실제 냉방을 담당하도록
-  선택되거나 출력 명령을 받은 것은 아닙니다.
-- Schedule 관측값은 실행 중 보고된 값이므로 달력 처리나 runtime override에
-  따라 정적 미리보기와 다를 수 있습니다. NightCycle은 실제 control mode가
-  사용하는 존, thermostat mode, 온도, 냉·난방 설정값을 함께 수집합니다.
-  관련 manager의 센서와 외기 입력도 동작 상태 옆에서 확인할 수 있습니다.
-- **Requested actuator value**와 **Actual actuator value**는 controller의
-  유량 요구와 계통이 실제 공급한 유량을 구분합니다. Actuator의 사용 가능한
-  최소·최대 유량은 유량 제한 여부를 검토하는 근거입니다. 유효한 controller
-  비교는 같은 구간·단위의 **측정값 − 설정값**을 보여줍니다. 부호만으로
-  제어 이상을 판정하지 않습니다.
-- 보고된 demand와 장비 활동량은 운전 맥락을 설명합니다. Permission만으로
-  실제 운전을 확정하지 않으며, 냉방 출력이 0이라는 이유만으로 fan이나 pump가
-  정지했다고 판단하지 않습니다. Performance curve는 장비 응답 inspector의
-  **Performance model** 상세에 남아 있습니다.
+결과에 이미 읽어 둔 데이터를 재사용합니다. 기존 node·장비 속성 모두에 정확한
+원천의 유일한 Timestep 자료가 있고 기존의 유효 관측 시각도 모두 유지될 때만
+loop 전체를 **Timestep**으로 전환합니다.
+한 항목이라도 누락되거나 모호하면 기존 속성을 모두 유지한 **Hourly**를 사용합니다.
+이 전환은 SQL 읽기나 출력 요청을 추가하지 않습니다. 어느 경우에도 제어 이력은
+원래 Timestep 간격을 유지하며, 현재 값은 정확하고 유일한 보고 시각에만 연결합니다.
+서로 다른 빈도의 SQL 행 번호를 같은 시각으로 취급하지 않고, 누락 구간을 주변
+값으로 채우지 않습니다.
 
-Timestep 값은 zone 보고 구간을 요약합니다. System 상태는 여러 HVAC timestep의
-평균일 수 있으므로 혼합 상태나 소수 상태값은 한 순간의 동작이 아닙니다.
-정수 평균이라도 구간 내 사건 순서, cycling timer, adaptive history, solver
-iteration을 재현할 수는 없습니다. 화면은 관측된 맥락과 원천 규칙을 함께
-보여주며 보고되지 않은 원인을 만들어내지 않습니다.
+Timestep 관측값은 여러 HVAC system step의 평균일 수 있습니다. 혼합 상태는
+한 순간의 동작이나 timer 이력·solver 반복을 재현하지 않습니다.
+화면은 보고된 규칙과 값을 보여주며 보고되지 않은 운전 원인을 만들어내지 않습니다.
 
-필수 채널이 없으면 **제어 출력 수집 오류**로 표시합니다. 정확한 원천, 출력,
-보고 빈도를 확인한 뒤 HVAC Loop Check를 다시 실행하세요. 누락값을 OFF나 0,
-일반적인 미해결 운전 조건으로 취급하지 않습니다. 일부 구간이 누락되면 빈
-구간으로 유지합니다. 실행 control metadata나 해당 출력이 없는 오래된 저장
-결과는 다시 실행해야 하며, 화면을 바꾸는 것만으로 미보고 데이터를 복구할 수는
-없습니다.
+필수 출력 누락과 잘못된 정의는 명시적인 진단 오류로 표시하며, 오류 표시에서
+원천 근거를 확인할 수 있습니다. 제어 출력이 없는 오래된 결과는 HVAC Loop Check를
+다시 실행해야 합니다. 기존 loop·node 결과는 계속 사용할 수 있습니다.
 
 ## HVAC 시계열과 산점도 {#hvac-charts}
 

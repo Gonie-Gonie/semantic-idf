@@ -135,10 +135,14 @@ func hvacRuntimeBrowserFixtures(t *testing.T) []hvacRuntimeBrowserFixture {
 		{"fan", "Fan:VariableVolume", "VAV_5_Fan", "AirLoopHVAC"},
 		{"coil", "Coil:Heating:Water", "VAV_5_HeatC", "AirLoopHVAC"},
 		{"chiller", "Chiller:", "", "PlantLoop"},
+		{"local", "", "", "ZoneHVAC"},
 	} {
 		found := false
 		for _, profile := range report.OperatingProfiles {
 			loop := loops[profile.LoopID]
+			if profile.LoopID == "" {
+				loop = idf.HVACLoop{Name: "Zone / local equipment", Type: "ZoneHVAC"}
+			}
 			if profile.ComponentIndex < 0 || profile.ComponentIndex >= len(doc.Objects) || loop.Type != family.loopType {
 				continue
 			}
@@ -202,11 +206,11 @@ func TestHVACInspectionSharedFrameActualAppBrowser(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, capture := range []struct{ name, query, viewport string }{
-			{"fan-logic-dark.png", "?review=fan", "1900,1300"},
+			{"fan-loop-dark.png", "?review=fan", "1900,1300"},
 			{"coil-control-dark.png", "?review=coil&focus=control", "2560,1500"},
-			{"chiller-logic-ko-light.png", "?review=chiller&language=ko&theme=light", "1900,1400"},
-			{"missing-required.png", "?review=error", "1600,1200"},
-			{"manager-source-dark.png", "?review=fan&source=manager&focus=source", "2560,1700"},
+			{"chiller-availability-ko-light.png", "?review=chiller&focus=availability&language=ko&theme=light", "1900,1400"},
+			{"missing-required.png", "?review=error&focus=error", "1600,1200"},
+			{"fan-availability-narrow.png", "?review=fan&focus=availability", "1360,1200"},
 		} {
 			path, err := filepath.Abs(filepath.Join(directory, capture.name))
 			if err != nil {
@@ -263,102 +267,116 @@ try{
  select('Second');frame(0);select('First');check(slider().value==='0'&&label()==='01-01 01:00','frame selected in second loop was not shared');
  frame(2);state.simulationResult={...result,runId:'frames-2'};simulation.renderSimulation();check(slider().value==='0','new simulation retained previous run timestamp');
 
- // Exercise the new operating-logic view through the real app event path.
- // Hourly loop values and Timestep diagnostic rows retain separate frames.
- const fixtures=await(await fetch('/runtime-fixtures')).json(),fixturesBefore=JSON.stringify(fixtures),fanFixture=fixtures.find(fixture=>fixture.family==='fan'),coilFixture=fixtures.find(fixture=>fixture.family==='coil'),chillerFixture=fixtures.find(fixture=>fixture.family==='chiller');
- const addHourly=(captured,nodeName)=>{captured.series=[{name:'System Node Temperature',keyValue:nodeName,file:'eplusout.sql',column:nodeName+':System Node Temperature [C](Hourly)',reportingFrequency:'Hourly',points:[1,2,3].map(x=>({x,value:20+x,label:'01-01 0'+x+':00'}))}];return captured;};
- const runtimeFan=addHourly(runtimeClone(fixtures,'fan'),fanFixture.topology.supplySide?.inletNode||'Native fan inlet');
- const runtimeChiller=addHourly(runtimeClone(fixtures,'chiller'),chillerFixture.topology.supplySide?.inletNode||'Native chiller inlet');
- const dispatchDemand=runtimeChiller.controlSignals.find(signal=>signal.graph==='loop'&&signal.role==='demand');check(dispatchDemand,'native chiller lacks reported loop demand for dispatch context');setReported(runtimeChiller,signal=>signal.id===dispatchDemand.id,[1000,2000,3000,4000]);
- const managerBinding=runtimeFan.controlSignals.find(signal=>signal.role==='manager_status'),managerContext=runtimeFan.controlSignals.find(signal=>signal.role==='sensor'&&signal.source?.objectIndex===managerBinding?.source?.objectIndex&&/temperature/i.test(signal.variableName));
- check(managerBinding&&managerContext,'native manager reason-context inputs were not collected');setReported(runtimeFan,signal=>signal.id===managerContext.id,[18,19,20,21]);
+ // The loop's Hourly cursor is shared; history retains native Timestep data.
+ const fixtures=await(await fetch('/runtime-fixtures')).json(),fixturesBefore=JSON.stringify(fixtures),fanFixture=fixtures.find(fixture=>fixture.family==='fan'),coilFixture=fixtures.find(fixture=>fixture.family==='coil'),chillerFixture=fixtures.find(fixture=>fixture.family==='chiller'),localFixture=fixtures.find(fixture=>fixture.family==='local');
+ const nativeMember=fixture=>[fixture.topology.supplySide,fixture.topology.demandSide].flatMap(side=>side?.branches||[]).flatMap(branch=>branch.components||[]).find(item=>item.objectType===fixture.component.objectType&&item.objectName===fixture.component.objectName);
+ const hourlySeries=(fixture,key,name,unit,values)=>({name,keyValue:key,file:'eplusout.sql',column:key+':'+name+' ['+unit+'](Hourly)',reportingFrequency:'Hourly',points:[1,2,3].map((hour,index)=>({x:hour,label:'01-01 0'+hour+':00',value:values[index%values.length]}))});
+ const withHourly=(captured,fixture)=>{
+  for(const series of captured.controlSeries||[]){const observed=series.points;delete series.displayPoints;delete series.displayColumn;delete series.displayUnit;series.points=Array.from({length:12},(_,index)=>{const minutes=(index+1)*15;return {x:index+1,label:'01-01 '+String(Math.floor(minutes/60)).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0'),value:observed[index%observed.length].value};});}
+  const member=nativeMember(fixture);check(member,'native equipment is absent from its typed loop');
+  const node=member.inletNode||fixture.topology.supplySide?.inletNode;check(node,'native equipment lacks a connected node');
+  captured.series=[hourlySeries(fixture,node,'System Node Temperature','C',[21,22,23]),hourlySeries(fixture,node,'System Node Mass Flow Rate','kg/s',[1,2,3])];
+  if(fixture.topology.type==='AirLoopHVAC')captured.series.push(hourlySeries(fixture,node,'System Node Relative Humidity','%',[41,42,43]));
+  const activity=captured.controlSignals.find(signal=>signal.role==='activity'&&signal.source.objectIndex===fixture.component.objectIndex);check(activity,'native fixture lacks equipment response');
+  captured.components=[{componentName:fixture.component.objectName,componentType:fixture.component.objectType,inletNodes:[member.inletNode].filter(Boolean),outletNodes:[member.outletNode].filter(Boolean),series:[hourlySeries(fixture,fixture.component.objectName,activity.variableName,'W',[1000,0,1500])]}];return captured;
+ };
+ const mergeEquipment=(base,other)=>{
+  const signature=series=>[series.keyValue,series.name,series.reportingFrequency].map(value=>String(value).toLowerCase()).join('\0'),bySource=new Map(base.controlSeries.map(series=>[signature(series),series.sourceId])),aliases=new Map();
+  for(const series of other.controlSeries){const key=signature(series);if(bySource.has(key))aliases.set(series.sourceId,bySource.get(key));else{bySource.set(key,series.sourceId);base.controlSeries.push(series);}}
+  for(const binding of other.controlSignals){if(aliases.has(binding.seriesId))binding.seriesId=aliases.get(binding.seriesId);base.controlSignals.push(binding);}
+  base.operatingProfiles.push(...other.operatingProfiles);base.components.push(...other.components);
+  const nodes=new Set(base.series.map(signature));for(const series of other.series)if(!nodes.has(signature(series))){nodes.add(signature(series));base.series.push(series);}return base;
+ };
+ const runtimeFan=mergeEquipment(withHourly(runtimeClone(fixtures,'fan'),fanFixture),withHourly(runtimeClone(fixtures,'coil'),coilFixture)),runtimeChiller=withHourly(runtimeClone(fixtures,'chiller'),chillerFixture);
+ const managerBinding=runtimeFan.controlSignals.find(signal=>signal.componentIndex===fanFixture.component.objectIndex&&signal.role==='manager_status');check(managerBinding,'native fan lacks its manager');
+ const fanGate=expressionNodes(fanFixture.profile.finalAvailability).find(expression=>expression.op==='fan_gate'),ownSchedule=expressionNodes(fanGate?.children?.[1]).find(expression=>expression.op==='schedule_positive')?.scheduleName;check(ownSchedule,'native fan lacks its own schedule');
+ setReported(runtimeFan,signal=>signal.role==='schedule'&&signal.keyValue.toLowerCase()===ownSchedule.toLowerCase(),[1]);
+ setReported(runtimeFan,signal=>signal.role==='manager_status',[0,0,0,0,1,1,1,1,2,2,2,2]);
+ setReported(runtimeFan,signal=>signal.role==='activity',[1000,1000,1000,1000,0,0,0,0,1500,1500,1500,1500]);
  const runtimeResult={...result,runId:'runtime-1',purposeResults:{hvacLoops:[runtimeFan,runtimeChiller]}};
- // A later editor report must never replace this saved run's definitions.
  state.report={hvac:{operatingProfiles:[{componentIndex:fanFixture.component.objectIndex,loopId:fanFixture.profile.loopId,parameterControl:{nodes:[{id:'editor-only',source:{objectName:'EDITOR MODEL MUST NOT APPEAR'}}],edges:[]}}]}};
+ const foreignProfile=structuredClone(runtimeFan.operatingProfiles.find(profile=>profile.componentIndex===fanFixture.component.objectIndex));foreignProfile.loopId='another-native-circuit';foreignProfile.parameterControl.nodes.forEach(node=>node.source.objectName='FOREIGN LOOP MUST NOT APPEAR');runtimeFan.operatingProfiles.unshift(foreignProfile);
  state.simulationResult=runtimeResult;simulation.renderSimulation();
- const view=mode=>{const control=host.querySelector('[data-hvac-inspect-view]');check(control,'inspection view selector missing');if(control.value===mode)return;control.value=mode;control.dispatchEvent(new Event('change',{bubbles:true}));};
- const runtimeSlider=()=>host.querySelector('[data-hvac-runtime-frame]'),runtimeLabel=()=>host.querySelector('[data-hvac-runtime-frame-label]')?.textContent;
- const runtimeFrame=index=>{const control=runtimeSlider();check(control&&!control.disabled,'runtime frame control is not usable');control.value=index;control.dispatchEvent(new Event('input',{bubbles:true}));control.dispatchEvent(new Event('change',{bubbles:true}));};
- const chooseProfile=fixture=>{const control=host.querySelector('[data-hvac-runtime-profile]');check(control&&[...control.options].some(option=>option.value===String(fixture.component.objectIndex)),'executed component profile missing from runtime picker');if(control.value===String(fixture.component.objectIndex))return;control.value=String(fixture.component.objectIndex);control.dispatchEvent(new Event('change',{bubbles:true}));};
- frame(2);view('logic');chooseProfile(fanFixture);
- check(host.querySelector('[data-hvac-runtime]')&&runtimeSlider().max==='3'&&runtimeLabel().includes('00:15'),'logic view did not keep its native four-frame Timestep calendar');
- check(!host.textContent.includes('EDITOR MODEL MUST NOT APPEAR')&&host.textContent.includes(fanFixture.component.objectName),'runtime component selection used a changed editor model');
- check(!host.querySelector('[data-hvac-runtime-error]')&&host.querySelector('[data-hvac-runtime-summary]')&&host.querySelector('[data-hvac-runtime-availability]')&&host.querySelector('[data-hvac-runtime-control]'),'collected runtime evidence did not expose availability/control summary');
+ const componentTarget=fixture=>[...host.querySelectorAll('[data-hvac-inspect-component]')].find(target=>target.dataset.hvacInspectPointName===fixture.component.objectName&&target.dataset.hvacInspectComponent.toLowerCase().includes(fixture.component.objectType.toLowerCase()));
+ const chooseEquipment=fixture=>{const target=componentTarget(fixture);check(target,'typed equipment is not clickable: '+fixture.component.objectName);target.dispatchEvent(new MouseEvent('click',{bubbles:true}));};
+ const runtimePanel=()=>host.querySelector('[data-hvac-runtime]'),stack=()=>host.querySelector('[data-hvac-runtime-availability]'),finalRow=()=>stack()?.querySelector('[data-hvac-runtime-availability-row="final-availability"]');
+ const bottomFrame=()=>{const control=slider()?.closest('.hvac-inspection-frame-control'),snapshot=host.querySelector('[data-hvac-inspect-snapshot]'),custom=host.querySelector('.hvac-inspection-custom');return control&&snapshot&&custom&&Boolean(snapshot.compareDocumentPosition(control)&Node.DOCUMENT_POSITION_FOLLOWING)&&Boolean(custom.compareDocumentPosition(control)&Node.DOCUMENT_POSITION_FOLLOWING)&&(!runtimePanel()||Boolean(runtimePanel().compareDocumentPosition(control)&Node.DOCUMENT_POSITION_FOLLOWING));};
+ check(host.querySelector('[data-hvac-inspect-topology]')&&!runtimePanel(),'default result is not basic loop view');
+ check(!host.querySelector('select[data-hvac-inspect-view], select[data-hvac-runtime-profile], [data-hvac-runtime-frame]'),'loop view retained separate view/equipment/time selectors');
+ check(bottomFrame(),'shared frame bar is not below loop panels');
+ const nodeCharts=host.querySelector('[data-hvac-inspect-basic-charts]'),customControls=host.querySelector('[data-hvac-inspect-custom-controls]'),nodeToggles=[...host.querySelectorAll('[data-hvac-inspect-node-visible]')].map(input=>input.dataset.hvacInspectNodeVisible);
+ chooseEquipment(fanFixture);
+ check(runtimePanel()&&host.querySelector('[data-hvac-inspect-topology]')&&host.querySelector('[data-hvac-runtime-control]')&&host.querySelector('[data-hvac-runtime-history]'),'equipment selection replaced loop instead of inline control history');
+ check(!host.textContent.includes('EDITOR MODEL MUST NOT APPEAR')&&!host.textContent.includes('FOREIGN LOOP MUST NOT APPEAR')&&runtimePanel().textContent.includes(fanFixture.component.objectName),'equipment selection borrowed editor/foreign-loop profile');
+ check(!host.querySelector('[data-hvac-runtime-error]')&&bottomFrame(),'exact-time controls failed or frame moved above details');
+ const resultBounds=host.closest('.result-pane').getBoundingClientRect(),bounded=[stack(),slider().closest('.hvac-inspection-frame-control'),host.querySelector('[data-hvac-inspect-frame-label]')];
+ check(bounded.every(element=>{const rect=element.getBoundingClientRect();return rect.left>=resultBounds.left-1&&rect.right<=resultBounds.right+1;}),'loop min-content widened schedule/status/frame beyond visible pane: '+JSON.stringify({pane:[resultBounds.left,resultBounds.right],items:bounded.map(element=>{const rect=element.getBoundingClientRect();return [element.className,rect.left,rect.right];})}));
+ check(host.querySelector('[data-hvac-inspect-basic-charts]')===nodeCharts&&host.querySelector('[data-hvac-inspect-custom-controls]')===customControls&&JSON.stringify([...host.querySelectorAll('[data-hvac-inspect-node-visible]')].map(input=>input.dataset.hvacInspectNodeVisible))===JSON.stringify(nodeToggles),'equipment selection changed existing node UI');
+ check(!host.querySelector('[data-hvac-runtime-signal-list], .hvac-runtime-table, [data-hvac-runtime-source-detail], [data-hvac-runtime-decisions], select[data-hvac-runtime-profile], [data-hvac-runtime-frame]'),'equipment retained variable/spec tables or duplicate pickers');
+ check(label()==='01-01 01:00'&&finalRow()?.dataset.state==='allowed','Hourly1h did not bind exact control1h observation');
+ check([...stack().querySelectorAll('[data-hvac-runtime-availability-row]')].at(-1)===finalRow(),'final Availability is not bottom of stack');
+ check(stack().querySelector('[data-kind="schedule"]')&&stack().querySelector('[data-kind="manager"]'),'schedule/manager absent from stack');
  const fanControlCard=()=>[...host.querySelectorAll('.hvac-parameter-flow-stage.controls [data-hvac-flow-card]')].find(card=>card.querySelector('strong')?.textContent==='Match airflow');
- check(fanControlCard()&&!fanControlCard().querySelector('[data-hvac-runtime-card-value]'),'fan airflow controller borrowed an unrelated temperature sensor from the same equipment source');
- check(host.querySelector('[data-hvac-runtime-decisions] [data-hvac-runtime-operator="'+CSS.escape(fanFixture.profile.finalAvailability.op)+'"]'),'native run-permission AND/OR logic was omitted');
- const managerButton=host.querySelector('[data-hvac-runtime-source="'+CSS.escape(managerBinding.id)+'"]');check(managerButton,'availability owner is not inspectable');managerButton.click();
- const sourceDetail=()=>host.querySelector('[data-hvac-runtime-source-detail]'),sourceInput=(key,name)=>[...sourceDetail().querySelectorAll('dl > div')].find(row=>row.querySelector('dt')?.textContent.trim()===key+' · '+name)?.querySelector('dd')?.textContent;
- check(sourceDetail()?.querySelector('h4')?.textContent===managerBinding.source.objectName&&sourceDetail().textContent.includes(managerBinding.source.objectType),'manager source detail lost the executed object identity');
- const managerDefinition=fanFixture.profile.availabilityDefinitions.nodes.find(node=>node.code==='availability_manager'&&node.source.objectIndex===managerBinding.source.objectIndex);
- const originalManagerFields=(managerDefinition?.parameters||[]).filter(field=>field.fieldIndex>=0&&field.objectIndex===managerBinding.source.objectIndex);
- check(originalManagerFields.length&&originalManagerFields.every(field=>[...sourceDetail().querySelectorAll('dl > div')].some(row=>row.querySelector('dt')?.textContent.trim()===field.name&&row.querySelector('dd')?.textContent.trim()===field.value)),'original manager fields were replaced by an inferred reason');
- const nativeSourceFields=[fanFixture.profile.availabilityDefinitions,fanFixture.profile.onOff,fanFixture.profile.parameterControl].flatMap(graph=>graph?.nodes||[]).filter(node=>node.source.objectIndex===managerBinding.source.objectIndex).flatMap(node=>node.parameters||[]).filter(field=>field.fieldIndex>=0&&field.objectIndex===managerBinding.source.objectIndex);
- check([...sourceDetail().querySelector('dl').children].every(row=>nativeSourceFields.some(field=>row.querySelector('dt')?.textContent.trim()===field.name&&row.querySelector('dd')?.textContent.trim()===field.value)),'internal analysis metadata was presented as an original IDF field');
- check(sourceInput(managerContext.keyValue,managerContext.variableName)==='18 °C','manager detail did not show current collected reason-context values');
- runtimeFrame(1);check(sourceInput(managerContext.keyValue,managerContext.variableName)==='19 °C'&&host.querySelector('[data-hvac-runtime-source="'+CSS.escape(managerBinding.id)+'"]')?.getAttribute('aria-pressed')==='true','selected source context did not follow the shared logic frame');
- check(!fanControlCard().querySelector('[data-hvac-runtime-card-value]'),'runtime frame update attached an unrelated equipment temperature to the airflow controller');
- runtimeFrame(2);check(runtimeLabel().includes('00:45'),'runtime frame input/change did not select the exact Timestep');
- view('loop');check(slider().value==='2'&&label()==='01-01 03:00','runtime frame overwrote the Hourly loop snapshot');
- view('logic');check(runtimeSlider().value==='2'&&runtimeLabel().includes('00:45'),'view switch discarded runtime diagnostic position');
- select(runtimeChiller.name);view('logic');chooseProfile(chillerFixture);runtimeFrame(1);
- check(runtimeLabel().includes('00:30')&&host.textContent.includes(chillerFixture.component.objectName)&&!host.querySelector('[data-hvac-runtime-error]'),'another circuit borrowed the fan profile/frame');
- const dispatchContext=()=>host.querySelector('[data-hvac-runtime-dispatch]'),dispatchValue=()=>[...dispatchContext().querySelectorAll('dl > div')].find(row=>row.querySelector('dt')?.textContent.trim()===dispatchDemand.keyValue+' · '+dispatchDemand.variableName)?.querySelector('dd')?.textContent;
- const dispatchDefinitions=[chillerFixture.profile.onOff,chillerFixture.profile.parameterControl].flatMap(graph=>graph.nodes||[]).filter(node=>node.code==='plant_dispatch'),dispatchFields=dispatchDefinitions.flatMap(node=>node.parameters||[]).filter(field=>field.fieldIndex>=0);
- check(dispatchDefinitions.length&&dispatchFields.some(field=>/Lower Limit/.test(field.name))&&dispatchFields.some(field=>/Equipment List Name/.test(field.name)),'native chiller no longer covers source-backed range/list dispatch');
- check(dispatchContext()&&dispatchDefinitions.every(node=>dispatchContext().textContent.includes(node.source.objectName)&&dispatchContext().textContent.includes(node.source.objectType))&&dispatchFields.every(field=>[...dispatchContext().querySelectorAll('dl > div')].some(row=>row.querySelector('dt')?.textContent.trim()===field.name&&row.querySelector('dd')?.textContent.trim()===field.value)),'plant dispatch omitted original operation source/ranges/equipment list');
- const chillerDecisions=host.querySelector('[data-hvac-runtime-decisions]');
- check(chillerDecisions&&!chillerDecisions.querySelector('[data-hvac-runtime-condition="unknown"]')&&!chillerDecisions.textContent.includes('Runtime decision input')&&chillerDecisions.querySelector('[data-hvac-runtime-state="allowed"]'),'source-less runtime dispatch remained an unresolved Availability condition');
- check(dispatchValue()==='2.00 kW','dispatch did not show native reported demand on the selected Timestep: '+JSON.stringify({value:dispatchValue(),key:dispatchDemand.keyValue,variable:dispatchDemand.variableName}));runtimeFrame(2);check(dispatchValue()==='3.00 kW','dispatch context did not update with the shared control frame');runtimeFrame(1);
- select(runtimeFan.name);view('logic');chooseProfile(fanFixture);
- check(runtimeSlider().value==='2'&&runtimeLabel().includes('00:45'),'switching loops discarded the selected occurrence runtime frame');
- state.simulationResult={...runtimeResult,runId:'runtime-2'};simulation.renderSimulation();view('logic');chooseProfile(fanFixture);
- check(runtimeSlider().value==='0'&&runtimeLabel().includes('00:15'),'new simulation retained the prior run runtime timestamp');
-
- const runtimeCoil=addHourly(runtimeClone(fixtures,'coil'),coilFixture.topology.supplySide?.inletNode||'Native coil inlet');
- setReported(runtimeCoil,signal=>signal.role==='sensor'&&/temperature/i.test(signal.variableName),[22,23,24,25]);setReported(runtimeCoil,signal=>signal.role==='setpoint',[20]);
- setReported(runtimeCoil,signal=>signal.role==='actuator_request',[.8,.7,.6,.5]);setReported(runtimeCoil,signal=>signal.role==='actuator',[.3,.2,.1,0]);
- state.simulationResult={...runtimeResult,runId:'runtime-coil-cards',purposeResults:{hvacLoops:[runtimeCoil]}};simulation.renderSimulation();view('logic');chooseProfile(coilFixture);
+ check(fanControlCard()&&!fanControlCard().querySelector('[data-hvac-runtime-card-value]'),'fan controller borrowed unrelated temperature');
+ frame(1);check(label()==='01-01 02:00'&&finalRow()?.dataset.state==='blocked'&&stack().querySelector('[data-kind="manager"][data-decisive="true"]'),'ForceOff did not block final or mark deciding manager');
+ frame(2);check(label()==='01-01 03:00'&&finalRow()?.dataset.state==='allowed','CycleOn did not follow shared cursor');
+ const nodeTarget=host.querySelector('[data-hvac-inspect-node]');check(nodeTarget,'loop node is not selectable');nodeTarget.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+ check(!runtimePanel()&&host.querySelector('[data-hvac-inspect-basic-charts]')===nodeCharts&&host.querySelector('[data-hvac-inspect-custom-controls]')===customControls&&label()==='01-01 03:00','node selection changed existing UI/current frame');
+ chooseEquipment(coilFixture);check(runtimePanel()?.textContent.includes(coilFixture.component.objectName)&&!host.querySelector('[data-hvac-runtime-error]'),'same-loop equipment did not select exact controls');
+ select(runtimeChiller.name);check(label()==='01-01 03:00'&&!runtimePanel(),'loop switch retained another circuit equipment');chooseEquipment(chillerFixture);
+ check(runtimePanel()?.textContent.includes(chillerFixture.component.objectName)&&!host.querySelector('[data-hvac-runtime-error]'),'chiller borrowed fan/coil profile');
+ select(runtimeFan.name);check(label()==='01-01 03:00','loop switch discarded shared time');
+ state.simulationResult={...runtimeResult,runId:'runtime-2'};simulation.renderSimulation();check(slider().value==='0'&&label()==='01-01 01:00'&&!runtimePanel(),'new run retained prior time/equipment');
+ const runtimeCoil=withHourly(runtimeClone(fixtures,'coil'),coilFixture);
+ setReported(runtimeCoil,signal=>signal.role==='sensor'&&/temperature/i.test(signal.variableName),[22,22,22,22,23,23,23,23,24,24,24,24]);setReported(runtimeCoil,signal=>signal.role==='setpoint',[20]);
+ setReported(runtimeCoil,signal=>signal.role==='actuator_request',[.8,.8,.8,.8,.7,.7,.7,.7,.6,.6,.6,.6]);setReported(runtimeCoil,signal=>signal.role==='actuator',[.3,.3,.3,.3,.2,.2,.2,.2,.1,.1,.1,.1]);
+ state.simulationResult={...runtimeResult,runId:'runtime-coil-cards',purposeResults:{hvacLoops:[runtimeCoil]}};simulation.renderSimulation();chooseEquipment(coilFixture);
  const commandCard=()=>host.querySelector('.hvac-parameter-flow-stage.commands [data-hvac-flow-card]'),requestCardValue=()=>commandCard()?.querySelector('[data-hvac-runtime-card-value]')?.textContent,actualCardValue=()=>commandCard()?.querySelector('[data-hvac-runtime-card-actual]')?.textContent;
- check(requestCardValue()==='Requested: 0.8 kg/s'&&actualCardValue()==='Actual: 0.3 kg/s','command card conflated requested and actual actuator values');
- const originalCommandCard=commandCard();runtimeFrame(1);
- check(commandCard()===originalCommandCard&&requestCardValue()==='Requested: 0.7 kg/s'&&actualCardValue()==='Actual: 0.2 kg/s','runtime frame rebuilt the control graph or failed to update distinct actuator values');
-
- const missingRuntime=structuredClone(runtimeFan),required=missingRuntime.controlSignals.find(signal=>signal.required&&signal.role==='manager_status');
- check(required,'native fan fixture needs a reported manager for acquisition regression');missingRuntime.controlSeries=missingRuntime.controlSeries.filter(series=>series.sourceId!==required.seriesId);
- state.simulationResult={...runtimeResult,runId:'runtime-missing',purposeResults:{hvacLoops:[missingRuntime]}};simulation.renderSimulation();view('logic');chooseProfile(fanFixture);
- const acquisition=host.querySelector('[data-hvac-runtime-error]');
- check(acquisition&&acquisition.textContent.trim()&&host.textContent.includes(required.variableName),'missing required control output became an ordinary successful unknown row');
- view('loop');check(slider()&&!slider().disabled&&label()==='01-01 01:00','control acquisition failure destroyed retained Hourly loop values');
- const invalidRuntime=structuredClone(runtimeChiller),invalidProfile=invalidRuntime.operatingProfiles.find(profile=>profile.componentIndex===chillerFixture.component.objectIndex),invalidLayer=invalidProfile.availabilityLayers.find(layer=>layer.role==='plant_dispatch');
+ check(requestCardValue()==='Requested flow: 0.8 kg/s'&&actualCardValue()==='Actual: 0.3 kg/s','sequence conflated request/actual or joined Hourly row1 to Timestep00:15');
+ const originalCommandCard=commandCard();frame(1);
+ check(commandCard()===originalCommandCard&&requestCardValue()==='Requested flow: 0.7 kg/s'&&actualCardValue()==='Actual: 0.2 kg/s','shared frame rebuilt graph or failed to update exact values');
+ check([...host.querySelectorAll('.hvac-parameter-flow-stage.controls [data-hvac-runtime-card-value]')].some(value=>value.textContent==='Δ 3 °C'&&value.title.includes('23 °C − 20 °C')),'controller comparison did not follow current timestep');
+ commandCard().querySelector('button').click();check(host.querySelector('[data-hvac-runtime-history] .hvac-chart-svg')&&!host.querySelector('[data-hvac-parameter-inspector]:not([hidden])'),'sequence card opened raw parameter specs instead of history');
+ const requestedBinding=runtimeCoil.controlSignals.find(signal=>signal.role==='actuator_request'),requestedTrace=host.querySelector('[data-hvac-runtime-history] [data-hvac-chart-series="'+CSS.escape(requestedBinding.id)+'"]');
+ check(requestedTrace?.querySelectorAll('[data-hvac-chart-value]').length===12&&requestedTrace.querySelector('.is-frame')?.dataset.hvacChartValue==='0.7','selected sequence history sampled native Timestep data or marked wrong current time');
+ const iconOnly=withHourly(runtimeClone(fixtures,'fan'),fanFixture);iconOnly.components=[];
+ state.simulationResult={...runtimeResult,runId:'runtime-native-icon',purposeResults:{hvacLoops:[iconOnly]}};simulation.renderSimulation();
+ const nativeIcon=host.querySelector('[data-hvac-inspect-native-component="'+fanFixture.component.objectIndex+'"]');check(nativeIcon,'equipment with no Hourly response lacks clickable native loop icon');
+ nativeIcon.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+ check(runtimePanel()?.dataset.hvacRuntimeProfileId===String(fanFixture.component.objectIndex)&&!host.querySelector('[data-hvac-runtime-error]'),'native equipment keyboard selection did not resolve exact occurrence controls');
+ const localOnly=runtimeClone(fixtures,'local');check(!localOnly.topology,'native local fixture must not have a physical loop');
+ state.simulationResult={...runtimeResult,runId:'runtime-local-only',purposeResults:{hvacLoops:[localOnly]}};simulation.renderSimulation();
+ check(slider()?.max==='3'&&!slider().disabled&&label().includes('00:15')&&!host.querySelector('[data-hvac-inspect-topology]'),'control-only local result lost native common frames or fabricated a loop: '+JSON.stringify({max:slider()?.max,disabled:slider()?.disabled,label:label(),topology:host.querySelector('[data-hvac-inspect-topology]')?.outerHTML.slice(0,100),text:host.innerText.slice(0,200)}));
+ const localButton=host.querySelector('.hvac-inspection-local-equipment [data-hvac-inspect-native-component="'+localFixture.component.objectIndex+'"]');check(localButton,'local equipment controls became inaccessible without a profile picker');localButton.click();
+ check(runtimePanel()?.dataset.hvacRuntimeProfileId===String(localFixture.component.objectIndex)&&!host.querySelector('[data-hvac-runtime-error]'),'local equipment click lost exact source controls');
+ frame(2);check(label().includes('00:45')&&!host.querySelector('[data-hvac-runtime-error]'),'local equipment shared frame did not follow collected native Timestep');
+ const missingRuntime=withHourly(runtimeClone(fixtures,'fan'),fanFixture),required=missingRuntime.controlSignals.find(signal=>signal.required&&signal.role==='manager_status');
+ check(required,'fan lacks manager for acquisition regression');missingRuntime.controlSeries=missingRuntime.controlSeries.filter(series=>series.sourceId!==required.seriesId);
+ state.simulationResult={...runtimeResult,runId:'runtime-missing',purposeResults:{hvacLoops:[missingRuntime]}};simulation.renderSimulation();chooseEquipment(fanFixture);
+ check(host.querySelector('[data-hvac-runtime-error]')?.title.includes(required.variableName)&&host.querySelector('[data-hvac-inspect-topology]')&&slider()&&!slider().disabled,'diagnostics failure removed loop or became ordinary unknown');
+ const unmatched=withHourly(runtimeClone(fixtures,'coil'),coilFixture);
+ // Same-file Hourly row2 and nearby control rows do not establish a2h match.
+ for(const series of unmatched.controlSeries)series.points=series.points.filter(point=>point.label!=='01-01 02:00');
+ state.simulationResult={...runtimeResult,runId:'runtime-no-common-frame',purposeResults:{hvacLoops:[unmatched]}};simulation.renderSimulation();chooseEquipment(coilFixture);frame(1);
+ check(host.querySelector('[data-hvac-runtime-error]')&&!host.querySelector('[data-hvac-runtime-card-value]')?.textContent.includes('0.8'),'unmatched Hourly frame borrowed nearby runtime sample');
+ check(label()==='01-01 02:00'&&host.querySelector('[data-hvac-inspect-metric="temperature"]')?.textContent.includes('22'),'missing control timestep destroyed actual Hourly node snapshot');
+ const invalidRuntime=withHourly(runtimeClone(fixtures,'chiller'),chillerFixture),invalidProfile=invalidRuntime.operatingProfiles.find(profile=>profile.componentIndex===chillerFixture.component.objectIndex),invalidLayer=invalidProfile.availabilityLayers.find(layer=>layer.role==='plant_dispatch');
  for(const layer of [invalidLayer,...invalidProfile.configuredAvailabilityLayers.filter(layer=>layer.id===invalidLayer.id)])layer.expression={op:'unknown',reason:'missing_operation_schemes',source:layer.owner};
- state.simulationResult={...runtimeResult,runId:'runtime-definition-error',purposeResults:{hvacLoops:[invalidRuntime]}};simulation.renderSimulation();view('logic');chooseProfile(chillerFixture);
- const definitionError=host.querySelector('[data-hvac-runtime-error]');check(definitionError?.querySelector('h4')?.textContent==='Control definition error'&&definitionError.textContent.includes('missing_operation_schemes')&&!host.querySelector('[data-hvac-runtime-decisions]'),'invalid source definition was displayed as a successful unknown runtime condition');
- state.simulationResult={...result,runId:'legacy-logic'};simulation.renderSimulation();view('logic');
- check(host.querySelector('[data-hvac-runtime-error]')&&!runtimeSlider(),'old result silently synthesized operating logic from the editor');
- view('loop');check(slider()&&!slider().disabled,'legacy result lost its original loop inspection');
- check(JSON.stringify(fixtures)===fixturesBefore,'runtime UI mutated original executed fixtures');
+ state.simulationResult={...runtimeResult,runId:'runtime-definition-error',purposeResults:{hvacLoops:[invalidRuntime]}};simulation.renderSimulation();chooseEquipment(chillerFixture);
+ check(host.querySelector('[data-hvac-runtime-error]')?.title.includes('missing_operation_schemes'),'invalid native definition became successful runtime condition');
+ state.simulationResult={...result,runId:'legacy-unified'};simulation.renderSimulation();
+ check(!runtimePanel()&&slider()&&!slider().disabled&&host.querySelector('[data-hvac-inspect-basic-charts]')&&!host.querySelector('[data-hvac-inspect-view]'),'legacy result lost node inspection or fabricated runtime controls');
+ check(JSON.stringify(fixtures)===fixturesBefore,'unified UI mutated native definitions/observations');
  const review=new URLSearchParams(location.search);
  if(review.has('review')){
-  const family=review.get('review')==='error'?'fan':review.get('review'),fixture=fixtures.find(item=>item.family===family),captured=addHourly(runtimeClone(fixtures,family),fixture.topology.supplySide?.inletNode||'Native inlet');
-  if(review.get('review')==='error'){
-   const source=captured.controlSignals.find(signal=>signal.required&&signal.role==='manager_status');captured.controlSeries=captured.controlSeries.filter(series=>series.sourceId!==source.seriesId);
-  }
-  if(family==='coil'){
-   setReported(captured,signal=>signal.role==='sensor'&&/temperature/i.test(signal.variableName),[22]);setReported(captured,signal=>signal.role==='setpoint',[20]);setReported(captured,signal=>signal.role==='actuator_request',[.8]);setReported(captured,signal=>signal.role==='actuator',[.3]);
-  }
-  if(review.get('source')==='manager'){
-   const manager=captured.controlSignals.find(signal=>signal.role==='manager_status'),context=captured.controlSignals.find(signal=>signal.role==='sensor'&&signal.source?.objectIndex===manager.source.objectIndex&&/temperature/i.test(signal.variableName));
-   setReported(captured,signal=>signal.id===context.id,[18,19,20,21]);
-  }
+  const family=review.get('review')==='error'?'fan':review.get('review'),fixture=fixtures.find(item=>item.family===family),captured=withHourly(runtimeClone(fixtures,family),fixture);
+  if(review.get('review')==='error'){const source=captured.controlSignals.find(signal=>signal.required&&signal.role==='manager_status');captured.controlSeries=captured.controlSeries.filter(series=>series.sourceId!==source.seriesId);}
+  if(family==='coil'){setReported(captured,signal=>signal.role==='sensor'&&/temperature/i.test(signal.variableName),[22,23,24,25]);setReported(captured,signal=>signal.role==='setpoint',[20]);setReported(captured,signal=>signal.role==='actuator_request',[.8]);setReported(captured,signal=>signal.role==='actuator',[.3]);}
   const {setLanguage}=await import('/src/js/i18n.js');setLanguage(review.get('language')||'en');document.documentElement.dataset.theme=review.get('theme')||'dark';
-  state.simulationResult={...runtimeResult,runId:'runtime-review-'+family,purposeResults:{hvacLoops:[captured]}};simulation.renderSimulation();view('logic');chooseProfile(fixture);
-  if(review.get('review')!=='error')runtimeFrame(1);
-  if(review.get('source')==='manager'){
-   const manager=captured.controlSignals.find(signal=>signal.role==='manager_status');host.querySelector('[data-hvac-runtime-source="'+CSS.escape(manager.id)+'"]').click();
-  }
+  state.simulationResult={...runtimeResult,runId:'runtime-review-'+family,purposeResults:{hvacLoops:[captured]}};simulation.renderSimulation();chooseEquipment(fixture);if(review.get('review')!=='error')frame(1);
   if(review.get('focus')==='control')host.querySelector('[data-hvac-runtime-control]')?.scrollIntoView({block:'start'});
-  if(review.get('focus')==='source')host.querySelector('[data-hvac-runtime-source-detail]')?.scrollIntoView({block:'start'});
+  if(review.get('focus')==='availability')host.querySelector('[data-hvac-runtime-availability]')?.scrollIntoView({block:'start'});
+  if(review.get('focus')==='error')host.querySelector('[data-hvac-runtime-error]')?.scrollIntoView({block:'start'});
  }
  document.body.dataset.hvacFrameStatus='passed';document.getElementById('hvac-frame-result').textContent='passed';
 }catch(error){document.body.dataset.hvacFrameStatus='failed';document.getElementById('hvac-frame-result').textContent=error.stack;}

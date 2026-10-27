@@ -306,7 +306,7 @@ function renderObservation(record, selectedNode, selectedComponent) {
   </g>`;
 }
 
-export function renderHVACInspectionTopology({ loop, nodes = [], components = [], selectedNode = "", selectedComponent = "" } = {}) {
+export function renderHVACInspectionTopology({ loop, nodes = [], components = [], selectedNode = "", selectedComponent = "", operatingProfiles = [], selectedProfile = "" } = {}) {
   const graph = buildHVACInspectionTopology(loop || {}, { components });
   if (!loop || !graph.edges.length) return `<div class="hvac-inspect-topology-empty" data-hvac-inspect-topology-empty>${escapeHTML(label("simulation.hvacTopologyUnavailable", "Topology is not available for this result."))}</div>`;
   const equipmentKey = (item) => `${normalized(item.type)}\u0000${normalized(item.name)}`;
@@ -319,7 +319,14 @@ export function renderHVACInspectionTopology({ loop, nodes = [], components = []
   const layout = buildHVACLoopDiagramLayout(loop, { readOnly: true, width: diagramWidth, annotationBands: bands });
   const records = observationRecords(loop, layout, nodes, circuitComponents);
   placeAnchoredAnnotations(records, layout);
-  const overlay = records.map((record) => renderObservation(record, selectedNode, selectedComponent)).join("");
+  const equipmentTargets = layout.anchors.filter((anchor) => anchor.kind === "component").map((anchor) => {
+    const matches = operatingProfiles.filter((profile) => profile.definition.loopId === loop.id && profile.source.objectIndex === anchor.component?.objectIndex
+      && normalized(profile.source.objectType) === normalized(anchor.type) && normalized(profile.source.objectName) === normalized(anchor.name));
+    if (matches.length !== 1) return "";
+    const profile = matches[0], selected = profile.id === selectedProfile;
+    return `<circle class="hvac-inspect-equipment-target${selected ? " selected" : ""}" data-hvac-inspect-native-component="${escapeHTML(profile.source.objectIndex)}" cx="${anchor.x}" cy="${anchor.y}" r="27" role="button" tabindex="0" aria-pressed="${selected}" aria-label="${escapeHTML(anchor.name)}"><title>${escapeHTML(anchor.name)}</title></circle>`;
+  }).join("");
+  const overlay = equipmentTargets + records.map((record) => renderObservation(record, selectedNode, selectedComponent)).join("");
   const diagram = renderHVACLoopDiagram(loop, { readOnly: true, layout, overlay, hideLegend: true, svgClass: "hvac-inspect-topology-svg" });
   return `<section class="hvac-inspect-topology" data-hvac-inspect-topology="${escapeHTML(loop.id || loop.name)}">
     <div class="hvac-inspect-topology-viewport" style="--hvac-inspect-width:${layout.width}px" tabindex="0" aria-label="${escapeHTML(loop.name || label("simulation.hvacTopology", "Loop topology"))}" data-hvac-inspect-topology-viewport>${diagram}</div>

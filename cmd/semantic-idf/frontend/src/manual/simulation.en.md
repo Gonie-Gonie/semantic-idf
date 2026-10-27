@@ -361,65 +361,50 @@ Ports of another circuit are not annotated, and detached labels are omitted.
 
 ## HVAC operating logic after simulation {#hvac-runtime-control}
 
-Run **HVAC Loop Check**, then choose **Operating logic** in the result's HVAC
-view. It uses the availability, On / Off and parameter-control definitions
-from the executed input, including ExpandObjects output. Changing the editor
-after a run does not change the logic used to explain that result.
+Run **HVAC Loop Check**, then open **HVAC Loops**. The default view keeps the
+loop schematic, node charts, visibility controls, Y limits and custom graphs.
+The shared **Frame** slider stays at the bottom of this view.
 
-HVAC Loop Check adds the required source-specific **Timestep** outputs to the
-run copy: schedule values, native manager/loop status, relevant temperatures
-and targets, demand, actuator observations and equipment activity. The normal
-**Loop values** view retains its Hourly observations. The two views keep their
-own selected frame and chart state; equal frame numbers do not imply equal
-timestamps or reporting intervals. Zone / local equipment can be inspected
-without inventing a physical loop or a loop schematic.
+Click equipment in the schematic or its reported-value annotation to show its
+**Availability** stack and **Control sequence** directly below the loop.
+Selecting a node returns to the existing node inspection. Equipment definitions
+come from the executed input, including ExpandObjects output; later editor
+changes do not rewrite the result.
 
-Select equipment and a **Day**, **Week** or **Full run** window. The slider,
-previous/next buttons and availability patches select the same reported
-interval. The status rows identify the owning source and actual output. Click
-a source name to inspect its original definitions, including schedules,
-manager tolerances, cycling settings and controller parameters. Check up to
-four reported values, using at most two units, to compare their history.
+The Availability rows show the owning object, schedule or manager action, and
+the effective permission. The last row is the combined availability. Highlighted
+rows contributed to the current decision: an AND can be blocked by a failed
+condition; an OR can be satisfied by an allowed branch. Manager priority and
+fan overrides retain their native rules. **NoAction** means no override, not
+OFF; **ForceOff**, **CycleOn** and **Zone fans only** are distinct actions.
+Equipment response remains a separate fact: permission does not prove it ran.
 
-Read the result as several related questions:
+Control cards show the current sensed values, targets, valid comparisons,
+commands and responses. **Requested flow** and **Actual flow** are separate.
+The plots below the sequence group related signals by unit. Each checkbox shows
+its current value, and the plots mark the same selected time as the loop.
+Selecting a control card chooses its related observations. Day, Week and Full
+run change the displayed window without dropping native Timestep samples.
 
-- **Configured permission** tests the minimum configured conditions.
-  **Availability with manager actions** also applies reported manager actions and native override
-  priority. A manager's **NoAction** means it requests no override; it does not
-  mean OFF. **ForceOff**, **CycleOn** and **Zone fans only** have distinct
-  meanings. Hybrid ventilation uses its own status meanings.
-- **Plant dispatch context** separates equipment selection from availability.
-  It shows the operation scheme's native ranges and equipment list, together
-  with reported loop demand and the strategy's required inputs. An available
-  chiller is not necessarily selected or commanded to produce cooling.
-- The schedule observations are the values reported during execution, so
-  calendar handling and runtime overrides can differ from a static preview.
-  NightCycle inputs include the native control mode's relevant zones,
-  thermostat mode, temperatures and heating/cooling targets. Relevant manager
-  sensor and outside-air inputs remain available beside the action.
-- **Requested actuator value** and **Actual actuator value** distinguish a
-  controller's flow request from the flow the network supplied. Available
-  minimum/maximum actuator flow helps inspect a possible flow constraint.
-  A valid controller comparison shows **sensed value − setpoint** in the same
-  interval and unit. Its sign alone does not establish a control fault.
-- Reported demand and equipment activity provide operating context. Permission
-  alone does not prove the equipment ran; zero cooling output alone does not
-  establish that a fan or pump stopped. Performance curves remain in the
-  equipment response inspector's **Performance model** details.
+The view reuses data already loaded for the result. It uses **Timestep** for the
+whole loop only when every existing node and equipment property has one exact,
+source-backed Timestep counterpart preserving every previously valid observation
+time. If any property or its coverage is missing or ambiguous,
+the whole loop retains **Hourly** and all its original properties. Switching
+cadence adds no SQL reads or output requests. Control history keeps its native
+Timestep cadence in both cases; current values join only an exact, unique
+reported timestamp. SQL row numbers from different frequencies are not time
+identities. Missing intervals remain gaps and never borrow a nearby value.
 
-Timestep values summarize a zone reporting interval. System states can be
-averaged over several HVAC timesteps; a mixed or fractional status is not a
-single instantaneous action. Even an integer average cannot establish the
-event order or reproduce cycling timers, adaptive history or solver
-iterations. The view shows the observed context and source rules without
-inventing an unreported cause.
+Timestep observations can average several HVAC system steps. Mixed states do
+not describe one instantaneous action or reproduce timer history and solver
+iterations. The display presents observed rules and values without inventing
+an unreported operating cause.
 
-A missing required channel is a **control output acquisition error**. Inspect
-its exact source, output and frequency, then rerun HVAC Loop Check. It is not
-treated as OFF, zero, or an ordinary unresolved operating condition. Missing
-intervals remain gaps. Older saved results without executed control metadata
-or these outputs require a new run; switching views cannot recover data that
-the engine did not report.
+Required output gaps and invalid definitions are explicit diagnostic errors,
+with source evidence available on the error indicator. Older results without
+control outputs require another HVAC Loop Check. Existing loop/node results
+remain usable.
 
 ## HVAC time-series and scatter {#hvac-charts}
 
