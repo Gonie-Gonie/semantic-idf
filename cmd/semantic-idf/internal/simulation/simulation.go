@@ -1406,18 +1406,33 @@ func parseSQLResultsWithProgress(result *SimulationRunResult, runID string, prog
 		// The initial result stores only Series and HeatFlow. Read them
 		// independently: a slow or unavailable section must not discard another
 		// completed section. Purpose builders read their own remaining SQL data.
-		if len(result.Series) == 0 {
+		if len(result.Series) == 0 && len(result.HeatFlow.Zones) == 0 && goruntime.GOMAXPROCS(0) > 1 {
 			emitSimulationProgress(progress, runID, "sql_series", "running", "Reading SQL time series", 6, simulationProgressTotal, path)
-			if series, err := parseSimulationSQLSeriesForPlanWithProgress(file.Path, plan, work); err == nil && len(series) > 0 {
+			series, seriesErr, heatFlow, heatErr := parseInitialSQLSectionsInParallel(file.Path, plan, heatFlowSourceOptions{InputPath: result.InputPath, EngineVersion: result.EnergyPlusVersion}, work, func() {
+				emitSimulationProgress(progress, runID, "sql_heat_flow", "running", "Reading SQL heat-flow observations", 6, simulationProgressTotal, path)
+			})
+			if seriesErr == nil && len(series) > 0 {
 				result.Series = series
 				used = true
 			}
-		}
-		if len(result.HeatFlow.Zones) == 0 {
-			emitSimulationProgress(progress, runID, "sql_heat_flow", "running", "Reading SQL heat-flow observations", 6, simulationProgressTotal, path)
-			if heatFlow, err := parseSimulationHeatFlowSQLWithProgress(file.Path, work, heatFlowSourceOptions{InputPath: result.InputPath, EngineVersion: result.EnergyPlusVersion}); err == nil && len(heatFlow.Zones) > 0 {
+			if heatErr == nil && len(heatFlow.Zones) > 0 {
 				result.HeatFlow = heatFlow
 				used = true
+			}
+		} else {
+			if len(result.Series) == 0 {
+				emitSimulationProgress(progress, runID, "sql_series", "running", "Reading SQL time series", 6, simulationProgressTotal, path)
+				if series, err := parseSimulationSQLSeriesForPlanWithProgress(file.Path, plan, work); err == nil && len(series) > 0 {
+					result.Series = series
+					used = true
+				}
+			}
+			if len(result.HeatFlow.Zones) == 0 {
+				emitSimulationProgress(progress, runID, "sql_heat_flow", "running", "Reading SQL heat-flow observations", 6, simulationProgressTotal, path)
+				if heatFlow, err := parseSimulationHeatFlowSQLWithProgress(file.Path, work, heatFlowSourceOptions{InputPath: result.InputPath, EngineVersion: result.EnergyPlusVersion}); err == nil && len(heatFlow.Zones) > 0 {
+					result.HeatFlow = heatFlow
+					used = true
+				}
 			}
 		}
 		if !used {
@@ -1431,6 +1446,82 @@ func parseSQLResultsWithProgress(result *SimulationRunResult, runID string, prog
 	return used
 }
 
+// Only the active initial read overlaps its two independent sections. Each
+// reader owns its connection and output; callbacks and result assignment stay
+// on the caller. A single pending event bounds progress memory even when the
+// heat-flow section finishes long before the series section.
+func parseInitialSQLSectionsInParallel(path string, plan PurposeRunPlan, source heatFlowSourceOptions, work func(sqlWorkProgress), beginHeatFlow func()) ([]SimulationSeries, error, HeatFlowDataset, error) {
+	return runInitialSQLReadersInParallel(func() ([]SimulationSeries, error) {
+		return parseSimulationSQLSeriesForPlanWithProgress(path, plan, work)
+	}, func(report func(sqlWorkProgress)) (HeatFlowDataset, error) {
+		return parseSimulationHeatFlowSQLWithProgress(path, report, source)
+	}, work, beginHeatFlow)
+}
+
+func runInitialSQLReadersInParallel(seriesReader func() ([]SimulationSeries, error), heatFlowReader func(func(sqlWorkProgress)) (HeatFlowDataset, error), work func(sqlWorkProgress), beginHeatFlow func()) ([]SimulationSeries, error, HeatFlowDataset, error) {
+	type heatFlowResult struct {
+		dataset    HeatFlowDataset
+		err        error
+		panicked   bool
+		panicValue any
+	}
+	events := make(chan sqlWorkProgress, 1)
+	completed := make(chan heatFlowResult, 1)
+	go func() {
+		outcome := heatFlowResult{}
+		returned := false
+		defer func() {
+			if !returned {
+				outcome.panicked = true
+				outcome.panicValue = recover()
+			}
+			completed <- outcome
+			close(events)
+		}()
+		var report func(sqlWorkProgress)
+		if work != nil {
+			report = func(event sqlWorkProgress) {
+				select {
+				case events <- event:
+					return
+				default:
+				}
+				select {
+				case <-events:
+				default:
+				}
+				// This reader is the channel's only producer. The consumer can
+				// only free capacity, so replacing the pending event cannot block.
+				events <- event
+			}
+		}
+		outcome.dataset, outcome.err = heatFlowReader(report)
+		returned = true
+	}()
+	joined := false
+	defer func() {
+		if !joined {
+			// A parser or caller callback can unwind before the ordinary join.
+			// Drain silently; preserve that caller panic and finish the worker.
+			for range events {
+			}
+			<-completed
+		}
+	}()
+	series, seriesErr := seriesReader()
+	beginHeatFlow()
+	for event := range events {
+		work(event)
+	}
+	heatFlow := <-completed
+	joined = true
+	if heatFlow.panicked {
+		// Re-raise on the caller so its existing recovery boundary applies.
+		panic(heatFlow.panicValue)
+	}
+	return series, seriesErr, heatFlow.dataset, heatFlow.err
+}
+
 func parseCSVResults(result *SimulationRunResult) bool {
 	used := false
 	for _, file := range result.Files {
@@ -1441,7 +1532,9 @@ func parseCSVResults(result *SimulationRunResult) bool {
 		if result.PurposeRunPlan != nil {
 			plan = *result.PurposeRunPlan
 		}
-		summary, series, err := parseSimulationCSVForPlan(file.Path, plan)
+		// SQL (or an earlier CSV) already owns the displayed series. Preserve
+		// this file's full summary without building point arrays to discard.
+		summary, series, err := parseSimulationCSVData(file.Path, plan, len(result.Series) == 0)
 		if err != nil {
 			continue
 		}
@@ -1608,6 +1701,10 @@ func parseSimulationCSV(path string) (CSVSummary, []SimulationSeries, error) {
 }
 
 func parseSimulationCSVForPlan(path string, plan PurposeRunPlan) (CSVSummary, []SimulationSeries, error) {
+	return parseSimulationCSVData(path, plan, true)
+}
+
+func parseSimulationCSVData(path string, plan PurposeRunPlan, retainSeries bool) (CSVSummary, []SimulationSeries, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return CSVSummary{}, nil, err
@@ -1620,22 +1717,27 @@ func parseSimulationCSVForPlan(path string, plan PurposeRunPlan) (CSVSummary, []
 		return CSVSummary{}, nil, err
 	}
 	accumulators := make([]columnAccumulator, len(header))
-	purposeSelection := newPurposeSeriesSelection(plan)
-	plotSelection := newPurposePlotSeriesSelection(plan)
-	timestepSelection := newPurposeTimestepSeriesSelection(plan)
-	detailedSelection := newPurposeDetailedSeriesSelection(plan)
-	includeSeries := make([]bool, len(header))
-	fullPlotSeries := make([]bool, len(header))
 	for index, name := range header {
 		accumulators[index] = columnAccumulator{index: index, name: strings.TrimSpace(name), min: math.Inf(1), max: math.Inf(-1)}
-		keyValue, variableName := splitPurposeSeriesColumn(name)
-		frequency := purposeSeriesFrequency(SimulationSeries{Column: name})
-		timestep := timestepSelection.matches(keyValue, variableName) && purposeTimestepFrequency(frequency)
-		detailed := detailedSelection.matches(keyValue, variableName) && purposeDetailedFrequency(frequency)
-		includeSeries[index] = index <= maxCSVSeriesColumns || purposeSelection.matches(keyValue, variableName) || timestep || detailed
-		fullPlotSeries[index] = plotSelection.matches(keyValue, variableName) && hvacSeriesIsHourly(SimulationSeries{Column: name}) || timestep || detailed
 	}
-	seriesPoints := make(map[int][]SimulationPoint)
+	var includeSeries, fullPlotSeries []bool
+	var seriesPoints map[int][]SimulationPoint
+	if retainSeries {
+		purposeSelection := newPurposeSeriesSelection(plan)
+		plotSelection := newPurposePlotSeriesSelection(plan)
+		timestepSelection := newPurposeTimestepSeriesSelection(plan)
+		detailedSelection := newPurposeDetailedSeriesSelection(plan)
+		includeSeries, fullPlotSeries = make([]bool, len(header)), make([]bool, len(header))
+		seriesPoints = make(map[int][]SimulationPoint)
+		for index, name := range header {
+			keyValue, variableName := splitPurposeSeriesColumn(name)
+			frequency := purposeSeriesFrequency(SimulationSeries{Column: name})
+			timestep := timestepSelection.matches(keyValue, variableName) && purposeTimestepFrequency(frequency)
+			detailed := detailedSelection.matches(keyValue, variableName) && purposeDetailedFrequency(frequency)
+			includeSeries[index] = index <= maxCSVSeriesColumns || purposeSelection.matches(keyValue, variableName) || timestep || detailed
+			fullPlotSeries[index] = plotSelection.matches(keyValue, variableName) && hvacSeriesIsHourly(SimulationSeries{Column: name}) || timestep || detailed
+		}
+	}
 	rowCount := 0
 	for {
 		record, err := reader.Read()
@@ -1647,7 +1749,7 @@ func parseSimulationCSVForPlan(path string, plan PurposeRunPlan) (CSVSummary, []
 		}
 		rowCount++
 		label := ""
-		if len(record) > 0 {
+		if retainSeries && len(record) > 0 {
 			label = strings.TrimSpace(record[0])
 		}
 		for index := 1; index < len(record) && index < len(accumulators); index++ {
@@ -1665,7 +1767,7 @@ func parseSimulationCSVForPlan(path string, plan PurposeRunPlan) (CSVSummary, []
 			if value > acc.max {
 				acc.max = value
 			}
-			if includeSeries[index] {
+			if retainSeries && includeSeries[index] {
 				seriesPoints[index] = append(seriesPoints[index], SimulationPoint{X: rowCount, Label: label, Value: value})
 			}
 		}

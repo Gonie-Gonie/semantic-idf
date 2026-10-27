@@ -8,6 +8,41 @@ import (
 )
 
 func TestAnalyzeHVACBuildsLoopAndZoneRelations(t *testing.T) {
+	t.Run("shared equipment relation ordering", func(t *testing.T) {
+		want := []HVACCrossLoopRelation{
+			{LoopName: "OtherTower", LoopType: "CondenserLoop", ComponentType: "Chiller:Electric:EIR", ComponentName: "Other Chiller"},
+			{LoopName: "TowerWaterSys", LoopType: "CondenserLoop", ComponentType: "Chiller:Electric:EIR", ComponentName: "CoolSys1 Chiller 1"},
+			{LoopName: "TowerWaterSys", LoopType: "CondenserLoop", ComponentType: "Chiller:Electric:EIR", ComponentName: "CoolSys1 Chiller 2"},
+			{LoopName: "TowerWaterSys", LoopType: "CondenserLoop", ComponentType: "Chiller:Electric:ReformulatedEIR", ComponentName: "CoolSys1 Chiller 3"},
+			{LoopName: "TowerWaterSys", LoopType: "PlantLoop", ComponentType: "Boiler:HotWater", ComponentName: "Backup"},
+		}
+		ctx := &hvacContext{componentLoopNames: map[string]map[string]string{}, componentLoopTypes: map[string]map[string]string{}}
+		components := []HVACComponent{}
+		for _, relation := range want {
+			component := HVACComponent{ObjectType: relation.ComponentType, ObjectName: relation.ComponentName}
+			key := hvacComponentKey(component)
+			ctx.componentLoopNames[key] = map[string]string{"CoolSys1": "CoolSys1", relation.LoopName: relation.LoopName}
+			ctx.componentLoopTypes[key] = map[string]string{"CoolSys1": "PlantLoop", relation.LoopName: relation.LoopType}
+			components = append(components, component)
+		}
+		expected, _ := json.Marshal(want)
+		orders := map[string]bool{}
+		first, different := "", ""
+		for repeat := 0; repeat < 64; repeat++ {
+			loops := []HVACLoop{{Name: "CoolSys1", Type: "PlantLoop", SupplySide: HVACLoopSide{Branches: []HVACBranch{{Components: append([]HVACComponent{}, components...)}}}}}
+			applyCrossLoopRelations(ctx, loops)
+			got, _ := json.Marshal(loops[0].RelatedLoops)
+			orders[string(got)] = true
+			if first == "" {
+				first = string(got)
+			} else if string(got) != first {
+				different = string(got)
+			}
+		}
+		if len(orders) != 1 || first != string(expected) {
+			t.Fatalf("shared equipment produced %d orders across 64 repeats:\nfirst %s\ndifferent %s\nwant %s", len(orders), first, different, expected)
+		}
+	})
 	doc := Document{Objects: []Object{
 		{Index: 0, Type: "AirLoopHVAC", Fields: []Field{
 			{Value: "Main Air Loop"},

@@ -296,6 +296,12 @@ does not discard the other; CSV/ESO fill missing or failed sections. Energy,
 Integrity, and Comfort builders read their own purpose data without repeating
 those computations in the initial read.
 
+On multicore runs the initial SQL read overlaps at most these two independent
+sections, each with its own read-only connection and output. Progress callbacks
+and result assignment remain on the caller, with one pending Heat Flow progress
+event. Both readers finish before returning, including error or panic paths.
+Already-filled sections and single-core runs retain sequential reading.
+
 `parseSimulationSQL` is a combined context-aware entrypoint for series, energy,
 heat flow, integrity, and comfort unmet hours. It retains partial data, checks
 cancellation between phases, and has an elapsed-time cutoff. The runner's

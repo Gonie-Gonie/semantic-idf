@@ -1,16 +1,54 @@
 package simulation
 
 import (
+	"context"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"fmt"
-	"math"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 )
+
+type epathFanPoolQuery struct {
+	text string
+	args []driver.NamedValue
+}
+
+type epathFanPoolConnector struct {
+	source  driver.Driver
+	path    string
+	queries *[]epathFanPoolQuery
+}
+
+func (connector epathFanPoolConnector) Driver() driver.Driver { return connector.source }
+
+func (connector epathFanPoolConnector) Connect(context.Context) (driver.Conn, error) {
+	connection, err := connector.source.Open(connector.path)
+	if err != nil {
+		return nil, err
+	}
+	return epathFanPoolConnection{Conn: connection, queries: connector.queries}, nil
+}
+
+type epathFanPoolConnection struct {
+	driver.Conn
+	queries *[]epathFanPoolQuery
+}
+
+func (connection epathFanPoolConnection) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	queryer, ok := connection.Conn.(driver.QueryerContext)
+	if !ok {
+		return nil, driver.ErrSkip
+	}
+	if strings.Contains(strings.ToLower(query), "from reportdata ") {
+		*connection.queries = append(*connection.queries, epathFanPoolQuery{text: query, args: append([]driver.NamedValue(nil), args...)})
+	}
+	return queryer.QueryContext(ctx, query, args)
+}
 
 func epathFanPoolSQL(t *testing.T, poolCount int) (*sql.DB, string) {
 	t.Helper()
@@ -138,10 +176,52 @@ func TestEnergyPathReportedFanPoolsHourlySQLPrivateAndExact(t *testing.T) {
 	for _, count := range []int{2, 4} {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
 			db, path := epathFanPoolSQL(t, count)
+			if count == 4 {
+				// Physical storage order must not replace each dictionary's
+				// original chronological floating-point accumulation sequence.
+				if _, err := db.Exec(`UPDATE ReportData SET ReportDataIndex=-ReportDataIndex`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			queries := []epathFanPoolQuery{}
+			observed := sql.OpenDB(epathFanPoolConnector{source: db.Driver(), path: path, queries: &queries})
+			t.Cleanup(func() { observed.Close() })
 			plan := &PurposeRunPlan{BasicEnergyDetail: PurposeBasicEnergyDetailEnergyPath}
-			pools, err := readEnergyPathFanPools(db, "eplusout.sql", plan)
+			pools, err := readEnergyPathFanPools(observed, "eplusout.sql", plan)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if len(queries) != 1 {
+				t.Fatalf("%d pools required %d ReportData reads; want one batched scan", count, len(queries))
+			}
+			queryArgs := make([]any, len(queries[0].args))
+			for index, arg := range queries[0].args {
+				queryArgs[index] = arg.Value
+			}
+			queryPlan, err := db.Query("EXPLAIN QUERY PLAN "+queries[0].text, queryArgs...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			scans, details := 0, []string{}
+			for queryPlan.Next() {
+				var id, parent, unused int
+				var detail string
+				if err := queryPlan.Scan(&id, &parent, &unused, &detail); err != nil {
+					queryPlan.Close()
+					t.Fatal(err)
+				}
+				details = append(details, detail)
+				if detail == "SCAN r" {
+					scans++
+				}
+			}
+			if err := queryPlan.Err(); err != nil {
+				queryPlan.Close()
+				t.Fatal(err)
+			}
+			queryPlan.Close()
+			if scans != 1 {
+				t.Fatalf("native unindexed ReportData should be scanned once: %v", details)
 			}
 			if len(pools) != count {
 				t.Fatalf("pool count=%d", len(pools))
@@ -152,8 +232,11 @@ func TestEnergyPathReportedFanPoolsHourlySQLPrivateAndExact(t *testing.T) {
 				}
 				for month, value := range pool.Monthly {
 					days := time.Date(2017, time.Month(month)+1, 0, 0, 0, 0, 0, time.UTC).Day()
-					want := float64(i+1) * 12345.6789 * float64(days*24) / 3600000
-					if math.Abs(value-want) > 1e-9 {
+					want := 0.0
+					for hour := 0; hour < days*24; hour++ {
+						want += float64(i+1) * 12345.6789 / 3600000
+					}
+					if value != want {
 						t.Fatalf("pool %d month%d=%g want raw-then-summed %g", i, month, value, want)
 					}
 				}
@@ -292,6 +375,8 @@ func TestEnergyPathReportedFanPoolsSQLUnknownAndKnownZero(t *testing.T) {
 		{"duplicate hour", `INSERT INTO ReportData(TimeIndex,ReportDataDictionaryIndex,Value) VALUES(1,100,1)`, true, false},
 		{"negative", `UPDATE ReportData SET Value=-1 WHERE ReportDataDictionaryIndex=100 AND TimeIndex=1`, true, false},
 		{"duplicate dictionary", `INSERT INTO ReportDataDictionary VALUES(999,'vav_1','Air System Fan Electricity Energy','J',0,'Hourly','HVAC System')`, true, true},
+		{"invalid pool skipped", `UPDATE ReportDataDictionary SET Units='W' WHERE ReportDataDictionaryIndex=100; UPDATE ReportData SET Value='not numeric' WHERE ReportDataDictionaryIndex=100`, true, true},
+		{"all invalid pools skipped", `UPDATE ReportDataDictionary SET Units='W' WHERE ReportDataDictionaryIndex IN (100,101); UPDATE ReportData SET Value='not numeric' WHERE ReportDataDictionaryIndex IN (100,101)`, true, true},
 		{"mixed year", `UPDATE "Time" SET Year=2018 WHERE TimeIndex=1`, true, false},
 		{"incomplete weather month", `DELETE FROM "Time" WHERE TimeIndex=1`, true, false},
 	} {

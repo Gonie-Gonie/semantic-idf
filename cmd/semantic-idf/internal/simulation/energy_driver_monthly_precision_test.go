@@ -54,6 +54,11 @@ func TestEnergyDriverGrossDirectionsPreserveNativeIntervalBeforeEverySum(t *test
 			if err := db.Close(); err != nil {
 				t.Fatal(err)
 			}
+			if activity.name == "small" {
+				t.Run("dictionary metadata preserves interval arithmetic", func(t *testing.T) {
+					assertEnergyDriverDirectionalDictionaryArithmetic(t, path)
+				})
+			}
 			report := idf.GeometryReport{Zones: []idf.GeometryZone{{Name: "Office"}}, Surfaces: []idf.GeometrySurface{{ID: "a", Name: "Wall A", ZoneName: "Office", SurfaceType: "Wall", OutsideBoundary: "Outdoors"}, {ID: "b", Name: "Wall B", ZoneName: "Office", SurfaceType: "Wall", OutsideBoundary: "Outdoors"}}}
 			plan := &PurposeRunPlan{BasicEnergyDetail: PurposeBasicEnergyDetailEnergyPath}
 			legacy, err := parseSimulationEnergyExplanationSQLWithDriverContext(path, plan, newEnergyDriverBuildContext(report))
@@ -150,6 +155,87 @@ func TestEnergyDriverGrossDirectionsPreserveNativeIntervalBeforeEverySum(t *test
 						}
 					})
 				}
+			}
+		})
+	}
+}
+
+func assertEnergyDriverDirectionalDictionaryArithmetic(t *testing.T, path string) {
+	t.Helper()
+	db, err := openSimulationSQLiteReadOnly(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, test := range []struct {
+		name, source, unit, frequency string
+		convert                       func(float64) float64
+		ignored, nonHeat              bool
+	}{
+		{"surface J reversal", "Surface Inside Face Convection Heat Gain Energy", "J", "Zone Timestep", func(value float64) float64 { return (value * (1.0 / 3600000)) * -1 }, false, false},
+		{"storage W reversal", "Zone Air Heat Balance Air Energy Storage Rate", " W ", "Timestep", func(value float64) float64 { return (value * .25 / 1000) * -1 }, false, false},
+		{"surface kW reversal", "Surface Inside Face Convection Heat Gain Rate", "k_W", "Zone Timestep", func(value float64) float64 { return (value * .25) * -1 }, false, false},
+		{"conduction kJ", "Surface Inside Face Conduction Heat Transfer Energy", " k_J ", "Zone Timestep", func(value float64) float64 { return value * (1.0 / 3600) }, false, false},
+		{"conduction GJ", "Surface Inside Face Conduction Heat Transfer Energy", "GJ", "Zone Timestep", func(value float64) float64 { return value * 277.7777777778 }, false, false},
+		{"conduction Wh", "Surface Inside Face Conduction Heat Transfer Energy", "Wh", "Zone Timestep", func(value float64) float64 { return value * (1.0 / 1000) }, false, false},
+		{"conduction kWh", "Surface Inside Face Conduction Heat Transfer Energy", "kWh", "Zone Timestep", func(value float64) float64 { return value }, false, false},
+		{"unsupported unit", "Surface Inside Face Conduction Heat Transfer Energy", "unknown", "Zone Timestep", nil, false, false},
+		{"unsupported rate unit", "Zone Air Heat Balance Air Energy Storage Rate", "Watt", "Zone Timestep", nil, false, false},
+		{"monthly excluded", "Surface Inside Face Conduction Heat Transfer Energy", "J", "Monthly", nil, true, false},
+		{"explicit gain excluded", "Zone Windows Total Heat Gain Energy", "J", "Zone Timestep", nil, true, false},
+		{"nonheat excluded", "Surface Inside Face Conduction Heat Transfer Energy", "J", "Zone Timestep", nil, true, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			definition, exists := energyHeatAliasDefinitionForName(test.source)
+			if !exists {
+				t.Fatalf("native heat alias is missing: %s", test.source)
+			}
+			// Reusing the source index across independently interpreted reads
+			// must never borrow another run's units, frequency or physical sign.
+			dictionary := energyExplanationDictionary{row: sqlOutputDictionaryRow{index: 700, keyValue: "Office", name: test.source, units: test.unit}, reportingFrequency: test.frequency, heat: &definition}
+			if test.nonHeat {
+				dictionary.heat = nil
+			}
+			conversion := prepareEnergyExplanationValueConversion(dictionary)
+			dictionary.valueConversion = &conversion
+			collector := newEnergyDriverDirectionalCollector(db, true)
+			if collector == nil {
+				t.Fatal("native interval collector is missing")
+			}
+			collector.observe(SQLSeriesRow{DictionaryIndex: 700, TimeIndex: -1}, dictionary)
+			if len(collector.series) != 0 {
+				t.Fatal("an excluded timestamp created directional observation state")
+			}
+			values := []float64{12345.6789012345, -98765.4321098765, 0, math.Copysign(0, -1), 1.0000000000000002e-8, -1e17, 1e17}
+			gain, loss := 0.0, 0.0
+			for index := int64(1); index <= 96; index++ {
+				frame := collector.times[index]
+				value := values[(index-1)%int64(len(values))]
+				collector.observe(SQLSeriesRow{DictionaryIndex: 700, TimeIndex: index, Month: sql.NullInt64{Int64: int64(frame.month), Valid: true}, Day: sql.NullInt64{Int64: int64(frame.day), Valid: true}, Hour: sql.NullInt64{Int64: int64(frame.hour), Valid: true}, Minute: sql.NullInt64{Int64: int64(frame.minute), Valid: true}, IntervalType: frame.intervalType, Value: sql.NullFloat64{Float64: value, Valid: true}}, dictionary)
+				if test.convert != nil {
+					signed := test.convert(value)
+					gain += math.Max(signed, 0)
+					loss += math.Max(-signed, 0)
+				}
+			}
+			gross := collector.values(dictionary)
+			if test.ignored {
+				if gross != nil || len(collector.series) != 0 {
+					t.Fatal("an excluded dictionary created native gross evidence")
+				}
+				return
+			}
+			if gross == nil || !reflect.DeepEqual(gross.sourceIDs, []string{"sql-rdd-700"}) {
+				t.Fatal("native dictionary/source identity was lost")
+			}
+			if test.convert == nil {
+				if gross.observed[1] || len(gross.gain) != 0 || len(gross.loss) != 0 {
+					t.Fatal("invalid native units became zero or valid directional evidence")
+				}
+				return
+			}
+			if !gross.observed[1] || math.Float64bits(gross.gain[1]) != math.Float64bits(gain) || math.Float64bits(gross.loss[1]) != math.Float64bits(loss) {
+				t.Fatalf("native gross arithmetic/order changed: gain %.17g want %.17g; loss %.17g want %.17g; observed=%t", gross.gain[1], gain, gross.loss[1], loss, gross.observed[1])
 			}
 		})
 	}

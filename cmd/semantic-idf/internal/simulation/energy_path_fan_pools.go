@@ -112,22 +112,46 @@ WHERE EnvironmentPeriodIndex=? AND IntervalType=1 AND (WarmupFlag=0 OR WarmupFla
 		return nil, err
 	}
 	times.Close()
+	type poolValues struct {
+		index   int
+		sums    map[int]float64
+		counts  map[int]int
+		invalid map[int]bool
+		seen    map[int64]bool
+	}
+	accumulators := []*poolValues{}
+	byDictionary := map[int][]*poolValues{}
+	placeholders := []string{}
+	args := []any{}
 	for index := range pools {
 		if pools[index].Invalid {
 			continue
 		}
-		values, err := db.Query(`SELECT r.TimeIndex, r.Value FROM ReportData r JOIN "Time" t ON t.TimeIndex=r.TimeIndex
-WHERE r.ReportDataDictionaryIndex=? AND t.EnvironmentPeriodIndex=? AND t.IntervalType=1
-AND (t.WarmupFlag=0 OR t.WarmupFlag IS NULL) ORDER BY r.TimeIndex`, indices[index], environment)
+		state := &poolValues{index: index, sums: map[int]float64{}, counts: map[int]int{}, invalid: map[int]bool{}, seen: map[int64]bool{}}
+		accumulators = append(accumulators, state)
+		dictionary := indices[index]
+		if len(byDictionary[dictionary]) == 0 {
+			placeholders = append(placeholders, "?")
+			args = append(args, dictionary)
+		}
+		byDictionary[dictionary] = append(byDictionary[dictionary], state)
+	}
+	if len(accumulators) > 0 {
+		// Native ReportData has no dictionary index. One filtered scan avoids
+		// rescanning the annual table for every AirLoop. Time-first ordering
+		// retains each pool's original floating-point accumulation sequence.
+		args = append(args, environment)
+		values, err := db.Query(`SELECT r.ReportDataDictionaryIndex, r.TimeIndex, r.Value FROM ReportData r JOIN "Time" t ON t.TimeIndex=r.TimeIndex
+WHERE r.ReportDataDictionaryIndex IN (`+strings.Join(placeholders, ",")+`) AND t.EnvironmentPeriodIndex=? AND t.IntervalType=1
+AND (t.WarmupFlag=0 OR t.WarmupFlag IS NULL) ORDER BY r.TimeIndex, r.ReportDataDictionaryIndex`, args...)
 		if err != nil {
 			return nil, err
 		}
-		sums, counts, invalid := map[int]float64{}, map[int]int{}, map[int]bool{}
-		seen := map[int64]bool{}
 		for values.Next() {
+			var dictionary int
 			var id int64
 			var value sql.NullFloat64
-			if err := values.Scan(&id, &value); err != nil {
+			if err := values.Scan(&dictionary, &id, &value); err != nil {
 				values.Close()
 				return nil, err
 			}
@@ -135,22 +159,26 @@ AND (t.WarmupFlag=0 OR t.WarmupFlag IS NULL) ORDER BY r.TimeIndex`, indices[inde
 			if !exists {
 				continue
 			}
-			counts[month]++
-			if seen[id] || !value.Valid || math.IsNaN(value.Float64) || math.IsInf(value.Float64, 0) || value.Float64 < 0 {
-				invalid[month] = true
-			} else {
-				sums[month] += value.Float64 / 3600000 // no per-hour rounding
+			for _, state := range byDictionary[dictionary] {
+				state.counts[month]++
+				if state.seen[id] || !value.Valid || math.IsNaN(value.Float64) || math.IsInf(value.Float64, 0) || value.Float64 < 0 {
+					state.invalid[month] = true
+				} else {
+					state.sums[month] += value.Float64 / 3600000 // no per-hour rounding
+				}
+				state.seen[id] = true
 			}
-			seen[id] = true
 		}
 		if err := values.Err(); err != nil {
 			values.Close()
 			return nil, err
 		}
 		values.Close()
+	}
+	for _, state := range accumulators {
 		for month, expected := range expectedCounts {
-			if !badMonths[month] && !invalid[month] && counts[month] == expected && monthCounts[month] == expected && energyPathFinite(sums[month]) {
-				pools[index].Monthly[month] = sums[month]
+			if !badMonths[month] && !state.invalid[month] && state.counts[month] == expected && monthCounts[month] == expected && energyPathFinite(state.sums[month]) {
+				pools[state.index].Monthly[month] = state.sums[month]
 			}
 		}
 	}

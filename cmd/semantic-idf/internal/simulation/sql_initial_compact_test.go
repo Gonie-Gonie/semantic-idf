@@ -7,6 +7,8 @@ import (
 	"math"
 	"path/filepath"
 	"reflect"
+	goruntime "runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -94,6 +96,44 @@ func initialCompactSQLFixture(t *testing.T, timeType string) string {
 }
 
 func TestInitialCompactSQLMatchesOriginalWalkerAcrossSamplingAndCaps(t *testing.T) {
+	for _, test := range []struct {
+		name, table, values      string
+		wantFrames, wantOriginal int
+		wantError                bool
+	}{
+		{"NULL and invalid-only value frames", `CREATE TABLE Time(TimeIndex INTEGER PRIMARY KEY,Month INTEGER,Day INTEGER,Hour INTEGER,Minute INTEGER)`, `INSERT INTO ReportData VALUES(1,1,0),(2,1,NULL),(3,1,1e999),(4,1,NULL)`, 4, 4, false},
+		{"all NULL time keys", `CREATE TABLE Time(TimeIndex INTEGER PRIMARY KEY,Month INTEGER,Day INTEGER,Hour INTEGER,Minute INTEGER)`, `INSERT INTO ReportData VALUES(NULL,1,0)`, 0, 0, false},
+		{"mixed NULL time key error", `CREATE TABLE Time(TimeIndex INTEGER PRIMARY KEY,Month INTEGER,Day INTEGER,Hour INTEGER,Minute INTEGER)`, `INSERT INTO ReportData VALUES(1,1,0),(NULL,1,1)`, 0, 0, true},
+		{"orphan BLOB key distinct count", `CREATE TABLE Time(TimeIndex INTEGER PRIMARY KEY,Month INTEGER,Day INTEGER,Hour INTEGER,Minute INTEGER)`, `INSERT INTO ReportData VALUES(1,1,0),(x'31',1,7)`, 1, 2, false},
+		{"non-rowid integer key distinct count", `CREATE TABLE Time(TimeIndex INTEGER PRIMARY KEY DESC,Month INTEGER,Day INTEGER,Hour INTEGER,Minute INTEGER)`, `INSERT INTO ReportData VALUES(1,1,0),(x'31',1,7)`, 1, 2, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, path := compactReportDataFixture(t,
+				`CREATE TABLE ReportDataDictionary(ReportDataDictionaryIndex INTEGER PRIMARY KEY,KeyValue TEXT,Name TEXT,Units TEXT,ReportingFrequency TEXT,IsMeter INTEGER)`,
+				test.table,
+				`CREATE TABLE ReportData(TimeIndex INTEGER,ReportDataDictionaryIndex INTEGER,Value REAL)`,
+				`INSERT INTO ReportDataDictionary VALUES(1,' Office ','Zone Air Heat Balance Internal Convective Heat Gain Rate','W','Hourly',0)`,
+				`INSERT INTO Time VALUES(1,1,1,1,0),(2,1,1,2,0),(3,1,1,3,0),(4,1,1,4,0)`,
+				test.values,
+			)
+			data, err := parseSimulationHeatFlowSQL(path)
+			if (err != nil) != test.wantError {
+				t.Fatalf("time key behavior changed: %v", err)
+			}
+			if test.wantError {
+				return
+			}
+			if data.FrameCount != test.wantFrames || data.OriginalFrameCount != test.wantOriginal {
+				t.Fatalf("native or SQL-distinct count changed: %d/%d", data.FrameCount, data.OriginalFrameCount)
+			}
+			if test.wantFrames == 4 {
+				zone := data.Zones[0]
+				if !reflect.DeepEqual(zone.Observed[0], []bool{true, false, false, false}) || zone.Values[0][0] != 0 || data.Labels[3] != "01-01 04:00" {
+					t.Fatal("known zero or invalid-only native frame was lost", data)
+				}
+			}
+		})
+	}
 	// Changing only Time's declared affinity forces the preserved original
 	// walker. Its canonical decimal IDs still join exactly, while ordering is
 	// controlled by INTEGER ReportData.TimeIndex on both databases. This tests
@@ -116,6 +156,111 @@ func TestInitialCompactSQLMatchesOriginalWalkerAcrossSamplingAndCaps(t *testing.
 		}
 	}
 	plan := PurposeRunPlan{Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy, SimulationPurposeZoneHeatFlow}}
+	t.Run("bounded parallel initial readers", func(t *testing.T) {
+		for _, location := range []string{"series parser", "heat-flow parser", "caller progress"} {
+			t.Run(location+" panic joins worker", func(t *testing.T) {
+				marker := &struct{ location string }{location}
+				started, seriesUnwinding, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
+				seriesReader := func() ([]SimulationSeries, error) {
+					<-started
+					if location == "series parser" {
+						defer close(seriesUnwinding)
+						panic(marker)
+					}
+					return nil, nil
+				}
+				heatFlowReader := func(report func(sqlWorkProgress)) (HeatFlowDataset, error) {
+					defer close(finished)
+					close(started)
+					if location == "series parser" {
+						<-seriesUnwinding
+						goruntime.Gosched()
+					}
+					if location == "heat-flow parser" {
+						panic(marker)
+					}
+					report(sqlWorkProgress{Unit: "rows", Completed: 7, Finished: true})
+					return HeatFlowDataset{}, nil
+				}
+				var recovered any
+				func() {
+					defer func() { recovered = recover() }()
+					runInitialSQLReadersInParallel(seriesReader, heatFlowReader, func(sqlWorkProgress) {
+						if location == "caller progress" {
+							panic(marker)
+						}
+					}, func() {})
+				}()
+				if recovered != marker {
+					t.Fatal("reader panic did not reach the caller's recovery boundary", recovered)
+				}
+				select {
+				case <-finished:
+				default:
+					t.Fatal("caller unwound before its independent SQL worker finished")
+				}
+			})
+		}
+		capture := func(processors int) (SimulationRunResult, []string, map[string]int64) {
+			previous := goruntime.GOMAXPROCS(processors)
+			defer goruntime.GOMAXPROCS(previous)
+			result := SimulationRunResult{Files: []SimulationFileInfo{{Name: "eplusout.sql", Path: fastPath, Kind: "sqlite"}}, PurposeRunPlan: &plan}
+			phases := []string{}
+			lastRows, finalRows, finishes := map[string]int64{}, map[string]int64{}, map[string]int{}
+			phase := ""
+			var busy int32
+			enter := func() bool {
+				if !atomic.CompareAndSwapInt32(&busy, 0, 1) {
+					t.Error("SQL observers were called concurrently")
+					return false
+				}
+				goruntime.Gosched()
+				return true
+			}
+			progress := func(event SimulationProgress) {
+				if !enter() {
+					return
+				}
+				defer atomic.StoreInt32(&busy, 0)
+				phase = event.Phase
+				phases = append(phases, phase)
+			}
+			work := func(event sqlWorkProgress) {
+				if !enter() {
+					return
+				}
+				defer atomic.StoreInt32(&busy, 0)
+				if event.Unit != "rows" {
+					return
+				}
+				if phase != "sql_series" && phase != "sql_heat_flow" {
+					t.Error("SQL row event escaped its caller phase", phase)
+				}
+				if event.Completed < lastRows[phase] {
+					t.Error("SQL consumed rows decreased", phase)
+				}
+				lastRows[phase] = event.Completed
+				if event.Finished {
+					finalRows[phase] = event.Completed
+					finishes[phase]++
+				}
+			}
+			if !parseSQLResultsWithProgress(&result, "initial-read", progress, "", work) {
+				t.Fatal("initial readers lost both SQL sections")
+			}
+			for _, section := range []string{"sql_series", "sql_heat_flow"} {
+				if finishes[section] != 1 || finalRows[section] <= 4096 {
+					t.Fatal("bounded progress lost a final section count", finishes, finalRows)
+				}
+			}
+			return result, phases, finalRows
+		}
+		serial, serialPhases, serialRows := capture(1)
+		parallel, parallelPhases, parallelRows := capture(2)
+		if !reflect.DeepEqual(serial, parallel) || !reflect.DeepEqual(serialRows, parallelRows) || !reflect.DeepEqual(serialPhases, []string{"sql_series", "sql_heat_flow"}) || !reflect.DeepEqual(serialPhases, parallelPhases) {
+			t.Fatal("parallel readers changed results, final counts or phase order", serialPhases, parallelPhases, serialRows, parallelRows)
+		}
+	})
 	want, err := parseSimulationSQLWithContext(context.Background(), originalPath, plan)
 	if err != nil {
 		t.Fatal(err)

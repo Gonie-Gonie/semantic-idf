@@ -13,9 +13,9 @@ remaining time. See [progress and estimates](simulation-runner.md#progress-and-e
 | Input analysis | Three cached parsed snapshots; concurrent parse deduplication; one lazy read-only index per snapshot; session dependency sharing | Editing owns fresh documents; export does not mutate model metadata |
 | Thermal geometry | Source-ordered ownership indexes for surfaces, spaces and boundaries | Unicode `EqualFold` matching, significant whitespace, accumulation/output order |
 | IDF serialization | Pre-sized builder rather than per-field formatting | Original field and comment formatting |
-| SQL reading | Cached dictionary/Time metadata and compact observation streams; distinct observed IDs before metadata joins | Read-only SQL, row order, NULL/zero sources, source priority, filters and unusual-schema JOIN fallback |
+| SQL reading | Cached dictionary/Time metadata and compact observation streams; reused scan receivers; streamed native Heat Flow counts; at most two independent initial readers | Read-only SQL, row order, NULL/zero sources, source priority, filters and unusual-schema JOIN/count fallback |
 | Alias lookup | Bounded indexes for fixed catalogs | First-match precedence, normalization, dynamic meter fallback and independently owned slices |
-| Energy drivers | Unit/rate conversion, surface category and membership prepared per dictionary | Original SQL ordering, arithmetic, rounding and full observation arrays |
+| Energy drivers | Unit/rate conversion, directional eligibility/sign and surface membership prepared per dictionary; one scan for all selected fan pools | Original SQL ordering, arithmetic, rounding and full observation arrays |
 | Energy Path quality | Run-level evidence prepared once per Building/Zone scope and shared by annual/monthly periods | Period-local closure/ratios, source IDs, scope completeness and fresh evidence on refresh |
 | Desktop result transport | Exact column/timeline deduplication, bounded resource responses, foreground priority, background preparation, worker parsing and immutable lookup indexes | Value bits including negative zero, timestamp gaps, labels, sample order, request identity and latest user selection |
 | Browser tests | Discover Chrome once per test process | Existing browser scenarios; avoid repeated PATH/PATHEXT probes in Go test-cache logs |
@@ -43,6 +43,18 @@ Keep worker pools bounded. Eliminating duplicate work should precede adding
 parallel copies of large results. Zone summaries can share backing data; do not
 parallelize mutation without proving ownership. Annual Profile series remain a
 material allocation cost and need their own evidence before changing rounding.
+
+When SQL already owns the result series, CSV fallback still computes its full
+summary statistics but does not allocate point arrays that would be discarded.
+Native Heat Flow counts frames while reading values, including NULL-only frames;
+nonstandard keys and error cases retain the original distinct-count behavior.
+Directional gain/loss classification stays local to one SQL read and does not
+change the order of native-interval arithmetic. Fan pools share one filtered
+query while preserving each source's chronological accumulation and coverage
+checks; SQL aggregation does not replace missing/invalid-value validation.
+Boundary source keys and source months are sorted before floating-point totals;
+cross-loop relations use a complete ordering for otherwise tied loop names.
+Repeated reads therefore retain the same sum bits and relationship order.
 
 ## Recorded baselines
 
@@ -190,6 +202,34 @@ payload copies, profiles and browser data are disposable investigation artifacts
 under ignored `.runtime/tmp/result-loading-benchmark`; no additional permanent
 benchmark or test files were introduced.
 
+### Four-purpose reading with native controls
+
+On 2026-10-27, a preserved annual Large Office / EnergyPlus 24.2 / Chicago
+weather run contained a 1,633,181,696-byte SQL file. It requested Basic Energy,
+Zone Heat Flow, HVAC Loop and Comfort, including Timestep controls and Detailed
+manager decisions. Sequential read-only replays used Go 1.24.5, a Ryzen 3900X,
+GOMAXPROCS 24 and the same CPU-profiling flags. Capture hashing warms the page
+cache; these are single local measurements, excluding engine execution.
+
+| Result stage | Previous readers | Optimized readers |
+| --- | ---: | ---: |
+| Initial reading | 177.084 s | 137.489 s |
+| Purpose construction | 339.619 s | 233.549 s |
+| Combined | 516.703 s | 371.037 s |
+
+The combined reduction is 28.2%. Parallel reading alone reduced the optimized
+initial read from a separate sequential measurement of 160.865 s to 137.489 s.
+Compact preparation and serialization are outside these stage totals.
+
+Both reference and candidate include the same deterministic boundary-sum and
+cross-loop ordering corrections; the reference otherwise uses `a2863a7` readers.
+Full transport comparison preserved every numeric token, timestamp, observation
+order, missing value and provenance member; only unordered source-ID lists were
+compared without ordering, retaining duplicates. Exact transport restoration
+also checked 127,687,712 bound point samples and 71,788,832 typed-column samples.
+Both payloads were 554,703,071 bytes, with 2,587 series and nine loops. The
+original capture's files, hashes, sizes and timestamps remained unchanged.
+
 ### Progress calibration across saved models
 
 Read-only replays on 2026-10-08 separated initial output reading from purpose
@@ -263,7 +303,7 @@ output beneath repository `.runtime/`. Use `-count=1` when measuring.
 | [TestSQLSavedOutputSourcesReplay](../cmd/semantic-idf/internal/simulation/sql_saved_output_sources_replay_test.go) | `SEMANTIC_IDF_SQL_REPLAY_DIR`, `_COMPARE` | Uses the baseline capture sidecar |
 | [TestEnergyDriversSavedReplay](../cmd/semantic-idf/internal/simulation/energy_drivers_saved_replay_test.go) | `ENERGY_DRIVERS_REPLAY_DIR`, `_INPUT` | Same prefix plus `_PROFILE`, `_OUTPUT`, `_COMPARE` |
 | [TestEnergyDriversSavedComparison](../cmd/semantic-idf/internal/simulation/energy_drivers_saved_replay_test.go) | `ENERGY_DRIVERS_REPLAY_COMPARE`, `_OUTPUT` | Compares existing artifacts without another SQL scan |
-| [TestSimulationResultTransportSavedReplay](../cmd/semantic-idf/internal/simulation/result_transport_replay_test.go) | `SIMULATION_TRANSPORT_REPLAY_DIR`, `_INPUT` | Same prefix plus `_OUTPUT`; `_LEGACY=1` measures prior callback serialization |
+| [TestSimulationResultTransportSavedReplay](../cmd/semantic-idf/internal/simulation/result_transport_replay_test.go) | `SIMULATION_TRANSPORT_REPLAY_DIR`, `_INPUT` | Same prefix plus `_OUTPUT`, `_COMPARE`; `_LEGACY=1` measures prior callback serialization |
 | [TestSimulationActualLargePayloadResponseAndViewsBrowser](../cmd/semantic-idf/internal/frontendchecks/simulation_progress_actual_payload_browser_test.go) | `SIMULATION_UI_BUNDLE_PATH`, `_INPUT` | Captured canonical v2 bundle with Zone Heat Flow; native-clock display timing through the real frontend |
 
 For example, after configuring the matching environment variables:

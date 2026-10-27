@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strconv"
 	"testing"
 )
@@ -286,6 +287,32 @@ func TestInitialSQLReadKeepsSeriesWhenHeatFlowIsMalformed(t *testing.T) {
 	if len(result.Series) != maxSQLSeriesColumns || len(result.HeatFlow.Zones) != 0 || len(result.ResultSources) != 1 || result.ResultSources[0] != "sql" {
 		t.Fatalf("valid SQL series were lost after another section failed: series=%d, HeatFlow zones=%d, sources=%v", len(result.Series), len(result.HeatFlow.Zones), result.ResultSources)
 	}
+	t.Run("heat flow survives series failure", func(t *testing.T) {
+		path := initialCompactSQLFixture(t, "INTEGER")
+		db, err := sql.Open("sqlite", path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`UPDATE ReportData SET Value='invalid preview observation' WHERE ReportDataDictionaryIndex=10`); err != nil {
+			db.Close()
+			t.Fatal(err)
+		}
+		if err := db.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := parseSimulationSQLSeries(path); err == nil {
+			t.Fatal("fixture must fail preview series independently of valid heat flow")
+		}
+		for _, processors := range []int{1, 2} {
+			previous := goruntime.GOMAXPROCS(processors)
+			result := &SimulationRunResult{OutputDirectory: filepath.Dir(path)}
+			readSimulationOutputs(result)
+			goruntime.GOMAXPROCS(previous)
+			if len(result.Series) != 0 || len(result.HeatFlow.Zones) != 2 || len(result.ResultSources) != 1 || result.ResultSources[0] != "sql" {
+				t.Fatalf("a failed series reader abandoned the independent heat-flow read at %d processors", processors)
+			}
+		}
+	})
 }
 
 func TestInitialSQLReadRecognizesDiagnosticAndTabularSources(t *testing.T) {

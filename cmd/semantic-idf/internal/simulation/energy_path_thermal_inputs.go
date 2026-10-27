@@ -722,6 +722,11 @@ func collectEnergyPathThermalInputValues(series []energyPathThermalInputSeries, 
 				groups[group] = append(groups[group], key)
 			}
 		}
+		// Roster maps establish membership, never floating-point addition
+		// order. Sum the same source keys in the same order on every read.
+		for _, keys := range groups {
+			sort.Strings(keys)
+		}
 		// One category uses one complete evidence boundary across its selected
 		// Zones and months. A partial fine roster must not erase an independently
 		// complete Monthly net, or make Annual silently sum incompatible variants.
@@ -813,9 +818,14 @@ func collectEnergyPathThermalInputValues(series []energyPathThermalInputSeries, 
 	var sources []EnergyDataSource
 	for _, item := range used {
 		var total float64
-		for month, value := range item.values {
+		monthKeys := make([]int, 0, len(item.values))
+		for month := range item.values {
+			monthKeys = append(monthKeys, month)
+		}
+		sort.Ints(monthKeys)
+		for _, month := range monthKeys {
 			if item.observed[month] {
-				total += value
+				total += item.values[month]
 			}
 		}
 		formula := "native Monthly energy [J] / 3600000; effective = raw × Zone multiplier × ZoneGroup multiplier"

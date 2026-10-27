@@ -174,11 +174,13 @@ WHERE %s IN (%s) ORDER BY %s, %s`, quoteSQLiteIdentifier(rdTime), quoteSQLiteIde
 		return err
 	}
 	defer rows.Close()
+	// Scan writes each destination on every row, including SQL NULL. Reuse these
+	// receivers instead of allocating three escaping destinations per sample.
+	var rawTimeIndex any
+	var dictionaryIndex int
+	var value sql.NullFloat64
 	for rows.Next() {
 		counter.consumed()
-		var rawTimeIndex any
-		var dictionaryIndex int
-		var value sql.NullFloat64
 		if err := rows.Scan(&rawTimeIndex, &dictionaryIndex, &value); err != nil {
 			return err
 		}

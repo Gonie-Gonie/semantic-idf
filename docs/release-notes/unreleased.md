@@ -65,6 +65,9 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
+- Repeated result reads use stable boundary-source/month accumulation and
+  cross-loop relationship ordering, avoiding map-order rounding differences
+  and reordered equipment links for the same input.
 - HVAC availability acquires native Detailed manager decisions instead of
   interpreting averaged status codes as actions. OFF fan schedules retain their
   raw state when a CycleOn override permits operation. Availability and chart
@@ -88,4 +91,11 @@ The release script infers bump size from these sections:
 
 ## Performance
 
-- _None._
+- Result reading removes the extra native Heat Flow count scan, prepares
+  directional classifications once per dictionary, batches fan-pool SQL reads,
+  and avoids allocating discarded CSV series when SQL already supplies them.
+  Initial Series and Heat Flow reading overlap on multicore runs with two
+  independent readers. A preserved 1.63 GB four-purpose result reduced reading
+  and construction from 516.7 s to 371.0 s locally, with exact output comparison.
+  Native samples, numerical precision, missing-value checks and source priority
+  remain unchanged.

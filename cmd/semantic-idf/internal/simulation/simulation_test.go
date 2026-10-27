@@ -215,6 +215,12 @@ func TestParseSimulationCSVBuildsSummariesAndSeries(t *testing.T) {
 	if len(series) != 2 || len(series[0].Points) != 3 {
 		t.Fatalf("series = %+v", series)
 	}
+	summaryOnly, omitted, err := parseSimulationCSVData(path, PurposeRunPlan{}, false)
+	wantSummary, _ := json.Marshal(summary)
+	gotSummary, _ := json.Marshal(summaryOnly)
+	if err != nil || len(omitted) != 0 || string(gotSummary) != string(wantSummary) {
+		t.Fatal("summary-only CSV read changed statistics or retained unused series", err)
+	}
 }
 
 func TestParseSimulationSQLSeriesBuildsTimedSeries(t *testing.T) {
@@ -3428,6 +3434,31 @@ End of Data Dictionary
 	if !stringSlicesEqual(result.ResultSourcePriority, []string{"sql", "csv", "eso"}) || !stringSlicesEqual(result.ResultSources, []string{"sql"}) {
 		t.Fatalf("result source metadata = priority %#v sources %#v", result.ResultSourcePriority, result.ResultSources)
 	}
+	t.Run("CSV summary keeps SQL ownership", func(t *testing.T) {
+		csvPath := filepath.Join(dir, "eplusout.csv")
+		csvText := "Date/Time,ZONE ONE:Zone Mean Air Temperature [C](Hourly),Another:Schedule Value [](Timestep)\n01/01 01:00:00,999,0\n01/01 02:00:00,,1\n01/01 03:00:00,-3,bad\n"
+		if err := os.WriteFile(csvPath, []byte(csvText), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		wantSummary, _, err := parseSimulationCSV(csvPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		withCSV := &SimulationRunResult{OutputDirectory: dir}
+		readSimulationOutputs(withCSV)
+		beforeSeries, _ := json.Marshal(result.Series)
+		afterSeries, _ := json.Marshal(withCSV.Series)
+		beforeHeat, _ := json.Marshal(result.HeatFlow)
+		afterHeat, _ := json.Marshal(withCSV.HeatFlow)
+		want, _ := json.Marshal(wantSummary)
+		if len(withCSV.CSVs) != 1 {
+			t.Fatal("SQL-owned run lost CSV summaries")
+		}
+		got, _ := json.Marshal(withCSV.CSVs[0])
+		if string(beforeSeries) != string(afterSeries) || string(beforeHeat) != string(afterHeat) || string(got) != string(want) || !stringSlicesEqual(withCSV.ResultSources, []string{"sql", "csv"}) {
+			t.Fatal("summary-only CSV path changed SQL precedence or CSV statistics")
+		}
+	})
 }
 
 func TestReadSimulationOutputsUsesESOHeatFlowFallback(t *testing.T) {

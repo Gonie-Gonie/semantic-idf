@@ -1,7 +1,10 @@
 package simulation
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -12,6 +15,112 @@ import (
 // Opt-in timing of a preserved run; never launches EnergyPlus or changes its
 // files. The output is the exact result JSON used by the desktop transport.
 func TestSimulationResultTransportSavedReplay(t *testing.T) {
+	// Decode only the existing unordered source-ID arrays. All other bytes,
+	// including large numeric columns, retain their exact original tokens.
+	type sourceIDSpan struct{ start, end int }
+	skipSpace := func(data []byte, offset int) int {
+		for offset < len(data) && bytes.IndexByte([]byte(" \t\r\n"), data[offset]) >= 0 {
+			offset++
+		}
+		return offset
+	}
+	sourceIDArrays := func(data []byte) []sourceIDSpan {
+		var spans []sourceIDSpan
+		for offset := 0; offset < len(data); {
+			quoted := bytes.IndexByte(data[offset:], '"')
+			if quoted < 0 {
+				break
+			}
+			start := offset + quoted
+			offset = start + 1
+			for offset < len(data) && data[offset] != '"' {
+				if data[offset] == '\\' {
+					offset++
+				}
+				offset++
+			}
+			if offset >= len(data) {
+				t.Fatal("unterminated JSON string in transport comparison")
+			}
+			offset++
+			if !bytes.Equal(data[start:offset], []byte(`"sourceIds"`)) {
+				continue
+			}
+			colon := skipSpace(data, offset)
+			if colon >= len(data) || data[colon] != ':' {
+				continue
+			}
+			array := skipSpace(data, colon+1)
+			if array >= len(data) || data[array] != '[' {
+				continue
+			}
+			decoder := json.NewDecoder(bytes.NewReader(data[array:]))
+			var raw json.RawMessage
+			if err := decoder.Decode(&raw); err != nil {
+				t.Fatalf("invalid source-ID array in transport comparison: %v", err)
+			}
+			offset = array + int(decoder.InputOffset())
+			spans = append(spans, sourceIDSpan{array, offset})
+		}
+		return spans
+	}
+	comparableIDs := func(data []byte, span sourceIDSpan) any {
+		wrapper := make([]byte, 0, span.end-span.start+14)
+		wrapper = append(wrapper, `{"sourceIds":`...)
+		wrapper = append(wrapper, data[span.start:span.end]...)
+		wrapper = append(wrapper, '}')
+		return purposeReplayComparableJSON(t, wrapper)
+	}
+	comparable := func(baseline, payload []byte) bool {
+		if bytes.Equal(baseline, payload) {
+			return true
+		}
+		wantSpans, gotSpans := sourceIDArrays(baseline), sourceIDArrays(payload)
+		if len(wantSpans) != len(gotSpans) {
+			return false
+		}
+		wantOffset, gotOffset := 0, 0
+		for index, wantSpan := range wantSpans {
+			gotSpan := gotSpans[index]
+			if !bytes.Equal(baseline[wantOffset:wantSpan.start], payload[gotOffset:gotSpan.start]) || !reflect.DeepEqual(comparableIDs(baseline, wantSpan), comparableIDs(payload, gotSpan)) {
+				return false
+			}
+			wantOffset, gotOffset = wantSpan.end, gotSpan.end
+		}
+		return bytes.Equal(baseline[wantOffset:], payload[gotOffset:])
+	}
+	t.Run("comparison", func(t *testing.T) {
+		for _, test := range []struct {
+			name, before, after string
+			equal               bool
+		}{
+			{"exact bytes", `{"values":[0,-0,null,1.234567890123456789]}`, `{"values":[0,-0,null,1.234567890123456789]}`, true},
+			{"source order and duplicate counts", `{"sourceIds":["b","a","a"]}`, `{"sourceIds":["a","b","a"]}`, true},
+			{"escaped source values", `{"sourceIds":["q\\path","q\"quote","한글 🔥"]}`, `{"sourceIds":["한글 🔥","q\"quote","q\\path"]}`, true},
+			{"nested source fields", `{"nested":[{"sourceIds":["b","a"]}],"sourceIds":["d","c"]}`, `{"nested":[{"sourceIds":["a","b"]}],"sourceIds":["c","d"]}`, true},
+			{"source duplicate removed", `{"sourceIds":["b","a","a"]}`, `{"sourceIds":["a","b"]}`, false},
+			{"escaped source-like string", `{"label":"\"sourceIds\":[\"b\",\"a\"]","sourceIds":["b","a"]}`, `{"label":"\"sourceIds\":[\"a\",\"b\"]","sourceIds":["a","b"]}`, false},
+			{"escaped key is not sourceIds", `{"prefix\"sourceIds":["b","a"],"sourceIds":["b","a"]}`, `{"prefix\"sourceIds":["a","b"],"sourceIds":["a","b"]}`, false},
+			{"other array order", `{"values":[1,2],"sourceIds":["b","a"]}`, `{"values":[2,1],"sourceIds":["a","b"]}`, false},
+			{"negative zero", `{"values":[-0],"sourceIds":["b","a"]}`, `{"values":[0],"sourceIds":["a","b"]}`, false},
+			{"exact decimal tokens", `{"value":0.000000000000000001,"sourceIds":["b","a"]}`, `{"value":0.000000000000000002,"sourceIds":["a","b"]}`, false},
+			{"null versus zero", `{"values":[null],"sourceIds":["b","a"]}`, `{"values":[0],"sourceIds":["a","b"]}`, false},
+			{"null versus missing", `{"value":null,"sourceIds":["b","a"]}`, `{"sourceIds":["a","b"]}`, false},
+			{"source null versus empty", `{"sourceIds":null}`, `{"sourceIds":[]}`, false},
+			{"source field moved", `{"a":{"sourceIds":["b","a"]},"b":{}}`, `{"a":{},"b":{"sourceIds":["a","b"]}}`, false},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				before, after := []byte(test.before), []byte(test.after)
+				beforeHash, afterHash := sha256.Sum256(before), sha256.Sum256(after)
+				if got := comparable(before, after); got != test.equal {
+					t.Fatalf("comparison equal=%v, want %v", got, test.equal)
+				}
+				if sha256.Sum256(before) != beforeHash || sha256.Sum256(after) != afterHash {
+					t.Fatal("comparison mutated original baseline or candidate bytes")
+				}
+			})
+		}
+	})
 	directory := os.Getenv("SIMULATION_TRANSPORT_REPLAY_DIR")
 	if directory == "" {
 		t.Skip("set SIMULATION_TRANSPORT_REPLAY_DIR and SIMULATION_TRANSPORT_REPLAY_INPUT for saved-run transport timing")
@@ -91,6 +200,39 @@ func TestSimulationResultTransportSavedReplay(t *testing.T) {
 		closeErr := file.Close()
 		if writeErr != nil || closeErr != nil {
 			t.Fatalf("save transport result: %v / %v", writeErr, closeErr)
+		}
+	}
+	if comparison := os.Getenv("SIMULATION_TRANSPORT_REPLAY_COMPARE"); comparison != "" {
+		info, err := os.Stat(comparison)
+		if err != nil || !info.Mode().IsRegular() {
+			t.Fatalf("read original transport baseline metadata: %v", err)
+		}
+		baseline, err := os.ReadFile(comparison)
+		if err != nil {
+			t.Fatal(err)
+		}
+		baselineHash := sha256.Sum256(baseline)
+		t.Cleanup(func() {
+			file, err := os.Open(comparison)
+			if err != nil {
+				t.Errorf("transport baseline no longer readable: %v", err)
+				return
+			}
+			defer file.Close()
+			current, statErr := file.Stat()
+			hash := sha256.New()
+			size, readErr := io.Copy(hash, file)
+			if statErr != nil || readErr != nil || size != info.Size() || current.Size() != info.Size() || current.Mode() != info.Mode() || !current.ModTime().Equal(info.ModTime()) || !bytes.Equal(hash.Sum(nil), baselineHash[:]) {
+				t.Error("original transport baseline changed during read-only comparison")
+			}
+		})
+		if bytes.Equal(baseline, payload) {
+			t.Logf("compact transport matches original baseline byte-for-byte: bytes=%d SHA256=%x", len(payload), baselineHash)
+		} else {
+			if !comparable(baseline, payload) {
+				t.Fatalf("compact transport changed beyond source-ID ordering: baseline SHA256=%x, current SHA256=%x", baselineHash, sha256.Sum256(payload))
+			}
+			t.Log("all compact value tokens, metadata, observation order and provenance membership exactly match the original baseline; only unordered source-ID lists differ")
 		}
 	}
 	if os.Getenv("SIMULATION_TRANSPORT_REPLAY_LEGACY") == "" {

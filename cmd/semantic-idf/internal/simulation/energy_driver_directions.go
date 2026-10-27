@@ -59,6 +59,17 @@ type energyDriverDirectionalSource struct {
 	hasLast bool
 }
 
+// A dictionary's interpretation is constant throughout this SQL read. Keep
+// native-interval arithmetic in observe, without rebuilding labels, aliases
+// and sign conventions for every individual observation.
+type energyDriverDirectionalDictionary struct {
+	enabled        bool
+	rank           int
+	signMultiplier float64
+	conversion     energyExplanationValueConversion
+	convertEnergy  bool
+}
+
 type energyDriverDirectionalCollector struct {
 	times             map[int64]energyNativeReportTime
 	counts            map[int]map[int]int
@@ -67,6 +78,34 @@ type energyDriverDirectionalCollector struct {
 	zoneTimeIDs       map[int64]bool
 	zoneAxisFinalized bool
 	months            map[int]bool
+	prepared          map[int]*energyDriverDirectionalDictionary
+}
+
+func (collector *energyDriverDirectionalCollector) dictionary(index int, dictionary energyExplanationDictionary) *energyDriverDirectionalDictionary {
+	if prepared := collector.prepared[index]; prepared != nil {
+		return prepared
+	}
+	prepared := &energyDriverDirectionalDictionary{rank: -1}
+	if dictionary.heat != nil && energyHeatAliasExplicitSign(dictionary.row.name) == "" {
+		prepared.rank = energyHeatDirectionFrequencyRank(dictionary.reportingFrequency)
+		if prepared.rank >= 0 {
+			prepared.enabled = true
+			unit := normalizeSimulationDisplayUnit(dictionary.row.units)
+			prepared.convertEnergy = unit.Unit != ""
+			prepared.conversion = energyExplanationValueConversion{integratesRate: energyExplanationIntegratesRate(dictionary),
+				rateUnit: normalizeUnitToken(dictionary.row.units), unit: unit.Unit, factor: unit.Factor}
+			if !prepared.convertEnergy {
+				prepared.conversion.unit = strings.TrimSpace(dictionary.row.units)
+			}
+			item := energyExplanationSeriesForBuilder(&energyExplanationSeriesBuilder{dictionary: dictionary}, "")
+			prepared.signMultiplier = energyExplanationHeatSeriesSignMultiplier(item)
+		}
+	}
+	if collector.prepared == nil {
+		collector.prepared = map[int]*energyDriverDirectionalDictionary{}
+	}
+	collector.prepared[index] = prepared
+	return prepared
 }
 
 func energyHeatDirectionFrequencyRank(frequency string) int {
@@ -151,13 +190,14 @@ WHERE EnvironmentPeriodIndex=? AND (WarmupFlag=0 OR WarmupFlag IS NULL) AND Inte
 }
 
 func (collector *energyDriverDirectionalCollector) observe(row SQLSeriesRow, dictionary energyExplanationDictionary) {
-	if collector == nil || dictionary.heat == nil || energyHeatAliasExplicitSign(dictionary.row.name) != "" {
+	if collector == nil {
 		return
 	}
-	rank := energyHeatDirectionFrequencyRank(dictionary.reportingFrequency)
-	if rank < 0 {
+	prepared := collector.dictionary(row.DictionaryIndex, dictionary)
+	if !prepared.enabled {
 		return
 	}
+	rank := prepared.rank
 	t, included := collector.times[row.TimeIndex]
 	if !included {
 		return
@@ -182,9 +222,12 @@ func (collector *energyDriverDirectionalCollector) observe(row SQLSeriesRow, dic
 	if rank == 0 {
 		collector.zoneTimeIDs[row.TimeIndex] = true
 	}
-	value, unit := convertEnergySQLValue(row.Value.Float64, dictionary.row.units)
-	if energyExplanationIntegratesRate(dictionary) {
-		switch normalizeUnitToken(dictionary.row.units) {
+	value, unit := row.Value.Float64, prepared.conversion.unit
+	if prepared.convertEnergy {
+		value *= prepared.conversion.factor
+	}
+	if prepared.conversion.integratesRate {
+		switch prepared.conversion.rateUnit {
 		case "w":
 			value, unit = row.Value.Float64*t.hours/1000, "kWh"
 		case "kw":
@@ -197,8 +240,7 @@ func (collector *energyDriverDirectionalCollector) observe(row SQLSeriesRow, dic
 		state.values.observed[t.month] = false
 		return
 	}
-	item := energyExplanationSeriesForBuilder(&energyExplanationSeriesBuilder{dictionary: dictionary}, "")
-	value *= energyExplanationHeatSeriesSignMultiplier(item)
+	value *= prepared.signMultiplier
 	state.values.gain[t.month] += math.Max(value, 0)
 	state.values.loss[t.month] += math.Max(-value, 0)
 	state.seen[t.month]++
@@ -212,7 +254,7 @@ func (collector *energyDriverDirectionalCollector) values(dictionary energyExpla
 	if state == nil {
 		return nil
 	}
-	rank := energyHeatDirectionFrequencyRank(dictionary.reportingFrequency)
+	rank := collector.dictionary(dictionary.row.index, dictionary).rank
 	collector.finalizeZoneAxis()
 	for month, valid := range state.values.observed {
 		state.values.observed[month] = valid && collector.valid[rank][month] && state.seen[month] == collector.counts[rank][month] && collector.counts[rank][month] > 0 && energyPathFinite(state.values.gain[month]) && energyPathFinite(state.values.loss[month])

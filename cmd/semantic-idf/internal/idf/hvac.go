@@ -1217,7 +1217,17 @@ func applyCrossLoopRelations(ctx *hvacContext, loops []HVACLoop) {
 			loops[loopIndex].RelatedLoops = append(loops[loopIndex].RelatedLoops, relation)
 		}
 		sort.Slice(loops[loopIndex].RelatedLoops, func(i, j int) bool {
-			return loops[loopIndex].RelatedLoops[i].LoopName < loops[loopIndex].RelatedLoops[j].LoopName
+			left, right := loops[loopIndex].RelatedLoops[i], loops[loopIndex].RelatedLoops[j]
+			if left.LoopName != right.LoopName {
+				return left.LoopName < right.LoopName
+			}
+			if left.LoopType != right.LoopType {
+				return left.LoopType < right.LoopType
+			}
+			if left.ComponentType != right.ComponentType {
+				return left.ComponentType < right.ComponentType
+			}
+			return left.ComponentName < right.ComponentName
 		})
 		loops[loopIndex].Warnings = append(loops[loopIndex].Warnings, waterCoilLoopWarnings(ctx, loops[loopIndex])...)
 	}

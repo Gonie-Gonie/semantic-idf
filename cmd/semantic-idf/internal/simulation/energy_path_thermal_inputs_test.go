@@ -3,6 +3,7 @@ package simulation
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"math"
 	"path/filepath"
 	"reflect"
@@ -166,6 +167,7 @@ func thermalInputAssertValue(t *testing.T, values []energyPathThermalInputValue,
 }
 
 func TestEnergyPathThermalInputsNativePeriodsMultipliersAndContext(t *testing.T) {
+	t.Run("deterministic source and month accumulation", assertThermalInputAccumulationDeterministic)
 	f := newThermalInputFixture(t)
 	beforeGeometry, _ := json.Marshal(f.geometry)
 	values, sources, months := f.read(t)
@@ -299,6 +301,57 @@ func TestEnergyPathThermalInputsNativePeriodsMultipliersAndContext(t *testing.T)
 		if node.Level == "input" && node.Kind == "input.exterior_convection" && node.SignedValue != 5 {
 			t.Fatalf("boundary normalization changed signed input: %+v", node)
 		}
+	}
+}
+
+func assertThermalInputAccumulationDeterministic(t *testing.T) {
+	t.Helper()
+	fixture := func() ([]energyPathThermalInputSeries, map[string]energyPathThermalInputSurface, map[string]string, []int) {
+		definition := energyPathThermalInputDefinitions[1]
+		var series []energyPathThermalInputSeries
+		roster := map[string]energyPathThermalInputSurface{}
+		months := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
+		for index, key := range []string{"wall a", "wall b", "wall c"} {
+			item := energyPathThermalInputSeries{definition: definition, id: fmt.Sprintf("sql-input-rdd-%d", index+1), key: key, zone: "Office", category: energyDriverCategoryExteriorWalls,
+				frequency: "Timestep", multiplier: float64(index+1) + .25, values: map[int]float64{}, gains: map[int]float64{}, losses: map[int]float64{}, observed: map[int]bool{}}
+			for _, month := range months {
+				quantity := .75
+				if index == 0 && month == 2 {
+					quantity = 1e16
+				}
+				item.values[month], item.losses[month], item.observed[month] = -quantity, quantity, true
+			}
+			series = append(series, item)
+			roster[key] = energyPathThermalInputSurface{name: key, zone: "Office", category: energyDriverCategoryExteriorWalls, verified: true}
+		}
+		return series, roster, map[string]string{"office": "Office"}, months
+	}
+	series, roster, zones, months := fixture()
+	beforeSeries, beforeRoster, beforeZones, beforeMonths := fixture()
+	wantValues, wantSources := collectEnergyPathThermalInputValues(series, roster, zones, months, nil)
+	for pass := 1; pass <= 128; pass++ {
+		values, sources := collectEnergyPathThermalInputValues(series, roster, zones, months, nil)
+		if !reflect.DeepEqual(values, wantValues) || !reflect.DeepEqual(sources, wantSources) {
+			var details []string
+			for index, value := range values {
+				want := wantValues[index]
+				if math.Float64bits(value.raw) != math.Float64bits(want.raw) || math.Float64bits(value.effective) != math.Float64bits(want.effective) {
+					details = append(details, fmt.Sprintf("%s/M%d/%s raw %.17g[%016x]→%.17g[%016x] effective %.17g→%.17g", value.kind, value.month, value.direction, want.raw, math.Float64bits(want.raw), value.raw, math.Float64bits(value.raw), want.effective, value.effective))
+					break
+				}
+			}
+			for index, source := range sources {
+				want := wantSources[index]
+				if math.Float64bits(source.RawValue) != math.Float64bits(want.RawValue) {
+					details = append(details, fmt.Sprintf("%s annual raw %.17g[%016x]→%.17g[%016x]", source.ID, want.RawValue, math.Float64bits(want.RawValue), source.RawValue, math.Float64bits(source.RawValue)))
+					break
+				}
+			}
+			t.Fatalf("identical immutable observations changed bits on pass %d: %s", pass, strings.Join(details, "; "))
+		}
+	}
+	if !reflect.DeepEqual(series, beforeSeries) || !reflect.DeepEqual(roster, beforeRoster) || !reflect.DeepEqual(zones, beforeZones) || !reflect.DeepEqual(months, beforeMonths) {
+		t.Fatal("thermal input accumulation mutated source series, roster or period ordering")
 	}
 }
 

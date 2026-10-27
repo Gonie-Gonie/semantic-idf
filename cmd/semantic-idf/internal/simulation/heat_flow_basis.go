@@ -27,6 +27,12 @@ type heatFlowBasisContext struct {
 	nonAirOnly  bool
 }
 
+type heatFlowBasisConversion struct {
+	multiplier        float64
+	systemAir         bool
+	modeledConvective bool
+}
+
 // The input provides ownership and factors, never proof of the producing
 // engine version: a newer executable can run an older-version input file.
 type heatFlowSourceOptions struct {
@@ -104,33 +110,47 @@ func newHeatFlowBasisContext(db *sql.DB, sources ...heatFlowSourceOptions) heatF
 }
 
 func (context heatFlowBasisContext) value(builder *heatFlowZoneBuilder, category HeatFlowCategory, frame int, value float64) float64 {
-	multiplier, known := context.multipliers[normalizeHeatFlowName(builder.name)]
-	if !context.verified || !known || multiplier <= 0 || math.IsNaN(multiplier) || math.IsInf(multiplier, 0) {
-		return value
-	}
+	return context.prepare(builder.name, category).value(builder, frame, value)
+}
+
+func (context heatFlowBasisContext) prepare(zoneName string, category HeatFlowCategory) heatFlowBasisConversion {
 	if category.ID != "systemAir" && category.ID != "systemConvective" {
+		return heatFlowBasisConversion{}
+	}
+	if !context.verified {
+		return heatFlowBasisConversion{}
+	}
+	multiplier, known := context.multipliers[normalizeHeatFlowName(zoneName)]
+	if !known || multiplier <= 0 || math.IsNaN(multiplier) || math.IsInf(multiplier, 0) {
+		return heatFlowBasisConversion{}
+	}
+	return heatFlowBasisConversion{multiplier: multiplier, systemAir: category.ID == "systemAir", modeledConvective: multiplier == 1 || context.nonAirOnly}
+}
+
+func (conversion heatFlowBasisConversion) value(builder *heatFlowZoneBuilder, frame int, value float64) float64 {
+	if conversion.multiplier <= 0 {
 		return value
 	}
 	if builder.rateBasis == nil {
-		builder.rateBasis = &HeatFlowRateBasis{EffectiveMultiplier: multiplier}
+		builder.rateBasis = &HeatFlowRateBasis{EffectiveMultiplier: conversion.multiplier}
 	}
 	basis := builder.rateBasis
-	if category.ID == "systemAir" {
+	if conversion.systemAir {
 		basis.SystemAir = "modeled_zone"
 		for len(basis.ReportedSystemAir) <= frame {
 			basis.ReportedSystemAir = append(basis.ReportedSystemAir, 0)
 		}
 		basis.ReportedSystemAir[frame] = value
-		return value / multiplier
+		return value / conversion.multiplier
 	}
 	basis.SystemConvective = "energyplus_reported"
 	for len(basis.ReportedSystemConvective) <= frame {
 		basis.ReportedSystemConvective = append(basis.ReportedSystemConvective, 0)
 	}
 	basis.ReportedSystemConvective[frame] = value
-	if multiplier == 1 || context.nonAirOnly {
+	if conversion.modeledConvective {
 		basis.SystemConvective = "modeled_zone"
-		return value / multiplier
+		return value / conversion.multiplier
 	}
 	return value
 }

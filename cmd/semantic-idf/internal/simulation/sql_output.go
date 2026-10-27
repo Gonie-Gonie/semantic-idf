@@ -526,7 +526,13 @@ func parseSimulationHeatFlowSQLWithProgress(path string, progress func(sqlWorkPr
 	}
 
 	definitions := heatFlowCategoryDefinitions()
-	columns := map[int]heatFlowColumn{}
+	type preparedColumn struct {
+		heatFlowColumn
+		zoneKey    string
+		conversion heatFlowBasisConversion
+		builder    *heatFlowZoneBuilder
+	}
+	columns := map[int]*preparedColumn{}
 	ids := make([]int, 0, len(dictionaries))
 	for _, dictionary := range dictionaries {
 		zoneName := strings.TrimSpace(dictionary.keyValue)
@@ -534,7 +540,7 @@ func parseSimulationHeatFlowSQLWithProgress(path string, progress func(sqlWorkPr
 			continue
 		}
 		if heatFlowVariableMatches(dictionary.name, heatFlowTemperatureVariables()) {
-			columns[dictionary.index] = heatFlowColumn{zoneName: zoneName, temperature: true}
+			columns[dictionary.index] = &preparedColumn{heatFlowColumn: heatFlowColumn{zoneName: zoneName, temperature: true}, zoneKey: normalizeHeatFlowName(zoneName)}
 			ids = append(ids, dictionary.index)
 			continue
 		}
@@ -543,7 +549,7 @@ func parseSimulationHeatFlowSQLWithProgress(path string, progress func(sqlWorkPr
 			if heatFlowVariableMatches(dictionary.name, names) {
 				definition.available = true
 				definitions[defIndex] = definition
-				columns[dictionary.index] = heatFlowColumn{zoneName: zoneName, categoryIndex: defIndex}
+				columns[dictionary.index] = &preparedColumn{heatFlowColumn: heatFlowColumn{zoneName: zoneName, categoryIndex: defIndex}, zoneKey: normalizeHeatFlowName(zoneName)}
 				ids = append(ids, dictionary.index)
 				break
 			}
@@ -561,27 +567,20 @@ func parseSimulationHeatFlowSQLWithProgress(path string, progress func(sqlWorkPr
 			continue
 		}
 		column.categoryIndex = categoryIndex
-		columns[dictionaryIndex] = column
+		column.conversion = basis.prepare(column.zoneName, categories[categoryIndex])
 	}
 	if len(categories) == 0 || len(columns) == 0 {
 		return HeatFlowDataset{}, nil
 	}
 
-	rowCount, err := sqlDistinctTimeCount(db, ids)
-	if err != nil {
-		return HeatFlowDataset{}, err
-	}
-	if rowCount == 0 {
-		return HeatFlowDataset{}, nil
-	}
+	countFallback := !sqlHeatFlowHasIntegerTimeKey(db)
 	dataset := HeatFlowDataset{
-		SourceFile:         filepath.Base(path),
-		Unit:               "W",
-		TemperatureUnit:    "C",
-		OriginalFrameCount: rowCount,
-		Categories:         categories,
-		MinTemperature:     math.Inf(1),
-		MaxTemperature:     math.Inf(-1),
+		SourceFile:      filepath.Base(path),
+		Unit:            "W",
+		TemperatureUnit: "C",
+		Categories:      categories,
+		MinTemperature:  math.Inf(1),
+		MaxTemperature:  math.Inf(-1),
 	}
 	zoneBuilders := map[string]*heatFlowZoneBuilder{}
 	zoneOrder := []string{}
@@ -595,6 +594,11 @@ func parseSimulationHeatFlowSQLWithProgress(path string, progress func(sqlWorkPr
 		minute := row.Minute
 		dictionaryIndex := row.DictionaryIndex
 		value := row.Value
+		if !month.Valid || !day.Valid || !hour.Valid {
+			// An orphan/nonstandard Time key can scan to the same int64 as
+			// another SQL value. Preserve SQL DISTINCT semantics in that case.
+			countFallback = true
+		}
 		frameIndex, known := frames[timeIndex]
 		if !known {
 			frameIndex = dataset.FrameCount
@@ -611,15 +615,15 @@ func parseSimulationHeatFlowSQLWithProgress(path string, progress func(sqlWorkPr
 		if !ok {
 			return nil
 		}
-		key := normalizeHeatFlowName(column.zoneName)
-		builder := zoneBuilders[key]
+		builder := column.builder
 		if builder == nil {
-			builder = &heatFlowZoneBuilder{
-				name:   strings.TrimSpace(column.zoneName),
-				values: make([][]float64, len(categories)),
+			builder = zoneBuilders[column.zoneKey]
+			if builder == nil {
+				builder = &heatFlowZoneBuilder{name: column.zoneName, values: make([][]float64, len(categories))}
+				zoneBuilders[column.zoneKey] = builder
+				zoneOrder = append(zoneOrder, column.zoneKey)
 			}
-			zoneBuilders[key] = builder
-			zoneOrder = append(zoneOrder, key)
+			column.builder = builder
 		}
 		builder.ensureFrame(frameIndex, len(categories))
 		number := value.Float64
@@ -631,16 +635,79 @@ func parseSimulationHeatFlowSQLWithProgress(path string, progress func(sqlWorkPr
 			dataset.MaxTemperature = math.Max(dataset.MaxTemperature, number)
 			return nil
 		}
-		number = basis.value(builder, categories[column.categoryIndex], frameIndex, number)
+		number = column.conversion.value(builder, frameIndex, number)
 		builder.values[column.categoryIndex][frameIndex] = roundedHeatFlowNumber(number)
 		builder.observed[column.categoryIndex][frameIndex] = true
 		builder.hasHeatFlowData = true
 		dataset.MaxAbs = math.Max(dataset.MaxAbs, math.Abs(number))
 		return nil
 	}, progress); err != nil {
+		// The previous COUNT returned an empty result before invoking a
+		// walker when every selected TimeIndex was NULL (or no rows existed).
+		count, countErr := sqlDistinctTimeCount(db, ids)
+		if countErr != nil {
+			return HeatFlowDataset{}, countErr
+		}
+		if count == 0 {
+			return HeatFlowDataset{}, nil
+		}
 		return HeatFlowDataset{}, err
 	}
+	dataset.OriginalFrameCount = dataset.FrameCount
+	if countFallback {
+		count, err := sqlDistinctTimeCount(db, ids)
+		if err != nil {
+			return HeatFlowDataset{}, err
+		}
+		dataset.OriginalFrameCount = count
+	}
 	return finalizeHeatFlowDataset(dataset, zoneBuilders, zoneOrder, len(categories))
+}
+
+// INTEGER PRIMARY KEY aliases SQLite's rowid only for a rowid table with a
+// single-column key. Nonstandard Time schemas retain the original SQL count.
+func sqlHeatFlowHasIntegerTimeKey(db *sql.DB) bool {
+	rows, err := db.Query(`PRAGMA table_info("Time")`)
+	if err != nil {
+		return false
+	}
+	primaryKeys, integerKey := 0, false
+	for rows.Next() {
+		var position, notNull, primaryKey int
+		var name, declaredType string
+		var defaultValue any
+		if err := rows.Scan(&position, &name, &declaredType, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return false
+		}
+		if primaryKey > 0 {
+			primaryKeys++
+			integerKey = integerKey || strings.EqualFold(name, "TimeIndex") && strings.EqualFold(declaredType, "INTEGER")
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil || primaryKeys != 1 || !integerKey {
+		return false
+	}
+	indexes, err := db.Query(`PRAGMA index_list("Time")`)
+	if err != nil {
+		return false
+	}
+	defer indexes.Close()
+	for indexes.Next() {
+		var sequence, unique, partial int
+		var name, origin string
+		if err := indexes.Scan(&sequence, &name, &unique, &origin, &partial); err != nil {
+			return false
+		}
+		// INTEGER PRIMARY KEY DESC and WITHOUT ROWID use a separate primary
+		// index, so unlike a rowid alias they can retain noninteger keys.
+		if origin == "pk" {
+			return false
+		}
+	}
+	return indexes.Err() == nil
 }
 
 func parseSimulationIntegritySQL(path string) (integritySQLParseResult, error) {
