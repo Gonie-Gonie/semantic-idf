@@ -15,7 +15,9 @@ function columns(series, timelineOnly = false) {
   return { rows: observed.map((point) => point.x), labels: observed.map((point) => String(point.label || point.x)),
     ...(timelineOnly ? {} : { values: observed.map((point) => point.value) }) };
 }
-const cadence = (value) => ["timestep", "zone timestep"].includes(token(value)) ? "timestep" : token(value);
+const cadence = (value) => ["timestep", "zone timestep"].includes(token(value)) ? "timestep"
+  : ["detailed", "hvac system timestep", "system timestep"].includes(token(value)) ? "detailed" : token(value);
+const discrete = (signal) => ["manager_status", "loop_status"].includes(signal.role);
 const signature = (item) => [token(item.keyValue), token(item.variableName || item.name), cadence(item.reportingFrequency)].join("\0");
 const seriesName = (series) => series.name || String(series.column || "").replace(/^[^:]*:/, "").replace(/\s*\[[^\]]*\].*$/, "").trim();
 const seriesFrequency = (series) => series.reportingFrequency || /\(([^()]*)\)\s*$/.exec(series.column || "")?.[1];
@@ -37,11 +39,61 @@ function units(series) {
 }
 
 function calendar(label, leap) {
-  const match = /^(?:(\d{4})[-/])?(\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(label.trim());
+  const match = /^(?:(\d{4})[-/])?(\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(label.trim());
   if (!match) return null;
   const year = Number(match[1]) || (leap ? 2000 : 2001), month = Number(match[2]), day = Number(match[3]), hour = Number(match[4]), minute = Number(match[5]);
   if (month < 1 || month > 12 || day < 1 || day > new Date(Date.UTC(year, month, 0)).getUTCDate() || hour > 24 || minute > 59) return null;
-  return Date.UTC(year, month - 1, day, hour, minute) / 3600000;
+  const second = Number(match[6] || 0);
+  if (second > 59) return null;
+  return Date.UTC(year, month - 1, day, hour, minute, second) / 3600000;
+}
+
+function nativeMetadata(intervals, offset, length) {
+  if (!Array.isArray(intervals) || intervals.length !== length) return null;
+  const entry = intervals[offset];
+  return Number.isInteger(entry?.timeIndex) && entry.timeIndex > 0
+    && Number.isInteger(entry.environmentPeriodIndex) && entry.environmentPeriodIndex > 0
+    && Number.isInteger(entry.simulationDays) && entry.simulationDays > 0
+    && (entry.year === undefined || Number.isInteger(entry.year) && entry.year >= 0)
+    && finite(entry.intervalMinutes) && entry.intervalMinutes > 0 ? entry : null;
+}
+const nativeEndpoint = (metadata, x) => metadata && finite(x) ? `${metadata.environmentPeriodIndex}:${metadata.year || 0}:${metadata.simulationDays}:${x}` : null;
+const sameEnvironment = (left, right) => left?.environmentPeriodIndex === right?.environmentPeriodIndex && (left?.year || 0) === (right?.year || 0);
+
+// The original SQL interval owns its action. Never extend a previous action
+// into an unreported gap or reconstruct subintervals from an averaged code.
+function nativeTimeline(model, signal) {
+  if (!signal.series) return { intervals: [], byEnd: new Map() };
+  if (model.nativeTimelines.has(signal.series)) return model.nativeTimelines.get(signal.series);
+  const axis = columns(signal.series, true), metadataAxis = model.nativeIntervalsFor(signal.series), intervals = [], byEnd = new Map();
+  const shared = metadataAxis && model.nativeAxes.get(metadataAxis);
+  if (shared?.get(axis.rows)?.labels === axis.labels) { const timeline = shared.get(axis.rows); model.nativeTimelines.set(signal.series, timeline); return timeline; }
+  for (let offset = 0; offset < axis.rows.length; offset++) {
+    const metadata = nativeMetadata(metadataAxis, offset, axis.rows.length), label = String(axis.labels[offset] || "");
+    const x = calendar(label, model.leap), endpoint = nativeEndpoint(metadata, x);
+    if (!endpoint) continue;
+    const entry = { key: `native:${metadata.environmentPeriodIndex}:${metadata.timeIndex}`, row: axis.rows[offset], label,
+      x, startX: x - metadata.intervalMinutes / 60, endX: x, metadata, offset };
+    intervals.push(entry);
+    byEnd.set(endpoint, byEnd.has(endpoint) ? null : entry);
+  }
+  intervals.sort((a, b) => a.x - b.x || a.startX - b.startX);
+  for (let offset = 1; offset < intervals.length; offset++) {
+    const previous = intervals[offset - 1], current = intervals[offset];
+    if (sameEnvironment(previous.metadata, current.metadata) && current.startX < previous.endX - 1e-7) {
+      previous.invalid = true; current.invalid = true;
+    }
+  }
+  const result = { intervals, byEnd, labels: axis.labels };
+  if (metadataAxis) { const axes = shared || new WeakMap(); axes.set(axis.rows, result); model.nativeAxes.set(metadataAxis, axes); }
+  model.nativeTimelines.set(signal.series, result); return result;
+}
+
+function nativeValue(model, signal, entry) {
+  if (!entry || entry.invalid || signal.status !== "collected") return null;
+  if (!model.nativeColumns.has(signal.series)) model.nativeColumns.set(signal.series, columns(signal.series));
+  const value = model.nativeColumns.get(signal.series).values[entry.offset];
+  return finite(value) ? value * signal.factor : null;
 }
 
 // Availability describes permission; plant dispatch and transport demand are
@@ -56,6 +108,36 @@ function runtimeAvailability(definition) {
     ? configured.get(layer.id)?.expression || layer.expression : permission(layer.expression)) };
 }
 
+const sameSource = (left, right) => Number.isInteger(left?.objectIndex) && left.objectIndex === right?.objectIndex
+  && token(left.objectType) === token(right.objectType) && token(left.objectName) === token(right.objectName);
+
+// These outputs average HVAC-system actions over the reported zone timestep.
+// NightCycle cannot emit ForceOff: an average of NoAction=0 and CycleOn=2 can
+// nevertheless equal 1 exactly. Only constrain a signal when its executed
+// source and control type prove the possible native actions.
+function nightCycleStates(definition, source, nodeID) {
+  if (token(source?.objectType) !== "availabilitymanager:nightcycle") return null;
+  const nodes = (definition.availabilityDefinitions?.nodes || []).filter((node) => node.code === "availability_manager"
+    && sameSource(node.source, source) && (!nodeID || node.id === nodeID));
+  if (nodes.length !== 1) return null;
+  const controls = (nodes[0].parameters || []).filter((parameter) => token(parameter.name) === "control type" && parameter.objectIndex === source.objectIndex);
+  if (controls.length !== 1) return null;
+  switch (token(controls[0].value)) {
+    case "stayoff": return [0];
+    case "cycleonany": case "cycleoncontrolzone": case "cycleonanycoolingzone": case "cycleonanyheatingzone": return [0, 2];
+    case "cycleonanyzonefansonly": case "cycleonanyheatingzonefansonly": return [0, 3];
+    case "cycleonanycoolingorheatingzone": return [0, 2, 3];
+    default: return null;
+  }
+}
+
+function possibleManagerStates(definition, signal) {
+  if (signal.role === "manager_status" && signal.graph === "availabilityDefinitions") return nightCycleStates(definition, signal.source, signal.nodeId);
+  // A global HybridVentilation manager can override the owning loop outside
+  // its assignment list. Its aggregate action domain cannot be inferred here.
+  return null;
+}
+
 export function prepareHVACRuntimeInspection(loop = {}) {
   const language = getLanguage(), saved = cache.get(loop);
   if (saved?.language === language) return saved;
@@ -65,12 +147,28 @@ export function prepareHVACRuntimeInspection(loop = {}) {
     const key = seriesSignature(item);
     const list = bySignature.get(key) || []; list.push(item); bySignature.set(key, list);
   }
+  const nativeMetadataCache = new WeakMap();
+  const nativeIntervalsFor = (item) => {
+    if (nativeMetadataCache.has(item)) return nativeMetadataCache.get(item);
+    let intervals = Array.isArray(item.nativeIntervals) ? item.nativeIntervals : null;
+    if (!intervals && item.nativeIntervalsSourceId) {
+      const sources = byID.get(item.nativeIntervalsSourceId) || [], source = sources.length === 1 ? sources[0] : null;
+      if (Array.isArray(source?.nativeIntervals) && fileKey(source) === fileKey(item)) {
+        const target = columns(item, true), reference = columns(source, true);
+        if (target.rows === reference.rows && target.labels === reference.labels
+          || target.rows.length === reference.rows.length && target.rows.every((row, index) => row === reference.rows[index] && target.labels[index] === reference.labels[index])) intervals = source.nativeIntervals;
+      }
+    }
+    nativeMetadataCache.set(item, intervals); return intervals;
+  };
   const signals = (loop.controlSignals || []).map((binding) => {
     const matching = binding.seriesId ? byID.get(binding.seriesId) || [] : bySignature.get(signature(binding)) || [];
     const exact = matching.filter((item) => seriesSignature(item) === signature(binding));
     const item = exact.length === 1 ? exact[0] : null;
-    const status = binding.status === "collected" && item ? "collected" : binding.status === "collected" ? exact.length > 1 ? "ambiguous" : "missing" : binding.status || "missing";
-    return { ...binding, series: item, status, values: new Map(), ...units(item || {}) };
+    let status = binding.status === "collected" && item ? "collected" : binding.status === "collected" ? exact.length > 1 ? "ambiguous" : "missing" : binding.status || "missing";
+    const wrongCadence = discrete(binding) && cadence(binding.reportingFrequency) !== "detailed";
+    if (status === "collected" && wrongCadence) status = "unsupported";
+    return { ...binding, series: item, status, ...(wrongCadence ? { message: "Discrete availability actions require native HVAC substep observations." } : {}), values: new Map(), ...units(item || {}) };
   });
   const available = [...new Set(signals.filter((signal) => signal.status === "collected").map((signal) => signal.series))];
   const files = new Map();
@@ -78,7 +176,7 @@ export function prepareHVACRuntimeInspection(loop = {}) {
   const primary = [...files].sort((a, b) => Number(b[0].endsWith(".sql")) - Number(a[0].endsWith(".sql")) || b[1] - a[1])[0]?.[0];
   const observations = new Map(), seenTimelines = new Set();
   for (const item of available) {
-    if (fileKey(item) !== primary) continue;
+    if (fileKey(item) !== primary || cadence(seriesFrequency(item)) !== "timestep") continue;
     const axis = columns(item, true);
     if (seenTimelines.has(axis.rows)) continue;
     seenTimelines.add(axis.rows);
@@ -86,7 +184,8 @@ export function prepareHVACRuntimeInspection(loop = {}) {
       const row = axis.rows[offset];
       if (!finite(row)) continue;
       const key = `${cadence(seriesFrequency(item))}:${row}`, label = String(axis.labels[offset] || row);
-      if (!observations.has(key)) observations.set(key, { key, row, label, frequency: seriesFrequency(item) });
+      const metadata = nativeMetadata(nativeIntervalsFor(item), offset, axis.rows.length);
+      if (!observations.has(key)) observations.set(key, { key, row, label, frequency: seriesFrequency(item), ...(metadata ? { metadata } : {}) });
       else if (observations.get(key).label !== label) observations.get(key).ambiguous = true;
     }
   }
@@ -96,6 +195,7 @@ export function prepareHVACRuntimeInspection(loop = {}) {
   const labels = new Map();
   frames.forEach((frame, index) => {
     frame.x = calendarValid ? times[index] : index; frame.index = index;
+    if (calendarValid && frame.metadata) { frame.startX = frame.x - frame.metadata.intervalMinutes / 60; frame.endX = frame.x; }
     const key = `${cadence(frame.frequency)}:${frame.label}`; labels.set(key, labels.has(key) ? null : frame);
   });
   const byRow = new Map(frames.map((frame) => [frame.key, frame]));
@@ -103,6 +203,13 @@ export function prepareHVACRuntimeInspection(loop = {}) {
   const align = (signal) => {
     if (!signal.series) return empty;
     if (alignedValues.has(signal.series)) return alignedValues.get(signal.series);
+    if (cadence(signal.reportingFrequency) === "detailed") {
+      const timeline = nativeTimeline(model, signal), values = { get(key) {
+        const frame = byRow.get(key), endpoint = frame && nativeEndpoint(frame.metadata, frame.x);
+        return endpoint ? nativeValue(model, signal, timeline.byEnd.get(endpoint)) : null;
+      } };
+      alignedValues.set(signal.series, values); return values;
+    }
     const axis = columns(signal.series), frequency = cadence(signal.reportingFrequency), own = fileKey(signal.series) === primary;
     let byAxis = indexers.get(axis.rows);
     if (!byAxis) { byAxis = new Map(); indexers.set(axis.rows, byAxis); }
@@ -126,12 +233,65 @@ export function prepareHVACRuntimeInspection(loop = {}) {
     alignedValues.set(signal.series, values); return values;
   };
   for (const signal of signals) Object.defineProperty(signal, "values", { enumerable: true, get: () => align(signal) });
-  const profiles = (loop.operatingProfiles || []).filter((definition) => !loop.topology?.id || definition.loopId === loop.topology.id).map((definition) => ({ id: String(definition.componentIndex), definition, availabilityExpression: runtimeAvailability(definition), source: profileSource(definition),
-    signals: signals.filter((signal) => signal.componentIndex === definition.componentIndex && (!signal.loopId || signal.loopId === definition.loopId)) }));
+  const profiles = (loop.operatingProfiles || []).filter((definition) => !loop.topology?.id || definition.loopId === loop.topology.id).map((definition) => {
+    const profileSignals = signals.filter((signal) => signal.componentIndex === definition.componentIndex && (!signal.loopId || signal.loopId === definition.loopId));
+    for (const signal of profileSignals) {
+      const possibleStates = possibleManagerStates(definition, signal);
+      if (possibleStates) signal.possibleStates = possibleStates;
+    }
+    return { id: String(definition.componentIndex), definition, availabilityExpression: runtimeAvailability(definition), source: profileSource(definition), signals: profileSignals };
+  });
   let interval;
   if (calendarValid && frames.length > 1) for (let i = 1; i < frames.length; i++) { const next = frames[i].x - frames[i - 1].x; interval = interval === undefined ? next : Math.min(interval, next); }
-  const model = { language, loop, profiles, signals, frames, primary, calendarValid, interval, tracePoints: new Map() };
+  const model = { language, loop, profiles, signals, frames, primary, calendarValid, leap, interval, tracePoints: new Map(), nativeTimelines: new WeakMap(), nativeAxes: new WeakMap(), nativeColumns: new WeakMap(), availabilityFrames: new WeakMap(), nativeIntervalsFor };
   cache.set(loop, model); return model;
+}
+
+function lowerBound(entries, value, coordinate = (entry) => entry) {
+  let low = 0, high = entries.length;
+  while (low < high) { const middle = (low + high) >>> 1; if (coordinate(entries[middle]) < value) low = middle + 1; else high = middle; }
+  return low;
+}
+
+// A shared frame remains a zone timestep. Availability history additionally
+// retains every reported HVAC interval within that frame, including gaps.
+export function hvacRuntimeAvailabilityFrames(model, profile, frames = model.frames) {
+  let boundaries = model.availabilityFrames.get(profile);
+  if (!boundaries) {
+    const reported = profile.signals.filter((signal) => discrete(signal) && cadence(signal.reportingFrequency) === "detailed")
+      .flatMap((signal) => nativeTimeline(model, signal).intervals.flatMap((entry) => [entry.startX, entry.endX])).sort((a, b) => a - b);
+    // Subtracting duration from an absolute calendar hour can differ from the
+    // neighboring endpoint by floating-point noise. It is one SQL boundary,
+    // not an additional physical interval with almost-zero duration.
+    boundaries = reported.filter((value, index) => !index || value - reported[index - 1] > 1e-7);
+    model.availabilityFrames.set(profile, boundaries);
+  }
+  const result = [];
+  for (const frame of frames) {
+    const startX = frame.startX ?? frame.x - (model.interval || 1), endX = frame.x, stops = [startX];
+    if (model.calendarValid) for (let offset = lowerBound(boundaries, startX + 1e-7); offset < boundaries.length && boundaries[offset] < endX - 1e-7; offset++) stops.push(boundaries[offset]);
+    stops.push(endX);
+    for (let offset = 1; offset < stops.length; offset++) result.push({ key: `availability:${frame.key}:${offset}`, x: stops[offset],
+      startX: stops[offset - 1], endX: stops[offset], label: frame.label, sourceFrame: frame });
+  }
+  return result;
+}
+
+export function hvacRuntimeSignalsAt(model, signals, frame) {
+  return signals.map((signal) => {
+    let value = null;
+    if (frame && signal.status === "collected") {
+      if (!frame.sourceFrame || cadence(signal.reportingFrequency) !== "detailed") value = signal.values.get((frame.sourceFrame || frame).key) ?? null;
+      else if (model.calendarValid && frame.sourceFrame.metadata) {
+        const timeline = nativeTimeline(model, signal), offset = lowerBound(timeline.intervals, frame.endX - 1e-7, (entry) => entry.endX), entry = timeline.intervals[offset];
+        if (entry && sameEnvironment(entry.metadata, frame.sourceFrame.metadata)
+          && entry.metadata.simulationDays === frame.sourceFrame.metadata.simulationDays
+          && entry.startX <= frame.startX + 1e-7 && entry.endX >= frame.endX - 1e-7
+          && entry.startX >= frame.sourceFrame.startX - 1e-7 && entry.endX <= frame.sourceFrame.endX + 1e-7) value = nativeValue(model, signal, entry);
+      }
+    }
+    return { ...signal, value };
+  });
 }
 
 export function hvacRuntimeTrace(model, signal, frames) {
@@ -154,11 +314,14 @@ export function hvacRuntimeSignalState(signal, value) {
 
 function managerStatus(signal, value) {
   if (!finite(value)) return { state: "error", value: null };
-  if (value < 0 || value > (signal.domain === "hybrid_ventilation_status" ? 2 : 3)) return { state: "error", value };
-  if (Math.abs(value - Math.round(value)) > 1e-7) return { state: "mixed", value };
+  if (cadence(signal.reportingFrequency) !== "detailed") return { state: "error", value };
+  const possible = signal.possibleStates, minimum = possible ? possible[0] : 0, maximum = possible ? possible.at(-1) : signal.domain === "hybrid_ventilation_status" ? 2 : 3;
+  if (value < minimum - 1e-7 || value > maximum + 1e-7) return { state: "error", value };
+  if (Math.abs(value - Math.round(value)) > 1e-7) return { state: "error", value };
   const code = Math.round(value);
-  if (signal.domain === "hybrid_ventilation_status") return { state: ["hybrid_idle", "natural_allowed", "natural_blocked"][code] || "error", value };
-  return { state: ["no_action", "force_off", "cycle_on", "zone_fans_only"][code] || "error", value };
+  if (possible && !possible.includes(code)) return { state: "error", value };
+  if (signal.domain === "hybrid_ventilation_status") return { state: ["hybrid_idle", "natural_allowed", "natural_blocked"][code] || "error", value: code };
+  return { state: ["no_action", "force_off", "cycle_on", "zone_fans_only"][code] || "error", value: code };
 }
 
 function evaluatePermission(profile, observed, expression, depth = 0, domain = "boolean") {
@@ -175,12 +338,22 @@ function evaluatePermission(profile, observed, expression, depth = 0, domain = "
   }
   if (["all", "any"].includes(op)) {
     const inputs = children.map((entry) => evaluatePermission(profile, observed, entry, depth + 1)), states = inputs.map((entry) => entry.state), ids = inputs.flatMap((entry) => entry.signals);
-    if (op === "all") return result(states.includes("blocked") ? "blocked" : states.every((state) => state === "allowed") ? "allowed" : states.includes("mixed") ? "mixed" : "not_evaluated", ids);
-    return result(states.includes("allowed") ? "allowed" : states.every((state) => state === "blocked") ? "blocked" : states.includes("mixed") ? "mixed" : "not_evaluated", ids);
+    if (op === "all") return result(states.includes("blocked") ? "blocked" : states.every((state) => state === "allowed") ? "allowed" : "not_evaluated", ids);
+    return result(states.includes("allowed") ? "allowed" : states.every((state) => state === "blocked") ? "blocked" : "not_evaluated", ids);
   }
   if (["air_managers", "plant_managers"].includes(op)) {
+    // The native air-loop result also includes overrides outside its authored
+    // assignment list. Keep those reported actions distinct from recomputing
+    // the priority of individual manager definitions.
+    if (op === "air_managers" && token(expression.assignmentOwner?.objectType) === "airloophvac") {
+      const aggregate = observed.filter((signal) => signal.role === "loop_status" && sameSource(signal.source, expression.assignmentOwner));
+      if (aggregate.length) {
+        const ids = aggregate.map((signal) => signal.id), status = aggregate.length === 1 ? managerStatus(aggregate[0], aggregate[0].value) : { state: "error" };
+        return status.state === "error" ? result("not_evaluated", ids) : managerResult(status.value, ids);
+      }
+    }
     const values = children.map((entry) => evaluatePermission(profile, observed, entry, depth + 1, "manager"));
-    if (values.some((entry) => entry.state !== "manager")) return result(values.some((entry) => entry.state === "mixed") ? "mixed" : "not_evaluated", values.flatMap((entry) => entry.signals));
+    if (values.some((entry) => entry.state !== "manager")) return result("not_evaluated", values.flatMap((entry) => entry.signals));
     const rank = [0, 3, 1, 2], value = op === "plant_managers" ? values.find((entry) => entry.value !== 0)?.value || 0
       : values.reduce((current, entry) => rank[entry.value] > rank[current] ? entry.value : current, 0);
     return managerResult(value, values.flatMap((entry) => entry.signals));
@@ -195,7 +368,7 @@ function evaluatePermission(profile, observed, expression, depth = 0, domain = "
     const matches = observed.filter((signal) => signal.role === "manager_status" && sourceIndex(signal.source) === sourceIndex(expression.source));
     if (!matches.length || new Set(matches.map((signal) => signal.value)).size > 1) return result("not_evaluated");
     const signal = matches[0], status = managerStatus(signal, signal.value);
-    if (status.state === "mixed" || status.state === "error" || signal.domain === "hybrid_ventilation_status") return result(status.state === "mixed" ? "mixed" : "not_evaluated", matches.map((entry) => entry.id), status.value);
+    if (status.state === "error" || signal.domain === "hybrid_ventilation_status") return result("not_evaluated", matches.map((entry) => entry.id), status.value);
     return managerResult(status.value, matches.map((entry) => entry.id));
   }
   return result("not_evaluated");

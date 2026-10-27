@@ -65,6 +65,11 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
+- HVAC availability acquires native Detailed manager decisions instead of
+  interpreting averaged status codes as actions. OFF fan schedules retain their
+  raw state when a CycleOn override permits operation. Availability and chart
+  legends highlight matching observations; HVAC time-series use plain lines,
+  and the bottom frame bar supports one-frame buttons and Ctrl+Left/Right.
 - Restoring or opening input with HVAC selected no longer stops quick analysis
   with a `textContent` error from the removed inspector. Input views remain usable
   while the remaining analysis stages load.

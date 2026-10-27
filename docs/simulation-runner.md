@@ -180,6 +180,12 @@ changes the source result. Ordinary API/CLI results keep their public shape.
 HVAC `controlSeries` participates in the same point pooling and deferred
 observation loading. Profiles and signal bindings refer to a series by ID;
 they do not copy its point arrays into every logic node.
+Native interval metadata uses the same chunked column pool, with
+`kind: "nativeIntervals"` storing exact numeric groups of
+`timeIndex, environmentPeriodIndex, intervalMinutes, simulationDays, year`.
+The decoder restores shared canonical interval objects lazily; whole arrays
+do not repeat in the initial message for every loop. Chunk validation preserves
+field offsets even when a resource part splits one interval record.
 
 The browser validates all binding paths before installing them and rejects
 prototype paths, duplicate targets and invalid typed columns. Receipt checks
@@ -468,23 +474,29 @@ topology alongside retained observations.
 The result HVAC view retains the default loop schematic, node controls/charts
 and custom plots. Equipment selection opens its availability stack and control
 sequence inline. One bottom Frame control drives the loop and equipment values.
+Its right-hand buttons and Ctrl+Left/Right advance one source frame, clamp at
+the bounds and do not intercept text editing, modal dialogs or another view.
+HVAC time-series have no data-point markers; their current-time cursor remains.
+Delegated pointer/focus legend interactions emphasize matching traces within
+one chart. Availability has its own state/action and cursor legend.
 Each `HVACLoopRunResult` includes:
 
 | Field | Contract |
 | --- | --- |
 | `operatingProfiles` | Source-exact `HVACOperatingProfile` definitions from the executed document, filtered by the occurrence's real loop and selected component. |
 | `controlSignals` | Bindings with `id`, `componentIndex`, optional `loopId`, `graph`, optional `nodeId`, `role`, `domain`, exact `source`, optional `parameterName`, `keyValue`, `variableName`, `reportingFrequency`, `seriesId`, `required`, `status`, and optional diagnostic `message`. |
-| `controlSeries` | Deduplicated native `SimulationSeries`; a collected binding's `seriesId` equals its series' `sourceId`. Native row identity, cadence, gaps and real zero remain intact. |
+| `controlSeries` | Deduplicated native `SimulationSeries`; a collected binding's `seriesId` equals its series' `sourceId`. Native row identity, cadence, gaps and real zero remain intact. `nativeIntervals` aligns with unsampled points and retains SQL `timeIndex`, `environmentPeriodIndex`, `intervalMinutes`, `simulationDays` and optional `year`. An identical axis uses `nativeIntervalsSourceId` referencing an owning series within the same loop result, avoiding repeated interval arrays. |
 | `controlCoverage` | `status` (`complete` or `error`), `required`, `collected`, `missing`, and optional `message`. Counts measure required channels with valid coverage of every reported control interval. Missing, ambiguous or unsupported required bindings and invalid/incomplete interval coverage are acquisition failures. |
 
-Coverage validates the shared native Timestep axis, preferring the SQL source,
-without merging cadences or borrowing a value from another frame. Duplicate or
+Coverage validates the native Timestep axis and Detailed interval coverage,
+preferring the SQL source, without borrowing a value from another frame. Duplicate or
 conflicting rows, required gaps, unset native targets, non-finite values and
 out-of-domain manager statuses fail both loop and bundle completeness. A
 partially valid channel retains its raw series and `collected` binding status
 for valid-frame inspection; its binding message explains the interval failure,
-while `controlCoverage` reports the incomplete channel. Interval averages
-inside the native status domain remain valid mixed observations.
+while `controlCoverage` reports the incomplete channel. Manager and loop status
+bindings require Detailed native HVAC intervals; a Timestep status average is
+not categorical evidence even when it equals an integer status code.
 
 Graph identities distinguish `availabilityDefinitions`, `onOff`,
 `parameterControl` and `loop`; node IDs alone can collide between graphs.
@@ -494,12 +506,18 @@ semantics only where the native expression specifies them; parameter-control
 schedules remain continuous. Standard manager status is NoAction=0,
 ForceOff=1, CycleOn=2, CycleOnZoneFansOnly=3. NoAction is not OFF, and Hybrid
 Ventilation has a separate domain. Native manager precedence and overrides
-remain part of permission evaluation. Timestep averages, including fractional
-or apparently integral statuses, cannot reconstruct an instantaneous event
-sequence, cycling timers, adaptive history or solver iterations.
+remain part of permission evaluation. NoAction=0 and CycleOn=2 can average to
+ForceOff's code 1 in Timestep reporting. Detailed status outputs preserve the
+original native decisions and intervals; continuous observations retain
+Timestep reporting. Native interval metadata and exact endpoint matching prevent
+cross-cadence row aliases. Missing, conflicting, overlapping or invalid intervals
+are acquisition failures, never guessed actions or ambiguous operating states.
 The final availability row evaluates the minimum permission projection with
 reported manager actions. Source schedules, managers and effective native gates
 stack above it; decisive rows trace the current native priority/AND/OR branch.
+An OFF fan schedule stays visibly OFF when CycleOn overrides it, with an action
+badge explaining the override. Patch geometry preserves original interval
+boundaries without pixel binning, minimum-width inflation or state averaging.
 Plant demand and control observations stay separate from permission.
 
 The main view promotes to already-loaded Timestep series only when every
@@ -519,8 +537,7 @@ Selecting a card selects its related observations without exposing a raw
 variable/parameter table. Valid sensor/target pairs show a same-cadence residual;
 requested flow, actual flow and equipment response retain distinct meanings.
 Required gaps and invalid definitions remain explicit diagnostics, with exact
-source evidence on the error indicator. Old saved results keep the original
-loop/node inspection and require a new HVAC Loop Check for control diagnostics.
+source evidence on the error indicator.
 
 Profiles without physical loop membership form a **Zone / local equipment**
 display group (`loopType: "ZoneHVAC"`, nil topology). Their profile `loopId`

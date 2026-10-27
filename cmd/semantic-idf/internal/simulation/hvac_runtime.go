@@ -53,6 +53,25 @@ var hvacRuntimeManagerVariables = map[string]string{
 	"availabilitymanager:optimumstart":           "Availability Manager Optimum Start Control Status",
 }
 
+func hvacRuntimeStatusVariable(variable string) bool {
+	if strings.EqualFold(variable, "Air System Simulation Cycle On Off Status") || strings.EqualFold(variable, "Availability Manager Hybrid Ventilation Control Status") {
+		return true
+	}
+	for _, statusVariable := range hvacRuntimeManagerVariables {
+		if strings.EqualFold(variable, statusVariable) {
+			return true
+		}
+	}
+	return false
+}
+
+func hvacRuntimeFrequency(variable string) string {
+	if hvacRuntimeStatusVariable(variable) {
+		return "Detailed"
+	}
+	return "Timestep"
+}
+
 func hvacRuntimeComponent(profile idf.HVACOperatingProfile) idf.HVACOperatingSource {
 	for _, node := range profile.ParameterControl.Nodes {
 		if node.Code == "equipment_response" {
@@ -210,11 +229,11 @@ func hvacRuntimeSignals(profile idf.HVACOperatingProfile, loop idf.HVACLoop, doc
 			return
 		}
 		seen[identity] = true
-		status, message := "missing", "Required runtime observation was not collected. Run HVAC Loop Check again with control diagnostics."
+		status, message := "missing", "Required runtime observation was not collected at its specified source and reporting frequency."
 		if key == "" || variable == "" {
 			status, message = "unsupported", "The source control requires a runtime observation without a supported output binding."
 		}
-		out = append(out, HVACControlSignalBinding{ID: identity, ComponentIndex: profile.ComponentIndex, LoopID: profile.LoopID, Graph: graph, NodeID: node, Role: role, Domain: domain, Source: source, ParameterName: field, KeyValue: key, VariableName: variable, ReportingFrequency: "Timestep", Required: true, Status: status, Message: message})
+		out = append(out, HVACControlSignalBinding{ID: identity, ComponentIndex: profile.ComponentIndex, LoopID: profile.LoopID, Graph: graph, NodeID: node, Role: role, Domain: domain, Source: source, ParameterName: field, KeyValue: key, VariableName: variable, ReportingFrequency: hvacRuntimeFrequency(variable), Required: true, Status: status, Message: message})
 	}
 	component := hvacRuntimeComponent(profile)
 	graphs := []struct {
@@ -337,7 +356,7 @@ func (builder *purposePlanBuilder) addHVACRuntimeOutputs() {
 			return
 		}
 		unique[key] = true
-		builder.addVariableWithReason(SimulationPurposeHVACLoopCheck, binding.KeyValue, binding.VariableName, "Timestep", "heavy", "Native interval observation for source-backed HVAC availability and control diagnostics.", "HVAC control diagnostics")
+		builder.addVariableWithReason(SimulationPurposeHVACLoopCheck, binding.KeyValue, binding.VariableName, hvacRuntimeFrequency(binding.VariableName), "heavy", "Native interval observation for source-backed HVAC availability and control diagnostics.", "HVAC control diagnostics")
 		advanced = advanced || strings.Contains(binding.VariableName, "Requested Mass Flow") || strings.Contains(binding.VariableName, "Setpoint Mass Flow")
 	}
 	for _, loop := range report.Loops {
@@ -372,14 +391,14 @@ func (builder *purposePlanBuilder) addHVACRuntimeOutputs() {
 		for _, variable := range variables {
 			add(HVACControlSignalBinding{KeyValue: "*", VariableName: variable})
 		}
-		builder.warn("warning", "hvac_control_expansion_wildcard", "HVACTemplate generated control names are unknown before ExpandObjects; Timestep diagnostics use wildcard outputs and bind only to the executed expanded model.", SimulationPurposeHVACLoopCheck, "")
+		builder.warn("warning", "hvac_control_expansion_wildcard", "HVACTemplate generated control names are unknown before ExpandObjects; control diagnostics use wildcard outputs and bind only to the executed expanded model.", SimulationPurposeHVACLoopCheck, "")
 		break
 	}
 	if advanced {
 		builder.addObject(PurposeOutputObject{ObjectType: "Output:Diagnostics", Fields: []idf.OutputFieldValue{{Name: "Key 1", Value: "DisplayAdvancedReportVariables"}}, PurposeIDs: []SimulationPurposeID{SimulationPurposeHVACLoopCheck}, Weight: "light", Description: "Enables native requested and setpoint flow observations for HVAC control diagnostics.", Reason: "HVAC control diagnostics"})
 	}
 	if len(unique) > 0 {
-		builder.warn("info", "hvac_control_diagnostics", fmt.Sprintf("HVAC control diagnostics adds %d source-specific Timestep series; system values are interval averages, not solver iteration records.", len(unique)), SimulationPurposeHVACLoopCheck, "")
+		builder.warn("info", "hvac_control_diagnostics", fmt.Sprintf("HVAC control diagnostics adds %d source-specific series: discrete availability actions at native Detailed intervals, other observations at Timestep cadence.", len(unique)), SimulationPurposeHVACLoopCheck, "")
 	}
 }
 
@@ -387,28 +406,40 @@ func attachHVACRuntimeControls(result *HVACLoopRunResult, profiles []idf.HVACOpe
 	result.OperatingProfiles = profiles
 	coverage := HVACControlCoverage{Status: "complete"}
 	pooled := map[string]bool{}
-	outputKey := func(key, name string) string {
-		return normalizePurposeToken(key) + "\x00" + normalizePurposeToken(name)
+	outputKey := func(key, name, frequency string) string {
+		return normalizePurposeToken(key) + "\x00" + normalizePurposeToken(name) + "\x00" + purposeControlFrequency(frequency)
 	}
 	byOutput := map[string][]SimulationSeries{}
+	byNativeID := map[string]SimulationSeries{}
 	for _, item := range series {
-		if !purposeTimestepFrequency(purposeSeriesFrequency(item)) || item.IsMeter != nil && *item.IsMeter || len(item.Points) == 0 {
+		byNativeID[normalizePurposeToken(item.File)+"\x00"+item.SourceID] = item
+	}
+	for _, item := range series {
+		frequency := purposeSeriesFrequency(item)
+		if !purposeTimestepFrequency(frequency) && !purposeDetailedFrequency(frequency) || item.IsMeter != nil && *item.IsMeter || len(item.Points) == 0 {
 			continue
 		}
 		key, name := hvacSeriesIdentity(item)
-		identity := outputKey(key, name)
+		identity := outputKey(key, name, frequency)
 		byOutput[identity] = append(byOutput[identity], item)
 	}
 	poolIdentities := map[string]string{}
 	for _, profile := range profiles {
 		for _, binding := range hvacRuntimeSignals(profile, loop, doc) {
 			coverage.Required++
-			identity := outputKey(binding.KeyValue, binding.VariableName)
+			identity := outputKey(binding.KeyValue, binding.VariableName, binding.ReportingFrequency)
 			matched := byOutput[identity]
 			if len(matched) == 1 {
 				item := matched[0]
+				if item.NativeIntervalsSourceID != "" {
+					owner, exists := byNativeID[normalizePurposeToken(item.File)+"\x00"+item.NativeIntervalsSourceID]
+					if exists && simulationPointAxisEqual(item.Points, owner.Points) {
+						item.NativeIntervals = owner.NativeIntervals
+					}
+					item.NativeIntervalsSourceID = "" // Rebase references inside this loop below.
+				}
 				if item.SourceID == "" {
-					item.SourceID = "hvac-control:" + normalizePurposeToken(item.File) + ":" + normalizePurposeToken(binding.KeyValue) + ":" + normalizePurposeToken(binding.VariableName) + ":timestep"
+					item.SourceID = "hvac-control:" + normalizePurposeToken(item.File) + ":" + normalizePurposeToken(binding.KeyValue) + ":" + normalizePurposeToken(binding.VariableName) + ":" + purposeControlFrequency(binding.ReportingFrequency)
 				}
 				if previous, exists := poolIdentities[item.SourceID]; exists && previous != identity {
 					binding.Status, binding.Message = "ambiguous", "A reported source ID identifies conflicting output channels; no series was chosen."
@@ -437,9 +468,10 @@ func attachHVACRuntimeControls(result *HVACLoopRunResult, profiles []idf.HVACOpe
 		}
 	}
 	validateHVACRuntimeObservations(result, &coverage)
+	deduplicateHVACNativeIntervals(result.ControlSeries)
 	if coverage.Missing > 0 {
 		coverage.Status = "error"
-		coverage.Message = fmt.Sprintf("%d required HVAC control observations were not acquired with valid coverage of every reported interval. Run HVAC Loop Check again and inspect output coverage.", coverage.Missing)
+		coverage.Message = fmt.Sprintf("%d required HVAC control observations were not acquired with valid coverage of every reported interval.", coverage.Missing)
 	}
 	if len(profiles) > 0 {
 		result.ControlCoverage = &coverage
@@ -448,6 +480,45 @@ func attachHVACRuntimeControls(result *HVACLoopRunResult, profiles []idf.HVACOpe
 		}
 	}
 	sort.SliceStable(result.ControlSeries, func(i, j int) bool { return result.ControlSeries[i].SourceID < result.ControlSeries[j].SourceID })
+}
+
+// A SQL result can share one native axis across hundreds of channels. Keep
+// that axis once in each delivered pool, with references that never escape
+// the current loop's ControlSeries (even for a component-only request).
+func deduplicateHVACNativeIntervals(series []SimulationSeries) {
+	axes := map[string][]int{}
+	for i := range series {
+		item := &series[i]
+		if len(item.NativeIntervals) == 0 || len(item.NativeIntervals) != len(item.Points) {
+			continue
+		}
+		key := fmt.Sprintf("%s/%d/%d/%d", normalizePurposeToken(item.File), len(item.Points), item.Points[0].X, item.Points[len(item.Points)-1].X)
+		owner := -1
+		for _, j := range axes[key] {
+			other := series[j]
+			if !simulationPointAxisEqual(item.Points, other.Points) {
+				continue
+			}
+			equal := true
+			if &item.NativeIntervals[0] != &other.NativeIntervals[0] {
+				for k, interval := range item.NativeIntervals {
+					if interval != other.NativeIntervals[k] {
+						equal = false
+						break
+					}
+				}
+			}
+			if equal {
+				owner = j
+				break
+			}
+		}
+		if owner >= 0 {
+			item.NativeIntervalsSourceID, item.NativeIntervals = series[owner].SourceID, nil
+		} else {
+			axes[key] = append(axes[key], i)
+		}
+	}
 }
 
 func hvacRuntimeControlCompleteness(loops []HVACLoopRunResult) *PurposeCompletenessItem {

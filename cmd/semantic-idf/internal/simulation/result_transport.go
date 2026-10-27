@@ -263,8 +263,49 @@ func (builder *resultTransportBuilder) series(items []SimulationSeries, path []a
 	for i := range items {
 		builder.points(&items[i].Points, resultPath(path, i, "points"))
 		builder.points(&items[i].DisplayPoints, resultPath(path, i, "displayPoints"))
+		builder.nativeIntervals(&items[i].NativeIntervals, resultPath(path, i, "nativeIntervals"))
 	}
 	return items
+}
+
+// Native timing repeats across raw results and loop resources. Keep it in the
+// existing numeric column pool so the initial WebView message does not contain
+// annual metadata arrays. The decoder restores the canonical objects lazily.
+func (builder *resultTransportBuilder) nativeIntervals(target *[]SimulationNativeInterval, path []any) {
+	intervals := *target
+	if len(intervals) < 128 {
+		return
+	}
+	sliceKey := resultValueSliceKey{First: &intervals[0], Length: len(intervals)}
+	id, exists := builder.columnSlices[sliceKey]
+	if !exists {
+		values := make([]float64, 0, len(intervals)*5)
+		const maxSafeInteger = int64(1<<53 - 1)
+		for _, interval := range intervals {
+			for _, value := range []int64{interval.TimeIndex, interval.EnvironmentPeriodIndex, interval.SimulationDays, interval.Year} {
+				if value < -maxSafeInteger || value > maxSafeInteger {
+					return // Do not round an int64 while compacting source evidence.
+				}
+			}
+			values = append(values, float64(interval.TimeIndex), float64(interval.EnvironmentPeriodIndex), interval.IntervalMinutes, float64(interval.SimulationDays), float64(interval.Year))
+		}
+		_, hash := resultPrimitiveHash(values)
+		key := resultValueKey{Hash: hash, Length: len(values), Kind: "nativeIntervals"}
+		for _, candidate := range builder.columnIndex[key] {
+			if resultPrimitiveEqual(builder.wire.ColumnSets[candidate].Values.([]float64), values) {
+				id, exists = candidate, true
+				break
+			}
+		}
+		if !exists {
+			id = len(builder.wire.ColumnSets)
+			builder.wire.ColumnSets = append(builder.wire.ColumnSets, resultValueColumn{Kind: key.Kind, Values: values})
+			builder.columnIndex[key] = append(builder.columnIndex[key], id)
+		}
+		builder.columnSlices[sliceKey] = id
+	}
+	builder.wire.ColumnBindings = append(builder.wire.ColumnBindings, resultPointBinding{Path: path, Data: id})
+	*target = nil
 }
 
 func (builder *resultTransportBuilder) metrics(items []ComfortMetricResult, path []any) []ComfortMetricResult {

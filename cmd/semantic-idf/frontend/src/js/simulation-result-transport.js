@@ -5,6 +5,7 @@ const unsafePathKeys = new Set(["__proto__", "prototype", "constructor"]);
 const object = (value) => value !== null && typeof value === "object";
 const index = (value, length) => Number.isInteger(value) && value >= 0 && value < length;
 const validatedColumns = new WeakMap();
+const nativeIntervalColumns = new WeakMap();
 const pointSources = new WeakMap(), validatedTimelines = new WeakSet(), validatedPointSets = new WeakSet();
 const invalidColumn = () => { throw new Error("Invalid simulation result transfer data"); };
 
@@ -19,9 +20,15 @@ export function simulationSeriesPointColumns(series, { timelineOnly = false } = 
   return display && display.rows.length === raw.rows.length ? display : raw;
 }
 
-function validateColumnValues(kind, values) {
-  if (!["number", "boolean", "string"].includes(kind) || !Array.isArray(values)) invalidColumn();
-  for (const value of values) if (typeof value !== kind || kind === "number" && !Number.isFinite(value)) invalidColumn();
+function validateColumnValues(kind, values, offset = 0, complete = true) {
+  if (!["number", "boolean", "string", "nativeIntervals"].includes(kind) || !Array.isArray(values)) invalidColumn();
+  const native = kind === "nativeIntervals", type = native ? "number" : kind;
+  if (native && complete && values.length % 5) invalidColumn();
+  for (let index = 0; index < values.length; index++) {
+    const value = values[index];
+    if (typeof value !== type || type === "number" && !Number.isFinite(value)
+      || native && (offset + index) % 5 !== 2 && !Number.isSafeInteger(value)) invalidColumn();
+  }
 }
 
 function columnValues(set) {
@@ -33,14 +40,29 @@ function columnValues(set) {
   return values;
 }
 
+function decodedColumnValues(set) {
+  const values = columnValues(set);
+  if (set.kind !== "nativeIntervals") return values;
+  const previous = nativeIntervalColumns.get(set);
+  if (previous?.source === values) return previous.intervals;
+  const intervals = [];
+  for (let offset = 0; offset < values.length; offset += 5) {
+    const [timeIndex, environmentPeriodIndex, intervalMinutes, simulationDays, year] = values.slice(offset, offset + 5);
+    intervals.push({ timeIndex, environmentPeriodIndex, intervalMinutes, simulationDays, ...(year ? { year } : {}) });
+  }
+  nativeIntervalColumns.set(set, { source: values, intervals });
+  return intervals;
+}
+
 // Resource readers validate each bounded chunk once, before a UI needs it.
 // The cache is shared by every canonical binding of this immutable column.
 // Completion requires nonoverlapping coverage; no pending getter is read here.
 export function createSimulationColumnValidation(set, length) {
   const kind = set.kind, ranges = [];
+  if (kind === "nativeIntervals" && length % 5) invalidColumn();
   let count = 0;
   return (values, offset, assembled) => {
-    validateColumnValues(kind, values);
+    validateColumnValues(kind, values, offset, false);
     const end = offset + values.length;
     if (set.kind !== kind || !Number.isSafeInteger(offset) || offset < 0 || end > length ||
       !Array.isArray(assembled) || assembled.length !== length || ranges.some(range => offset < range.end && end > range.start)) invalidColumn();
@@ -65,7 +87,7 @@ export function decodeSimulationResultTransfer(payload, { deferData = false } = 
     if (!object(set) || !index(set.timeline, timelines.length) || (!deferData && (!Array.isArray(set.values) || set.values.length !== timelines[set.timeline].x.length))) invalid();
   }
   for (const set of columnSets) {
-    if (!object(set) || !["number", "boolean", "string"].includes(set.kind)) invalid();
+    if (!object(set) || !["number", "boolean", "string", "nativeIntervals"].includes(set.kind)) invalid();
     if (deferData) continue;
     columnValues(set);
   }
@@ -111,11 +133,11 @@ export function decodeSimulationResultTransfer(payload, { deferData = false } = 
   };
   for (const { owner, key, data } of columnTargets) {
     const assign = (value) => Object.defineProperty(owner, key, { value, enumerable: true, configurable: true, writable: true });
-    if (!deferData) assign(columnSets[data].values);
+    if (!deferData && columnSets[data].kind !== "nativeIntervals") assign(columnSets[data].values);
     else Object.defineProperty(owner, key, {
       enumerable: true, configurable: true,
       get() {
-        const values = columnValues(columnSets[data]);
+        const values = decodedColumnValues(columnSets[data]);
         assign(values);
         return values;
       },

@@ -44,20 +44,24 @@ type SQLSeriesQuery struct {
 
 // SQLSeriesRow is a ReportData row joined with its dictionary and Time metadata.
 type SQLSeriesRow struct {
-	TimeIndex          int64
-	Month              sql.NullInt64
-	Day                sql.NullInt64
-	Hour               sql.NullInt64
-	Minute             sql.NullInt64
-	IntervalType       string
-	DictionaryIndex    int
-	KeyValue           string
-	Name               string
-	Units              string
-	IsMeter            bool
-	ReportingFrequency string
-	IndexGroup         string
-	Value              sql.NullFloat64
+	TimeIndex              int64
+	Month                  sql.NullInt64
+	Day                    sql.NullInt64
+	Hour                   sql.NullInt64
+	Minute                 sql.NullInt64
+	Year                   sql.NullInt64
+	EnvironmentPeriodIndex sql.NullInt64
+	IntervalMinutes        sql.NullFloat64
+	SimulationDays         sql.NullInt64
+	IntervalType           string
+	DictionaryIndex        int
+	KeyValue               string
+	Name                   string
+	Units                  string
+	IsMeter                bool
+	ReportingFrequency     string
+	IndexGroup             string
+	Value                  sql.NullFloat64
 }
 
 type sqlEnergyDictionaryRow struct {
@@ -200,24 +204,33 @@ func parseSimulationSQLSeriesForPlanWithProgress(path string, plan PurposeRunPla
 	accumulators := map[int]*columnAccumulator{}
 	plotSelection := newPurposePlotSeriesSelection(plan)
 	timestepSelection := newPurposeTimestepSeriesSelection(plan)
+	detailedSelection := newPurposeDetailedSeriesSelection(plan)
 	fullPlotSeries := map[int]bool{}
+	controlSeries := map[int]bool{}
 	weatherFrames := map[int]map[int64]bool{}
-	var hourlyFrames, timestepFrames map[int64]bool
+	var hourlyFrames, timestepFrames, detailedFrames map[int64]bool
 	if len(plotSelection) > 0 {
 		hourlyFrames = purposeWeatherPlotFrames(db, "Hourly")
 	}
 	if len(timestepSelection) > 0 {
 		timestepFrames = purposeWeatherPlotFrames(db, "Timestep")
 	}
+	if len(detailedSelection) > 0 {
+		detailedFrames = purposeWeatherPlotFrames(db, "Detailed")
+	}
 	for position, dictionary := range dictionaries {
 		ids = append(ids, dictionary.index)
 		hourly := plotSelection.matches(dictionary.keyValue, dictionary.name) && strings.EqualFold(dictionary.reportingFrequency, "Hourly")
 		timestep := timestepSelection.matches(dictionary.keyValue, dictionary.name) && purposeTimestepFrequency(dictionary.reportingFrequency)
-		fullPlotSeries[dictionary.index] = hourly || timestep
+		detailed := detailedSelection.matches(dictionary.keyValue, dictionary.name) && purposeDetailedFrequency(dictionary.reportingFrequency)
+		fullPlotSeries[dictionary.index] = hourly || timestep || detailed
+		controlSeries[dictionary.index] = timestep || detailed
 		if hourly {
 			weatherFrames[dictionary.index] = hourlyFrames
 		} else if timestep {
 			weatherFrames[dictionary.index] = timestepFrames
+		} else if detailed {
+			weatherFrames[dictionary.index] = detailedFrames
 		}
 		accumulators[dictionary.index] = &columnAccumulator{
 			index: position + 1,
@@ -228,6 +241,7 @@ func parseSimulationSQLSeriesForPlanWithProgress(path string, plan PurposeRunPla
 	}
 
 	seriesPoints := map[int][]SimulationPoint{}
+	nativeIntervals := map[int]SimulationNativeInterval{}
 	timeOrdinal := map[int64]int{}
 	timeLabels := map[int64]string{}
 	rowCount := 0
@@ -267,12 +281,18 @@ func parseSimulationSQLSeriesForPlanWithProgress(path string, plan PurposeRunPla
 			Label: timeLabels[timeIndex],
 			Value: number,
 		})
+		if controlSeries[dictionaryIndex] {
+			if row.EnvironmentPeriodIndex.Valid && row.IntervalMinutes.Valid && row.SimulationDays.Valid {
+				nativeIntervals[ordinal] = SimulationNativeInterval{TimeIndex: timeIndex, EnvironmentPeriodIndex: row.EnvironmentPeriodIndex.Int64, IntervalMinutes: row.IntervalMinutes.Float64, SimulationDays: row.SimulationDays.Int64, Year: row.Year.Int64}
+			}
+		}
 		return nil
 	}, progress); err != nil {
 		return nil, err
 	}
 
 	series := []SimulationSeries{}
+	nativeAxes := map[string][]int{}
 	for position, dictionary := range dictionaries {
 		acc := accumulators[dictionary.index]
 		if acc == nil || acc.numericCount == 0 {
@@ -283,22 +303,49 @@ func parseSimulationSQLSeriesForPlanWithProgress(path string, plan PurposeRunPla
 		}
 		average := acc.sum / float64(acc.numericCount)
 		points := seriesPoints[dictionary.index]
+		var intervals []SimulationNativeInterval
+		intervalsSourceID := ""
+		if controlSeries[dictionary.index] && len(points) > 0 {
+			axisKey := fmt.Sprintf("%d/%d/%d", len(points), points[0].X, points[len(points)-1].X)
+			for _, index := range nativeAxes[axisKey] {
+				if simulationPointAxisEqual(points, series[index].Points) {
+					intervalsSourceID = series[index].SourceID
+					break
+				}
+			}
+			if intervalsSourceID == "" {
+				intervals = make([]SimulationNativeInterval, len(points))
+				for i, point := range points {
+					interval, exists := nativeIntervals[point.X]
+					if !exists {
+						intervals = nil // Legacy schema lacks a complete native interval axis.
+						break
+					}
+					intervals[i] = interval
+				}
+				if len(intervals) > 0 {
+					nativeAxes[axisKey] = append(nativeAxes[axisKey], len(series))
+				}
+			}
+		}
 		if !fullPlotSeries[dictionary.index] {
 			points = downsamplePoints(points, maxCSVSeriesPoints)
 		}
 		series = append(series, normalizeSimulationSeriesDisplay(SimulationSeries{
-			File:               filepath.Base(path),
-			Column:             acc.name,
-			SourceID:           fmt.Sprintf("sql-rdd-%d", dictionary.index),
-			ReportingFrequency: dictionary.reportingFrequency,
-			Name:               strings.TrimSpace(dictionary.name),
-			KeyValue:           strings.TrimSpace(dictionary.keyValue),
-			IsMeter:            dictionary.isMeter,
-			Min:                acc.min,
-			Max:                acc.max,
-			Average:            average,
-			Points:             points,
-			RowCount:           rowCount,
+			File:                    filepath.Base(path),
+			Column:                  acc.name,
+			SourceID:                fmt.Sprintf("sql-rdd-%d", dictionary.index),
+			ReportingFrequency:      dictionary.reportingFrequency,
+			Name:                    strings.TrimSpace(dictionary.name),
+			KeyValue:                strings.TrimSpace(dictionary.keyValue),
+			IsMeter:                 dictionary.isMeter,
+			Min:                     acc.min,
+			Max:                     acc.max,
+			Average:                 average,
+			Points:                  points,
+			NativeIntervals:         intervals,
+			NativeIntervalsSourceID: intervalsSourceID,
+			RowCount:                rowCount,
 		}))
 		if progress != nil {
 			progress(sqlWorkProgress{Completed: int64(position + 1), Total: int64(len(dictionaries)), Unit: "series", Finished: position+1 == len(dictionaries)})
@@ -924,6 +971,7 @@ ORDER BY rdd.ReportDataDictionaryIndex`, sqlAliasedTextColumnExpr(columns, "rdd"
 	out := []sqlOutputDictionaryRow{}
 	purposeSelection := newPurposeSeriesSelection(plan)
 	timestepSelection := newPurposeTimestepSeriesSelection(plan)
+	detailedSelection := newPurposeDetailedSeriesSelection(plan)
 	position := 0
 	for rows.Next() {
 		var row sqlOutputDictionaryRow
@@ -933,7 +981,8 @@ ORDER BY rdd.ReportDataDictionaryIndex`, sqlAliasedTextColumnExpr(columns, "rdd"
 		}
 		position++
 		if position > maxSQLSeriesColumns && !purposeSelection.matches(row.keyValue, row.name) &&
-			!(timestepSelection.matches(row.keyValue, row.name) && purposeTimestepFrequency(row.reportingFrequency)) {
+			!(timestepSelection.matches(row.keyValue, row.name) && purposeTimestepFrequency(row.reportingFrequency)) &&
+			!(detailedSelection.matches(row.keyValue, row.name) && purposeDetailedFrequency(row.reportingFrequency)) {
 			continue
 		}
 		row.reportingFrequency = strings.TrimSpace(row.reportingFrequency)
@@ -1450,6 +1499,10 @@ func walkReportDataWithProgress(db *sql.DB, seriesQuery SQLSeriesQuery, visit fu
 	dayExpr := sqlAliasedColumnExpr(timeColumns, "t", "Day", "NULL")
 	hourExpr := sqlAliasedColumnExpr(timeColumns, "t", "Hour", "NULL")
 	minuteExpr := sqlAliasedColumnExpr(timeColumns, "t", "Minute", "NULL")
+	yearExpr := sqlAliasedColumnExpr(timeColumns, "t", "Year", "NULL")
+	environmentExpr := sqlAliasedColumnExpr(timeColumns, "t", "EnvironmentPeriodIndex", "NULL")
+	intervalExpr := sqlAliasedColumnExpr(timeColumns, "t", "Interval", "NULL")
+	simulationDaysExpr := sqlAliasedColumnExpr(timeColumns, "t", "SimulationDays", "NULL")
 	intervalTypeExpr := sqlAliasedTextColumnExpr(timeColumns, "t", "IntervalType", "''")
 
 	where, args := sqlSeriesQueryWhereClause(seriesQuery, rdDictionaryIndexExpr, nameExpr, keyValueExpr, isMeterExpr, frequencyExpr, unitsExpr, indexGroupExpr)
@@ -1464,6 +1517,10 @@ SELECT %s AS time_index,
        %s AS day,
        %s AS hour,
        %s AS minute,
+       %s AS year,
+       %s AS environment_period_index,
+       %s AS interval_minutes,
+       %s AS simulation_days,
        %s AS interval_type,
        %s AS dictionary_index,
        %s AS key_value,
@@ -1483,6 +1540,10 @@ ORDER BY %s, %s`,
 		dayExpr,
 		hourExpr,
 		minuteExpr,
+		yearExpr,
+		environmentExpr,
+		intervalExpr,
+		simulationDaysExpr,
 		intervalTypeExpr,
 		rdDictionaryIndexExpr,
 		keyValueExpr,
@@ -1515,6 +1576,10 @@ ORDER BY %s, %s`,
 			&row.Day,
 			&row.Hour,
 			&row.Minute,
+			&row.Year,
+			&row.EnvironmentPeriodIndex,
+			&row.IntervalMinutes,
+			&row.SimulationDays,
 			&row.IntervalType,
 			&row.DictionaryIndex,
 			&row.KeyValue,

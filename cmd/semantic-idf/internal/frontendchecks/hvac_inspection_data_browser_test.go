@@ -7,10 +7,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/idf"
 )
 
 func TestHVACInspectionDataBrowser(t *testing.T) {
@@ -23,6 +27,73 @@ func TestHVACInspectionDataBrowser(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	fixtures := hvacRuntimeBrowserFixtures(t)
+	fixtureCount := len(fixtures)
+	// Keep the reported schedule-OFF / CycleOn example grounded in the exact
+	// default model's VAV_3 occurrence, not a renamed sibling or handmade AST.
+	input, err := os.ReadFile(repoPath("frontend/src/samples/RefBldgLargeOfficeNew2004_Chicago.idf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := idf.Parse(string(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputPath := filepath.Join(t.TempDir(), "vav3.idf")
+	if err := os.WriteFile(inputPath, input, 0600); err != nil {
+		t.Fatal(err)
+	}
+	appendFanFixture := func(doc idf.Document, inputPath, family, fanName, loopName string) {
+		t.Helper()
+		report := idf.AnalyzeHVAC(doc)
+		for _, profile := range report.OperatingProfiles {
+			if profile.ComponentIndex < 0 || profile.ComponentIndex >= len(doc.Objects) {
+				continue
+			}
+			object := doc.Objects[profile.ComponentIndex]
+			if object.Type != "Fan:VariableVolume" || len(object.Fields) == 0 || object.Fields[0].Value != fanName {
+				continue
+			}
+			for _, loop := range report.Loops {
+				if loop.ID != profile.LoopID || loop.Name != loopName {
+					continue
+				}
+				fixture := hvacRuntimeBrowserFixture{Family: family, Component: idf.HVACOperatingSource{ObjectIndex: profile.ComponentIndex, ObjectType: object.Type, ObjectName: object.Fields[0].Value}, Profile: profile, Topology: loop}
+				fixture.Runtime = hvacRuntimeBrowserResult(t, inputPath, fixture)
+				fixtures = append(fixtures, fixture)
+				return
+			}
+		}
+		t.Fatalf("native %s runtime occurrence is missing", family)
+	}
+	appendFanFixture(doc, inputPath, "fan-vav3", "VAV_3_Fan", "VAV_3")
+	// ForceOff is tested with an authored ScheduledOff manager. NightCycle's
+	// averaged value 1 is not a native ForceOff command.
+	forceDoc, err := idf.Parse(string(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range forceDoc.Objects {
+		object := &forceDoc.Objects[i]
+		if len(object.Fields) == 0 {
+			continue
+		}
+		if object.Type == "AvailabilityManagerAssignmentList" && object.Fields[0].Value == "VAV_5 Availability Manager List" {
+			object.Fields[1].Value = "AvailabilityManager:ScheduledOff"
+		}
+		if object.Type == "AvailabilityManager:NightCycle" && object.Fields[0].Value == "VAV_5 Availability Manager" {
+			object.Type = "AvailabilityManager:ScheduledOff"
+			object.Fields = []idf.Field{{Value: "VAV_5 Availability Manager"}, {Value: "Runtime Force Off"}}
+		}
+	}
+	forceDoc.Objects = append(forceDoc.Objects, idf.Object{Index: len(forceDoc.Objects), Type: "Schedule:Constant", Fields: []idf.Field{{Value: "Runtime Force Off"}, {}, {Value: "0"}}})
+	forcePath := filepath.Join(t.TempDir(), "scheduled-off.idf")
+	if err := os.WriteFile(forcePath, []byte(forceDoc.String()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	appendFanFixture(forceDoc, forcePath, "fan-forced", "VAV_5_Fan", "VAV_5")
+	if len(fixtures) != fixtureCount+2 {
+		t.Fatal("native availability fixture count changed")
+	}
 	mux.HandleFunc("/runtime-fixtures", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(fixtures)
@@ -141,19 +212,26 @@ try {
  const fanGate=expressionNodes(fanFixture.profile.finalAvailability).find(expression=>expression.op==='fan_gate'),ownSchedule=expressionNodes(fanGate?.children?.[1]).find(expression=>expression.op==='schedule_positive')?.scheduleName;
  check(ownSchedule,'parsed fan no longer exercises own schedule with manager overrides');
  setReported(fanLoop,signal=>signal.role==='activity',[0]);
- setReported(fanLoop,signal=>signal.role==='manager_status',[0]);
+ setReported(fanLoop,signal=>signal.role==='manager_status'||signal.role==='loop_status',[0]);
  setReported(fanLoop,signal=>signal.role==='schedule'&&signal.keyValue.toLowerCase()===ownSchedule.toLowerCase(),[0]);
  let runtimeModel=prepareRuntime(fanLoop),fanProfile=selectedRuntimeProfile(runtimeModel,fanFixture),observed=runtimeSnapshot(runtimeModel,fanProfile.id,0);
  check(observed.permission.state==='blocked'&&observed.reason==='permission_blocked'&&observed.availability.some(signal=>signal.role==='manager_status'&&signal.state==='no_action'&&signal.value===0),'NoAction=0 was treated as Boolean OFF or allowed the fan schedule to be bypassed');
- const cycle=structuredClone(fanLoop);setReported(cycle,signal=>signal.role==='manager_status',[2]);
+ const cycle=structuredClone(fanLoop);setReported(cycle,signal=>signal.role==='manager_status'||signal.role==='loop_status',[2]);
  runtimeModel=prepareRuntime(cycle);observed=runtimeSnapshot(runtimeModel,fanProfile.id,0);
  check(observed.permission.state==='allowed'&&observed.availability.some(signal=>signal.state==='cycle_on'),'CycleOn failed to override the fan own schedule');
- const forced=structuredClone(cycle);setReported(forced,signal=>signal.role==='schedule',[1]);setReported(forced,signal=>signal.role==='manager_status',[1]);
- observed=runtimeSnapshot(prepareRuntime(forced),fanProfile.id,0);
+ const forcedFixture=fixtures.find(fixture=>fixture.family==='fan-forced'),forced=runtimeClone(fixtures,'fan-forced');
+ check(forcedFixture.profile.availabilityDefinitions.nodes.some(node=>node.code==='availability_manager'&&node.source.objectType==='AvailabilityManager:ScheduledOff'&&node.parameters.some(parameter=>parameter.name==='Schedule Name'&&parameter.value==='Runtime Force Off')),'ForceOff fixture is not backed by a parsed ScheduledOff definition');
+ setReported(forced,signal=>signal.role==='activity',[0]);setReported(forced,signal=>signal.role==='schedule',[1]);
+ setReported(forced,signal=>signal.role==='schedule'&&signal.keyValue==='Runtime Force Off',[0]);setReported(forced,signal=>signal.role==='manager_status'||signal.role==='loop_status',[1]);
+ const forcedModel=prepareRuntime(forced),forcedProfile=selectedRuntimeProfile(forcedModel,forcedFixture);
+ observed=runtimeSnapshot(forcedModel,forcedProfile.id,0);
  check(observed.permission.state==='blocked'&&observed.reason==='permission_blocked'&&observed.availability.some(signal=>signal.state==='force_off'),'reported ForceOff was replaced by a positive source schedule');
- const mixedManager=structuredClone(cycle);setReported(mixedManager,signal=>signal.role==='manager_status',[1.5]);
- observed=runtimeSnapshot(prepareRuntime(mixedManager),fanProfile.id,0);
- check(observed.permission.state==='mixed'&&observed.availability.some(signal=>signal.state==='mixed'),'an interval-average manager code was rounded into an invented native action');
+ check(forcedProfile.signals.filter(signal=>['manager_status','loop_status'].includes(signal.role)).every(signal=>!signal.possibleStates),'NightCycle-only output restriction leaked into a ScheduledOff manager or its loop');
+ for(const invalidCode of [1,1.5]){
+  const invalidManager=structuredClone(cycle);setReported(invalidManager,signal=>signal.role==='manager_status',[invalidCode]);
+  observed=runtimeSnapshot(prepareRuntime(invalidManager),fanProfile.id,0);
+  check(observed.reason==='acquisition_error'&&observed.errors.some(signal=>signal.role==='manager_status')&&observed.availability.some(signal=>signal.role==='manager_status'&&signal.value===invalidCode&&signal.state==='error'),'invalid native NightCycle action was accepted or converted into an ambiguous availability state');
+ }
  const noOverride=structuredClone(fanLoop);setReported(noOverride,signal=>signal.role==='schedule',[1]);
  const noOverrideDefinition=noOverride.operatingProfiles.find(profile=>profile.componentIndex===fanFixture.component.objectIndex);
  const noOverrideGates=[noOverrideDefinition.finalAvailability,...noOverrideDefinition.availabilityLayers.map(layer=>layer.expression)].flatMap(expressionNodes).filter(expression=>['manager_gate','fan_gate'].includes(expression.op));
@@ -167,8 +245,8 @@ try {
  observed=runtimeSnapshot(prepareRuntime(booleanStop),fanProfile.id,0);check(observed.permission.state==='blocked','Boolean constant zero inherited manager NoAction semantics');
 
  const {buildHVACRuntimeAvailability:availabilityStack}=await import('/src/js/hvac-runtime-availability.js');
- for(const [captured,expected,kind] of [[fanLoop,'blocked','schedule'],[cycle,'allowed','manager'],[forced,'blocked','manager'],[mixedManager,'mixed','manager']]){
-  const before=JSON.stringify(captured),prepared=prepareRuntime(captured),profile=selectedRuntimeProfile(prepared,fanFixture),stack=availabilityStack(prepared,profile.id,prepared.frames,0);
+ for(const [fixture,captured,expected,kind] of [[fanFixture,fanLoop,'blocked','schedule'],[fanFixture,cycle,'allowed','manager'],[forcedFixture,forced,'blocked','manager']]){
+  const before=JSON.stringify(captured),prepared=prepareRuntime(captured),profile=selectedRuntimeProfile(prepared,fixture),stack=availabilityStack(prepared,profile.id,prepared.frames,0);
   const final=stack.rows.at(-1),own=stack.rows.find(row=>row.kind==='schedule'&&row.label.toLowerCase()===ownSchedule.toLowerCase());
   check(final.id==='final-availability'&&final.kind==='permission'&&final.current.state===expected,'stack final disagrees with native manager/fan override');
   check(stack.rows.some(row=>row.kind===kind&&row.decisive)&&stack.rows.every(row=>row.owner&&row.current.label),'stack lost deciding source or owning equipment');
@@ -184,6 +262,107 @@ try {
  const constantManagerStack=availabilityStack(prepareRuntime(noOverride),fanProfile.id);
  check(constantManagerStack.rows.at(-1).current.state==='allowed'&&!constantManagerStack.rows.some(row=>row.kind==='condition'&&row.operator==='always'),'manager NoAction0 became Boolean OFF condition');
  check(availabilityStack(prepareRuntime(booleanStop),fanProfile.id).rows.at(-1).current.state==='blocked','stack Boolean0 lost distinct false permission');
+
+ // The default VAV_3 example can run outside its fan schedule. The schedule
+ // is an input to a native override rule, not an unconditional AND veto.
+ const vav3Fixture=fixtures.find(fixture=>fixture.family==='fan-vav3');
+ check(vav3Fixture?.component.objectName==='VAV_3_Fan'&&vav3Fixture.topology.name==='VAV_3','CycleOn acceptance lost the actual default-sample fan occurrence');
+ const vav3Manager=vav3Fixture.profile.availabilityDefinitions.nodes.find(node=>node.source?.objectName==='VAV_3 Availability Manager');
+ check(vav3Manager?.source.objectType==='AvailabilityManager:NightCycle'&&vav3Manager.parameters.some(parameter=>parameter.name==='Control Type'&&parameter.value==='CycleOnAny')&&vav3Manager.parameters.some(parameter=>parameter.name==='Cycling Run Time'&&Number(parameter.value)===1800),'default VAV_3 manager control/running period changed');
+ const vav3Gate=expressionNodes(vav3Fixture.profile.finalAvailability).find(expression=>expression.op==='fan_gate');
+ const vav3Schedule=expressionNodes(vav3Gate?.children?.[1]).find(expression=>expression.op==='schedule_positive')?.scheduleName;
+ check(vav3Schedule==='HVACOperationSchd','VAV_3 native own fan schedule was not retained');
+ for(const [scheduleValue,managerValue,expected,decidingKind] of [[0,2,'allowed','manager'],[0,2.0000000000000004,'allowed','manager'],[0,0,'blocked','schedule']]){
+  const captured=runtimeClone(fixtures,'fan-vav3');
+  setReported(captured,signal=>signal.role==='schedule'&&signal.keyValue.toLowerCase()===vav3Schedule.toLowerCase(),[scheduleValue]);
+  setReported(captured,signal=>signal.role==='manager_status'||signal.role==='loop_status',[managerValue]);
+  setReported(captured,signal=>signal.role==='activity',[expected==='allowed'?2443.8340290316523:managerValue===1?1221.9170145158262:0]);
+  const prepared=prepareRuntime(captured),profile=selectedRuntimeProfile(prepared,vav3Fixture),current=runtimeSnapshot(prepared,profile.id,0),stack=availabilityStack(prepared,profile.id,prepared.frames,0);
+  const scheduleRow=stack.rows.find(row=>row.kind==='schedule'&&row.label===vav3Schedule),fanPermission=stack.rows.find(row=>row.kind==='condition'&&row.operator==='fan_gate');
+  check(current.errors.length===0&&current.permission.state===expected&&fanPermission?.current.state===expected&&stack.rows.at(-1).current.state===expected,'VAV_3 final availability incorrectly ANDed the schedule with manager override');
+  check(scheduleRow?.current.value===scheduleValue&&stack.rows.some(row=>row.kind===decidingKind&&row.decisive),'VAV_3 schedule input or deciding source was hidden by final permission');
+  check(profile.signals.filter(signal=>signal.role==='manager_status').every(signal=>JSON.stringify(signal.possibleStates)==='[0,2]')&&profile.signals.filter(signal=>signal.role==='loop_status').every(signal=>!signal.possibleStates),'native manager action domain was not source-specific or was incorrectly inferred for aggregate loop overrides');
+  if(Math.abs(managerValue-2)<1e-7){
+   check(scheduleRow.current.state==='blocked'&&!scheduleRow.decisive&&current.activity==='active'&&stack.rows.some(row=>row.kind==='manager'&&row.current.state==='cycle_on'&&row.decisive),'OFF input was changed to ON instead of retaining the actual CycleOn override/activity');
+  }
+ }
+ for(const [controlType,codes,invalid,state] of [['StayOff',[0],0,'no_action'],['CycleOnAny',[0,2],1,'error'],['CycleOnControlZone',[0,2],1,'error'],['CycleOnAnyCoolingZone',[0,2],1,'error'],['CycleOnAnyHeatingZone',[0,2],1,'error'],['CycleOnAnyZoneFansOnly',[0,3],2,'error'],['CycleOnAnyHeatingZoneFansOnly',[0,3],2,'error'],['CycleOnAnyCoolingOrHeatingZone',[0,2,3],2,'cycle_on']]){
+  const captured=runtimeClone(fixtures,'fan-vav3'),definition=captured.operatingProfiles.find(profile=>profile.componentIndex===vav3Fixture.component.objectIndex);
+  const manager=definition.availabilityDefinitions.nodes.find(node=>sourceIdentity(node.source)===sourceIdentity(vav3Manager.source));
+  manager.parameters.find(parameter=>parameter.name==='Control Type').value=controlType;
+  const prepared=prepareRuntime(captured),profile=selectedRuntimeProfile(prepared,vav3Fixture),signals=profile.signals.filter(signal=>signal.role==='manager_status');
+  check(signals.length===1&&signals.every(signal=>JSON.stringify(signal.possibleStates)===JSON.stringify(codes)&&runtime.hvacRuntimeSignalState(signal,invalid)===state),'NightCycle control-specific action domain was confused with another mode: '+controlType);
+ }
+ for(const mismatch of ['owning-loop','manager-source','another-manager']){
+  const captured=runtimeClone(fixtures,'fan-vav3'),definition=captured.operatingProfiles.find(profile=>profile.componentIndex===vav3Fixture.component.objectIndex),layer=definition.availabilityLayers.find(layer=>layer.role==='loop');
+  if(mismatch==='owning-loop')layer.owner.objectIndex++;
+  if(mismatch==='manager-source')definition.availabilityDefinitions.nodes.find(node=>sourceIdentity(node.source)===sourceIdentity(vav3Manager.source)).source.objectIndex++;
+  if(mismatch==='another-manager')layer.expression.children[0].children.push({op:'manager_unknown',assignmentOwner:layer.owner,source:{objectIndex:999999,objectType:'AvailabilityManager:ScheduledOff',objectName:'Other manager'}});
+  const prepared=prepareRuntime(captured),profile=selectedRuntimeProfile(prepared,vav3Fixture),aggregate=profile.signals.find(signal=>signal.role==='loop_status');
+  check(aggregate&&!aggregate.possibleStates,'owning-loop action domain was guessed from incomplete or unrelated manager provenance: '+mismatch);
+ }
+ const vav3Gap=runtimeClone(fixtures,'fan-vav3');
+ setReported(vav3Gap,signal=>signal.role==='manager_status'||signal.role==='loop_status',[2]);
+ setReported(vav3Gap,signal=>signal.role==='schedule'&&signal.keyValue.toLowerCase()===vav3Schedule.toLowerCase(),[0]);
+ const missingVav3Manager=vav3Gap.controlSignals.find(signal=>signal.role==='manager_status');
+ const missingVav3Series=vav3Gap.controlSeries.find(series=>series.sourceId===missingVav3Manager.seriesId);
+ missingVav3Series.nativeIntervals=structuredClone(missingVav3Series.nativeIntervals||vav3Gap.controlSeries.find(series=>series.sourceId===missingVav3Series.nativeIntervalsSourceId).nativeIntervals);delete missingVav3Series.nativeIntervalsSourceId;
+ for(const dependent of vav3Gap.controlSeries.filter(series=>series.nativeIntervalsSourceId===missingVav3Series.sourceId)){dependent.nativeIntervals=structuredClone(missingVav3Series.nativeIntervals);delete dependent.nativeIntervalsSourceId;}
+ missingVav3Series.points.splice(1,1);missingVav3Series.nativeIntervals.splice(1,1);
+ const vav3GapModel=prepareRuntime(vav3Gap),vav3GapProfile=selectedRuntimeProfile(vav3GapModel,vav3Fixture);
+ check(runtimeSnapshot(vav3GapModel,vav3GapProfile.id,0).errors.length===0&&runtimeSnapshot(vav3GapModel,vav3GapProfile.id,1).reason==='acquisition_error'&&availabilityStack(vav3GapModel,vav3GapProfile.id,vav3GapModel.frames,1).rows.some(row=>row.kind==='manager'&&row.current.state==='error'),'missing manager action borrowed another timestep to satisfy OFF schedule or damaged other native frames');
+
+ // Keep native substeps inside a shared zone-timestep frame. Their action
+ // codes remain discrete; neither an arithmetic mean nor a last sample from
+ // a nearby timestamp is a substitute for the reported interval.
+ const substeps=runtimeClone(fixtures,'fan-vav3');
+ setReported(substeps,signal=>signal.role==='schedule'&&signal.keyValue===vav3Schedule,[0]);
+ const statusIDs=new Set(substeps.controlSignals.filter(signal=>['manager_status','loop_status'].includes(signal.role)).map(signal=>signal.seriesId));
+ for(const series of substeps.controlSeries.filter(series=>statusIDs.has(series.sourceId))){
+  delete series.displayPoints;delete series.displayColumn;delete series.displayUnit;delete series.nativeIntervalsSourceId;
+  series.points=[5,15,30,45,60].map((minute,index)=>({x:100+index,label:'01-01 '+String(Math.floor(minute/60)).padStart(2,'0')+':'+String(minute%60).padStart(2,'0'),value:index===0?0:2}));
+  series.nativeIntervals=[5,15,30,45,60].map((minute,index,list)=>({timeIndex:100+index,environmentPeriodIndex:1,simulationDays:1,year:2026,intervalMinutes:minute-(list[index-1]||0)}));
+ }
+ const substepsBefore=JSON.stringify(substeps),substepModel=prepareRuntime(substeps),substepProfile=selectedRuntimeProfile(substepModel,vav3Fixture),substepStack=availabilityStack(substepModel,substepProfile.id,substepModel.frames,0),substepFinal=substepStack.rows.at(-1);
+ check(substepModel.frames.length===4&&substepModel.frames.every(frame=>frame.frequency.toLowerCase()==='timestep'),'Detailed output inserted extra shared frames or changed frame-navigation cadence');
+ check(runtimeSnapshot(substepModel,substepProfile.id,0).errors.length===0&&substepFinal.current.state==='allowed','shared-frame end did not use its unique exact native status endpoint');
+ check(substepFinal.points.length===5&&substepFinal.points[0].state==='blocked'&&substepFinal.points[1].state==='allowed'&&Math.abs((substepFinal.points[0].endX-substepFinal.points[0].startX)*60-5)<1e-6&&Math.abs((substepFinal.points[1].endX-substepFinal.points[1].startX)*60-10)<1e-6,'native OFF/ON subintervals were averaged, resampled or widened to the whole zone timestep');
+ check(substepFinal.points.every(point=>point.state==='allowed'||point.state==='blocked')&&JSON.stringify(substeps)===substepsBefore,'valid native actions gained an ambiguous state or mutated raw output');
+ const twoMinute=structuredClone(substeps);
+ for(const series of twoMinute.controlSeries.filter(series=>statusIDs.has(series.sourceId))){
+  const ends=[2,4,6,8,10,15,30,45,60];
+  series.points=ends.map((minute,index)=>({x:200+index,label:'01-01 '+String(Math.floor(minute/60)).padStart(2,'0')+':'+String(minute%60).padStart(2,'0'),value:index%2?2:0}));
+  series.nativeIntervals=ends.map((minute,index)=>({timeIndex:200+index,environmentPeriodIndex:1,simulationDays:1,year:2026,intervalMinutes:minute-(ends[index-1]||0)}));
+ }
+ const twoMinuteModel=prepareRuntime(twoMinute),twoMinuteProfile=selectedRuntimeProfile(twoMinuteModel,vav3Fixture),twoMinuteHistory=availabilityStack(twoMinuteModel,twoMinuteProfile.id,twoMinuteModel.frames,0).rows.at(-1).points;
+ check(twoMinuteHistory.length===9&&twoMinuteHistory.every(point=>point.endX-point.startX>1e-7),'floating-point noise at a shared native boundary created extra almost-zero-duration status patches');
+ const nativeAggregate=structuredClone(substeps);setReported(nativeAggregate,signal=>signal.role==='loop_status',[1]);
+ const aggregateModel=prepareRuntime(nativeAggregate),aggregateProfile=selectedRuntimeProfile(aggregateModel,vav3Fixture),aggregateStack=availabilityStack(aggregateModel,aggregateProfile.id,aggregateModel.frames,0);
+ check(runtimeSnapshot(aggregateModel,aggregateProfile.id,0).errors.length===0&&aggregateStack.rows.at(-1).current.state==='blocked'&&aggregateStack.rows.some(row=>row.signals?.some(signal=>signal.role==='loop_status')&&row.current.state==='force_off'&&row.decisive)&&aggregateStack.rows.some(row=>row.signals?.some(signal=>signal.role==='manager_status')&&row.current.state==='cycle_on'&&!row.decisive),'native loop aggregate override was replaced by recomputed assignment priority');
+ const foreignAggregate=structuredClone(nativeAggregate);foreignAggregate.controlSignals.filter(signal=>signal.role==='loop_status').forEach(signal=>signal.source.objectIndex++);
+ const foreignAggregateModel=prepareRuntime(foreignAggregate),foreignAggregateProfile=selectedRuntimeProfile(foreignAggregateModel,vav3Fixture);
+ check(runtimeSnapshot(foreignAggregateModel,foreignAggregateProfile.id,0).permission.state==='allowed','another source object was allowed to replace the owning-loop manager aggregate');
+ const aliasedTiming=structuredClone(substeps),aliasedSeries=aliasedTiming.controlSeries.filter(series=>statusIDs.has(series.sourceId));
+ aliasedSeries[1].nativeIntervalsSourceId=aliasedSeries[0].sourceId;delete aliasedSeries[1].nativeIntervals;
+ const aliasedModel=prepareRuntime(aliasedTiming),aliasedProfile=selectedRuntimeProfile(aliasedModel,vav3Fixture);
+ check(runtimeSnapshot(aliasedModel,aliasedProfile.id,0).errors.length===0&&availabilityStack(aliasedModel,aliasedProfile.id,aliasedModel.frames,0).rows.at(-1).points.length===5,'shared native timing metadata was not resolved inside the exact ControlSeries axis');
+ for(const invalidTiming of ['different-axis','missing-owner','zero-duration','other-environment','other-year','invalid-year','no-endpoint','fractional-action','wrong-frequency']){
+  const captured=structuredClone(aliasedTiming),series=captured.controlSeries.find(series=>series.sourceId===aliasedSeries[1].sourceId),binding=captured.controlSignals.find(signal=>signal.seriesId===series.sourceId);
+  if(invalidTiming==='different-axis')series.points[1].x++;
+  if(invalidTiming==='missing-owner')series.nativeIntervalsSourceId='not-a-native-timeline';
+  if(['zero-duration','other-environment','other-year','invalid-year'].includes(invalidTiming)){
+   series.nativeIntervals=structuredClone(aliasedSeries[0].nativeIntervals);delete series.nativeIntervalsSourceId;
+   if(invalidTiming==='zero-duration')series.nativeIntervals[1].intervalMinutes=0;
+   else if(invalidTiming==='other-environment')series.nativeIntervals.forEach(interval=>interval.environmentPeriodIndex=2);
+   else series.nativeIntervals.forEach(interval=>interval.year=invalidTiming==='other-year'?2027:2026.5);
+  }
+  if(invalidTiming==='no-endpoint'){series.points[1].label='01-01 00:14';delete series.nativeIntervalsSourceId;series.nativeIntervals=structuredClone(aliasedSeries[0].nativeIntervals);}
+  if(invalidTiming==='fractional-action')series.points[1].value=1.5;
+  if(invalidTiming==='wrong-frequency'){binding.reportingFrequency='Timestep';series.reportingFrequency='Timestep';}
+  const prepared=prepareRuntime(captured),profile=selectedRuntimeProfile(prepared,vav3Fixture),current=runtimeSnapshot(prepared,profile.id,0);
+  check(current.reason==='acquisition_error'&&current.errors.some(signal=>signal.id===binding.id),'invalid native availability contract was filled, averaged or silently accepted: '+invalidTiming);
+  if(invalidTiming==='other-year')check(availabilityStack(prepared,profile.id,prepared.frames,0).rows.find(row=>row.signalIds?.includes(binding.id)).points.every(point=>point.state==='error'),'native history borrowed an interval from another simulation year');
+ }
 
  const coilFixture=fixtures.find(fixture=>fixture.family==='coil'),coilLoop=runtimeClone(fixtures,'coil');
  setReported(coilLoop,signal=>signal.role==='sensor'&&/temperature/i.test(signal.variableName),[22]);setReported(coilLoop,signal=>signal.role==='setpoint',[20]);

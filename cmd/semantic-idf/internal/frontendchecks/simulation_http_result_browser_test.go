@@ -85,8 +85,14 @@ func TestSimulationHTTPResultTransportBrowser(t *testing.T) {
 			series := &result.Series[i]
 			original := series.Points
 			series.Points = make([]simulation.SimulationPoint, 240)
+			series.NativeIntervals = make([]simulation.SimulationNativeInterval, len(series.Points))
 			for frame := range series.Points {
 				series.Points[frame] = simulation.SimulationPoint{X: frame, Label: fmt.Sprintf("01/%02d %02d:00:00", frame/24+1, frame%24+1), Value: original[frame%len(original)].Value}
+				year := int64(2026)
+				if frame == 1 {
+					year = 0
+				}
+				series.NativeIntervals[frame] = simulation.SimulationNativeInterval{TimeIndex: int64(frame + 1), EnvironmentPeriodIndex: 1, IntervalMinutes: 60, SimulationDays: int64(frame/24 + 1), Year: year}
 			}
 			series.RowCount = len(series.Points)
 		}
@@ -229,7 +235,7 @@ try{
  for(let n=0;document.body.dataset.epath142Status!=="manual"&&n<200;n++)await new Promise(resolve=>setTimeout(resolve,10));
  if(document.body.dataset.epath142Status!=="manual")throw Error("actual fixture not ready");
  const {state}=await import("/src/js/state.js"),simulation=await import("/src/js/views/simulation-views.js");
- const {decodeSimulationResultTransfer:decode}=await import("/src/js/simulation-result-transport.js");
+ const {decodeSimulationResultTransfer:decode,createSimulationColumnValidation:columnValidation,simulationSeriesPointColumns:pointColumns}=await import("/src/js/simulation-result-transport.js");
  const ordinary={series:[{points:[]}]};check(decode(ordinary)===ordinary&&decode(null)===null,"ordinary results lost identity");
  const wire=()=>({schema:"semantic-idf.simulation-transfer/v1",result:{series:[{points:null},{points:null},{points:[],displayPoints:null}],purposeResults:{hvacLoops:[{components:[{series:[{points:null}]}]}]}},timelines:[{x:[9,1,9],labels:["","first","duplicate"]}],pointSets:[{timeline:0,values:[0,-3.25,-0]},{timeline:0,values:[4.125,7,8]}],pointBindings:[{path:["series",0,"points"],data:0},{path:["series",0,"displayPoints"],data:0},{path:["series",1,"points"],data:1},{path:["purposeResults","hvacLoops",0,"components",0,"series",0,"points"],data:0}]});
  const envelope=wire(),decoded=decode(envelope),descriptor=(owner,key)=>Object.getOwnPropertyDescriptor(owner,key);
@@ -248,6 +254,44 @@ try{
  check(typeof descriptor(withColumns.series[0],"points").get==="function"&&JSON.parse(JSON.stringify(withColumns)).heatFlow.observed[1]===false,"typed columns expanded lazy points or were omitted from exports");
  const onlyColumns=columns();onlyColumns.timelines=[];onlyColumns.pointSets=[];onlyColumns.pointBindings=[];
  check(decode(onlyColumns).heatFlow.values.length===4,"column-only transport was rejected");
+ const nativeWire=()=>{
+  const item=columns();item.columnSets.push({kind:"nativeIntervals",values:[1041,1,1.25,1,2026,0,0,0,0,0,-2,-1,-5,-1,0]});
+  for(const path of [["series",0,"nativeIntervals"],["series",1,"nativeIntervals"],["purposeResults","hvacLoops",0,"components",0,"series",0,"nativeIntervals"]])item.columnBindings.push({path,data:3});
+  return item;
+ };
+ const nativeEnvelope=nativeWire(),nativeDecoded=decode(nativeEnvelope),nativeSource=nativeEnvelope.columnSets[3].values;
+ check(typeof descriptor(nativeDecoded.series[0],"nativeIntervals").get==="function"&&typeof descriptor(nativeDecoded.series[1],"nativeIntervals").get==="function","native interval objects were materialized before use");
+ const nativeIntervals=nativeDecoded.series[0].nativeIntervals;
+ check(nativeIntervals.length===3&&nativeIntervals[0].timeIndex===1041&&nativeIntervals[0].environmentPeriodIndex===1&&nativeIntervals[0].intervalMinutes===1.25&&nativeIntervals[0].simulationDays===1&&nativeIntervals[0].year===2026,"native interval fields or fractional duration changed during decoding");
+ check(nativeIntervals[1].timeIndex===0&&nativeIntervals[1].environmentPeriodIndex===0&&nativeIntervals[1].intervalMinutes===0&&nativeIntervals[1].simulationDays===0&&!Object.hasOwn(nativeIntervals[1],"year")&&nativeIntervals[2].timeIndex===-2&&nativeIntervals[2].environmentPeriodIndex===-1&&nativeIntervals[2].intervalMinutes===-5&&nativeIntervals[2].simulationDays===-1,"transport discarded raw zero/negative timing evidence or exposed year0 as a known year");
+ check(nativeDecoded.series[1].nativeIntervals===nativeIntervals&&nativeDecoded.purposeResults.hvacLoops[0].components[0].series[0].nativeIntervals===nativeIntervals&&nativeIntervals!==nativeSource,"repeated native interval bindings did not share one canonical object array");
+ check(typeof descriptor(nativeDecoded.series[0],"points").get==="function"&&typeof descriptor(nativeDecoded.series[1],"points").get==="function"&&nativeDecoded.heatFlow.values===nativeEnvelope.columnSets[0].values,"native interval decoding expanded point arrays or changed ordinary typed columns");
+ const nativeExport=JSON.parse(JSON.stringify(nativeDecoded));check(nativeExport.series[0].nativeIntervals[0].year===2026&&!Object.hasOwn(nativeExport.series[0].nativeIntervals[1],"year")&&nativeExport.series[0].nativeIntervals[2].intervalMinutes===-5,"native intervals were omitted or changed in canonical JSON export");
+ const deferredNative=nativeWire(),deferredSet=deferredNative.columnSets[3],deferredFlat=deferredSet.values.slice(),assembled=new Array(deferredFlat.length);let ready=false,pendingReads=0;
+ Object.defineProperty(deferredSet,"values",{configurable:true,get(){pendingReads++;if(!ready)throw Error("native timing resource read before loading");return assembled;}});
+ const deferredDecoded=decode(deferredNative,{deferData:true});check(pendingReads===0&&typeof descriptor(deferredDecoded.series[0],"nativeIntervals").get==="function","deferred transport touched a pending native timing resource");
+ const validateNative=columnValidation(deferredSet,deferredFlat.length);
+ for(const [start,end] of [[3,8],[0,3],[8,15]]){const chunk=deferredFlat.slice(start,end);chunk.forEach((value,index)=>assembled[start+index]=value);validateNative(chunk,start,assembled);}
+ check(pendingReads===0,"chunk validation materialized a pending native timing resource");ready=true;
+ check(JSON.stringify(deferredDecoded.series[0].nativeIntervals)===JSON.stringify(nativeIntervals)&&deferredDecoded.series[1].nativeIntervals===deferredDecoded.series[0].nativeIntervals,"out-of-order native timing chunks lost field offsets, canonical shape or sharing");
+ const pendingPoints=pointColumns(deferredDecoded.series[0],{timelineOnly:true});check(pendingPoints.rows.length===3&&typeof descriptor(deferredDecoded.series[0],"points").get==="function"&&deferredDecoded.heatFlow.observed[1]===false,"deferred native timing changed lazy point-column or existing boolean-column behavior");
+ const rejected=(action,message)=>{let threw=false;try{action();}catch{threw=true;}check(threw,message);};
+ for(const change of [
+  item=>item.columnSets[3].values.pop(),
+  item=>item.columnSets[3].values[0]=null,
+  item=>item.columnSets[3].values[1]="1",
+  item=>item.columnSets[3].values[2]=Infinity,
+  item=>item.columnSets[3].values[2]=NaN,
+  ...[0,1,3,4].flatMap(field=>[item=>item.columnSets[3].values[field]=1.5,item=>item.columnSets[3].values[field]=Number.MAX_SAFE_INTEGER+1]),
+  item=>item.columnBindings[4].path=["__proto__","polluted"],
+  item=>item.columnBindings.push({...item.columnBindings[4]}),
+ ]){const bad=nativeWire();change(bad);rejected(()=>decode(bad),"decoder accepted malformed native timing fields, stride or binding");check(descriptor(bad.result.series[0],"points").value===null&&!Object.hasOwn(bad.result.series[0],"nativeIntervals"),"native timing validation failure partially installed lazy bindings");}
+ rejected(()=>columnValidation({kind:"nativeIntervals"},14),"chunk reader accepted an incomplete native timing record count");
+ const chunkArray=new Array(5),partialValidator=columnValidation({kind:"nativeIntervals"},5);partialValidator([.125],2,chunkArray);
+ rejected(()=>partialValidator([.5],3,chunkArray),"native timing chunk validation treated simulationDays as fractional duration");
+ rejected(()=>partialValidator([Number.MAX_SAFE_INTEGER+1],0,chunkArray),"native timing chunk validation accepted an unsafe TimeIndex");
+ rejected(()=>partialValidator([Infinity],4,chunkArray),"native timing chunk validation accepted a nonfinite year");
+ rejected(()=>partialValidator([1],2,chunkArray),"native timing chunk validation accepted overlapping coverage");
  for(const change of [
   item=>item.columnSets=null,
   item=>item.columnBindings=null,
@@ -321,6 +365,10 @@ try{
  check(document.getElementById("simulationPercent").textContent==="100%"&&!document.getElementById("simulationProgressBar").classList.contains("indeterminate"),"installed HTTP result did not become overall complete");
  check(received.filename==='HTTP "quoted" \\ result </'+'script>.idf',"JSON text was changed during transfer");
  check(received.series[0].points.length===240&&received.series[0].points[2].value===18&&received.series[0].points[239].value===18,"original result points were truncated or altered");
+ check(typeof descriptor(received.series[0],"nativeIntervals").get==="function","HTTP transport eagerly expanded untouched native timing records");
+ const receivedIntervals=received.series[0].nativeIntervals;
+ check(receivedIntervals.length===240&&receivedIntervals[0].timeIndex===1&&receivedIntervals[0].environmentPeriodIndex===1&&receivedIntervals[0].intervalMinutes===60&&receivedIntervals[0].simulationDays===1&&receivedIntervals[0].year===2026&&!Object.hasOwn(receivedIntervals[1],"year")&&receivedIntervals[239].timeIndex===240&&receivedIntervals[239].simulationDays===10,"Go compact encoder/HTTP decoder changed full native timing evidence");
+ check(received.series[1].nativeIntervals===receivedIntervals,"Go compact encoder/HTTP decoder copied repeated native timing arrays");
  document.querySelector('[data-simulation-result-view-button="hvac_loops"]').click();await tick();
  evidence.hvac={view:state.simulationActiveResultView,loops:received.purposeResults?.hvacLoops?.length,series:received.purposeResults?.hvacLoops?.map(loop=>loop.series?.length),svgs:document.querySelectorAll('#simulationHVACLoopResults svg').length,frame:Boolean(document.querySelector('#simulationHVACLoopResults [data-simulation-hvac-frame]'))};
  check(document.querySelector('#simulationHVACLoopResults [data-simulation-hvac-frame]')&&document.querySelectorAll('#simulationHVACLoopResults svg').length>=4,"HTTP HVAC result did not render native topology and graphs: "+JSON.stringify(evidence.hvac));

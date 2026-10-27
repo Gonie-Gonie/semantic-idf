@@ -6,13 +6,14 @@ const copy = (key, fallback) => t(`simulation.hvacChart${key}`, {}, fallback);
 const colors = ["var(--teal)", "var(--amber)", "var(--hvac-chart-blue)", "var(--hvac-chart-purple)", "var(--green)", "var(--red)", "var(--hvac-chart-gray)", "var(--hvac-chart-cyan)"];
 const unitLabel = (unit) => String(unit || "–");
 let tickLabelContext = null;
+const legendInteractions = new WeakMap();
 
 /** Render observed HVAC time series. x and frameKey share the same numeric time
  * coordinate; interval optionally declares the expected sampling cadence.
  * Missing values are gaps. Scatter joins exact, unambiguous time AND key pairs
  * (or labels when keys are omitted); keys can distinguish output files/runs.
  * Rendering samples geometry only: the caller's complete observations are intact. */
-export function renderHVACInspectionChart({ series = [], mode = "line", frameKey, title = "", xLabel, yLimits, legendLayout = "inline" } = {}) {
+export function renderHVACInspectionChart({ series = [], mode = "line", frameKey, title = "", xLabel, yLimits, legendLayout = "inline", markers = true } = {}) {
   const traces = series.filter(Boolean).map((trace, index) => ({ ...trace,
     id: String(trace.id ?? index), label: String(trace.label || trace.id || ""),
     unit: unitLabel(trace.unit), color: colors[(Number.isInteger(trace.colorIndex) && trace.colorIndex >= 0 ? trace.colorIndex : index) % colors.length],
@@ -50,7 +51,7 @@ export function renderHVACInspectionChart({ series = [], mode = "line", frameKey
   }).join("") + `<text class="hvac-chart-axis-label" data-hvac-chart-axis="${axis === 1 ? "right" : "left"}" data-hvac-chart-unit="${escapeHTML(axisUnit(axis))}" data-hvac-chart-y-low="${range.low}" data-hvac-chart-y-high="${range.high}" x="${axis === 1 ? width - right : left}" y="22" text-anchor="${axis === 1 ? "end" : "start"}">${escapeHTML(axisTitle(axis))}</text>`).join("");
   const xTicks = scatter ? xDomain.ticks.map((value) => ({ x: value, label: number(value, xDomain.step) })) : timeTicks(allPoints, 5, plotWidth);
   const xGrid = xTicks.map((point, index) => `<line class="hvac-chart-grid" x1="${x(point.x)}" x2="${x(point.x)}" y1="${top}" y2="${height - bottom}"/><text class="hvac-chart-tick" data-hvac-chart-tick="x" x="${x(point.x)}" y="${height - bottom + 25}" text-anchor="${xTicks.length < 2 ? "middle" : index === 0 ? "start" : index === xTicks.length - 1 ? "end" : "middle"}">${escapeHTML(point.label)}</text>`).join("");
-  const marks = scatter ? scatterMarks(pairs, traces, x, y, frameKey) : traces.map((trace) => lineMarks(trace, units.indexOf(trace.unit), x, y, frameKey, Math.max(64, Math.floor(2400 / traces.length)))).join("");
+  const marks = scatter ? scatterMarks(pairs, traces, x, y, frameKey) : traces.map((trace) => lineMarks(trace, units.indexOf(trace.unit), x, y, frameKey, Math.max(64, Math.floor(2400 / traces.length)), markers)).join("");
   // A nested SVG clips geometry to the plot without changing observations or
   // introducing duplicate clip-path IDs across independently rendered graphs.
   const clippedMarks = yLimits && !scatter ? `<svg data-hvac-chart-clipped-marks x="${left}" y="${top}" width="${plotWidth}" height="${plotHeight}" viewBox="${left} ${top} ${plotWidth} ${plotHeight}" overflow="hidden">${marks}</svg>` : marks;
@@ -58,7 +59,7 @@ export function renderHVACInspectionChart({ series = [], mode = "line", frameKey
   const frame = !scatter ? `<g data-hvac-chart-frame-marker${frameVisible ? "" : ' style="display:none"'}><line class="hvac-chart-frame" data-hvac-chart-frame="${frameVisible ? frameKey : ""}" x1="${frameX}" x2="${frameX}" y1="${top}" y2="${height - bottom}"/><text class="hvac-chart-frame-label" x="${frameX}" y="${height - bottom - 8}" text-anchor="${frameX > width / 2 ? "end" : "start"}">${escapeHTML(copy("Frame", "Frame"))}</text></g>` : "";
   const xTitle = scatter ? withUnit(traces[0].label, traces[0].unit) : xLabel || copy("DateTime", "Date & time");
   const label = title || copy(scatter ? "Scatter" : "Line", scatter ? "Scatter plot" : "Time series");
-  const legend = scatter ? "" : `<div class="hvac-chart-legend${legendLayout === "vertical" ? " is-vertical" : ""}">${traces.map((trace) => `<span data-hvac-chart-legend="${escapeHTML(trace.id)}"><i style="--hvac-chart-color:${trace.color}"></i><span title="${escapeHTML(trace.legendLabel ?? withUnit(trace.label, trace.unit))}">${escapeHTML(trace.legendLabel ?? withUnit(trace.label, trace.unit))}</span></span>`).join("")}</div>`;
+  const legend = scatter ? "" : `<div class="hvac-chart-legend${legendLayout === "vertical" ? " is-vertical" : ""}">${traces.map((trace) => `<span data-hvac-chart-legend="${escapeHTML(trace.id)}" tabindex="0"><i style="--hvac-chart-color:${trace.color}"></i><span title="${escapeHTML(trace.legendLabel ?? withUnit(trace.label, trace.unit))}">${escapeHTML(trace.legendLabel ?? withUnit(trace.label, trace.unit))}</span></span>`).join("")}</div>`;
   return `<section class="hvac-inspection-chart" data-hvac-inspection-chart="${scatter ? "scatter" : "line"}">${heading}<div class="hvac-chart-scroll"><svg class="hvac-chart-svg" viewBox="0 0 ${width} ${height}" data-hvac-chart-domain-low="${xDomain.low}" data-hvac-chart-domain-high="${xDomain.high}" data-hvac-chart-plot-left="${left}" data-hvac-chart-plot-width="${plotWidth}" role="img" aria-label="${escapeHTML(label)}"><title>${escapeHTML(label)}</title>${yAxes}${xGrid}<line class="hvac-chart-axis" x1="${left}" x2="${width - right}" y1="${height - bottom}" y2="${height - bottom}"/>${clippedMarks}${frame}<text class="hvac-chart-axis-label" data-hvac-chart-axis="x"${scatter ? ` data-hvac-chart-unit="${escapeHTML(traces[0].unit)}"` : ""} x="${left + plotWidth / 2}" y="${height - 16}" text-anchor="middle">${escapeHTML(xTitle)}</text></svg></div>${legend}</section>`;
 }
 
@@ -89,7 +90,7 @@ export function updateHVACInspectionChartFrame(container, frameKey) {
     const svg = chart.querySelector("svg");
     if (!svg) continue;
     for (const point of svg.querySelectorAll("circle.is-frame")) { point.classList.remove("is-frame"); point.setAttribute("r", point.dataset.hvacChartRadius); }
-    if (finite(frameKey)) for (const point of svg.querySelectorAll(`[data-hvac-chart-time="${frameKey}"]`)) { point.classList.add("is-frame"); point.setAttribute("r", chart.dataset.hvacInspectionChart === "scatter" ? "6" : "5"); }
+    if (finite(frameKey)) for (const point of svg.querySelectorAll(`circle[data-hvac-chart-time="${frameKey}"]`)) { point.classList.add("is-frame"); point.setAttribute("r", chart.dataset.hvacInspectionChart === "scatter" ? "6" : "5"); }
     const marker = svg.querySelector("[data-hvac-chart-frame-marker]");
     if (!marker) continue;
     const low = Number(svg.dataset.hvacChartDomainLow), high = Number(svg.dataset.hvacChartDomainHigh);
@@ -102,6 +103,39 @@ export function updateHVACInspectionChartFrame(container, frameKey) {
     line.setAttribute("x1", position); line.setAttribute("x2", position);
     const label = marker.querySelector("text"); label.setAttribute("x", position); label.setAttribute("text-anchor", position > 500 ? "end" : "start");
   }
+}
+
+// Delegate from the stable results host so replaced charts need no listeners.
+// Hover and keyboard focus retain separate selections; leaving a hovered
+// legend restores the focused trace, or all traces when neither remains.
+export function handleHVACChartLegendEvent(event, container) {
+  if (!["pointerover", "pointerout", "focusin", "focusout"].includes(event.type)) return false;
+  const legend = event.target?.closest?.("[data-hvac-chart-legend]");
+  const chart = legend?.closest("[data-hvac-inspection-chart]");
+  if (!chart || !container?.contains(chart)) return false;
+  let interaction = legendInteractions.get(chart);
+  if (!interaction) { interaction = { hover: null, focus: null }; legendInteractions.set(chart, interaction); }
+  const field = event.type.startsWith("pointer") ? "hover" : "focus";
+  if (event.type === "pointerout" || event.type === "focusout") {
+    const next = event.relatedTarget?.closest?.("[data-hvac-chart-legend]");
+    interaction[field] = next?.closest("[data-hvac-inspection-chart]") === chart ? next : null;
+  } else interaction[field] = legend;
+  if (!chart.contains(interaction.hover)) interaction.hover = null;
+  if (!chart.contains(interaction.focus)) interaction.focus = null;
+  const active = interaction.hover || interaction.focus;
+  const id = active?.dataset.hvacChartLegend;
+  if (active) chart.dataset.hvacChartHighlight = id;
+  else delete chart.dataset.hvacChartHighlight;
+  for (const series of chart.querySelectorAll("[data-hvac-chart-series]")) {
+    const highlighted = Boolean(active) && series.dataset.hvacChartSeries === id;
+    series.classList.toggle("is-highlighted", highlighted);
+    series.classList.toggle("is-muted", Boolean(active) && !highlighted);
+  }
+  for (const item of chart.querySelectorAll("[data-hvac-chart-legend]")) {
+    item.classList.toggle("is-highlighted", item === active);
+    item.classList.toggle("is-muted", Boolean(active) && item !== active);
+  }
+  return true;
 }
 
 function withUnit(label, unit) { return `${label} (${unit})`; }
@@ -211,11 +245,11 @@ function sample(points, limit, fields, frameKey, timeField = "x") {
   return [...selected].sort((a, b) => a - b).map((index) => points[index]);
 }
 
-function lineMarks(trace, axis, x, y, frameKey, limit) {
+function lineMarks(trace, axis, x, y, frameKey, limit, markers) {
   const drawn = sample(trace.points.filter((point) => finite(point.value)), limit, ["value"], frameKey);
   let previous = null;
   const path = drawn.map((point) => { const command = previous === point.segment ? "L" : "M"; previous = point.segment; return `${command}${x(point.x)},${y(point.value, axis)}`; }).join(" ");
-  return `<g data-hvac-chart-series="${escapeHTML(trace.id)}" data-hvac-chart-series-axis="${axis === 1 ? "right" : "left"}" style="--hvac-chart-color:${trace.color}"><path class="hvac-chart-line" d="${path}"/>${drawn.map((point) => `<circle class="hvac-chart-point${point.x === frameKey ? " is-frame" : ""}" data-hvac-chart-radius="${drawn.length > 250 ? 1.6 : 2.7}" data-hvac-chart-value="${point.value}" data-hvac-chart-time="${point.x}" cx="${x(point.x)}" cy="${y(point.value, axis)}" r="${point.x === frameKey ? 5 : drawn.length > 250 ? 1.6 : 2.7}"><title>${escapeHTML(`${point.label} · ${trace.label}: ${number(point.value)} ${trace.unit}`)}</title></circle>`).join("")}</g>`;
+  return `<g data-hvac-chart-series="${escapeHTML(trace.id)}" data-hvac-chart-series-axis="${axis === 1 ? "right" : "left"}" style="--hvac-chart-color:${trace.color}"><path class="hvac-chart-line" d="${path}"/>${markers ? drawn.map((point) => `<circle class="hvac-chart-point${point.x === frameKey ? " is-frame" : ""}" data-hvac-chart-radius="${drawn.length > 250 ? 1.6 : 2.7}" data-hvac-chart-value="${point.value}" data-hvac-chart-time="${point.x}" cx="${x(point.x)}" cy="${y(point.value, axis)}" r="${point.x === frameKey ? 5 : drawn.length > 250 ? 1.6 : 2.7}"><title>${escapeHTML(`${point.label} · ${trace.label}: ${number(point.value)} ${trace.unit}`)}</title></circle>`).join("") : ""}</g>`;
 }
 
 function scatterMarks(pairs, traces, x, y, frameKey) {

@@ -76,13 +76,21 @@ func newPurposePlotSeriesSelection(plan PurposeRunPlan) purposeSeriesSelection {
 // HVAC output plan is authoritative; an unrelated or legacy preview must not
 // retain every Timestep variable just because it happens to be in the file.
 func newPurposeTimestepSeriesSelection(plan PurposeRunPlan) purposeSeriesSelection {
+	return newPurposeControlSeriesSelection(plan, purposeTimestepFrequency)
+}
+
+func newPurposeDetailedSeriesSelection(plan PurposeRunPlan) purposeSeriesSelection {
+	return newPurposeControlSeriesSelection(plan, purposeDetailedFrequency)
+}
+
+func newPurposeControlSeriesSelection(plan PurposeRunPlan, frequencyMatches func(string) bool) purposeSeriesSelection {
 	selection := purposeSeriesSelection{}
 	if !purposeIDsContain(plan.Purposes, SimulationPurposeHVACLoopCheck) {
 		return selection
 	}
 	for _, output := range plan.OutputObjects {
 		if !strings.EqualFold(output.ObjectType, "Output:Variable") ||
-			!purposeIDsContain(output.PurposeIDs, SimulationPurposeHVACLoopCheck) || !purposeTimestepFrequency(output.ReportingFrequency) {
+			!purposeIDsContain(output.PurposeIDs, SimulationPurposeHVACLoopCheck) || !frequencyMatches(output.ReportingFrequency) {
 			continue
 		}
 		name, key := normalizePurposeToken(output.VariableName), normalizePurposeToken(output.KeyValue)
@@ -104,6 +112,32 @@ func purposeTimestepFrequency(frequency string) bool {
 	return strings.EqualFold(strings.TrimSpace(frequency), "Timestep") || strings.EqualFold(strings.TrimSpace(frequency), "Zone Timestep")
 }
 
+func purposeDetailedFrequency(frequency string) bool {
+	return strings.EqualFold(strings.TrimSpace(frequency), "Detailed") || strings.EqualFold(strings.TrimSpace(frequency), "HVAC System Timestep")
+}
+
+func purposeControlFrequency(frequency string) string {
+	if purposeTimestepFrequency(frequency) {
+		return "timestep"
+	}
+	if purposeDetailedFrequency(frequency) {
+		return "detailed"
+	}
+	return strings.ToLower(strings.TrimSpace(frequency))
+}
+
+func simulationPointAxisEqual(a, b []SimulationPoint) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i, point := range a {
+		if point.X != b[i].X || point.Label != b[i].Label {
+			return false
+		}
+	}
+	return true
+}
+
 func purposeSeriesFrequency(series SimulationSeries) string {
 	if frequency := strings.TrimSpace(series.ReportingFrequency); frequency != "" {
 		return frequency
@@ -119,9 +153,10 @@ func purposeSeriesFrequency(series SimulationSeries) string {
 // days and warmup. Legacy schemas without that metadata retain their own axis.
 func purposeWeatherPlotFrames(db *sql.DB, frequency string) map[int64]bool {
 	interval := "t.IntervalType=1"
-	if purposeTimestepFrequency(frequency) {
+	if purposeTimestepFrequency(frequency) || purposeDetailedFrequency(frequency) {
 		// Native zone-cadence output dictionaries may use either Zone or HVAC
-		// Time records. Detailed dictionaries are never selected by this path.
+		// Time records. Dictionary cadence is selected separately; retain each
+		// native system record for explicitly requested Detailed diagnostics.
 		interval = "t.IntervalType IN (-1,0)"
 	} else if !strings.EqualFold(strings.TrimSpace(frequency), "Hourly") {
 		return nil
@@ -132,7 +167,7 @@ func purposeWeatherPlotFrames(db *sql.DB, frequency string) map[int64]bool {
 	}
 	environment := "e.EnvironmentType=3"
 	if environments == 0 {
-		if !purposeTimestepFrequency(frequency) {
+		if !purposeTimestepFrequency(frequency) && !purposeDetailedFrequency(frequency) {
 			return nil
 		}
 		// A design/sizing-only run still has a real native axis. Keep its

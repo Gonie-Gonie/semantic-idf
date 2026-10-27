@@ -10,6 +10,40 @@ import (
 )
 
 func TestSimulationResultTransportLosslessSharedColumns(t *testing.T) {
+	t.Run("native interval metadata", func(t *testing.T) {
+		intervals := make([]SimulationNativeInterval, 160)
+		for i := range intervals {
+			intervals[i] = SimulationNativeInterval{TimeIndex: int64(i + 1), EnvironmentPeriodIndex: 3, IntervalMinutes: float64(i%3+1) / 7, SimulationDays: int64(i/24 + 1), Year: 2026}
+		}
+		intervals[3].Year = 0
+		other := copyResultSlice(intervals)
+		other[7].IntervalMinutes = math.Nextafter(other[7].IntervalMinutes, math.Inf(1))
+		result := &SimulationRunResult{Series: []SimulationSeries{{NativeIntervals: intervals}}, PurposeResults: &PurposeResultBundle{HVACLoops: []HVACLoopRunResult{
+			{ControlSeries: []SimulationSeries{{SourceID: "owner", NativeIntervals: copyResultSlice(intervals)}, {SourceID: "reference", NativeIntervalsSourceID: "owner"}}},
+			{ControlSeries: []SimulationSeries{{NativeIntervals: intervals}, {NativeIntervals: other}, {NativeIntervals: intervals[:2]}}},
+		}}}
+		before, err := json.Marshal(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wire, ok := CompactResultTransport(result).(*ResultTransport)
+		if !ok || len(wire.ColumnSets) != 2 || len(wire.ColumnBindings) != 4 {
+			t.Fatal("equal native interval axes must share one chunked column across raw results and loops")
+		}
+		if samples := validateResultTransportColumnBindings(t, result, wire); samples != len(intervals)*4 {
+			t.Fatalf("native timing sample count changed: %d", samples)
+		}
+		if wire.ColumnBindings[0].Data != wire.ColumnBindings[1].Data || wire.ColumnBindings[0].Data != wire.ColumnBindings[2].Data || wire.ColumnBindings[0].Data == wire.ColumnBindings[3].Data {
+			t.Fatal("native column interning aliased distinct durations or copied identical axes")
+		}
+		if wire.Result.PurposeResults.HVACLoops[0].ControlSeries[1].NativeIntervalsSourceID != "owner" || !reflect.DeepEqual(wire.Result.PurposeResults.HVACLoops[1].ControlSeries[2].NativeIntervals, intervals[:2]) {
+			t.Fatal("native axis references or small inline timing changed")
+		}
+		after, err := json.Marshal(result)
+		if err != nil || string(after) != string(before) {
+			t.Fatal("native timing compaction mutated canonical source evidence")
+		}
+	})
 	points := make([]SimulationPoint, 160)
 	for i := range points {
 		points[i] = SimulationPoint{X: i / 2, Label: fmt.Sprintf("hour %d", i%7), Value: float64(i) / 3}
@@ -224,6 +258,18 @@ func validateResultTransportColumnBindings(t *testing.T, original *SimulationRun
 		}
 		equal := false
 		switch values := originalValues.Interface().(type) {
+		case []SimulationNativeInterval:
+			got, ok := column.Values.([]float64)
+			equal = ok && column.Kind == "nativeIntervals" && len(got) == len(values)*5
+			if equal {
+				for i, value := range values {
+					flat := got[i*5 : i*5+5]
+					if flat[0] != float64(value.TimeIndex) || flat[1] != float64(value.EnvironmentPeriodIndex) || math.Float64bits(flat[2]) != math.Float64bits(value.IntervalMinutes) || flat[3] != float64(value.SimulationDays) || flat[4] != float64(value.Year) {
+						equal = false
+						break
+					}
+				}
+			}
 		case []float64:
 			got, ok := column.Values.([]float64)
 			equal = ok && column.Kind == "number" && resultPrimitiveEqual(values, got)

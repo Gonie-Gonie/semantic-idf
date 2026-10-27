@@ -363,7 +363,9 @@ Ports of another circuit are not annotated, and detached labels are omitted.
 
 Run **HVAC Loop Check**, then open **HVAC Loops**. The default view keeps the
 loop schematic, node charts, visibility controls, Y limits and custom graphs.
-The shared **Frame** slider stays at the bottom of this view.
+The shared **Frame** slider stays at the bottom of this view. Its right-hand
+buttons and **Ctrl+← / Ctrl+→** move one recorded frame, stopping at either end.
+Shortcuts apply only to this result view, outside text editing and dialogs.
 
 Click equipment in the schematic or its reported-value annotation to show its
 **Availability** stack and **Control sequence** directly below the loop.
@@ -378,6 +380,10 @@ condition; an OR can be satisfied by an allowed branch. Manager priority and
 fan overrides retain their native rules. **NoAction** means no override, not
 OFF; **ForceOff**, **CycleOn** and **Zone fans only** are distinct actions.
 Equipment response remains a separate fact: permission does not prove it ran.
+For example, NightCycle **CycleOn** can override an OFF fan schedule. The
+schedule stays OFF, with a badge identifying the override. The legend separates
+schedule/permission, manager action, deciding conditions and the current time.
+Hover or focus a legend item to highlight its matching observations.
 
 Control cards show the current sensed values, targets, valid comparisons,
 commands and responses. **Requested flow** and **Actual flow** are separate.
@@ -396,15 +402,20 @@ Timestep cadence in both cases; current values join only an exact, unique
 reported timestamp. SQL row numbers from different frequencies are not time
 identities. Missing intervals remain gaps and never borrow a nearby value.
 
-Timestep observations can average several HVAC system steps. Mixed states do
-not describe one instantaneous action or reproduce timer history and solver
-iterations. The display presents observed rules and values without inventing
-an unreported operating cause.
+Manager and loop statuses use **Detailed**, preserving native HVAC system
+intervals instead of averaging categorical codes. Availability patches retain
+reported transitions and durations. The current status uses the exact interval
+ending at the selected frame time. Schedules and continuous control values keep
+Timestep cadence, which can include several HVAC system calculations.
+
+This distinction matters because an average of NoAction=0 and CycleOn=2 can
+equal ForceOff's code 1. The run therefore collects the categorical decisions
+directly instead of interpreting a numerical average as an action. Missing,
+overlapping or invalid native intervals are acquisition failures with source
+evidence, not operating states.
 
 Required output gaps and invalid definitions are explicit diagnostic errors,
-with source evidence available on the error indicator. Older results without
-control outputs require another HVAC Loop Check. Existing loop/node results
-remain usable.
+with source evidence available on the error indicator.
 
 ## HVAC time-series and scatter {#hvac-charts}
 
@@ -413,6 +424,9 @@ controls to compare selected traces. Y ranges and Auto reset apply independently
 to different units. HVAC and Comfort plots use the app font and the graph
 label size in Settings. Larger labels keep a readable chart width; narrow
 panes scroll horizontally.
+HVAC time-series use plain lines without sample-point markers. The vertical
+current-frame cursor remains. Hover or focus a legend entry to emphasize its
+trace and dim the other traces in that chart.
 
 Custom charts choose an equipment/node first, then a property. A line chart
 can use at most two units on separate axes. Scatter uses exactly two

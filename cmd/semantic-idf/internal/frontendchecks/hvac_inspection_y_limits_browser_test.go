@@ -75,12 +75,15 @@ try{
  const customSVG=mount.querySelector('[data-hvac-inspect-custom-chart] svg'),frame=mount.querySelector('[data-simulation-hvac-frame]');
  const low=input('flow','kg/s','low'),high=input('flow','kg/s','high'),autoLow=Number(axis('flow','kg/s').dataset.hvacChartYLow),autoHigh=Number(axis('flow','kg/s').dataset.hvacChartYHigh),min=low.min,max=low.max;
  check(Number(min)<autoLow&&Number(max)>autoHigh,'slider domain has no headroom to expand automatic limits');
- const valuesBefore=[...plot('flow').querySelectorAll('[data-hvac-chart-value]')].map(item=>item.dataset.hvacChartValue).join(',');
+ const linePoints=group=>[...group.querySelector('path').getAttribute('d').matchAll(/([ML])([^,\s]+),([^\s]+)/g)].map(match=>({x:Number(match[2]),y:Number(match[3])}));
+ const flowValues=()=>{const bounds=axis('flow','kg/s'),bottom=Number(bounds.dataset.hvacChartYLow),top=Number(bounds.dataset.hvacChartYHigh);return [...plot('flow').querySelectorAll('[data-hvac-chart-series]')].flatMap(group=>linePoints(group).map(point=>top-(point.y-44)/215*(top-bottom)));};
+ const valuesBefore=flowValues();
+ check(!plot('flow').querySelector('circle')&&valuesBefore.length===6&&valuesBefore.every((value,index)=>Math.abs(value-[0,5,10,2,4,6][index])<1e-9),'marker-free flow lines lost source values or zero');
  set('flow','kg/s','high',5);await paint();
  check(input('flow','kg/s','low')===low&&input('flow','kg/s','high')===high,'Y handle input replaced native ranges and lost drag capture');
  check(Number(axis('flow','kg/s').dataset.hvacChartYHigh)===ui.basicYLimits.flow['kg/s'].high&&Number(axis('flow','kg/s').dataset.hvacChartYHigh)<autoHigh,'upper handle did not change plotted Y limit');
- check(plot('flow').querySelector('[data-hvac-chart-clipped-marks]')?.getAttribute('overflow')==='hidden'&&Number(plot('flow').querySelector('[data-hvac-chart-value="10"]').getAttribute('cy'))<44,'out-of-range observation was clamped/deleted or not clipped to plot');
- check([...plot('flow').querySelectorAll('[data-hvac-chart-value]')].map(item=>item.dataset.hvacChartValue).join(',')===valuesBefore,'manual extent changed underlying observed values');
+ check(plot('flow').querySelector('[data-hvac-chart-clipped-marks]')?.getAttribute('overflow')==='hidden'&&linePoints(plot('flow').querySelector('[data-hvac-chart-series]')).at(-1).y<44,'out-of-range line observation was clamped/deleted or not clipped to plot');
+ const valuesAfter=flowValues();check(valuesAfter.length===valuesBefore.length&&valuesAfter.every((value,index)=>Math.abs(value-valuesBefore[index])<1e-9),'manual extent changed rendered source values');
  const flowSaved=JSON.stringify(ui.basicYLimits.flow),tempAuto=axis('temperature','°C').dataset.hvacChartYHigh;
  set('humidity','%','high',55);await paint();
  const ratioAuto=axis('humidity','g/kg').dataset.hvacChartYHigh;

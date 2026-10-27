@@ -260,30 +260,43 @@ type CSVColumnSummary struct {
 }
 
 type SimulationSeries struct {
-	File               string            `json:"file"`
-	Column             string            `json:"column"`
-	SourceID           string            `json:"sourceId,omitempty"`
-	ReportingFrequency string            `json:"reportingFrequency,omitempty"`
-	Name               string            `json:"name,omitempty"`
-	KeyValue           string            `json:"keyValue,omitempty"`
-	IsMeter            *bool             `json:"isMeter,omitempty"`
-	DisplayColumn      string            `json:"displayColumn,omitempty"`
-	DisplayUnit        string            `json:"displayUnit,omitempty"`
-	Min                float64           `json:"min"`
-	Max                float64           `json:"max"`
-	Average            float64           `json:"average"`
-	DisplayMin         float64           `json:"displayMin,omitempty"`
-	DisplayMax         float64           `json:"displayMax,omitempty"`
-	DisplayAverage     float64           `json:"displayAverage,omitempty"`
-	Points             []SimulationPoint `json:"points"`
-	DisplayPoints      []SimulationPoint `json:"displayPoints,omitempty"`
-	RowCount           int               `json:"rowCount"`
+	File                    string                     `json:"file"`
+	Column                  string                     `json:"column"`
+	SourceID                string                     `json:"sourceId,omitempty"`
+	ReportingFrequency      string                     `json:"reportingFrequency,omitempty"`
+	Name                    string                     `json:"name,omitempty"`
+	KeyValue                string                     `json:"keyValue,omitempty"`
+	IsMeter                 *bool                      `json:"isMeter,omitempty"`
+	DisplayColumn           string                     `json:"displayColumn,omitempty"`
+	DisplayUnit             string                     `json:"displayUnit,omitempty"`
+	Min                     float64                    `json:"min"`
+	Max                     float64                    `json:"max"`
+	Average                 float64                    `json:"average"`
+	DisplayMin              float64                    `json:"displayMin,omitempty"`
+	DisplayMax              float64                    `json:"displayMax,omitempty"`
+	DisplayAverage          float64                    `json:"displayAverage,omitempty"`
+	Points                  []SimulationPoint          `json:"points"`
+	NativeIntervals         []SimulationNativeInterval `json:"nativeIntervals,omitempty"`
+	NativeIntervalsSourceID string                     `json:"nativeIntervalsSourceId,omitempty"`
+	DisplayPoints           []SimulationPoint          `json:"displayPoints,omitempty"`
+	RowCount                int                        `json:"rowCount"`
 }
 
 type SimulationPoint struct {
 	X     int     `json:"x"`
 	Label string  `json:"label,omitempty"`
 	Value float64 `json:"value"`
+}
+
+// NativeIntervals is aligned with the unsampled control Points. These are
+// EnergyPlus SQL Time values, including its native minute precision; no
+// substeps, timestamps or durations are reconstructed from neighboring rows.
+type SimulationNativeInterval struct {
+	TimeIndex              int64   `json:"timeIndex"`
+	EnvironmentPeriodIndex int64   `json:"environmentPeriodIndex"`
+	IntervalMinutes        float64 `json:"intervalMinutes"`
+	SimulationDays         int64   `json:"simulationDays"`
+	Year                   int64   `json:"year,omitempty"`
 }
 
 type columnAccumulator struct {
@@ -1610,6 +1623,7 @@ func parseSimulationCSVForPlan(path string, plan PurposeRunPlan) (CSVSummary, []
 	purposeSelection := newPurposeSeriesSelection(plan)
 	plotSelection := newPurposePlotSeriesSelection(plan)
 	timestepSelection := newPurposeTimestepSeriesSelection(plan)
+	detailedSelection := newPurposeDetailedSeriesSelection(plan)
 	includeSeries := make([]bool, len(header))
 	fullPlotSeries := make([]bool, len(header))
 	for index, name := range header {
@@ -1617,8 +1631,9 @@ func parseSimulationCSVForPlan(path string, plan PurposeRunPlan) (CSVSummary, []
 		keyValue, variableName := splitPurposeSeriesColumn(name)
 		frequency := purposeSeriesFrequency(SimulationSeries{Column: name})
 		timestep := timestepSelection.matches(keyValue, variableName) && purposeTimestepFrequency(frequency)
-		includeSeries[index] = index <= maxCSVSeriesColumns || purposeSelection.matches(keyValue, variableName) || timestep
-		fullPlotSeries[index] = plotSelection.matches(keyValue, variableName) && hvacSeriesIsHourly(SimulationSeries{Column: name}) || timestep
+		detailed := detailedSelection.matches(keyValue, variableName) && purposeDetailedFrequency(frequency)
+		includeSeries[index] = index <= maxCSVSeriesColumns || purposeSelection.matches(keyValue, variableName) || timestep || detailed
+		fullPlotSeries[index] = plotSelection.matches(keyValue, variableName) && hvacSeriesIsHourly(SimulationSeries{Column: name}) || timestep || detailed
 	}
 	seriesPoints := make(map[int][]SimulationPoint)
 	rowCount := 0

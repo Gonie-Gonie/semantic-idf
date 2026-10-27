@@ -1,7 +1,7 @@
 // Native availability inputs and their combined permission on one reported
 // axis. Parameter-control schedules and equipment activity are separate facts.
 import { t } from "./i18n.js";
-import { hvacRuntimePermission, hvacRuntimeSignalState } from "./hvac-runtime-data.js";
+import { hvacRuntimePermission, hvacRuntimeSignalState, hvacRuntimeAvailabilityFrames, hvacRuntimeSignalsAt } from "./hvac-runtime-data.js";
 
 const caches = new WeakMap();
 const MAX_CACHE_ENTRIES = 4, MAX_CACHE_POINTS = 160000;
@@ -11,16 +11,12 @@ const sourceKey = (source) => JSON.stringify([source?.objectIndex, source?.objec
 const copy = (key, fallback) => t(`hvac.operation.${key}`, {}, fallback);
 const runtimeCopy = (key, fallback) => t(`simulation.hvacRuntime${key}`, {}, fallback);
 const sourceName = (source) => source?.objectName || source?.objectType || "";
-const booleanState = (state) => ["allowed", "blocked", "mixed"].includes(state) ? state : "error";
-const managerLabels = { no_action: "NoAction", force_off: "ForceOff", cycle_on: "CycleOn", zone_fans_only: "Zone fans only", hybrid_idle: "No hybrid control", natural_allowed: "Natural ventilation allowed", natural_blocked: "Natural ventilation blocked", mixed: "Interval average / mixed", error: "Data acquisition error", active: "Activity reported", inactive: "No activity reported" };
+const booleanState = (state) => ["allowed", "blocked"].includes(state) ? state : "error";
+const managerLabels = { no_action: "NoAction", force_off: "ForceOff", cycle_on: "CycleOn", zone_fans_only: "Zone fans only", hybrid_idle: "No hybrid control", natural_allowed: "Natural ventilation allowed", natural_blocked: "Natural ventilation blocked", error: "Data acquisition error", active: "Activity reported", inactive: "No activity reported" };
 
 function statusLabel(state, kind) {
   if (state === "allowed" || state === "blocked") return copy(`status.${kind === "schedule" ? state === "allowed" ? "on" : "off" : state === "allowed" ? "available" : "unavailable"}`, kind === "schedule" ? state === "allowed" ? "ON" : "OFF" : state === "allowed" ? "Available" : "Unavailable");
   return runtimeCopy(`State.${state}`, managerLabels[state] || state);
-}
-
-function observedAt(signals, frame) {
-  return signals.map((signal) => ({ ...signal, value: frame && signal.status === "collected" ? signal.values.get(frame.key) ?? null : null }));
 }
 
 function conditions(profile) {
@@ -108,18 +104,20 @@ function deciding(profile, observed, expression, expressions, domain = "boolean"
   const trace = (child, childDomain = "boolean") => deciding(profile, observed, child, expressions, childDomain, depth + 1);
   let selected;
   if (["all", "any"].includes(expression.op)) {
-    const determining = expression.op === "all" && result.state === "blocked" ? "blocked" : expression.op === "any" && result.state === "allowed" ? "allowed" : result.state === "mixed" ? "mixed" : null;
+    const determining = expression.op === "all" && result.state === "blocked" ? "blocked" : expression.op === "any" && result.state === "allowed" ? "allowed" : null;
     selected = merge(children.filter((child) => !determining || evaluate(child).state === determining).map((child) => trace(child)));
   } else if (["manager_gate", "fan_gate"].includes(expression.op)) {
     const action = evaluate(children[0], "manager");
     selected = expression.op === "fan_gate" && action.state === "manager" && action.value === 0 ? trace(children[1]) : trace(children[0], "manager");
   } else if (["air_managers", "plant_managers"].includes(expression.op)) {
+    const native = result.signals.filter((id) => observed.some((signal) => signal.id === id && signal.role === "loop_status"));
+    if (native.length) return { signals: new Set(native), rows: new Set() };
     const actions = children.map((child) => evaluate(child, "manager"));
     if (actions.every((action) => action.state === "manager")) {
       const rank = [0, 3, 1, 2], winning = expression.op === "plant_managers" ? actions.findIndex((action) => action.value !== 0) : -1;
       const value = expression.op === "plant_managers" ? winning < 0 ? 0 : actions[winning].value : actions.reduce((current, action) => rank[action.value] > rank[current] ? action.value : current, 0);
       selected = merge(children.filter((_, index) => expression.op === "plant_managers" && winning >= 0 ? index === winning : actions[index].value === value).map((child) => trace(child, "manager")));
-    } else selected = merge(children.filter((_, index) => actions[index].state === "mixed").map((child) => trace(child, "manager")));
+    } else selected = { signals: new Set(result.signals), rows: new Set() };
   } else selected = { signals: new Set(result.signals), rows: new Set() };
   if (expressions.has(expression)) selected.rows.add(expressions.get(expression));
   return selected;
@@ -133,7 +131,7 @@ function frameKey(model, frames) {
 
 /** Return immutable plot points plus cheap selected-frame state. The final
  * permission is always the last stack row; activity remains a separate fact.
- * Points preserve all native frames and mixed/error states, never fill gaps. */
+ * Points preserve all native intervals and collection errors, never fill gaps. */
 export function buildHVACRuntimeAvailability(model, profileID, frames = model.frames, frameIndex = 0) {
   const profile = profileID === undefined ? model.profiles[0] : model.profiles.find((entry) => entry.id === String(profileID));
   const index = Number(frameIndex);
@@ -146,11 +144,11 @@ export function buildHVACRuntimeAvailability(model, profileID, frames = model.fr
   if (!cached) {
     const allRows = [...cache.rows, ...(cache.activity ? [cache.activity] : [])];
     const points = allRows.map(() => []);
-    for (const entry of frames) {
-      const observed = observedAt(cache.signals, entry);
-      allRows.forEach((row, index) => { const current = rowState(profile, row, observed); points[index].push({ key: entry.key, x: entry.x, label: entry.label, state: current.state, value: current.value }); });
+    for (const entry of hvacRuntimeAvailabilityFrames(model, profile, frames)) {
+      const observed = hvacRuntimeSignalsAt(model, cache.signals, entry);
+      allRows.forEach((row, index) => { const current = rowState(profile, row, observed); points[index].push({ key: entry.key, x: entry.x, startX: entry.startX, endX: entry.endX, label: entry.label, state: current.state, value: current.value }); });
     }
-    cached = { rows: cache.rows.map((row, index) => ({ ...row, points: points[index] })), activity: cache.activity ? { ...cache.activity, points: points.at(-1) } : null, count: allRows.length * frames.length };
+    cached = { rows: cache.rows.map((row, index) => ({ ...row, points: points[index] })), activity: cache.activity ? { ...cache.activity, points: points.at(-1) } : null, count: allRows.length * (points[0]?.length || 0) };
     // Keep the selected window, even when a full run exceeds the usual cache
     // budget. A large window owns the cache alone; moving its cursor is cheap.
     while (cache.entries.size && (cache.entries.size >= MAX_CACHE_ENTRIES || cache.points + cached.count > MAX_CACHE_POINTS)) {
@@ -159,7 +157,7 @@ export function buildHVACRuntimeAvailability(model, profileID, frames = model.fr
     }
     cache.entries.set(key, cached); cache.points += cached.count;
   }
-  const observed = observedAt(cache.signals, frame), decision = frame ? deciding(profile, observed, profile.availabilityExpression, cache.expressions) : { rows: new Set(), signals: new Set() };
+  const observed = hvacRuntimeSignalsAt(model, cache.signals, frame), decision = frame ? deciding(profile, observed, profile.availabilityExpression, cache.expressions) : { rows: new Set(), signals: new Set() };
   const present = (row) => {
     const current = frame ? rowState(profile, row, observed) : { state: "error", value: null, signalIds: row.signalIds || [] };
     return { ...row, signalIds: row.signalIds || current.signalIds, owner: row.owners.map(sourceName).filter(Boolean).join(" · "), current: { ...current, label: statusLabel(current.state, row.kind) },

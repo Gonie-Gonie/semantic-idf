@@ -101,10 +101,16 @@ func hvacRuntimeBrowserResult(t *testing.T, input string, fixture hvacRuntimeBro
 			value, unit = 4, ""
 		}
 		points := []simulation.SimulationPoint{}
+		intervals := []simulation.SimulationNativeInterval{}
 		for index, label := range []string{"01-01 00:15", "01-01 00:30", "01-01 00:45", "01-01 01:00"} {
 			points = append(points, simulation.SimulationPoint{X: index + 1, Label: label, Value: value})
+			timeIndex := int64(index + 1)
+			if strings.EqualFold(frequency, "Detailed") {
+				timeIndex += 1000
+			}
+			intervals = append(intervals, simulation.SimulationNativeInterval{TimeIndex: timeIndex, EnvironmentPeriodIndex: 1, IntervalMinutes: 15, SimulationDays: 1, Year: 2026})
 		}
-		series = append(series, simulation.SimulationSeries{SourceID: fmt.Sprintf("runtime-%s-%d", fixture.Family, len(series)), KeyValue: key, Name: name, File: "eplusout.sql", Column: key + ":" + name + " [" + unit + "](" + frequency + ")", ReportingFrequency: frequency, Points: points})
+		series = append(series, simulation.SimulationSeries{SourceID: fmt.Sprintf("runtime-%s-%d", fixture.Family, len(series)), KeyValue: key, Name: name, File: "eplusout.sql", Column: key + ":" + name + " [" + unit + "](" + frequency + ")", ReportingFrequency: frequency, Points: points, NativeIntervals: intervals})
 	}
 	return readLoop(series)
 }
@@ -211,6 +217,9 @@ func TestHVACInspectionSharedFrameActualAppBrowser(t *testing.T) {
 			{"chiller-availability-ko-light.png", "?review=chiller&focus=availability&language=ko&theme=light", "1900,1400"},
 			{"missing-required.png", "?review=error&focus=error", "1600,1200"},
 			{"fan-availability-narrow.png", "?review=fan&focus=availability", "1360,1200"},
+			{"fan-cycleon-override.png", "?review=fan&focus=availability&override=1", "1900,1400"},
+			{"fan-native-substeps.png", "?review=fan&focus=availability&transitions=1", "1900,1400"},
+			{"coil-legend-highlight.png", "?review=coil&focus=history&legend=1", "2560,1500"},
 		} {
 			path, err := filepath.Abs(filepath.Join(directory, capture.name))
 			if err != nil {
@@ -260,11 +269,27 @@ try{
  const host=document.getElementById('simulationHVACLoopResults'),slider=()=>host.querySelector('[data-simulation-hvac-frame]'),label=()=>host.querySelector('[data-hvac-inspect-frame-label]').textContent;
  const select=name=>{const picker=host.querySelector('[data-simulation-hvac-loop]');picker.value=[...picker.options].find(option=>option.textContent===name).value;picker.dispatchEvent(new Event('change',{bubbles:true}));};
  const frame=index=>{const control=slider();control.value=index;control.dispatchEvent(new Event('input',{bubbles:true}));control.dispatchEvent(new Event('change',{bubbles:true}));};
+ const step=direction=>host.querySelector('[data-hvac-inspect-step="'+direction+'"]').click();
+ const ctrlFrame=(key,target=host,modifiers={})=>{const event=new KeyboardEvent('keydown',{key,ctrlKey:true,bubbles:true,cancelable:true,...modifiers});target.dispatchEvent(event);return event;};
  check(!document.querySelector('#simulationHVACLoopStats')&&!host.closest('.simulation-section').querySelector('.profile-section-head'),'removed loop heading/count still visible');
+ const previous=()=>host.querySelector('[data-hvac-inspect-step="-1"]'),next=()=>host.querySelector('[data-hvac-inspect-step="1"]');
+ check(previous()&&next()&&previous().disabled&&!next().disabled&&Boolean(host.querySelector('[data-hvac-inspect-frame-label]').compareDocumentPosition(previous())&Node.DOCUMENT_POSITION_FOLLOWING)&&Boolean(previous().compareDocumentPosition(next())&Node.DOCUMENT_POSITION_FOLLOWING),'one-frame buttons are missing, misordered or not on the right of frame output');
+ step(1);check(label()==='01-01 02:00','next button skipped a frame');step(-1);check(label()==='01-01 01:00','previous button skipped a frame');
+ check(ctrlFrame('ArrowRight').defaultPrevented&&label()==='01-01 02:00','Ctrl+Right did not advance one native frame');
+ slider().focus();ctrlFrame('ArrowLeft',slider());check(label()==='01-01 01:00','Ctrl+Left stopped working after using the frame slider');ctrlFrame('ArrowRight',slider());check(label()==='01-01 02:00','Ctrl+Right did not move one frame from the focused slider');slider().blur();
+ ctrlFrame('ArrowLeft');ctrlFrame('ArrowLeft');check(label()==='01-01 01:00'&&previous().disabled,'Ctrl+Left crossed the first frame');
+ ctrlFrame('ArrowRight');ctrlFrame('ArrowRight');ctrlFrame('ArrowRight');check(label()==='01-01 03:00'&&next().disabled,'Ctrl+Right crossed the last frame');
+ frame(1);check(!ctrlFrame('ArrowRight',host,{ctrlKey:false}).defaultPrevented&&label()==='01-01 02:00','plain ArrowRight was hijacked by the HVAC shortcut');
+ for(const modifier of ['shiftKey','altKey','metaKey'])check(!ctrlFrame('ArrowRight',host,{[modifier]:true}).defaultPrevented&&label()==='01-01 02:00','HVAC shortcut hijacked modified '+modifier+' activation');
+ for(const kind of ['input','textarea','select','editable','editor']){const edit=document.createElement(['editable','editor'].includes(kind)?'div':kind);if(kind==='input')edit.type='text';if(kind==='editable')edit.contentEditable='true';if(kind==='editor'){edit.className='editor-panel';edit.tabIndex=0;}host.append(edit);edit.focus();const event=ctrlFrame('ArrowRight',edit);check(!event.defaultPrevented&&label()==='01-01 02:00','HVAC shortcut hijacked '+kind+' editing');edit.remove();}
+ const iframe=document.createElement('iframe');iframe.tabIndex=0;host.append(iframe);iframe.focus();ctrlFrame('ArrowRight');check(label()==='01-01 02:00','HVAC shortcut acted through a focused iframe');iframe.remove();
+ const modal=document.createElement('dialog'),modalButton=document.createElement('button');modal.append(modalButton);document.body.append(modal);modal.showModal();modalButton.focus();ctrlFrame('ArrowRight',modalButton);check(label()==='01-01 02:00','HVAC shortcut acted behind an auxiliary dialog');modal.close();modal.remove();
+ navigation.switchResultTab('metrics',{recordHistory:false});ctrlFrame('ArrowRight');check(label()==='01-01 02:00','HVAC shortcut acted in another result tab');navigation.switchResultTab('simulation',{recordHistory:false});
+ state.simulationActiveResultView='series';ctrlFrame('ArrowRight');check(label()==='01-01 02:00','HVAC shortcut acted in another simulation view');state.simulationActiveResultView='hvac_loops';
  frame(2);check(label()==='01-01 03:00','frame slider did not change selected hour');
  select('Second');check(slider().value==='1'&&label()==='01-01 03:00','loop switch reset timestamp or used old array index');
- select('Empty');select('First');check(slider().value==='2'&&label()==='01-01 03:00','empty loop discarded shared frame');
- select('Second');frame(0);select('First');check(slider().value==='0'&&label()==='01-01 01:00','frame selected in second loop was not shared');
+ select('Empty');check(previous().disabled&&next().disabled&&slider().disabled,'empty loop retained enabled frame controls');step(1);ctrlFrame('ArrowLeft');select('First');check(slider().value==='2'&&label()==='01-01 03:00','empty loop discarded shared frame');
+ select('Second');frame(0);step(1);check(label()==='01-01 03:00','one-frame button invented the absent second-loop hour');ctrlFrame('ArrowLeft');check(label()==='01-01 01:00','one-frame shortcut did not use the prior available observation');select('First');check(slider().value==='0'&&label()==='01-01 01:00','frame selected in second loop was not shared');
  frame(2);state.simulationResult={...result,runId:'frames-2'};simulation.renderSimulation();check(slider().value==='0','new simulation retained previous run timestamp');
 
  // The loop's Hourly cursor is shared; history retains native Timestep data.
@@ -272,7 +297,7 @@ try{
  const nativeMember=fixture=>[fixture.topology.supplySide,fixture.topology.demandSide].flatMap(side=>side?.branches||[]).flatMap(branch=>branch.components||[]).find(item=>item.objectType===fixture.component.objectType&&item.objectName===fixture.component.objectName);
  const hourlySeries=(fixture,key,name,unit,values)=>({name,keyValue:key,file:'eplusout.sql',column:key+':'+name+' ['+unit+'](Hourly)',reportingFrequency:'Hourly',points:[1,2,3].map((hour,index)=>({x:hour,label:'01-01 0'+hour+':00',value:values[index%values.length]}))});
  const withHourly=(captured,fixture)=>{
-  for(const series of captured.controlSeries||[]){const observed=series.points;delete series.displayPoints;delete series.displayColumn;delete series.displayUnit;series.points=Array.from({length:12},(_,index)=>{const minutes=(index+1)*15;return {x:index+1,label:'01-01 '+String(Math.floor(minutes/60)).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0'),value:observed[index%observed.length].value};});}
+  for(const series of captured.controlSeries||[]){const observed=series.points;delete series.displayPoints;delete series.displayColumn;delete series.displayUnit;delete series.nativeIntervalsSourceId;series.points=Array.from({length:12},(_,index)=>{const minutes=(index+1)*15;return {x:index+1,label:'01-01 '+String(Math.floor(minutes/60)).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0'),value:observed[index%observed.length].value};});series.nativeIntervals=series.points.map((point,index)=>({timeIndex:(series.reportingFrequency==='Detailed'?1000:0)+index+1,environmentPeriodIndex:1,intervalMinutes:15,simulationDays:1,year:2026}));}
   const member=nativeMember(fixture);check(member,'native equipment is absent from its typed loop');
   const node=member.inletNode||fixture.topology.supplySide?.inletNode;check(node,'native equipment lacks a connected node');
   captured.series=[hourlySeries(fixture,node,'System Node Temperature','C',[21,22,23]),hourlySeries(fixture,node,'System Node Mass Flow Rate','kg/s',[1,2,3])];
@@ -290,8 +315,18 @@ try{
  const runtimeFan=mergeEquipment(withHourly(runtimeClone(fixtures,'fan'),fanFixture),withHourly(runtimeClone(fixtures,'coil'),coilFixture)),runtimeChiller=withHourly(runtimeClone(fixtures,'chiller'),chillerFixture);
  const managerBinding=runtimeFan.controlSignals.find(signal=>signal.componentIndex===fanFixture.component.objectIndex&&signal.role==='manager_status');check(managerBinding,'native fan lacks its manager');
  const fanGate=expressionNodes(fanFixture.profile.finalAvailability).find(expression=>expression.op==='fan_gate'),ownSchedule=expressionNodes(fanGate?.children?.[1]).find(expression=>expression.op==='schedule_positive')?.scheduleName;check(ownSchedule,'native fan lacks its own schedule');
- setReported(runtimeFan,signal=>signal.role==='schedule'&&signal.keyValue.toLowerCase()===ownSchedule.toLowerCase(),[1]);
- setReported(runtimeFan,signal=>signal.role==='manager_status',[0,0,0,0,1,1,1,1,2,2,2,2]);
+ setReported(runtimeFan,signal=>signal.role==='schedule'&&signal.keyValue.toLowerCase()===ownSchedule.toLowerCase(),[1,1,1,1,0,0,0,0,1,1,1,1]);
+ setReported(runtimeFan,signal=>signal.role==='manager_status'||signal.role==='loop_status',[0,0,0,0,2,0,2,0,2,0,2,2]);
+ const nativeStatusTransitions=captured=>{
+  const ids=new Set(captured.controlSignals.filter(signal=>signal.role==='manager_status'||signal.role==='loop_status').map(signal=>signal.seriesId));
+  for(const series of captured.controlSeries)if(ids.has(series.sourceId)){
+   check(series.reportingFrequency==='Detailed','availability status was collected as an interval-averaged output');
+   const minutes=[5,...Array.from({length:12},(_,index)=>(index+1)*15)],values=[0,2,0,0,0,2,0,2,0,2,0,2,2];
+   series.points=minutes.map((minute,index)=>({x:index+1,label:'01-01 '+String(Math.floor(minute/60)).padStart(2,'0')+':'+String(minute%60).padStart(2,'0'),value:values[index]}));
+   series.nativeIntervals=minutes.map((minute,index)=>({timeIndex:1001+index,environmentPeriodIndex:1,intervalMinutes:minute-(minutes[index-1]||0),simulationDays:1,year:2026}));
+  }
+ };
+ nativeStatusTransitions(runtimeFan);
  setReported(runtimeFan,signal=>signal.role==='activity',[1000,1000,1000,1000,0,0,0,0,1500,1500,1500,1500]);
  const runtimeResult={...result,runId:'runtime-1',purposeResults:{hvacLoops:[runtimeFan,runtimeChiller]}};
  state.report={hvac:{operatingProfiles:[{componentIndex:fanFixture.component.objectIndex,loopId:fanFixture.profile.loopId,parameterControl:{nodes:[{id:'editor-only',source:{objectName:'EDITOR MODEL MUST NOT APPEAR'}}],edges:[]}}]}};
@@ -316,9 +351,25 @@ try{
  check(label()==='01-01 01:00'&&finalRow()?.dataset.state==='allowed','Hourly1h did not bind exact control1h observation');
  check([...stack().querySelectorAll('[data-hvac-runtime-availability-row]')].at(-1)===finalRow(),'final Availability is not bottom of stack');
  check(stack().querySelector('[data-kind="schedule"]')&&stack().querySelector('[data-kind="manager"]'),'schedule/manager absent from stack');
+ const nativeManagerRow=[...stack().querySelectorAll('[data-kind="manager"]')].find(row=>row.querySelector('strong')?.textContent===managerBinding.source.objectName),nativePatches=[...nativeManagerRow.querySelectorAll('.hvac-runtime-patch')];
+ check(nativePatches[0]?.classList.contains('is-no_action')&&nativePatches[1]?.classList.contains('is-cycle_on')&&Math.abs(Number(nativePatches[0].getAttribute('width'))-1000*5/180)<1e-6&&Math.abs(Number(nativePatches[1].getAttribute('width'))-1000*10/180)<1e-6,'Detailed NoAction/CycleOn substeps were averaged, binned or drawn at equal widths');
+ check(!stack().querySelector('[data-state="mixed"],.is-mixed,[data-hvac-availability-legend="mixed"]'),'exact native availability displayed an ambiguous mixed state');
+ check(['allowed','blocked','no_action','cycle_on','zone_fans_only','error','decisive','frame'].every(group=>stack().querySelector('[data-hvac-availability-legend="'+group+'"]')?.textContent.trim()),'Availability legend does not distinguish schedules, native manager actions, acquisition errors, deciding conditions and the current frame');
+ const availabilityHover=(group,predicate)=>{
+  const section=stack(),legend=section.querySelector('[data-hvac-availability-legend="'+group+'"]'),patches=[...section.querySelectorAll('.hvac-runtime-patch')],matching=patches.filter(predicate);
+  check(matching.length>0,'native fixture lacks patches for '+group+' legend review');legend.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));
+  check(section.dataset.hvacAvailabilityHighlight===group&&legend.classList.contains('is-highlighted')&&patches.every(patch=>patch.classList.contains('is-highlighted')===predicate(patch)&&patch.classList.contains('is-muted')!==predicate(patch)),'Availability legend did not isolate '+group+' patches');
+  if(group!=='decisive')check(getComputedStyle(matching[0]).fill===getComputedStyle(legend.querySelector('i')).backgroundColor,'Availability legend color differs from its '+group+' patches');
+  legend.dispatchEvent(new PointerEvent('pointerout',{bubbles:true,relatedTarget:section}));check(!section.dataset.hvacAvailabilityHighlight&&!section.querySelector('.hvac-runtime-patch.is-muted,.hvac-runtime-patch.is-highlighted'),'Availability legend leave retained dimmed or highlighted patches');
+ };
+ for(const group of ['allowed','blocked','no_action','cycle_on'])availabilityHover(group,patch=>patch.classList.contains('is-'+group));
  const fanControlCard=()=>[...host.querySelectorAll('.hvac-parameter-flow-stage.controls [data-hvac-flow-card]')].find(card=>card.querySelector('strong')?.textContent==='Match airflow');
  check(fanControlCard()&&!fanControlCard().querySelector('[data-hvac-runtime-card-value]'),'fan controller borrowed unrelated temperature');
- frame(1);check(label()==='01-01 02:00'&&finalRow()?.dataset.state==='blocked'&&stack().querySelector('[data-kind="manager"][data-decisive="true"]'),'ForceOff did not block final or mark deciding manager');
+ step(1);check(label()==='01-01 02:00'&&finalRow()?.dataset.state==='blocked'&&stack().querySelector('[data-kind="schedule"][data-decisive="true"]'),'next frame button did not update the OFF schedule and its deciding condition together');
+ availabilityHover('decisive',patch=>patch.closest('[data-hvac-runtime-availability-row]').dataset.decisive==='true');
+ const frameLegend=stack().querySelector('[data-hvac-availability-legend="frame"]');frameLegend.dispatchEvent(new FocusEvent('focusin',{bubbles:true}));check([...stack().querySelectorAll('[data-hvac-runtime-cursor]')].every(cursor=>cursor.classList.contains('is-highlighted')),'Availability current-frame legend did not highlight the shared time cursors');frameLegend.dispatchEvent(new FocusEvent('focusout',{bubbles:true,relatedTarget:stack()}));check(!stack().querySelector('[data-hvac-runtime-cursor].is-highlighted'),'Availability current-frame legend blur left highlighted cursors');
+ ctrlFrame('ArrowLeft');check(label()==='01-01 01:00'&&finalRow()?.dataset.state==='allowed','Ctrl+Left did not update runtime Availability with the shared frame');
+ ctrlFrame('ArrowRight');check(label()==='01-01 02:00'&&finalRow()?.dataset.state==='blocked','Ctrl+Right did not update runtime Availability with the shared frame');
  frame(2);check(label()==='01-01 03:00'&&finalRow()?.dataset.state==='allowed','CycleOn did not follow shared cursor');
  const nodeTarget=host.querySelector('[data-hvac-inspect-node]');check(nodeTarget,'loop node is not selectable');nodeTarget.dispatchEvent(new MouseEvent('click',{bubbles:true}));
  check(!runtimePanel()&&host.querySelector('[data-hvac-inspect-basic-charts]')===nodeCharts&&host.querySelector('[data-hvac-inspect-custom-controls]')===customControls&&label()==='01-01 03:00','node selection changed existing UI/current frame');
@@ -338,7 +389,22 @@ try{
  check([...host.querySelectorAll('.hvac-parameter-flow-stage.controls [data-hvac-runtime-card-value]')].some(value=>value.textContent==='Δ 3 °C'&&value.title.includes('23 °C − 20 °C')),'controller comparison did not follow current timestep');
  commandCard().querySelector('button').click();check(host.querySelector('[data-hvac-runtime-history] .hvac-chart-svg')&&!host.querySelector('[data-hvac-parameter-inspector]:not([hidden])'),'sequence card opened raw parameter specs instead of history');
  const requestedBinding=runtimeCoil.controlSignals.find(signal=>signal.role==='actuator_request'),requestedTrace=host.querySelector('[data-hvac-runtime-history] [data-hvac-chart-series="'+CSS.escape(requestedBinding.id)+'"]');
- check(requestedTrace?.querySelectorAll('[data-hvac-chart-value]').length===12&&requestedTrace.querySelector('.is-frame')?.dataset.hvacChartValue==='0.7','selected sequence history sampled native Timestep data or marked wrong current time');
+ const {prepareHVACRuntimeInspection,hvacRuntimeTrace}=await import('/src/js/hvac-runtime-data.js'),traceModel=prepareHVACRuntimeInspection(runtimeCoil),nativeRequestedTrace=hvacRuntimeTrace(traceModel,traceModel.signals.find(signal=>signal.id===requestedBinding.id));
+ const requestedAtTwo=nativeRequestedTrace.points.find(point=>point.label==='01-01 02:00'),requestedChart=requestedTrace?.closest('[data-hvac-inspection-chart]');
+ check(nativeRequestedTrace.points.length===12&&requestedAtTwo?.value===.7&&requestedTrace?.querySelector('path.hvac-chart-line')&&!requestedTrace.querySelector('circle'),'ordinary line history dropped native Timestep values or retained point markers');
+ check(requestedChart?.querySelector('[data-hvac-chart-frame-marker]')?.style.display!=='none'&&Number(requestedChart.querySelector('[data-hvac-chart-frame]')?.dataset.hvacChartFrame)===requestedAtTwo.x,'marker-free sequence history lost the shared current-time cursor');
+ const requestedLegend=requestedChart.querySelector('[data-hvac-chart-legend="'+CSS.escape(requestedBinding.id)+'"]');
+ const actualBinding=runtimeCoil.controlSignals.find(signal=>signal.role==='actuator');
+ check(requestedLegend&&requestedChart.querySelector('[data-hvac-chart-legend="'+CSS.escape(actualBinding.id)+'"]')&&requestedChart.querySelectorAll('[data-hvac-chart-series]').length>=2,'selected command lacks separate requested/actual flow legend entries');
+ const otherNodeChart=host.querySelector('[data-hvac-inspect-basic-charts] [data-hvac-inspection-chart]');
+ requestedLegend.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));
+ check(requestedChart.dataset.hvacChartHighlight===requestedBinding.id&&requestedTrace.classList.contains('is-highlighted')&&[...requestedChart.querySelectorAll('[data-hvac-chart-series]')].filter(series=>series!==requestedTrace).every(series=>series.classList.contains('is-muted'))&&!otherNodeChart.dataset.hvacChartHighlight,'legend hover did not isolate the matching trace or altered another chart');
+ requestedLegend.dispatchEvent(new PointerEvent('pointerout',{bubbles:true,relatedTarget:requestedChart}));
+ check(!requestedChart.dataset.hvacChartHighlight&&!requestedChart.querySelector('[data-hvac-chart-series].is-muted'),'legend leave did not restore the normal line graph');
+ // Native focus/blur is covered by the chart browser with focus emulation;
+ // dump-dom can be an unfocused window, so verify the actual app's delegation.
+ requestedLegend.dispatchEvent(new FocusEvent('focusin',{bubbles:true}));check(requestedChart.dataset.hvacChartHighlight===requestedBinding.id,'legend focusin did not reach the actual app delegate');requestedLegend.dispatchEvent(new FocusEvent('focusout',{bubbles:true,relatedTarget:requestedChart}));
+ check(!requestedChart.dataset.hvacChartHighlight&&!host.querySelector('[data-hvac-inspection-chart="line"] circle'),'legend blur did not restore lines or HVAC data-point markers remain');
  const iconOnly=withHourly(runtimeClone(fixtures,'fan'),fanFixture);iconOnly.components=[];
  state.simulationResult={...runtimeResult,runId:'runtime-native-icon',purposeResults:{hvacLoops:[iconOnly]}};simulation.renderSimulation();
  const nativeIcon=host.querySelector('[data-hvac-inspect-native-component="'+fanFixture.component.objectIndex+'"]');check(nativeIcon,'equipment with no Hourly response lacks clickable native loop icon');
@@ -350,13 +416,30 @@ try{
  const localButton=host.querySelector('.hvac-inspection-local-equipment [data-hvac-inspect-native-component="'+localFixture.component.objectIndex+'"]');check(localButton,'local equipment controls became inaccessible without a profile picker');localButton.click();
  check(runtimePanel()?.dataset.hvacRuntimeProfileId===String(localFixture.component.objectIndex)&&!host.querySelector('[data-hvac-runtime-error]'),'local equipment click lost exact source controls');
  frame(2);check(label().includes('00:45')&&!host.querySelector('[data-hvac-runtime-error]'),'local equipment shared frame did not follow collected native Timestep');
+ step(1);check(label().includes('01:00'),'local next button did not move one native quarter-hour frame');ctrlFrame('ArrowLeft');check(label().includes('00:45'),'local Ctrl+Left used an Hourly step instead of the prior native Timestep');
+ const overriddenFan=withHourly(runtimeClone(fixtures,'fan'),fanFixture);
+ setReported(overriddenFan,signal=>signal.role==='schedule'&&signal.keyValue.toLowerCase()===ownSchedule.toLowerCase(),[0]);
+ setReported(overriddenFan,signal=>signal.role==='manager_status'||signal.role==='loop_status',[2]);setReported(overriddenFan,signal=>signal.role==='activity',[1000]);
+ state.simulationResult={...runtimeResult,runId:'runtime-cycleon-override',purposeResults:{hvacLoops:[overriddenFan]}};simulation.renderSimulation();chooseEquipment(fanFixture);
+ const offSchedule=[...stack().querySelectorAll('[data-hvac-runtime-availability-row][data-kind="schedule"]')].find(row=>row.querySelector('strong')?.textContent===ownSchedule);
+ const overrideBadge=host.querySelector('[data-hvac-runtime-override]');
+ check(offSchedule?.dataset.state==='blocked'&&offSchedule.dataset.decisive==='false'&&finalRow()?.dataset.state==='allowed'&&overrideBadge?.getClientRects().length&&overrideBadge.textContent.includes('CycleOn'),'CycleOn override was hidden, changed the original OFF schedule or failed to explain final permission');
+ const noOverrideFan=structuredClone(overriddenFan);setReported(noOverrideFan,signal=>signal.role==='manager_status'||signal.role==='loop_status',[0]);setReported(noOverrideFan,signal=>signal.role==='activity',[0]);
+ state.simulationResult={...runtimeResult,runId:'runtime-noaction-schedule-off',purposeResults:{hvacLoops:[noOverrideFan]}};simulation.renderSimulation();chooseEquipment(fanFixture);
+ check(finalRow()?.dataset.state==='blocked'&&!host.querySelector('[data-hvac-runtime-override]')?.getClientRects().length,'NoAction retained a CycleOn override or ignored the original OFF schedule');
  const missingRuntime=withHourly(runtimeClone(fixtures,'fan'),fanFixture),required=missingRuntime.controlSignals.find(signal=>signal.required&&signal.role==='manager_status');
  check(required,'fan lacks manager for acquisition regression');missingRuntime.controlSeries=missingRuntime.controlSeries.filter(series=>series.sourceId!==required.seriesId);
  state.simulationResult={...runtimeResult,runId:'runtime-missing',purposeResults:{hvacLoops:[missingRuntime]}};simulation.renderSimulation();chooseEquipment(fanFixture);
  check(host.querySelector('[data-hvac-runtime-error]')?.title.includes(required.variableName)&&host.querySelector('[data-hvac-inspect-topology]')&&slider()&&!slider().disabled,'diagnostics failure removed loop or became ordinary unknown');
+ for(const corruption of ['missing','misaligned']){
+  const invalidTiming=withHourly(runtimeClone(fixtures,'fan'),fanFixture),binding=invalidTiming.controlSignals.find(signal=>signal.required&&signal.role==='manager_status'),statusIDs=new Set(invalidTiming.controlSignals.filter(signal=>signal.role==='manager_status'||signal.role==='loop_status').map(signal=>signal.seriesId));
+  check(binding.reportingFrequency==='Detailed','metadata integrity fixture lacks native Detailed statuses');for(const series of invalidTiming.controlSeries)if(statusIDs.has(series.sourceId)){if(corruption==='missing')delete series.nativeIntervals;else series.nativeIntervals.pop();}
+  state.simulationResult={...runtimeResult,runId:'runtime-native-timing-'+corruption,purposeResults:{hvacLoops:[invalidTiming]}};simulation.renderSimulation();chooseEquipment(fanFixture);
+  check(host.querySelector('[data-hvac-runtime-error]')?.title.includes(binding.variableName)&&finalRow()?.dataset.state==='error'&&!stack().querySelector('[data-state="mixed"],.is-mixed')&&host.querySelector('[data-hvac-inspect-topology]')&&!slider().disabled,'invalid Detailed '+corruption+' native interval metadata became permission or an ambiguous display: '+JSON.stringify({error:host.querySelector('[data-hvac-runtime-error]')?.title,permission:host.querySelector('[data-hvac-runtime-permission]')?.dataset.hvacRuntimePermission,final:finalRow()?.dataset.state,states:[...stack().querySelectorAll('[data-hvac-runtime-availability-row]')].map(row=>[row.querySelector('strong')?.textContent,row.dataset.state])}));
+ }
  const unmatched=withHourly(runtimeClone(fixtures,'coil'),coilFixture);
  // Same-file Hourly row2 and nearby control rows do not establish a2h match.
- for(const series of unmatched.controlSeries)series.points=series.points.filter(point=>point.label!=='01-01 02:00');
+ for(const series of unmatched.controlSeries){const offsets=series.points.map((point,index)=>point.label!=='01-01 02:00'?index:-1).filter(index=>index>=0);series.points=offsets.map(index=>series.points[index]);series.nativeIntervals=offsets.map(index=>series.nativeIntervals[index]);}
  state.simulationResult={...runtimeResult,runId:'runtime-no-common-frame',purposeResults:{hvacLoops:[unmatched]}};simulation.renderSimulation();chooseEquipment(coilFixture);frame(1);
  check(host.querySelector('[data-hvac-runtime-error]')&&!host.querySelector('[data-hvac-runtime-card-value]')?.textContent.includes('0.8'),'unmatched Hourly frame borrowed nearby runtime sample');
  check(label()==='01-01 02:00'&&host.querySelector('[data-hvac-inspect-metric="temperature"]')?.textContent.includes('22'),'missing control timestep destroyed actual Hourly node snapshot');
@@ -371,12 +454,16 @@ try{
  if(review.has('review')){
   const family=review.get('review')==='error'?'fan':review.get('review'),fixture=fixtures.find(item=>item.family===family),captured=withHourly(runtimeClone(fixtures,family),fixture);
   if(review.get('review')==='error'){const source=captured.controlSignals.find(signal=>signal.required&&signal.role==='manager_status');captured.controlSeries=captured.controlSeries.filter(series=>series.sourceId!==source.seriesId);}
+  if(review.get('override')==='1'){setReported(captured,signal=>signal.role==='schedule'&&signal.keyValue.toLowerCase()===ownSchedule.toLowerCase(),[0]);setReported(captured,signal=>signal.role==='manager_status'||signal.role==='loop_status',[2]);setReported(captured,signal=>signal.role==='activity',[1000]);}
+  if(review.get('transitions')==='1')nativeStatusTransitions(captured);
   if(family==='coil'){setReported(captured,signal=>signal.role==='sensor'&&/temperature/i.test(signal.variableName),[22,23,24,25]);setReported(captured,signal=>signal.role==='setpoint',[20]);setReported(captured,signal=>signal.role==='actuator_request',[.8]);setReported(captured,signal=>signal.role==='actuator',[.3]);}
   const {setLanguage}=await import('/src/js/i18n.js');setLanguage(review.get('language')||'en');document.documentElement.dataset.theme=review.get('theme')||'dark';
   state.simulationResult={...runtimeResult,runId:'runtime-review-'+family,purposeResults:{hvacLoops:[captured]}};simulation.renderSimulation();chooseEquipment(fixture);if(review.get('review')!=='error')frame(1);
   if(review.get('focus')==='control')host.querySelector('[data-hvac-runtime-control]')?.scrollIntoView({block:'start'});
   if(review.get('focus')==='availability')host.querySelector('[data-hvac-runtime-availability]')?.scrollIntoView({block:'start'});
   if(review.get('focus')==='error')host.querySelector('[data-hvac-runtime-error]')?.scrollIntoView({block:'start'});
+  if(review.get('focus')==='history')host.querySelector('[data-hvac-runtime-history]')?.scrollIntoView({block:'start'});
+  if(review.get('legend')==='1')host.querySelector('[data-hvac-runtime-history] [data-hvac-chart-legend]')?.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));
  }
  document.body.dataset.hvacFrameStatus='passed';document.getElementById('hvac-frame-result').textContent='passed';
 }catch(error){document.body.dataset.hvacFrameStatus='failed';document.getElementById('hvac-frame-result').textContent=error.stack;}

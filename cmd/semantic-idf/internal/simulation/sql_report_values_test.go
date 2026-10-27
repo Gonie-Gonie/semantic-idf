@@ -72,6 +72,11 @@ func TestCompactReportDataPreservesObservationsAndFilters(t *testing.T) {
 (4,'No observations','Unused','W','0','Timestep','Zone'),
 (5,NULL,NULL,NULL,NULL,NULL,NULL)`,
 		`INSERT INTO Time VALUES (1,1,1,1,0,1),(2,1,1,2,0,1),(3,1,31,24,0,3),(4,NULL,NULL,NULL,NULL,4),(5,2,1,1,0,NULL)`,
+		`ALTER TABLE Time ADD COLUMN Year INTEGER`,
+		`ALTER TABLE Time ADD COLUMN EnvironmentPeriodIndex INTEGER`,
+		`ALTER TABLE Time ADD COLUMN Interval REAL`,
+		`ALTER TABLE Time ADD COLUMN SimulationDays INTEGER`,
+		`UPDATE Time SET Year=2025,EnvironmentPeriodIndex=5,Interval=7.5,SimulationDays=1 WHERE TimeIndex=1`,
 		`INSERT INTO ReportData VALUES
 (3,2,0),(1,1,-12),(2,1,NULL),(1,1,7),(4,3,1e999),(5,5,42),
 (999,1,3),(2,999,123),(5,1,-1e999)`,
@@ -98,6 +103,9 @@ func TestCompactReportDataPreservesObservationsAndFilters(t *testing.T) {
 	}
 	if rows[len(rows)-1].Month.Valid || rows[len(rows)-1].IntervalType != "" {
 		t.Fatal("missing Time row must remain LEFT JOIN unknown, not invent a timestamp")
+	}
+	if rows[0].Year.Int64 != 2025 || rows[0].EnvironmentPeriodIndex.Int64 != 5 || rows[0].IntervalMinutes.Float64 != 7.5 || rows[0].SimulationDays.Int64 != 1 || rows[len(rows)-1].IntervalMinutes.Valid {
+		t.Fatal("native interval precision or missing metadata changed between SQL readers", rows)
 	}
 	stop := errors.New("visitor stopped")
 	calls := 0

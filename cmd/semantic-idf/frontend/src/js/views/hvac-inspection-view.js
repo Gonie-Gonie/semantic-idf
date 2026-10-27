@@ -80,7 +80,7 @@ function basicYRange(ui, kind, range) {
 
 function renderBasicPlot(model, ui, kind) {
   const { series, ranges } = basicChartData(model, kind);
-  return renderHVACInspectionChart({ title: basicTitle(kind), frameKey: model.frames[ui.frameIndex]?.x, legendLayout: "vertical",
+  return renderHVACInspectionChart({ markers: false, title: basicTitle(kind), frameKey: model.frames[ui.frameIndex]?.x, legendLayout: "vertical",
     yLimits: Object.fromEntries(ranges.map((range) => [range.unit, basicYRange(ui, kind, range)])),
     series: series.filter((trace) => ui.visibleNodes[trace.entityId] !== false) });
 }
@@ -129,7 +129,7 @@ function updateBasicYControl(group, range, selected) {
 }
 
 function renderCustomChart(model, ui) {
-  return renderHVACInspectionChart({ mode: ui.mode, frameKey: model.frames[ui.frameIndex]?.x,
+  return renderHVACInspectionChart({ markers: false, mode: ui.mode, frameKey: model.frames[ui.frameIndex]?.x,
     series: selectedProperties(model, ui).map((property) => ({ ...hvacInspectionTrace(model, property), axisLabel: property.label })) });
 }
 
@@ -186,6 +186,7 @@ export function renderHVACInspection(loop, ui = {}) {
     <div class="hvac-inspection-frame-control hvac-inspection-frame-footer"><label for="hvac-inspection-frame">${escapeHTML(copy("Frame", "Frame"))}</label>
       <input id="hvac-inspection-frame" data-simulation-hvac-frame type="range" min="0" max="${Math.max(0, model.frames.length - 1)}" step="1" value="${ui.frameIndex}"${model.frames.length ? "" : " disabled"}/>
       <output data-hvac-inspect-frame-label for="hvac-inspection-frame" title="${escapeHTML(model.reportingFrequency || "Hourly")}">${escapeHTML(model.frames[ui.frameIndex]?.label || copy("NoFrame", "No frame"))}</output>
+      <span class="hvac-inspection-step-controls"><button type="button" data-hvac-inspect-step="-1" aria-label="${escapeHTML(copy("PreviousFrame", "Previous frame"))}" aria-keyshortcuts="Control+ArrowLeft" title="${escapeHTML(copy("PreviousFrame", "Previous frame"))} (Ctrl+←)"${!model.frames.length || ui.frameIndex <= 0 ? " disabled" : ""}>‹</button><button type="button" data-hvac-inspect-step="1" aria-label="${escapeHTML(copy("NextFrame", "Next frame"))}" aria-keyshortcuts="Control+ArrowRight" title="${escapeHTML(copy("NextFrame", "Next frame"))} (Ctrl+→)"${!model.frames.length || ui.frameIndex >= model.frames.length - 1 ? " disabled" : ""}>›</button></span>
     </div>
   </div>`;
 }
@@ -193,14 +194,21 @@ export function renderHVACInspection(loop, ui = {}) {
 export function handleHVACInspectionEvent(event, container, loop, ui) {
   const model = prepareHVACInspection(loop);
   if (handleHVACRuntimeEvent(event, container, loop, ui, model)) return true;
-  const target = event.target.closest?.("[data-simulation-hvac-frame], [data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-native-component], [data-hvac-inspect-node-visible], [data-hvac-inspect-entity], [data-hvac-inspect-property], [data-hvac-inspect-mode], [data-hvac-inspect-add], [data-hvac-inspect-remove], [data-hvac-inspect-y-bound], [data-hvac-inspect-y-reset]");
+  const target = event.target.closest?.("[data-simulation-hvac-frame], [data-hvac-inspect-step], [data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-native-component], [data-hvac-inspect-node-visible], [data-hvac-inspect-entity], [data-hvac-inspect-property], [data-hvac-inspect-mode], [data-hvac-inspect-add], [data-hvac-inspect-remove], [data-hvac-inspect-y-bound], [data-hvac-inspect-y-reset]");
   if (!target || !container.contains(target)) return false;
-  const isClick = event.type === "click", clickControl = target.matches("[data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-native-component], [data-hvac-inspect-add], [data-hvac-inspect-remove], [data-hvac-inspect-y-reset]");
+  const isClick = event.type === "click", clickControl = target.matches("[data-hvac-inspect-step], [data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-native-component], [data-hvac-inspect-add], [data-hvac-inspect-remove], [data-hvac-inspect-y-reset]");
   if (isClick !== clickControl || !isClick && event.type !== "input" && event.type !== "change") return false;
   event.stopPropagation();
   if (isClick) event.preventDefault();
   normalize(model, ui);
   const data = target.dataset;
+  if (data.hvacInspectStep !== undefined) {
+    const slider = container.querySelector("[data-simulation-hvac-frame]");
+    if (target.disabled || !slider || slider.disabled) return true;
+    slider.value = String(Math.max(0, Math.min(model.frames.length - 1, ui.frameIndex + Number(data.hvacInspectStep))));
+    slider.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  }
   if (data.hvacInspectYBound !== undefined) {
     const group = target.closest("[data-hvac-inspect-y-range]"), kind = group?.dataset.hvacInspectYRange;
     const range = basicChartData(model, kind).ranges.find((item) => item.unit === group.dataset.hvacInspectYUnit);
@@ -232,6 +240,8 @@ export function handleHVACInspectionEvent(event, container, loop, ui) {
     ui.frameIndex = Number(target.value) || 0;
     normalize(model, ui);
     container.querySelector("[data-hvac-inspect-frame-label]").textContent = model.frames[ui.frameIndex]?.label || copy("NoFrame", "No frame");
+    container.querySelector('[data-hvac-inspect-step="-1"]').disabled = !model.frames.length || ui.frameIndex <= 0;
+    container.querySelector('[data-hvac-inspect-step="1"]').disabled = !model.frames.length || ui.frameIndex >= model.frames.length - 1;
     refreshSnapshot(container, model, ui);
     updateHVACInspectionChartFrame(container, model.frames[ui.frameIndex]?.x);
     updateHVACRuntimeInspection(container, loop, ui, model);

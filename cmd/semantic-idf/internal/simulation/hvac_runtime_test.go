@@ -20,8 +20,13 @@ func TestHVACRuntimeExecutedProfilesAndCoverage(t *testing.T) {
 	var series []SimulationSeries
 	nonMeter := false
 	for _, output := range plan.OutputObjects {
-		if output.ObjectType == "Output:Variable" && output.ReportingFrequency == "Timestep" {
-			series = append(series, SimulationSeries{File: "native.sql", SourceID: "native:" + output.Signature, Name: output.VariableName, KeyValue: output.KeyValue, ReportingFrequency: "Timestep", IsMeter: &nonMeter, Points: []SimulationPoint{{X: 7, Label: "01-01 01:10", Value: 0}, {X: 9, Label: "01-01 01:30", Value: 0.5}}})
+		if output.ObjectType == "Output:Variable" && (purposeTimestepFrequency(output.ReportingFrequency) || purposeDetailedFrequency(output.ReportingFrequency)) {
+			item := SimulationSeries{File: "native.sql", SourceID: "native:" + output.Signature, Name: output.VariableName, KeyValue: output.KeyValue, ReportingFrequency: output.ReportingFrequency, IsMeter: &nonMeter, Points: []SimulationPoint{{X: 7, Label: "01-01 01:10", Value: 0}, {X: 9, Label: "01-01 01:30", Value: 0.5}}, NativeIntervals: []SimulationNativeInterval{{TimeIndex: 70, EnvironmentPeriodIndex: 2, IntervalMinutes: 10, SimulationDays: 1}, {TimeIndex: 90, EnvironmentPeriodIndex: 2, IntervalMinutes: 20, SimulationDays: 1}}}
+			if purposeDetailedFrequency(output.ReportingFrequency) {
+				item.Points = []SimulationPoint{{X: 7, Label: "01-01 01:10", Value: 0}, {X: 8, Label: "01-01 01:20", Value: 2}, {X: 9, Label: "01-01 01:30", Value: 2}}
+				item.NativeIntervals = []SimulationNativeInterval{{TimeIndex: 70, EnvironmentPeriodIndex: 2, IntervalMinutes: 10, SimulationDays: 1}, {TimeIndex: 80, EnvironmentPeriodIndex: 2, IntervalMinutes: 10, SimulationDays: 1}, {TimeIndex: 90, EnvironmentPeriodIndex: 2, IntervalMinutes: 10, SimulationDays: 1}}
+			}
+			series = append(series, item)
 		}
 	}
 	if len(series) == 0 {
@@ -40,8 +45,17 @@ func TestHVACRuntimeExecutedProfilesAndCoverage(t *testing.T) {
 				t.Fatal("runtime observations duplicated per AST node")
 			}
 			pooled[item.SourceID] = true
-			if item.Points[0].Value != 0 || item.Points[1].X != 9 {
+			if item.Points[0].Value != 0 || item.Points[len(item.Points)-1].X != 9 {
 				t.Fatal("zero or missing-frame coordinates changed")
+			}
+		}
+		owners := map[string]bool{}
+		for _, item := range result.ControlSeries {
+			owners[item.SourceID] = len(item.NativeIntervals) == len(item.Points)
+		}
+		for _, item := range result.ControlSeries {
+			if item.NativeIntervalsSourceID != "" && !owners[item.NativeIntervalsSourceID] {
+				t.Fatal("a loop-local interval reference escaped its delivered control pool")
 			}
 		}
 		for _, signal := range result.ControlSignals {
@@ -63,6 +77,44 @@ func TestHVACRuntimeExecutedProfilesAndCoverage(t *testing.T) {
 			}
 		}
 	}
+	for _, regression := range []struct {
+		name string
+		edit func(*SimulationSeries)
+	}{
+		{"Detailed duration missing", func(s *SimulationSeries) { s.NativeIntervals = nil }},
+		{"Detailed duration nonpositive", func(s *SimulationSeries) { s.NativeIntervals[1].IntervalMinutes = 0 }},
+		{"Detailed duplicate native row", func(s *SimulationSeries) { s.NativeIntervals[1].TimeIndex = s.NativeIntervals[0].TimeIndex }},
+		{"Detailed native overlap", func(s *SimulationSeries) { s.NativeIntervals[1].IntervalMinutes = 5 }},
+		{"Detailed different environment", func(s *SimulationSeries) {
+			for i := range s.NativeIntervals {
+				s.NativeIntervals[i].EnvironmentPeriodIndex = 3
+			}
+		}},
+		{"Detailed first substep missing", func(s *SimulationSeries) { s.Points = s.Points[1:]; s.NativeIntervals = s.NativeIntervals[1:] }},
+		{"Detailed extra initial substep", func(s *SimulationSeries) { s.NativeIntervals[0].IntervalMinutes = 20 }},
+		{"averaged native action", func(s *SimulationSeries) { s.Points[1].Value = .5 }},
+		{"wrong reporting frequency", func(s *SimulationSeries) { s.ReportingFrequency = "Timestep" }},
+	} {
+		t.Run(regression.name, func(t *testing.T) {
+			changed := append([]SimulationSeries{}, series...)
+			for i := range changed {
+				if purposeDetailedFrequency(changed[i].ReportingFrequency) {
+					changed[i].Points = append([]SimulationPoint{}, changed[i].Points...)
+					changed[i].NativeIntervals = append([]SimulationNativeInterval{}, changed[i].NativeIntervals...)
+					// Change every Detailed channel together: same-cadence axis
+					// union alone cannot detect a shared missing first substep.
+					regression.edit(&changed[i])
+				}
+			}
+			for _, loop := range report.Loops {
+				result := HVACLoopRunResult{}
+				attachHVACRuntimeControls(&result, hvacRuntimeProfiles(report, loop, request.Scope), loop, &doc, changed)
+				if result.ControlCoverage.Status != "error" || result.ControlCoverage.Missing == 0 {
+					t.Fatal("invalid Detailed native acquisition reported complete", result.ControlCoverage)
+				}
+			}
+		})
+	}
 	after, _ := json.Marshal(report)
 	if string(before) != string(after) {
 		t.Fatal("runtime binding mutated the static source graph")
@@ -70,7 +122,7 @@ func TestHVACRuntimeExecutedProfilesAndCoverage(t *testing.T) {
 	selected := SimulationPurposeRequest{Purposes: request.Purposes, Scope: SimulationPurposeScope{ComponentIDs: []string{"Fan:ConstantVolume:Second Fan"}}}
 	selectedPlan := BuildPurposeRunPlan(doc, selected)
 	for _, output := range selectedPlan.OutputObjects {
-		if output.ReportingFrequency == "Timestep" && strings.Contains(output.KeyValue, "First") {
+		if (purposeTimestepFrequency(output.ReportingFrequency) || purposeDetailedFrequency(output.ReportingFrequency)) && strings.Contains(output.KeyValue, "First") {
 			t.Fatalf("runtime plan broadened selected equipment scope: %+v", output)
 		}
 	}
@@ -124,6 +176,7 @@ func TestHVACRuntimeExecutedProfilesAndCoverage(t *testing.T) {
 		{"required interval gap", func(s SimulationSeries) bool { return strings.Contains(s.Name, "Setpoint Temperature") }, func(p []SimulationPoint) []SimulationPoint { return p[:1] }},
 		{"unset native target", func(s SimulationSeries) bool { return strings.Contains(s.Name, "Setpoint Temperature") }, func(p []SimulationPoint) []SimulationPoint { p[1].Value = -999; return p }},
 		{"invalid manager status", func(s SimulationSeries) bool { return strings.Contains(s.Name, "Cycle On Off Status") }, func(p []SimulationPoint) []SimulationPoint { p[1].Value = 4; return p }},
+		{"averaged manager status", func(s SimulationSeries) bool { return strings.Contains(s.Name, "Cycle On Off Status") }, func(p []SimulationPoint) []SimulationPoint { p[1].Value = .5; return p }},
 		{"nonfinite required observation", func(s SimulationSeries) bool { return strings.Contains(s.Name, "Setpoint Temperature") }, func(p []SimulationPoint) []SimulationPoint { p[1].Value = math.NaN(); return p }},
 	} {
 		t.Run(regression.name, func(t *testing.T) {
@@ -170,7 +223,7 @@ func TestHVACRuntimeExecutedProfilesAndCoverage(t *testing.T) {
 func TestHVACRuntimeManagerDomainsAndFrequencyPreservation(t *testing.T) {
 	profile := idf.HVACOperatingProfile{ComponentIndex: 8, AvailabilityDefinitions: idf.HVACControlSequence{Nodes: []idf.HVACControlNode{{ID: "m", Code: "availability_manager", Source: idf.HVACOperatingSource{ObjectIndex: 2, ObjectType: "AvailabilityManager:HybridVentilation", ObjectName: "Hybrid"}, Parameters: []idf.HVACControlParameter{{Name: "HVAC Air Loop Name", Value: "Actual Air"}}}}}}
 	signals := hvacRuntimeSignals(profile, idf.HVACLoop{}, nil)
-	if len(signals) != 1 || signals[0].Domain != "hybrid_ventilation_status" || signals[0].KeyValue != "Actual Air" {
+	if len(signals) != 1 || signals[0].Domain != "hybrid_ventilation_status" || signals[0].KeyValue != "Actual Air" || signals[0].ReportingFrequency != "Detailed" {
 		t.Fatalf("hybrid status has its own native domain and key: %+v", signals)
 	}
 	doc := parsePurposePlanFixture(t, hvacTwoLoopInput+"\nOutput:Variable,Second Fan,Fan Electricity Rate,Hourly;\n")
@@ -186,6 +239,61 @@ func TestHVACRuntimeManagerDomainsAndFrequencyPreservation(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("required Timestep channel was omitted")
+	}
+	for _, output := range plan.OutputObjects {
+		if hvacRuntimeStatusVariable(output.VariableName) && output.ReportingFrequency != "Detailed" {
+			t.Fatalf("discrete availability actions must not use an averaging cadence: %+v", output)
+		}
+	}
+	for _, frequency := range []string{"Hourly", "Timestep"} {
+		for _, key := range []string{"First Loop", "*"} {
+			for _, policy := range []string{PurposeFrequencyPolicyDefault, PurposeFrequencyPolicyPreserve, PurposeFrequencyPolicyHighestResolution} {
+				t.Run(key+"/"+frequency+"/"+policy, func(t *testing.T) {
+					const variable = "Air System Simulation Cycle On Off Status"
+					input := hvacTwoLoopInput + "\nOutput:Variable," + key + "," + variable + "," + frequency + ";\n"
+					if key == "*" {
+						input += "HVACTemplate:System:VAV,Expanded System;\n"
+					}
+					doc := parsePurposePlanFixture(t, input)
+					before := doc.String()
+					plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{Purposes: []SimulationPurposeID{SimulationPurposeHVACLoopCheck}, FrequencyPolicy: policy})
+					detailed, warning := false, false
+					for _, output := range plan.OutputObjects {
+						if output.KeyValue == key && output.VariableName == variable && output.ReportingFrequency == "Detailed" {
+							detailed = output.State == PurposeOutputStateTemporary && output.ObjectIndex == nil && output.Reason == "HVAC control diagnostics"
+							for _, item := range plan.Warnings {
+								warning = warning || item.OutputSignature == output.Signature && item.Code == "hvac_control_detailed_added" && strings.Contains(item.Message, "required Detailed") && strings.Contains(item.Message, frequency+" frequency")
+							}
+						}
+					}
+					if !detailed || !warning {
+						t.Fatalf("existing status request displaced required Detailed diagnostics: detailed=%v warning=%v", detailed, warning)
+					}
+					apply := PurposeRunPlanApplyRequest(plan)
+					if len(apply.Updates) != 0 || len(apply.RemoveObjectIndexes) != 0 {
+						t.Fatal("adding diagnostic cadence must not edit existing output definitions", apply)
+					}
+					updated, preview := idf.ApplyOutput(doc, apply)
+					if !preview.CanApply || doc.String() != before {
+						t.Fatal("applying the plan changed its shared source document", preview)
+					}
+					original, added := 0, 0
+					for _, object := range updated.Objects {
+						if strings.EqualFold(object.Type, "Output:Variable") && len(object.Fields) >= 3 && object.Fields[0].Value == key && object.Fields[1].Value == variable {
+							if object.Fields[2].Value == frequency {
+								original++
+							}
+							if object.Fields[2].Value == "Detailed" {
+								added++
+							}
+						}
+					}
+					if original != 1 || added != 1 {
+						t.Fatalf("existing frequency and exact Detailed companion must coexist once: original=%d added=%d", original, added)
+					}
+				})
+			}
+		}
 	}
 	profile.ParameterControl.Nodes = []idf.HVACControlNode{{ID: "target", Code: "node_setpoint", Source: idf.HVACOperatingSource{ObjectType: "SetpointManager:Scheduled", ObjectName: "Provider"}, Parameters: []idf.HVACControlParameter{{Name: "Setpoint Node or NodeList Name", Value: "Resolved Node"}, {Name: "Control Variable", Value: "Temperature"}}}}
 	setpoints := hvacRuntimeSignals(profile, idf.HVACLoop{}, nil)
@@ -383,13 +491,51 @@ func TestHVACRuntimeNativeAcceptance(t *testing.T) {
 	if result.PurposeResults == nil {
 		t.Fatal("native run has no purpose bundle")
 	}
+	if capture := os.Getenv("SEMANTIC_IDF_HVAC_RUNTIME_EXPORT"); capture != "" {
+		payload, err := json.Marshal(result.PurposeResults)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(capture, payload, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	missing := map[string]int{}
 	families := map[string]bool{}
 	meaningfulFlow, targetObserved := false, false
 	for _, loop := range result.PurposeResults.HVACLoops {
+		if loop.ControlCoverage == nil || loop.ControlCoverage.Status != "complete" {
+			for _, signal := range loop.ControlSignals {
+				if signal.Message != "" {
+					t.Logf("%s: %s", signal.VariableName, signal.Message)
+				}
+			}
+			t.Fatalf("native loop %s has incomplete exact interval coverage: %+v", loop.Name, loop.ControlCoverage)
+		}
 		bySeries := map[string]SimulationSeries{}
 		for _, item := range loop.ControlSeries {
 			bySeries[item.SourceID] = item
+		}
+		intervalAxes := map[string]bool{}
+		for _, item := range loop.ControlSeries {
+			owner := item
+			if item.NativeIntervalsSourceID != "" {
+				owner = bySeries[item.NativeIntervalsSourceID]
+			}
+			if len(owner.NativeIntervals) != len(item.Points) || !simulationPointAxisEqual(item.Points, owner.Points) {
+				t.Fatalf("native metadata is missing or references another axis: %s", item.SourceID)
+			}
+			intervalAxes[owner.SourceID] = true
+			if purposeDetailedFrequency(item.ReportingFrequency) {
+				for _, point := range item.Points {
+					if point.Value != math.Trunc(point.Value) {
+						t.Fatalf("averaged native status: %+v", point)
+					}
+				}
+			}
+		}
+		if len(intervalAxes) > 2 {
+			t.Fatalf("shared native metadata expanded per control channel: %d axes", len(intervalAxes))
 		}
 		for _, profile := range loop.OperatingProfiles {
 			source := hvacRuntimeComponent(profile)

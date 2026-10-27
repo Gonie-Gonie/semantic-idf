@@ -35,6 +35,7 @@ func TestHVACInspectionChartsBrowser(t *testing.T) {
 	defer cancel()
 	browser := epath201FreshBrowser(t, ctx, chrome)
 	browser.call("Page.enable", map[string]any{}, nil)
+	browser.call("Emulation.setFocusEmulationEnabled", map[string]any{"enabled": true}, nil)
 	browser.call("Emulation.setDeviceMetricsOverride", map[string]any{"width": 1600, "height": 1000, "deviceScaleFactor": 1, "mobile": false}, nil)
 	ready := func(url string) {
 		browser.call("Page.navigate", map[string]any{"url": url}, nil)
@@ -82,8 +83,12 @@ const hvacInspectionChartsHTML = `<!doctype html><html><head><meta name="viewpor
 <script type="module">
 const check=(value,message)=>{if(!value)throw new Error(message);};
 try {
- const {renderHVACInspectionChart:render,updateHVACInspectionChartFrame:updateFrame}=await import('/src/js/hvac-inspection-charts.js');
+ const {renderHVACInspectionChart:renderChart,updateHVACInspectionChartFrame:updateFrame,handleHVACChartLegendEvent:legendEvent}=await import('/src/js/hvac-inspection-charts.js');
+ const render=options=>renderChart({...options,markers:false});
  const mount=document.getElementById('mount');
+ for(const type of ['pointerover','pointerout','focusin','focusout'])mount.addEventListener(type,event=>legendEvent(event,mount));
+ const drawn=group=>[...group.querySelector('path').getAttribute('d').matchAll(/([ML])([^,\s]+),([^\s]+)/g)].map(match=>({command:match[1],x:Number(match[2]),y:Number(match[3])}));
+ const yAt=(value,axis='left')=>{const node=mount.querySelector('[data-hvac-chart-axis="'+axis+'"]'),low=Number(node.dataset.hvacChartYLow),high=Number(node.dataset.hvacChartYHigh);return 44+(high-value)/(high-low)*215;};
  const point=(x,value,label='Hour '+x)=>({x,value,label});
  const flow={id:'flow',label:'Supply node · Flow rate',axisLabel:'Flow rate',unit:'kg/s',interval:1,points:[point(0,0),point(1,2),point(2,null),point(3,4),point(4,Infinity),point(5,3),point(8,1)]};
  const temp={id:'temperature',label:'Supply node · Temperature',axisLabel:'Temperature',unit:'°C',points:[point(0,10),point(1,20),point(2,25),point(3,30),point(5,32),point(8,35)]};
@@ -96,15 +101,28 @@ try {
  check(mount.querySelector('[data-hvac-chart-series="temperature"]').dataset.hvacChartSeriesAxis==='right','temperature uses flow scale');
  const flowGroup=mount.querySelector('[data-hvac-chart-series="flow"]'),path=flowGroup.querySelector('path').getAttribute('d');
  check((path.match(/M/g)||[]).length===4&&(path.match(/L/g)||[]).length===1,'null, nonfinite or absent time interval was connected');
- check(flowGroup.querySelector('[data-hvac-chart-value="0"]')&&!flowGroup.querySelector('[data-hvac-chart-value="null"]'),'reported zero or missing value handling incorrect');
- const circles=[...flowGroup.querySelectorAll('circle')],first=Number(circles[0].getAttribute('cx')),second=Number(circles[1].getAttribute('cx')),last=Number(circles.at(-1).getAttribute('cx'));
+ const vertices=drawn(flowGroup);
+ check(vertices.length===5&&Math.abs(vertices[0].y-yAt(0))<.001&&!mount.querySelector('[data-hvac-chart-series] circle'),'reported zero, missing value handling or marker-free line mode incorrect');
+ const first=vertices[0].x,second=vertices[1].x,last=vertices.at(-1).x;
  check(Math.abs((last-first)/(second-first)-8)<.001,'observed time spacing collapsed to consecutive indices');
- check(mount.querySelector('[data-hvac-chart-frame="3"]')&&flowGroup.querySelector('[data-hvac-chart-time="3"].is-frame'),'current snapshot marker missing');
+ check(mount.querySelector('[data-hvac-chart-frame="3"]')&&!mount.querySelector('circle'),'current time cursor missing or data markers remain');
  const originalSVG=mount.querySelector('svg'),originalPath=flowGroup.querySelector('path');
- updateFrame(mount,1);check(mount.querySelector('svg')===originalSVG&&flowGroup.querySelector('path')===originalPath&&mount.querySelector('[data-hvac-chart-frame="1"]')&&flowGroup.querySelector('[data-hvac-chart-time="1"].is-frame')&&!flowGroup.querySelector('[data-hvac-chart-time="3"].is-frame'),'frame update redrew graph or did not move exact observed highlight');
+ updateFrame(mount,1);check(mount.querySelector('svg')===originalSVG&&flowGroup.querySelector('path')===originalPath&&mount.querySelector('[data-hvac-chart-frame="1"]')&&!mount.querySelector('circle'),'frame update redrew graph, created data markers or did not move the current time cursor');
  updateFrame(mount,100);check(mount.querySelector('[data-hvac-chart-frame-marker]').style.display==='none'&&!mount.querySelector('.is-frame'),'out-of-domain frame was clamped to invented point');
- updateFrame(mount.querySelector('section'),0);check(mount.querySelector('[data-hvac-chart-frame-marker]').style.display===''&&flowGroup.querySelector('[data-hvac-chart-time="0"].is-frame'),'frame zero or chart-root container unsupported');
+ updateFrame(mount.querySelector('section'),0);check(mount.querySelector('[data-hvac-chart-frame-marker]').style.display===''&&mount.querySelector('[data-hvac-chart-frame="0"]')&&!mount.querySelector('circle'),'frame zero or chart-root container unsupported');
  check(!mount.querySelector('table')&&!mount.textContent.includes('Source data'),'chart contains source/provenance details');
+ const flowLegend=mount.querySelector('[data-hvac-chart-legend="flow"]'),tempLegend=mount.querySelector('[data-hvac-chart-legend="temperature"]'),tempGroup=mount.querySelector('[data-hvac-chart-series="temperature"]');
+ check(flowLegend.tabIndex===0&&tempLegend.tabIndex===0,'legends are not keyboard focusable');
+ flowLegend.querySelector('span').dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));
+ check(flowGroup.classList.contains('is-highlighted')&&tempGroup.classList.contains('is-muted')&&flowLegend.classList.contains('is-highlighted')&&mount.querySelector('section').dataset.hvacChartHighlight==='flow','legend hover did not isolate its series');
+ check(Number(getComputedStyle(tempGroup).opacity)<.5&&parseFloat(getComputedStyle(originalPath).strokeWidth)>2,'legend emphasis did not visibly highlight the selected series');
+ tempLegend.focus();
+ check(flowGroup.classList.contains('is-highlighted'),'focus incorrectly displaced an actively hovered legend');
+ flowLegend.dispatchEvent(new PointerEvent('pointerout',{bubbles:true,relatedTarget:mount}));
+ check(tempGroup.classList.contains('is-highlighted')&&flowGroup.classList.contains('is-muted'),'leaving hover did not restore the keyboard-focused trace: '+JSON.stringify({active:document.activeElement?.dataset?.hvacChartLegend,chart:mount.querySelector('section').dataset.hvacChartHighlight,flow:flowGroup.getAttribute('class'),temp:tempGroup.getAttribute('class'),focused:document.hasFocus()}));
+ tempLegend.blur();
+ check(!mount.querySelector('.is-highlighted,.is-muted')&&!mount.querySelector('section').hasAttribute('data-hvac-chart-highlight'),'legend blur did not restore every series');
+ check(mount.querySelector('svg')===originalSVG&&flowGroup.querySelector('path')===originalPath&&originalPath.getAttribute('d')===path,'legend interaction rebuilt geometry');
  const inheritedFamily=getComputedStyle(document.body).fontFamily;
  check(getComputedStyle(mount.querySelector('.hvac-chart-tick')).fontFamily===inheritedFamily&&getComputedStyle(mount.querySelector('.hvac-chart-axis-label')).fontFamily===inheritedFamily,'HVAC tick/title font overrides the app family');
  const screenFont=element=>parseFloat(getComputedStyle(element).fontSize)*element.getScreenCTM().a;
@@ -141,12 +159,12 @@ try {
  mount.innerHTML=render({series:[{...flow,points:irregular}],frameKey:7});await new Promise(resolve=>requestAnimationFrame(resolve));
  const tickBounds=[...mount.querySelectorAll('[data-hvac-chart-tick="x"]')].map(item=>item.getBoundingClientRect());
  check(tickBounds.every((bounds,index)=>index===0||bounds.left>tickBounds[index-1].right),'irregular full timestamp labels overlap at maximum font/mobile width');
- check(mount.querySelectorAll('[data-hvac-chart-series] circle').length===4&&mount.querySelector('[data-hvac-chart-time="7"].is-frame'),'axis label spacing removed actual observations or selected frame');
+ check(drawn(mount.querySelector('[data-hvac-chart-series]')).length===4&&!mount.querySelector('circle')&&mount.querySelector('[data-hvac-chart-frame="7"]'),'axis label spacing removed actual line observations or selected time');
  const regular=Array.from({length:5},(_,x)=>point(x,x+1,'01/21 0'+(x+1)+':00:00'));
  mount.innerHTML=render({series:[{...flow,points:regular},{...temp,points:regular.map(item=>({...item,value:item.value+20}))}],frameKey:2});await new Promise(resolve=>requestAnimationFrame(resolve));
  const regularTickBounds=[...mount.querySelectorAll('[data-hvac-chart-tick="x"]')].map(item=>item.getBoundingClientRect());
  check(regularTickBounds.every((bounds,index)=>index===0||bounds.left>regularTickBounds[index-1].right),'regular full timestamp labels overlap between endpoint and centered tick at maximum font/mobile dual-axis width');
- check(mount.querySelectorAll('[data-hvac-chart-series] circle').length===10&&mount.querySelectorAll('[data-hvac-chart-time="2"].is-frame').length===2&&mount.querySelector('[data-hvac-chart-frame="2"]'),'regular dual-axis label spacing removed observations or frame');
+ check([...mount.querySelectorAll('[data-hvac-chart-series]')].reduce((sum,group)=>sum+drawn(group).length,0)===10&&!mount.querySelector('circle')&&mount.querySelector('[data-hvac-chart-frame="2"]'),'regular dual-axis label spacing removed line observations or current time');
  check(mount.querySelector('[data-hvac-chart-tick="x"]').textContent===regular[0].label&&[...mount.querySelectorAll('[data-hvac-chart-tick="x"]')].at(-1).textContent===regular.at(-1).label,'regular full timestamp endpoints disappeared');
  document.documentElement.style.setProperty('--graph-label-font-size','11px');mount.style.width='720px';
  mount.innerHTML=render({series:[flow,temp,humidity]});check(mount.querySelector('[data-hvac-chart-empty]')&&!mount.querySelector('svg'),'three incompatible units were drawn on false shared scale');
@@ -165,13 +183,25 @@ try {
  mount.innerHTML=render({series:[{...flow,points:[point(0,1),point(0,2)]},{...temp,points:[point(0,22)]}],mode:'scatter'});check(mount.querySelector('[data-hvac-chart-empty]'),'ambiguous duplicate time observation silently chosen');
  const large=Array.from({length:24000},(_,x)=>point(x,x===12003?9000:x===17998?-7000:x%2?3:4));large[11999].value=null;large[12000].value=null;
  mount.innerHTML=render({series:[{...flow,points:large}],frameKey:17611});
- check(mount.querySelectorAll('circle').length<=2403,'large chart generates unbounded SVG geometry');
- check(mount.querySelector('[data-hvac-chart-value="9000"]')&&mount.querySelector('[data-hvac-chart-value="-7000"]'),'large chart sampling removed observed extrema');
+ const largeDrawn=drawn(mount.querySelector('[data-hvac-chart-series]'));
+ check(largeDrawn.length<=2403&&!mount.querySelector('circle'),'large line chart generates unbounded geometry or data markers');
+ check(largeDrawn.some(point=>Math.abs(point.y-yAt(9000))<.001)&&largeDrawn.some(point=>Math.abs(point.y-yAt(-7000))<.001),'large line sampling removed observed extrema');
  check((mount.querySelector('path').getAttribute('d').match(/M/g)||[]).length===2,'sampling connected across explicit missing observations');
- check(mount.querySelector('[data-hvac-chart-time="17611"].is-frame'),'sampling dropped current observed frame');
+ check(mount.querySelector('[data-hvac-chart-frame="17611"]'),'sampling dropped current time cursor');
  mount.innerHTML=render({series:[{...flow,label:'<img src=x onerror=alert(1)>',unit:'<script>',points:[point(0,1,'<b>time</b>')]}],title:'<button>unsafe</button>'});
  check(!mount.querySelector('img,script,button,b')&&mount.textContent.includes('<img'),'graph labels were not escaped');
  check(JSON.stringify({flow,temp,humidity})===before,'chart mutated source observations');
+ mount.innerHTML=renderChart({series:[flow],frameKey:1});
+ check(mount.querySelectorAll('[data-hvac-chart-series] circle').length===5&&mount.querySelector('[data-hvac-chart-time="1"].is-frame'),'shared default marker mode used by Comfort changed');
+ const special={...flow,id:'zone[\"A\"]|flow'},sibling=render({series:[flow,temp]});
+ mount.innerHTML=render({series:[special,temp]})+sibling;
+ const charts=mount.querySelectorAll('[data-hvac-inspection-chart]'),specialLegend=charts[0].querySelector('[data-hvac-chart-legend]');
+ specialLegend.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));
+ check(charts[0].querySelector('[data-hvac-chart-series]').classList.contains('is-highlighted')&&!charts[1].querySelector('.is-highlighted,.is-muted'),'special source identity or sibling chart isolation failed');
+ mount.innerHTML=sibling;
+ const replacementLegend=mount.querySelector('[data-hvac-chart-legend]');replacementLegend.focus();
+ check(mount.querySelector('[data-hvac-chart-series]').classList.contains('is-highlighted'),'replaced chart lost stable-host legend delegation');replacementLegend.blur();
+ check(!mount.querySelector('.is-highlighted,.is-muted'),'replaced chart retained stale legend state');
  if(new URLSearchParams(location.search).has('review')){
   mount.style.cssText='width:min(1100px,calc(100vw - 40px));margin:20px auto';
   mount.innerHTML=render({series:[flow,temp],frameKey:3,title:'HVAC node trends'})+'<div style="height:20px"></div>'+render({series:[flow,temp],mode:'scatter',frameKey:3,title:'Flow rate / temperature'});

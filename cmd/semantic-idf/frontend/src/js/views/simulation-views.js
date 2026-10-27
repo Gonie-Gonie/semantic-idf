@@ -33,6 +33,8 @@ import { buildEnergyPathReport, renderEnergyPathReportHTML } from "../energy-pat
 import { resolveEnergyPathOutputRequest, energyPathOutputRequestKey, prepareEnergyPathOutputRequests } from "../energy-path-output-requests.js";
 import { hvacInspectionLoopKey, hvacInspectionSharedFrame, rememberHVACInspectionFrame } from "../hvac-inspection-data.js";
 import { renderHVACInspection, handleHVACInspectionEvent, connectHVACInspection, disconnectHVACInspection } from "./hvac-inspection-view.js";
+import { handleHVACChartLegendEvent } from "../hvac-inspection-charts.js";
+import { handleHVACAvailabilityLegendEvent } from "./hvac-runtime-view.js";
 import { renderComfortInspection, handleComfortInspectionEvent, renderComfortInspectionReport } from "./comfort-inspection-view.js";
 import { decodeSimulationResultTransfer, simulationResultTransferMediaType } from "../simulation-result-transport.js";
 import { loadSimulationResultParts, simulationResultStore, simulationResultPartsMediaType, isPendingSimulationResource } from "../simulation-result-parts.js";
@@ -45,6 +47,8 @@ import { heatFlowMeasuredExchanges, renderHeatFlowExchangeArrows, renderHeatFlow
 import { heatFlowLedgerMaximum, renderHeatFlowLedgerAxis, renderHeatFlowLedgerRow } from "./heat-flow-ledger.js";
 
 let progressListenerRegistered = false;
+let hvacFrameKeyRegistered = false;
+const hvacLegendHosts = new WeakSet();
 let simulationPendingResponseRunID = "";
 const simulationFailureMarkup = new WeakMap();
 const simulationProgressUI = createSimulationProgress({
@@ -696,6 +700,15 @@ export function initializeSimulationControls() {
   elements.simulationHVACLoopResults?.addEventListener("click", handleSimulationHVACResultsInput);
   elements.simulationHVACLoopResults?.addEventListener("input", handleSimulationHVACResultsInput);
   elements.simulationHVACLoopResults?.addEventListener("change", handleSimulationHVACResultsInput);
+  const hvacHost = elements.simulationHVACLoopResults;
+  if (hvacHost && !hvacLegendHosts.has(hvacHost)) {
+    for (const type of ["pointerover", "pointerout", "focusin", "focusout"]) hvacHost.addEventListener(type, (event) => {
+      handleHVACChartLegendEvent(event, hvacHost);
+      handleHVACAvailabilityLegendEvent(event, hvacHost);
+    });
+    hvacLegendHosts.add(hvacHost);
+  }
+  if (!hvacFrameKeyRegistered) { document.addEventListener("keydown", handleSimulationHVACFrameKey); hvacFrameKeyRegistered = true; }
   elements.simulationHVACLoopResults?.addEventListener("keydown", (event) => {
     if (["Enter", " "].includes(event.key) && event.target.matches("[data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-native-component]")) {
       event.preventDefault();
@@ -5338,6 +5351,17 @@ export function handleSimulationEnergyDashboardChange(event) {
   Object.assign(state, next);
   renderSimulationEnergyDashboard(state.simulationResult);
   elements.simulationEnergyDashboard.querySelector(`[${control.attribute}]`)?.focus({ preventScroll: true });
+}
+
+function handleSimulationHVACFrameKey(event) {
+  if (event.defaultPrevented || !event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || !["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+  if (state.activeResultTab !== "simulation" || state.simulationActiveResultView !== "hvac_loops" || document.querySelector("dialog[open]")) return;
+  if (event.target.closest?.(".editor-panel, textarea, select, [contenteditable]:not([contenteditable='false']), [role='textbox'], input:not([type='range']):not([type='checkbox']):not([type='button'])") || document.activeElement?.matches("iframe")) return;
+  const host = elements.simulationHVACLoopResults;
+  const slider = host?.querySelector("[data-simulation-hvac-frame]");
+  if (!host?.getClientRects().length || !slider || slider.disabled) return;
+  event.preventDefault();
+  host.querySelector(`[data-hvac-inspect-step="${event.key === "ArrowLeft" ? -1 : 1}"]`)?.click();
 }
 
 function handleSimulationHVACResultsInput(event) {

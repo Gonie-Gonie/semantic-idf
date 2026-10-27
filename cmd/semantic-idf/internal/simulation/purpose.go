@@ -3968,11 +3968,12 @@ func (builder *purposePlanBuilder) addObject(object PurposeOutputObject) {
 		}
 		object.ObjectIndex = existing.ObjectIndex
 	} else if conflict, ok := builder.existingBase[purposeOutputBaseSignature(object.ObjectType, object.Fields)]; ok {
-		if (object.Reason == "Basic Energy Path" && (strings.EqualFold(object.ReportingFrequency, "Monthly") || strings.EqualFold(object.ReportingFrequency, "Hourly") || strings.EqualFold(object.ReportingFrequency, "Daily") || strings.EqualFold(object.ReportingFrequency, "Timestep")) || object.Reason == "HVAC control diagnostics" && strings.EqualFold(object.ReportingFrequency, "Timestep")) && purposeObjectIsSeries(object.ObjectType) {
+		hvacControlCadence := object.Reason == "HVAC control diagnostics" && (strings.EqualFold(object.ReportingFrequency, "Timestep") || strings.EqualFold(object.ReportingFrequency, "Detailed"))
+		if (object.Reason == "Basic Energy Path" && (strings.EqualFold(object.ReportingFrequency, "Monthly") || strings.EqualFold(object.ReportingFrequency, "Hourly") || strings.EqualFold(object.ReportingFrequency, "Daily") || strings.EqualFold(object.ReportingFrequency, "Timestep")) || hvacControlCadence) && purposeObjectIsSeries(object.ObjectType) {
 			object.State = purposeTemporaryState(builder.request)
 			object.ObjectIndex = nil
 			if object.Reason == "HVAC control diagnostics" {
-				builder.warn("info", "hvac_control_timestep_added", fmt.Sprintf("%s exists at %s frequency; adding required Timestep control diagnostics without changing it.", purposeOutputLabel(conflict), conflict.ReportingFrequency), firstPurposeID(object.PurposeIDs), object.Signature)
+				builder.warn("info", "hvac_control_"+strings.ToLower(object.ReportingFrequency)+"_added", fmt.Sprintf("%s exists at %s frequency; adding required %s control diagnostics without changing it.", purposeOutputLabel(conflict), conflict.ReportingFrequency, object.ReportingFrequency), firstPurposeID(object.PurposeIDs), object.Signature)
 			} else {
 				builder.warn("info", "energy_path_"+strings.ToLower(object.ReportingFrequency)+"_added", fmt.Sprintf("%s exists at %s frequency; adding the %s Energy Path series without changing it.", purposeOutputLabel(conflict), conflict.ReportingFrequency, object.ReportingFrequency), firstPurposeID(object.PurposeIDs), object.Signature)
 			}

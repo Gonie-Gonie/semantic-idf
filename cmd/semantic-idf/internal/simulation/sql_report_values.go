@@ -121,12 +121,16 @@ FROM ReportDataDictionary rdd %s`, idExpr, keyExpr, nameExpr, unitExpr, meterExp
 	if len(dictionaries) == 0 {
 		return nil
 	}
-	rows, err = db.Query(fmt.Sprintf(`SELECT t.%s, %s, %s, %s, %s, %s, typeof(t.%s) FROM "Time" t`,
+	rows, err = db.Query(fmt.Sprintf(`SELECT t.%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, typeof(t.%s) FROM "Time" t`,
 		quoteSQLiteIdentifier(timeID),
 		sqlAliasedColumnExpr(times, "t", "Month", "NULL"),
 		sqlAliasedColumnExpr(times, "t", "Day", "NULL"),
 		sqlAliasedColumnExpr(times, "t", "Hour", "NULL"),
 		sqlAliasedColumnExpr(times, "t", "Minute", "NULL"),
+		sqlAliasedColumnExpr(times, "t", "Year", "NULL"),
+		sqlAliasedColumnExpr(times, "t", "EnvironmentPeriodIndex", "NULL"),
+		sqlAliasedColumnExpr(times, "t", "Interval", "NULL"),
+		sqlAliasedColumnExpr(times, "t", "SimulationDays", "NULL"),
 		sqlAliasedTextColumnExpr(times, "t", "IntervalType", "''"), quoteSQLiteIdentifier(timeID)))
 	if err != nil {
 		return err
@@ -136,7 +140,7 @@ FROM ReportDataDictionary rdd %s`, idExpr, keyExpr, nameExpr, unitExpr, meterExp
 		var id sql.NullInt64
 		var frame SQLSeriesRow
 		var storage string
-		if err := rows.Scan(&id, &frame.Month, &frame.Day, &frame.Hour, &frame.Minute, &frame.IntervalType, &storage); err != nil {
+		if err := rows.Scan(&id, &frame.Month, &frame.Day, &frame.Hour, &frame.Minute, &frame.Year, &frame.EnvironmentPeriodIndex, &frame.IntervalMinutes, &frame.SimulationDays, &frame.IntervalType, &storage); err != nil {
 			rows.Close()
 			return walkReportDataWithProgress(db, query, visit, progress)
 		}
@@ -194,6 +198,7 @@ WHERE %s IN (%s) ORDER BY %s, %s`, quoteSQLiteIdentifier(rdTime), quoteSQLiteIde
 		// INTEGER Time ID. Preserve its observation with LEFT JOIN NULL metadata.
 		row.TimeIndex, row.Value = timeIndex.Int64, value
 		row.Month, row.Day, row.Hour, row.Minute, row.IntervalType = frame.Month, frame.Day, frame.Hour, frame.Minute, frame.IntervalType
+		row.Year, row.EnvironmentPeriodIndex, row.IntervalMinutes, row.SimulationDays = frame.Year, frame.EnvironmentPeriodIndex, frame.IntervalMinutes, frame.SimulationDays
 		if err := visit(row); err != nil {
 			return err
 		}

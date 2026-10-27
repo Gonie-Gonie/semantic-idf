@@ -970,7 +970,7 @@ output|Output:Variable|Fan Outlet|System Node Mass Flow Rate|Hourly|temporary|hv
 output|Output:Variable|Fan Outlet|System Node Relative Humidity|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Fan Outlet|System Node Setpoint Temperature|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Fan Outlet|System Node Temperature|Hourly|temporary|hvac_loop_check
-output|Output:Variable|Main Air Loop|Air System Simulation Cycle On Off Status|Timestep|temporary|hvac_loop_check
+output|Output:Variable|Main Air Loop|Air System Simulation Cycle On Off Status|Detailed|temporary|hvac_loop_check
 output|Output:Variable|Supply Fan|Fan Electricity Energy|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Supply Fan|Fan Electricity Rate|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Supply Fan|Fan Electricity Rate|Timestep|temporary|hvac_loop_check
