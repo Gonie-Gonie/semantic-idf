@@ -28,14 +28,14 @@ const sourceIndex = (source) => source?.objectIndex;
 const profileSource = (profile) => profile.parameterControl?.nodes?.find((node) => node.code === "equipment_response")?.source
   || profile.availabilityLayers?.find((layer) => layer.role === "equipment")?.owner || { objectIndex: profile.componentIndex };
 
-function units(series) {
+function units(series, binding = {}) {
   let unit = series.displayUnit || /\[([^\]]*)\]/.exec(series.displayColumn || series.column || "")?.[1] || "—", factor = 1;
   if (token(unit) === "w") { unit = "kW"; factor = .001; }
   else if (token(unit) === "j") { unit = "kWh"; factor = 1 / 3600000; }
   else if (["c", "degc", "°c"].includes(token(unit))) unit = "°C";
   else if (/kg.*\/kg|kg\/kg/i.test(unit)) { unit = "g/kg"; factor = 1000; }
   else if (token(unit) === "j/kg") { unit = "kJ/kg"; factor = .001; }
-  return { unit, factor };
+  return binding.domain === "temperature_schedule" ? { unit: "°C", factor: 1 } : { unit, factor };
 }
 
 function calendar(label, leap) {
@@ -168,7 +168,7 @@ export function prepareHVACRuntimeInspection(loop = {}) {
     let status = binding.status === "collected" && item ? "collected" : binding.status === "collected" ? exact.length > 1 ? "ambiguous" : "missing" : binding.status || "missing";
     const wrongCadence = discrete(binding) && cadence(binding.reportingFrequency) !== "detailed";
     if (status === "collected" && wrongCadence) status = "unsupported";
-    return { ...binding, series: item, status, ...(wrongCadence ? { message: "Discrete availability actions require native HVAC substep observations." } : {}), values: new Map(), ...units(item || {}) };
+    return { ...binding, series: item, status, ...(wrongCadence ? { message: "Discrete availability actions require native HVAC substep observations." } : {}), values: new Map(), ...units(item || {}, binding) };
   });
   const available = [...new Set(signals.filter((signal) => signal.status === "collected").map((signal) => signal.series))];
   const files = new Map();
@@ -380,6 +380,12 @@ function evaluatePermission(profile, observed, expression, depth = 0, domain = "
 
 export function hvacRuntimePermission(profile, signals, expression, domain = "boolean") { return evaluatePermission(profile, signals, expression, 0, domain); }
 
+export function hvacRuntimeActivitySignals(profile, signals = profile.signals) {
+  const owned = signals.filter((signal) => signal.role === "activity" && sameSource(signal.source, profile.source));
+  const fractions = owned.filter((signal) => /runtime fraction|cycling ratio/i.test(signal.variableName));
+  return fractions.length ? fractions : owned;
+}
+
 const unique = (entries) => entries.length === 1 ? entries[0] : undefined;
 const graphNode = (graph, id) => unique((graph.nodes || []).filter((node) => node.id === id));
 const nodeParameter = (node, name) => unique((node.parameters || []).filter((parameter) => token(parameter.name) === name
@@ -454,8 +460,8 @@ export function hvacRuntimeSnapshot(model, profileID, frameIndex = 0) {
     errors.push({ id: "availability-definition", keyValue: profile.source.objectName, variableName: "Availability definition", status: "unsupported",
       message: `The availability rule is not bound to a valid executed definition or required output${reasons.size ? `: ${[...reasons].join(", ")}` : ""}.` });
   }
-  const activities = observed.filter((signal) => signal.role === "activity" && finite(signal.value)), fractions = activities.filter((signal) => /runtime fraction|cycling ratio/i.test(signal.variableName));
-  const activity = activities.length ? (fractions.length ? fractions : activities).some((signal) => Math.abs(signal.value) > 1e-8) ? "active" : "inactive" : "not_collected";
+  const activities = hvacRuntimeActivitySignals(profile, observed);
+  const activity = activities.length && activities.every((signal) => finite(signal.value)) ? activities.some((signal) => Math.abs(signal.value) > 1e-8) ? "active" : "inactive" : "not_collected";
   const demand = observed.filter((signal) => signal.role === "demand" && finite(signal.value)), residuals = [];
   for (const node of profile.definition.parameterControl?.nodes || []) {
     if (node.code !== "sensed_minus_setpoint") continue;

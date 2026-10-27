@@ -1,4 +1,10 @@
 export default Object.freeze({
+  "simulation.hvacRuntimeMetric.tankTemperature": "Tank temperature (interval average)",
+  "simulation.hvacRuntimeMetric.controlTankTemperature": "Control tank temperature (interval average)",
+  "simulation.hvacRuntimeMetric.tankNode": "Tank node {node} (interval average)",
+  "simulation.hvacRuntimeMetric.heaterRuntime": "Heater runtime fraction",
+  "simulation.hvacRuntimeMetric.heater1Runtime": "Heater 1 runtime fraction",
+  "simulation.hvacRuntimeMetric.heater2Runtime": "Heater 2 runtime fraction",
   "simulation.hvacRuntimeOnOff": "On / Off decisions",
   "hvac.operation.runConditions": "Operation conditions",
   "simulation.hvacRuntimeDecisionInputs": "Demand / dispatch inputs",

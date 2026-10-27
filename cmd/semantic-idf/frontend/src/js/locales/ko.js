@@ -1,4 +1,10 @@
 export default Object.freeze({
+  "simulation.hvacRuntimeMetric.tankTemperature": "탱크 온도 (구간 평균)",
+  "simulation.hvacRuntimeMetric.controlTankTemperature": "제어 탱크 온도 (구간 평균)",
+  "simulation.hvacRuntimeMetric.tankNode": "탱크 node {node} (구간 평균)",
+  "simulation.hvacRuntimeMetric.heaterRuntime": "히터 운전 비율",
+  "simulation.hvacRuntimeMetric.heater1Runtime": "히터 1 운전 비율",
+  "simulation.hvacRuntimeMetric.heater2Runtime": "히터 2 운전 비율",
   "simulation.hvacRuntimeOnOff": "On / Off 결정",
   "hvac.operation.runConditions": "가동 조건",
   "simulation.hvacRuntimeDecisionInputs": "요구 부하 / 설비 부하 배정",

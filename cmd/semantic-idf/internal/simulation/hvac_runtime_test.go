@@ -371,6 +371,7 @@ Fan:ConstantVolume,Local Fan,On,0.7,600,Autosize,0.9,1,Local Inlet,Local Outlet;
 		return false
 	}
 	wanted := append(hvacRuntimeActivityVariableNames(), "Plant Component Distributed Demand Rate", "VRF Heat Pump Terminal Unit Cooling Load Rate", "VRF Heat Pump Terminal Unit Heating Load Rate")
+	wanted = append(wanted, "Water Heater Tank Temperature", "Water Heater Heat Pump Control Tank Temperature", "Water Heater Temperature Node 1", "Water Heater Temperature Node 12")
 	for _, variable := range wanted {
 		if !requested(variable, "Timestep") {
 			t.Fatalf("template expansion omitted required family response/dispatch: %s", variable)
@@ -436,6 +437,134 @@ Fan:ConstantVolume,Local Fan,On,0.7,600,Autosize,0.9,1,Local Inlet,Local Outlet;
 }
 
 func TestHVACRuntimeManagerReasonInputs(t *testing.T) {
+	t.Run("tank thermostat quantities retain native ownership", func(t *testing.T) {
+		tank := idf.Object{Index: 4, Type: "WaterHeater:Mixed", Fields: make([]idf.Field, 33)}
+		tank.Fields[0].Value, tank.Fields[2].Value = "Actual Tank", "Tank Target"
+		schedule := idf.HVACOperatingSource{ObjectIndex: 8, ObjectType: "Schedule:Constant", ObjectName: "Tank Target"}
+		source := idf.HVACOperatingSource{ObjectIndex: tank.Index, ObjectType: tank.Type, ObjectName: "Actual Tank"}
+		profile := idf.HVACOperatingProfile{ComponentIndex: tank.Index, ParameterControl: idf.HVACControlSequence{Nodes: []idf.HVACControlNode{{ID: "equipment", Code: "equipment_response", Source: source}, {ID: "target", Kind: "schedule", Source: schedule}, {ID: "availability", Kind: "schedule", Source: idf.HVACOperatingSource{ObjectIndex: 9, ObjectType: "Schedule:Constant", ObjectName: "Hours"}}}}}
+		doc := idf.Document{Objects: []idf.Object{tank}}
+		before, _ := json.Marshal(doc)
+		found := map[string]bool{}
+		var observations []SimulationSeries
+		for _, binding := range hvacRuntimeSignals(profile, idf.HVACLoop{}, &doc) {
+			if binding.VariableName == "Water Heater Tank Temperature" {
+				found["temperature"] = binding.Graph == "onOff" && binding.Role == "sensor" && binding.Source == source && binding.KeyValue == "Actual Tank"
+			}
+			if binding.VariableName == "Water Heater Runtime Fraction" {
+				found["runtime"] = binding.Role == "activity" && binding.Source == source
+			}
+			if binding.Role == "setpoint" {
+				found["target"] = binding.Domain == "temperature_schedule" && binding.KeyValue == "Tank Target" && binding.Source == source
+			}
+			if binding.NodeID == "target" {
+				found["tagged"] = binding.Domain == "temperature_schedule"
+			}
+			if binding.NodeID == "availability" && binding.Domain == "temperature_schedule" {
+				t.Fatal("unrelated availability schedule acquired temperature units")
+			}
+			value := 60.0
+			if strings.Contains(binding.VariableName, "Runtime Fraction") {
+				value = .375
+			}
+			if binding.Graph == "parameterControl" && binding.Role == "schedule" && binding.KeyValue == "Tank Target" {
+				continue
+			}
+			observations = append(observations, SimulationSeries{File: "native.sql", SourceID: binding.ID, KeyValue: binding.KeyValue, Name: binding.VariableName, ReportingFrequency: binding.ReportingFrequency, Points: []SimulationPoint{{X: 1, Label: "01-01 00:10", Value: value}}, NativeIntervals: []SimulationNativeInterval{{TimeIndex: 1, EnvironmentPeriodIndex: 3, IntervalMinutes: 10, SimulationDays: 1}}})
+		}
+		if len(found) != 4 || !found["temperature"] || !found["runtime"] || !found["target"] || !found["tagged"] {
+			t.Fatalf("tank thermostat lost native context: %v", found)
+		}
+		bound := HVACLoopRunResult{}
+		attachHVACRuntimeControls(&bound, []idf.HVACOperatingProfile{profile}, idf.HVACLoop{}, &doc, observations)
+		if bound.ControlCoverage.Status != "complete" {
+			t.Fatalf("native tank quantities did not bind: %+v", bound.ControlCoverage)
+		}
+		for i, series := range observations {
+			if series.Name == "Water Heater Tank Temperature" {
+				observations = append(observations[:i:i], observations[i+1:]...)
+				break
+			}
+		}
+		missing := HVACLoopRunResult{}
+		attachHVACRuntimeControls(&missing, []idf.HVACOperatingProfile{profile}, idf.HVACLoop{}, &doc, observations)
+		if missing.ControlCoverage.Status != "error" {
+			t.Fatal("missing tank thermostat measurement silently became complete")
+		}
+		after, _ := json.Marshal(doc)
+		if string(before) != string(after) {
+			t.Fatal("tank observation binding mutated executed source")
+		}
+	})
+	t.Run("stratified native nodes and element duties remain distinct", func(t *testing.T) {
+		tank := idf.Object{Index: 7, Type: "WaterHeater:Stratified", Fields: make([]idf.Field, 52)}
+		tank.Fields[0].Value, tank.Fields[3].Value, tank.Fields[4].Value, tank.Fields[51].Value = "Layered", "2", "VerticalCylinder", "4.0"
+		tank.Fields[8].Value, tank.Fields[12].Value = "Upper Target", "Lower Target"
+		tank.Fields[11].Value, tank.Fields[15].Value = "1.5", "0"
+		source := idf.HVACOperatingSource{ObjectIndex: tank.Index, ObjectType: tank.Type, ObjectName: "Layered"}
+		inputs := hvacRuntimeWaterHeaterObservations(source, &idf.Document{Objects: []idf.Object{tank}})
+		var temperatures []string
+		targets := 0
+		for _, input := range inputs {
+			if input.Role == "sensor" {
+				temperatures = append(temperatures, input.VariableName)
+			}
+			if input.Role == "setpoint" && input.Domain == "temperature_schedule" {
+				targets++
+			}
+		}
+		// Native top-down (lower,upper]: exactly 1.5 m belongs to node 2.
+		if strings.Join(temperatures, ",") != "Water Heater Temperature Node 2,Water Heater Temperature Node 4" || targets != 2 {
+			t.Fatalf("native element nodes/targets changed: %v %d", temperatures, targets)
+		}
+		variables := hvacRuntimeActivityVariables(tank.Type)
+		if strings.Join(variables, ",") != "Water Heater Heating Rate,Water Heater Heater 1 Runtime Fraction,Water Heater Heater 2 Runtime Fraction" {
+			t.Fatalf("stratified heaters collapsed to one duty: %v", variables)
+		}
+		for _, change := range []func(*idf.Object){func(o *idf.Object) { o.Fields[4].Value = "HorizontalCylinder" }, func(o *idf.Object) { o.Fields[3].Value = "Autocalculate" }} {
+			copy := tank
+			copy.Fields = append([]idf.Field{}, tank.Fields...)
+			change(&copy)
+			if nodes := hvacRuntimeStratifiedTemperatureNodes(copy); len(nodes) != 4 || nodes[0] != 1 || nodes[3] != 4 {
+				t.Fatalf("unproven geometry guessed a heater sensor: %v", nodes)
+			}
+		}
+		tank.Fields[51].Value = ""
+		if nodes := hvacRuntimeStratifiedTemperatureNodes(tank); len(nodes) != 1 || nodes[0] != 1 {
+			t.Fatalf("native Number of Nodes default changed: %v", nodes)
+		}
+	})
+	t.Run("heat pump wrapper uses compressor owned observations", func(t *testing.T) {
+		for _, typ := range []string{"WaterHeater:HeatPump:PumpedCondenser", "WaterHeater:HeatPump:WrappedCondenser"} {
+			wrapper := idf.Object{Index: 2, Type: typ, Fields: make([]idf.Field, 39)}
+			wrapper.Fields[0].Value, wrapper.Fields[2].Value = "Compressor", "Compressor Target"
+			typeIndex, nameIndex := 16, 17
+			if strings.Contains(typ, "Wrapped") {
+				typeIndex, nameIndex = 15, 16
+			}
+			wrapper.Fields[typeIndex].Value, wrapper.Fields[nameIndex].Value = "WaterHeater:Mixed", "Backup Tank"
+			tank := idf.Object{Index: 5, Type: "WaterHeater:Mixed", Fields: []idf.Field{{Value: "Backup Tank"}, {}, {Value: "Backup Target"}}}
+			source := idf.HVACOperatingSource{ObjectIndex: wrapper.Index, ObjectType: wrapper.Type, ObjectName: "Compressor"}
+			doc := idf.Document{Objects: []idf.Object{wrapper, tank}}
+			profile := idf.HVACOperatingProfile{ComponentIndex: wrapper.Index, ParameterControl: idf.HVACControlSequence{Nodes: []idf.HVACControlNode{{ID: "equipment", Code: "equipment_response", Source: source}}}}
+			control, compressor, target := false, false, false
+			for _, binding := range hvacRuntimeSignals(profile, idf.HVACLoop{}, &doc) {
+				if binding.Source != source || binding.VariableName == "Water Heater Runtime Fraction" || binding.VariableName == "Water Heater Tank Temperature" {
+					t.Fatalf("wrapper borrowed backup heater state: %+v", binding)
+				}
+				control = control || binding.VariableName == "Water Heater Heat Pump Control Tank Temperature" && binding.KeyValue == "Compressor"
+				compressor = compressor || binding.Role == "activity" && binding.VariableName == "Water Heater Compressor Part Load Ratio"
+				target = target || binding.Role == "setpoint" && binding.KeyValue == "Compressor Target"
+			}
+			if !control || !compressor || !target {
+				t.Fatal("wrapper lost its native compressor thermostat quantities")
+			}
+			doc.Objects = append(doc.Objects, tank)
+			if len(hvacRuntimeWaterHeaterObservations(source, &doc)) != 0 {
+				t.Fatal("duplicate typed tank relation was arbitrarily selected")
+			}
+		}
+	})
 	t.Run("on off retains assigned load and exact occurrence", func(t *testing.T) {
 		component := idf.HVACOperatingSource{ObjectIndex: 8, ObjectType: "Chiller:Electric:EIR", ObjectName: "Selected Chiller"}
 		profile := idf.HVACOperatingProfile{ComponentIndex: 8, LoopID: "plant:cooling", OnOff: idf.HVACControlSequence{Nodes: []idf.HVACControlNode{
@@ -536,7 +665,7 @@ func TestHVACRuntimeManagerReasonInputs(t *testing.T) {
 			{"Boiler:HotWater", "Boiler Heating Rate"}, {"CoolingTower:VariableSpeed", "Cooling Tower Heat Transfer Rate"},
 			{"FluidCooler:TwoSpeed", "Cooling Tower Heat Transfer Rate"}, {"EvaporativeFluidCooler:SingleSpeed", "Cooling Tower Heat Transfer Rate"},
 			{"HeatExchanger:FluidToFluid", "Fluid Heat Exchanger Heat Transfer Rate"}, {"HeatPump:PlantLoop:EIR:Cooling", "Heat Pump Load Side Heat Transfer Rate"},
-			{"WaterHeater:Mixed", "Water Heater Heating Rate"}, {"Humidifier:Steam:Electric", "Humidifier Water Volume Flow Rate"},
+			{"Humidifier:Steam:Electric", "Humidifier Water Volume Flow Rate"},
 			{"EvaporativeCooler:Direct:CelDekPad", "Evaporative Cooler Electricity Rate"},
 		} {
 			variables := hvacRuntimeActivityVariables(test.typ)
@@ -548,6 +677,7 @@ func TestHVACRuntimeManagerReasonInputs(t *testing.T) {
 			t.Fatal("passive flow invented powered activity")
 		}
 		for _, test := range []struct{ typ, first, second string }{
+			{"WaterHeater:Mixed", "Water Heater Heating Rate", "Water Heater Runtime Fraction"},
 			{"ZoneHVAC:IdealLoadsAirSystem", "Zone Ideal Loads Zone Total Heating Rate", "Zone Ideal Loads Zone Total Cooling Rate"},
 			{"ZoneHVAC:PackagedTerminalHeatPump", "Zone Packaged Terminal Heat Pump Total Heating Rate", "Zone Packaged Terminal Heat Pump Total Cooling Rate"},
 			{"ZoneHVAC:FourPipeFanCoil", "Fan Coil Heating Rate", "Fan Coil Total Cooling Rate"},
@@ -704,6 +834,7 @@ func TestHVACRuntimeNativeAcceptance(t *testing.T) {
 	missing := map[string]int{}
 	families := map[string]bool{}
 	assignments := map[string][3]int{}
+	tankTemperature, tankTarget, tankDuty := false, false, false
 	meaningfulFlow, targetObserved := false, false
 	for _, loop := range result.PurposeResults.HVACLoops {
 		if loop.ControlCoverage == nil || loop.ControlCoverage.Status != "complete" {
@@ -789,6 +920,22 @@ func TestHVACRuntimeNativeAcceptance(t *testing.T) {
 			}
 		}
 		for _, signal := range loop.ControlSignals {
+			if signal.Source.ObjectType == "WaterHeater:Mixed" && signal.Source.ObjectName == "SWHSys1 Water Heater" {
+				if signal.Graph == "onOff" && signal.Role == "sensor" && signal.VariableName == "Water Heater Tank Temperature" {
+					tankTemperature = len(bySeries[signal.SeriesID].Points) == 288
+				}
+				if signal.Graph == "onOff" && signal.Role == "setpoint" && signal.Domain == "temperature_schedule" && signal.KeyValue == "SWHSys1 Water Heater Setpoint Temperature Schedule Name" {
+					tankTarget = true
+				}
+				if signal.Role == "activity" && signal.VariableName == "Water Heater Runtime Fraction" {
+					for _, point := range bySeries[signal.SeriesID].Points {
+						if point.Value < 0 || point.Value > 1 {
+							t.Fatalf("native tank duty outside reported fraction domain: %v", point.Value)
+						}
+						tankDuty = tankDuty || point.Value > 0 && point.Value < 1
+					}
+				}
+			}
 			if signal.Role == "dispatch" {
 				if signal.Graph != "onOff" || signal.NodeID != "decision" || signal.ReportingFrequency != "Timestep" || signal.VariableName != "Plant Component Distributed Demand Rate" || loop.Name == "TowerWaterSys" && strings.HasPrefix(signal.Source.ObjectType, "Chiller:") {
 					t.Fatalf("native assignment lost selected supply occurrence or cadence: %+v", signal)
@@ -833,6 +980,9 @@ func TestHVACRuntimeNativeAcceptance(t *testing.T) {
 	}
 	if !meaningfulFlow || !targetObserved {
 		t.Fatalf("native run must show meaningful requested+actual flow on/off windows and a real temperature target, got flow=%v target=%v", meaningfulFlow, targetObserved)
+	}
+	if !tankTemperature || !tankTarget || !tankDuty {
+		t.Fatalf("native tank thermostat evidence missing: temperature=%v target=%v fractional duty=%v", tankTemperature, tankTarget, tankDuty)
 	}
 	unchanged, _ := os.ReadFile(path)
 	if string(original) != string(unchanged) {

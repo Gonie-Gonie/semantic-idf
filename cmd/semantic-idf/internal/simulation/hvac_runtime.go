@@ -228,7 +228,9 @@ var hvacRuntimeActivityDefinitions = []struct {
 	{[]string{"coolingtower:", "fluidcooler:", "evaporativefluidcooler:"}, []string{"Cooling Tower Heat Transfer Rate"}},
 	{[]string{"heatexchanger:fluidtofluid"}, []string{"Fluid Heat Exchanger Heat Transfer Rate"}},
 	{[]string{"heatpump:plantloop:eir:cooling", "heatpump:plantloop:eir:heating", "heatpump:watertowater:equationfit:cooling", "heatpump:watertowater:equationfit:heating"}, []string{"Heat Pump Load Side Heat Transfer Rate"}},
-	{[]string{"waterheater:mixed", "waterheater:stratified"}, []string{"Water Heater Heating Rate"}},
+	{[]string{"waterheater:mixed"}, []string{"Water Heater Heating Rate", "Water Heater Runtime Fraction"}},
+	{[]string{"waterheater:stratified"}, []string{"Water Heater Heating Rate", "Water Heater Heater 1 Runtime Fraction", "Water Heater Heater 2 Runtime Fraction"}},
+	{[]string{"waterheater:heatpump:pumpedcondenser", "waterheater:heatpump:wrappedcondenser"}, []string{"Water Heater Compressor Part Load Ratio"}},
 	{[]string{"districtheating:water"}, []string{"District Heating Water Rate"}},
 	{[]string{"districtheating:steam"}, []string{"District Heating Steam Rate"}},
 	{[]string{"districtcooling"}, []string{"District Cooling Water Rate"}},
@@ -292,6 +294,13 @@ func hvacRuntimeSignals(profile idf.HVACOperatingProfile, loop idf.HVACLoop, doc
 		out = append(out, HVACControlSignalBinding{ID: identity, ComponentIndex: profile.ComponentIndex, LoopID: profile.LoopID, Graph: graph, NodeID: node, Role: role, Domain: domain, Source: source, ParameterName: field, KeyValue: key, VariableName: variable, ReportingFrequency: hvacRuntimeFrequency(variable), Required: true, Status: status, Message: message})
 	}
 	component := hvacRuntimeComponent(profile)
+	temperatureSchedules := map[string]bool{}
+	for _, observation := range hvacRuntimeWaterHeaterObservations(component, doc) {
+		add(observation.Graph, observation.NodeID, observation.Role, observation.Domain, observation.Source, observation.ParameterName, observation.KeyValue, observation.VariableName)
+		if observation.Domain == "temperature_schedule" {
+			temperatureSchedules[normalizePurposeToken(observation.KeyValue)] = true
+		}
+	}
 	graphs := []struct {
 		name  string
 		graph idf.HVACControlSequence
@@ -307,6 +316,9 @@ func hvacRuntimeSignals(profile idf.HVACOperatingProfile, loop idf.HVACLoop, doc
 				domain := "boolean_schedule"
 				if current.name != "availabilityDefinitions" {
 					domain = "continuous"
+				}
+				if current.name == "parameterControl" && temperatureSchedules[normalizePurposeToken(node.Source.ObjectName)] {
+					domain = "temperature_schedule"
 				}
 				add(current.name, node.ID, "schedule", domain, node.Source, "", node.Source.ObjectName, "Schedule Value")
 			}
@@ -454,6 +466,10 @@ func (builder *purposePlanBuilder) addHVACRuntimeOutputs() {
 		}
 		variables := []string{"Schedule Value", "Air System Simulation Cycle On Off Status", "System Node Temperature", "System Node Mass Flow Rate", "System Node Setpoint Temperature", "System Node Setpoint High Temperature", "System Node Setpoint Low Temperature", "System Node Humidity Ratio", "System Node Setpoint Humidity Ratio", "System Node Setpoint Minimum Humidity Ratio", "System Node Setpoint Maximum Humidity Ratio", "System Node Requested Mass Flow Rate", "System Node Minimum Available Mass Flow Rate", "System Node Maximum Available Mass Flow Rate", "Zone Thermostat Air Temperature", "Zone Thermostat Control Type", "Zone Thermostat Heating Setpoint Temperature", "Zone Thermostat Cooling Setpoint Temperature", "Zone Predicted Sensible Load to Setpoint Heat Transfer Rate", "Zone Predicted Sensible Load to Heating Setpoint Heat Transfer Rate", "Zone Predicted Sensible Load to Cooling Setpoint Heat Transfer Rate", "Plant Supply Side Cooling Demand Rate", "Plant Supply Side Heating Demand Rate", "Site Outdoor Air Drybulb Temperature", "Site Outdoor Air Wetbulb Temperature", "Site Ground Temperature", "Site Surface Ground Temperature", "Site Deep Ground Temperature", "Site Simple Factor Model Ground Temperature"}
 		variables = append(variables, "Plant Component Distributed Demand Rate", "VRF Heat Pump Terminal Unit Cooling Load Rate", "VRF Heat Pump Terminal Unit Heating Load Rate")
+		variables = append(variables, "Water Heater Tank Temperature", "Water Heater Heat Pump Control Tank Temperature")
+		for number := 1; number <= 12; number++ {
+			variables = append(variables, fmt.Sprintf("Water Heater Temperature Node %d", number))
+		}
 		for _, variable := range hvacRuntimeActivityVariableNames() {
 			variables = appendUniquePurposeString(variables, variable)
 		}

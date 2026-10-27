@@ -1,7 +1,7 @@
 // Native availability inputs and their combined permission on one reported
 // axis. Parameter-control schedules and equipment activity are separate facts.
 import { t } from "./i18n.js";
-import { hvacRuntimePermission, hvacRuntimeSignalState, hvacRuntimeAvailabilityFrames, hvacRuntimeSignalsAt } from "./hvac-runtime-data.js";
+import { hvacRuntimePermission, hvacRuntimeSignalState, hvacRuntimeAvailabilityFrames, hvacRuntimeSignalsAt, hvacRuntimeActivitySignals } from "./hvac-runtime-data.js";
 
 const caches = new WeakMap();
 const MAX_CACHE_ENTRIES = 4, MAX_CACHE_POINTS = 160000;
@@ -57,7 +57,7 @@ function conditions(profile) {
 function definitions(profile) {
   const context = conditions(profile), inputs = [], grouped = new Map();
   for (const signal of profile.signals) {
-    if (!["manager_status", "loop_status"].includes(signal.role) && !(signal.role === "schedule" && signal.graph !== "parameterControl")) continue;
+    if (!["manager_status", "loop_status"].includes(signal.role) && !(signal.role === "schedule" && signal.graph === "availabilityDefinitions")) continue;
     const kind = signal.role === "schedule" ? "schedule" : "manager";
     const identity = kind === "schedule" ? `schedule:${token(signal.keyValue)}` : `${signal.role}:${sourceKey(signal.source)}:${signal.domain}`;
     let row = grouped.get(identity);
@@ -72,11 +72,11 @@ function definitions(profile) {
   }
   const final = { id: "final-availability", kind: "permission", source: profile.source, owners: [profile.source],
     label: copy("control.availability_permission", "Final availability"), operator: profile.availabilityExpression?.op, expression: profile.availabilityExpression };
-  const activitySignals = profile.signals.filter((signal) => signal.role === "activity"), fractions = activitySignals.filter((signal) => /runtime fraction|cycling ratio/i.test(signal.variableName));
-  const activity = activitySignals.length ? { id: "equipment-activity", kind: "activity", label: runtimeCopy("Activity", "Reported equipment activity"), source: profile.source, owners: [profile.source], signals: fractions.length ? fractions : activitySignals, signalIds: activitySignals.map((signal) => signal.id) } : null;
+  const activitySignals = hvacRuntimeActivitySignals(profile);
+  const activity = activitySignals.length ? { id: "equipment-activity", kind: "activity", label: runtimeCopy("Activity", "Reported equipment activity"), source: profile.source, owners: [profile.source], signals: activitySignals, signalIds: activitySignals.map((signal) => signal.id) } : null;
   const rows = [...inputs.filter((row) => row.kind === "schedule"), ...inputs.filter((row) => row.kind === "manager"), ...context.rows, final];
   return { rows, activity, expressions: context.expressions,
-    signals: profile.signals.filter((signal) => signal.role === "schedule" && signal.graph !== "parameterControl" || ["manager_status", "loop_status", "activity"].includes(signal.role)) };
+    signals: profile.signals.filter((signal) => signal.role === "schedule" && signal.graph === "availabilityDefinitions" || ["manager_status", "loop_status", "activity"].includes(signal.role)) };
 }
 
 function rowState(profile, row, observed) {

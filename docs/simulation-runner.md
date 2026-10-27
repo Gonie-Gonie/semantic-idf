@@ -548,6 +548,21 @@ Condenser namespaces, without falling back to a same-named Plant list.
 HVACTemplate planning requests the dispatch and family-response wildcards
 needed before generated names are known; post-expansion bindings still require
 the executed typed equipment owner and real loop membership.
+Water-heater condition inputs retain their own native measurement boundaries:
+Mixed interval-average tank temperature and heater runtime fraction; Stratified
+native node identities and per-heater fractions; HPWH wrapper control-tank
+temperature and compressor response. Exact typed tank references are required
+for delegated sources. A child backup element cannot become the wrapper's
+overall activity signal, and averaged temperatures cannot reconstruct native
+hysteresis modes. The header and current snapshot share the same exact-owner
+activity selection; missing authoritative duty channels cannot fall back to
+another object's fraction or a secondary heat rate. Availability schedule rows
+come only from the availability-definition graph, preserving continuous control
+inputs elsewhere. `temperature_schedule` identifies a source-proven temperature
+target: the frontend displays its native Schedule Value in °C while preserving
+the underlying untyped series. A provider with one exact collected target alias
+shares its history, card selection and highlight; unavailable or ambiguous
+aliases leave the provider visible. Ordinary gates and duty remain dimensionless.
 
 The main view promotes to already-loaded Timestep series only when every
 existing visible node/component property has one source-backed counterpart and

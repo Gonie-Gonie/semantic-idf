@@ -18,6 +18,12 @@ const distinct = (signals) => [...new Map(signals.map((signal) => [signal.series
 
 function metric(signal) {
   const name = String(signal.variableName || "").toLowerCase();
+  if (name === "water heater tank temperature") return copy("Metric.tankTemperature", "Tank temperature (interval average)");
+  if (name === "water heater heat pump control tank temperature") return copy("Metric.controlTankTemperature", "Control tank temperature (interval average)");
+  const tankNode = /^water heater temperature node (\d+)$/.exec(name);
+  if (tankNode) return t("simulation.hvacRuntimeMetric.tankNode", { node: tankNode[1] }, `Tank node ${tankNode[1]} (interval average)`);
+  if (/water heater.*runtime fraction/.test(name)) return /heater 1/.test(name) ? copy("Metric.heater1Runtime", "Heater 1 runtime fraction")
+    : /heater 2/.test(name) ? copy("Metric.heater2Runtime", "Heater 2 runtime fraction") : copy("Metric.heaterRuntime", "Heater runtime fraction");
   if (signal.role === "dispatch") return copy("Metric.assignedLoad", "Assigned load");
   if (/part load ratio/.test(name)) return copy("Metric.partLoad", "Part-load ratio");
   if (/cycling ratio/.test(name)) return copy("Metric.cycling", "Cycling ratio");
@@ -46,17 +52,26 @@ function cards(profile) {
   return controlModel(profile).groups.flatMap((group) => group.cards.map((card) => ({ ...card, group: group.id })));
 }
 
+function temperatureTargetAlias(signal, candidates) {
+  if (signal.role !== "schedule" || signal.domain !== "temperature_schedule" || !signal.seriesId || signal.status !== "collected") return null;
+  const aliases = candidates.filter((entry) => entry.role === "setpoint" && entry.domain === "temperature_schedule"
+    && entry.status === "collected" && entry.seriesId === signal.seriesId && entry.unit === signal.unit);
+  return aliases.length === 1 ? aliases[0] : null;
+}
+
 function cardSignals(profile, card) {
   const ids = new Set(card.members.map((node) => node.id));
   const exact = profile.signals.filter((signal) => signal.graph === "parameterControl" && ids.has(signal.nodeId));
   const response = card.group === "response" ? profile.signals.filter((signal) => signal.role === "activity" && signal.source?.objectIndex === card.source?.objectIndex) : [];
-  return distinct([...exact, ...response]);
+  const visible = plottedSignals(profile);
+  return distinct([...exact, ...response].map((signal) => temperatureTargetAlias(signal, visible) || signal));
 }
 
 function plottedSignals(profile) {
-  return distinct([...profile.signals.filter((signal) => signal.graph === "parameterControl" || signal.graph === "loop" && signal.role === "demand"),
+  const signals = distinct([...profile.signals.filter((signal) => signal.graph === "parameterControl" || signal.graph === "loop" && signal.role === "demand"),
     ...profile.signals.filter((signal) => signal.graph === "onOff")])
     .filter((signal) => !["manager_status", "loop_status"].includes(signal.role));
+  return signals.filter((signal) => !temperatureTargetAlias(signal, signals));
 }
 
 function context(loop, ui, inspection) {

@@ -418,6 +418,17 @@ the controller's internal residual or convergence, including sensor-fault
 adjustments. Missing or ambiguous pairs are omitted instead of borrowing water
 temperatures, another controller or a neighboring time.
 
+Water-heater decisions include reported tank temperature, the source-backed
+temperature target and heater runtime fraction. A runtime fraction of 0.25 means
+the heater ran for one quarter of the reporting interval; it is not an
+instantaneous ON/OFF flag. Mixed tanks retain their reported interval-average
+temperature. Stratified tanks retain native node identities and each heater's
+separate duty. Their average temperature cannot replace an individual heater's
+thermostat sensor. Heat-pump water heaters use their own reported control-tank
+temperature and compressor response; a backup element's fraction does not
+establish compressor operation. Source temperature schedules display in °C and
+remain distinct from dimensionless schedule gates and duty fractions.
+
 The view reuses data already loaded for the result. It uses **Timestep** for the
 whole loop only when every existing node and equipment property has one exact,
 source-backed Timestep counterpart preserving every previously valid observation

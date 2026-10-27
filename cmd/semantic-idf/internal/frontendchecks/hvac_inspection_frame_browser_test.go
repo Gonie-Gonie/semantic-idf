@@ -19,11 +19,12 @@ import (
 )
 
 type hvacRuntimeBrowserFixture struct {
-	Family    string                   `json:"family"`
-	Component idf.HVACOperatingSource  `json:"component"`
-	Profile   idf.HVACOperatingProfile `json:"profile"`
-	Topology  idf.HVACLoop             `json:"topology"`
-	Runtime   map[string]any           `json:"runtime"`
+	Family    string                    `json:"family"`
+	Component idf.HVACOperatingSource   `json:"component"`
+	Profile   idf.HVACOperatingProfile  `json:"profile"`
+	Topology  idf.HVACLoop              `json:"topology"`
+	Runtime   map[string]any            `json:"runtime"`
+	Sources   []idf.HVACOperatingSource `json:"sources,omitempty"`
 }
 
 func hvacRuntimeBrowserResult(t *testing.T, input string, fixture hvacRuntimeBrowserFixture) map[string]any {
@@ -94,6 +95,9 @@ func hvacRuntimeBrowserResult(t *testing.T, input string, fixture hvacRuntimeBro
 		if strings.Contains(lower, "temperature") {
 			value, unit = 20, "C"
 		}
+		if lower == "schedule value" {
+			unit = ""
+		}
 		if strings.Contains(lower, "mass flow rate") {
 			value, unit = 1, "kg/s"
 		}
@@ -141,6 +145,7 @@ func hvacRuntimeBrowserFixtures(t *testing.T) []hvacRuntimeBrowserFixture {
 		{"fan", "Fan:VariableVolume", "VAV_5_Fan", "AirLoopHVAC"},
 		{"coil", "Coil:Heating:Water", "VAV_5_HeatC", "AirLoopHVAC"},
 		{"chiller", "Chiller:", "", "PlantLoop"},
+		{"waterheater", "WaterHeater:Mixed", "SWHSys1 Water Heater", "PlantLoop"},
 		{"local", "", "", "ZoneHVAC"},
 	} {
 		found := false
@@ -167,6 +172,74 @@ func hvacRuntimeBrowserFixtures(t *testing.T) []hvacRuntimeBrowserFixture {
 		if !found {
 			t.Fatalf("bundled %s runtime control profile is missing", family.name)
 		}
+	}
+	// These small authored models pass through parsing, HVAC analysis and the
+	// ordinary purpose-result builder, retaining real wrapper/tank identities.
+	object := func(typ, name string, count int, values map[int]string) idf.Object {
+		item := idf.Object{Type: typ, Fields: make([]idf.Field, count)}
+		item.Fields[0].Value = name
+		for index, value := range values {
+			item.Fields[index].Value = value
+		}
+		labels := map[int]string{}
+		if typ == "WaterHeater:Stratified" {
+			labels = map[int]string{8: "Heater 1 Setpoint Temperature Schedule Name", 11: "Heater 1 Height", 12: "Heater 2 Setpoint Temperature Schedule Name", 15: "Heater 2 Height", 51: "Number of Nodes"}
+		} else if strings.HasPrefix(typ, "WaterHeater:HeatPump:") {
+			labels = map[int]string{1: "Availability Schedule Name", 2: "Compressor Setpoint Temperature Schedule Name", 3: "Dead Band Temperature Difference"}
+		}
+		for index, label := range labels {
+			item.Fields[index].Comment = label
+		}
+		return item
+	}
+	appendTank := func(family, typ, name string, objects []idf.Object) {
+		t.Helper()
+		for index := range objects {
+			objects[index].Index = index
+		}
+		text := (idf.Document{Objects: objects}).String()
+		authored, err := idf.Parse(text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(t.TempDir(), family+".idf")
+		if err := os.WriteFile(path, []byte(text), 0600); err != nil {
+			t.Fatal(err)
+		}
+		for _, profile := range idf.AnalyzeHVAC(authored).OperatingProfiles {
+			candidate := authored.Objects[profile.ComponentIndex]
+			if candidate.Type != typ || candidate.Fields[0].Value != name || profile.LoopID != "" {
+				continue
+			}
+			fixture := hvacRuntimeBrowserFixture{Family: family, Component: idf.HVACOperatingSource{ObjectIndex: candidate.Index, ObjectType: candidate.Type, ObjectName: name}, Profile: profile, Topology: idf.HVACLoop{Name: "Zone / local equipment", Type: "ZoneHVAC"}}
+			for _, source := range authored.Objects {
+				fixture.Sources = append(fixture.Sources, idf.HVACOperatingSource{ObjectIndex: source.Index, ObjectType: source.Type, ObjectName: source.Fields[0].Value})
+			}
+			fixture.Runtime = hvacRuntimeBrowserResult(t, path, fixture)
+			fixtures = append(fixtures, fixture)
+			return
+		}
+		t.Fatalf("authored %s lacks its native runtime profile", family)
+	}
+	constant := func(name, value string) idf.Object {
+		return object("Schedule:Constant", name, 3, map[int]string{2: value})
+	}
+	appendTank("waterheater-stratified", "WaterHeater:Stratified", "Runtime Layered Tank", []idf.Object{
+		constant("Runtime Upper Target", "60"), constant("Runtime Lower Target", "55"),
+		object("WaterHeater:Stratified", "Runtime Layered Tank", 52, map[int]string{2: "0.2", 3: "2", 4: "VerticalCylinder", 8: "Runtime Upper Target", 9: "2", 10: "2000", 11: "1.5", 12: "Runtime Lower Target", 13: "2", 14: "1500", 15: "0", 16: "Electricity", 17: "1", 51: "4.0"}),
+	})
+	for _, variant := range []struct {
+		family, typ, name    string
+		typeIndex, nameIndex int
+	}{
+		{"waterheater-hpwh-pumped", "WaterHeater:HeatPump:PumpedCondenser", "Runtime HPWH Pumped", 16, 17},
+		{"waterheater-hpwh-wrapped", "WaterHeater:HeatPump:WrappedCondenser", "Runtime HPWH Wrapped", 15, 16},
+	} {
+		appendTank(variant.family, variant.typ, variant.name, []idf.Object{
+			constant("Runtime Always On", "1"), constant("Runtime Compressor Target", "60"), constant("Runtime Backup Target", "50"),
+			object("WaterHeater:Mixed", "Runtime Backup Tank", 33, map[int]string{1: "0.2", 2: "Runtime Backup Target", 3: "2", 5: "Cycle", 6: "2000", 10: "Electricity", 11: "1"}),
+			object(variant.typ, variant.name, 39, map[int]string{1: "Runtime Always On", 2: "Runtime Compressor Target", 3: "2", variant.typeIndex: "WaterHeater:Mixed", variant.nameIndex: "Runtime Backup Tank"}),
+		})
 	}
 	return fixtures
 }
@@ -216,6 +289,7 @@ func TestHVACInspectionSharedFrameActualAppBrowser(t *testing.T) {
 			{"coil-control-dark.png", "?review=coil&focus=control", "2560,1500"},
 			{"coil-control-narrow.png", "?review=coil&focus=control", "1360,1200"},
 			{"chiller-onoff-dispatch.png", "?review=chiller&focus=onoff", "1900,1400"},
+			{"waterheater-thermostat.png", "?review=waterheater&focus=onoff", "1900,1400"},
 			{"chiller-availability-ko-light.png", "?review=chiller&focus=availability&language=ko&theme=light", "1900,1400"},
 			{"missing-required.png", "?review=error&focus=error", "1600,1200"},
 			{"fan-availability-narrow.png", "?review=fan&focus=availability", "1360,1200"},
@@ -298,7 +372,7 @@ try{
  frame(2);state.simulationResult={...result,runId:'frames-2'};simulation.renderSimulation();check(slider().value==='0','new simulation retained previous run timestamp');
 
  // The loop's Hourly cursor is shared; history retains native Timestep data.
- const fixtures=await(await fetch('/runtime-fixtures')).json(),fixturesBefore=JSON.stringify(fixtures),fanFixture=fixtures.find(fixture=>fixture.family==='fan'),coilFixture=fixtures.find(fixture=>fixture.family==='coil'),chillerFixture=fixtures.find(fixture=>fixture.family==='chiller'),localFixture=fixtures.find(fixture=>fixture.family==='local');
+ const fixtures=await(await fetch('/runtime-fixtures')).json(),fixturesBefore=JSON.stringify(fixtures),fanFixture=fixtures.find(fixture=>fixture.family==='fan'),coilFixture=fixtures.find(fixture=>fixture.family==='coil'),chillerFixture=fixtures.find(fixture=>fixture.family==='chiller'),waterHeaterFixture=fixtures.find(fixture=>fixture.family==='waterheater'),localFixture=fixtures.find(fixture=>fixture.family==='local');
  const {prepareHVACInspection}=await import('/src/js/hvac-inspection-data.js'),frameAt=(captured,wanted)=>{const index=prepareHVACInspection(captured).frames.findIndex(frame=>frame.label===wanted);check(index>=0,'main result lacks native frame '+wanted);frame(index);};
  const nativeMember=fixture=>[fixture.topology.supplySide,fixture.topology.demandSide].flatMap(side=>side?.branches||[]).flatMap(branch=>branch.components||[]).find(item=>item.objectType===fixture.component.objectType&&item.objectName===fixture.component.objectName);
  const hourlySeries=(fixture,key,name,unit,values)=>({name,keyValue:key,file:'eplusout.sql',column:key+':'+name+' ['+unit+'](Hourly)',reportingFrequency:'Hourly',points:[1,2,3].map((hour,index)=>({x:hour,label:'01-01 0'+hour+':00',value:values[index%values.length]}))});
@@ -445,6 +519,69 @@ try{
   frame(1);check(host.querySelector('[data-hvac-runtime-error]')&&!controlTerm('target-change')&&!controlTerm('actual-change')&&controlTerm('tracking-error')===(gap==='inlet'?'0.00 K':undefined)&&requestCardValue()==='Requested flow: 0.7 kg/s','missing '+gap+' timestep retained stale thermal rows or damaged separately reported flow');
   const currentLabels=[...host.querySelectorAll('.hvac-parameter-flow-stage.controls [data-hvac-runtime-card-value]')];check(currentLabels.every(value=>!value.textContent.includes('10.00 K')&&!value.title.includes('10 °C')),'missing '+gap+' timestep retained the preceding comparison text/title');
  }
+ const runtimeWaterHeater=withHourly(runtimeClone(fixtures,'waterheater'),waterHeaterFixture),tankTemperature=runtimeWaterHeater.controlSignals.find(signal=>signal.role==='sensor'&&signal.variableName==='Water Heater Tank Temperature'),tankTarget=runtimeWaterHeater.controlSignals.find(signal=>signal.role==='setpoint'&&signal.domain==='temperature_schedule'),tankRuntime=runtimeWaterHeater.controlSignals.find(signal=>signal.role==='activity'&&signal.variableName==='Water Heater Runtime Fraction');
+ const {buildHVACControlExpressions}=await import('/src/js/hvac-control-expressions.js');
+ const temperatureProvider=(captured,fixture,target)=>{
+  const model=prepareHVACRuntimeInspection(captured),profile=selectedRuntimeProfile(model,fixture),typed=profile.signals.find(signal=>signal.id===target.id),providers=profile.signals.filter(signal=>signal.graph==='parameterControl'&&signal.role==='schedule'&&signal.domain==='temperature_schedule'&&signal.seriesId===typed.seriesId&&signal.unit===typed.unit),provider=providers.length===1?providers[0]:null;
+  check(provider,'source-backed target does not have one exact parameter provider: '+fixture.family+' '+target.keyValue);
+  const cards=buildHVACControlExpressions(profile.definition,{component:profile.source}).parameters.groups.flatMap(group=>group.cards),card=cards.find(card=>card.members.some(node=>node.id===provider.nodeId));
+  check(card&&card.members.some(node=>node.id===provider.nodeId&&node.source.objectIndex===provider.source.objectIndex&&node.source.objectType===provider.source.objectType&&node.source.objectName===provider.source.objectName),'provider card lost its actual native schedule source');
+  const button=host.querySelector('[data-hvac-inspect-parameter="'+CSS.escape(card.id)+'"]');check(button,'actual provider card is missing for '+fixture.family);return {model,profile,typed,provider,card,button};
+ };
+ const clickTemperatureProvider=(captured,fixture,target,useProvider=false)=>{
+  const selection=temperatureProvider(captured,fixture,target),visible=useProvider?selection.provider:selection.typed,before=JSON.stringify(captured);selection.button.click();
+  const history=host.querySelector('[data-hvac-runtime-history]'),toggle=history.querySelector('[data-hvac-runtime-trace="'+CSS.escape(visible.id)+'"]'),trace=history.querySelector('[data-hvac-chart-series="'+CSS.escape(visible.id)+'"]'),legend=history.querySelector('[data-hvac-chart-legend="'+CSS.escape(visible.id)+'"]');
+  check(toggle?.checked&&!toggle.disabled&&toggle.closest('label').classList.contains('related')&&trace?.querySelector('path.hvac-chart-line')&&legend&&!host.querySelector('[data-hvac-parameter-inspector]:not([hidden])'),'provider click lost its visible source-backed target checkbox/path/related highlight: '+fixture.family);
+  check(useProvider||!history.querySelector('[data-hvac-runtime-trace="'+CSS.escape(selection.provider.id)+'"]'),'canonical typed target provider was displayed a second time after card selection');
+  const native=hvacRuntimeTrace(selection.model,visible);check(visible.series===selection.provider.series&&visible.seriesId===selection.provider.seriesId&&native.unit==='°C'&&native.points.length===visible.series.points.length&&native.points.every((point,index)=>point.value===visible.series.points[index].value&&point.label===visible.series.points[index].label),'provider selection substituted another native schedule/source/cadence');
+  legend.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));check(trace.classList.contains('is-highlighted')&&trace.closest('[data-hvac-inspection-chart]').dataset.hvacChartHighlight===visible.id,'canonical provider target legend did not highlight its exact path');legend.dispatchEvent(new PointerEvent('pointerout',{bubbles:true,relatedTarget:history}));
+  check(JSON.stringify(captured)===before,'provider click mutated exact captured bindings or native values');return selection;
+ };
+ check(tankTemperature&&tankTarget&&tankRuntime,'mixed water heater lacks required tank thermostat and native duty observations');
+ setReported(runtimeWaterHeater,signal=>signal.role==='sensor'&&/temperature/i.test(signal.variableName),[99]);setReported(runtimeWaterHeater,signal=>signal.id===tankTemperature.id,[55,55,55,55,0,0,0,0,62,62,62,62]);setReported(runtimeWaterHeater,signal=>signal.domain==='temperature_schedule',[60,60,60,60,0,0,0,0,60,60,60,60]);setReported(runtimeWaterHeater,signal=>signal.role==='activity',[1000,1000,1000,1000,0,0,0,0,2000,2000,2000,2000]);setReported(runtimeWaterHeater,signal=>signal.id===tankRuntime.id,[.25,.25,.25,.25,0,0,0,0,.75,.75,.75,.75]);
+ state.simulationResult={...runtimeResult,runId:'runtime-water-heater',purposeResults:{hvacLoops:[runtimeWaterHeater]}};simulation.renderSimulation();chooseEquipment(waterHeaterFixture);
+ const tankPanel=onOffPanel(),tankReading=binding=>tankPanel.querySelector('[data-hvac-runtime-value="'+CSS.escape(binding.id)+'"]'),tankHistory=host.querySelector('[data-hvac-runtime-history]'),targetAliases=new Set(runtimeWaterHeater.controlSignals.filter(signal=>signal.seriesId===tankTarget.seriesId).map(signal=>signal.id)),targetToggles=[...tankHistory.querySelectorAll('[data-hvac-runtime-trace]')].filter(input=>targetAliases.has(input.dataset.hvacRuntimeTrace));
+ check(!host.querySelector('[data-hvac-runtime-error]')&&tankReading(tankTemperature)?.textContent==='55 °C'&&tankReading(tankTemperature).closest('.hvac-runtime-decision-reading').querySelector('strong').textContent==='Tank temperature (interval average)'&&tankReading(tankTarget)?.textContent==='60 °C'&&tankReading(tankRuntime)?.textContent==='0.25'&&tankPanel.querySelector('[data-hvac-runtime-decision-response]').textContent==='Activity reported','native tank thermostat UI substituted a 99°C fluid-port temperature, lost the typed schedule unit or rounded fractional heater duty to an enum');
+ check(targetToggles.length===1&&targetToggles[0].dataset.hvacRuntimeTrace===tankTarget.id&&tankHistory.querySelector('[data-hvac-runtime-history-group="°C"] [data-hvac-runtime-trace="'+CSS.escape(tankTarget.id)+'"]'),'typed tank target was plotted twice as a raw schedule or placed outside the temperature group');
+ const mixedProvider=clickTemperatureProvider(runtimeWaterHeater,waterHeaterFixture,tankTarget);
+ check(![...stack().querySelectorAll('[data-kind="schedule"] strong')].some(label=>label.textContent===tankTarget.keyValue),'tank control-temperature schedule leaked into the Boolean Availability stack');
+ frameAt(runtimeWaterHeater,'01-01 02:00');check(onOffPanel()===tankPanel&&tankReading(tankTemperature).textContent==='0 °C'&&tankReading(tankTarget).textContent==='0 °C'&&tankReading(tankRuntime).textContent==='0'&&tankPanel.querySelector('[data-hvac-runtime-decision-response]').textContent==='No activity reported','zero tank temperature, setpoint or heater duty retained a preceding frame or falsely reported activity');
+ check(mixedProvider.button.querySelector('[data-hvac-runtime-card-value]')?.textContent==='0 °C'&&host.querySelector('[data-hvac-runtime-trace="'+CSS.escape(tankTarget.id)+'"]')?.checked,'provider-card value/current-frame update stopped following its canonical typed target');
+ check(finalRow()?.dataset.state==='allowed','0°C tank target was rendered as an OFF availability condition');
+ frameAt(runtimeWaterHeater,'01-01 03:00');check(tankReading(tankTemperature).textContent==='62 °C'&&tankReading(tankTarget).textContent==='60 °C'&&tankReading(tankRuntime).textContent==='0.75'&&tankPanel.querySelector('[data-hvac-runtime-decision-response]').textContent==='Activity reported','heater duty/tank temperature did not follow the same native frame independently of the configured target');
+ const chooseLocal=fixture=>{const button=host.querySelector('.hvac-inspection-local-equipment [data-hvac-inspect-native-component="'+fixture.component.objectIndex+'"]');check(button,'authored local tank/wrapper is not selectable');button.click();};
+ const layeredFixture=fixtures.find(fixture=>fixture.family==='waterheater-stratified'),runtimeLayered=runtimeClone(fixtures,'waterheater-stratified'),layeredNodes=runtimeLayered.controlSignals.filter(signal=>signal.role==='sensor'&&/^Water Heater Temperature Node [24]$/.test(signal.variableName)),elementDuties=runtimeLayered.controlSignals.filter(signal=>signal.role==='activity'&&/Heater [12] Runtime Fraction/.test(signal.variableName));
+ for(const signal of layeredNodes)setReported(runtimeLayered,binding=>binding.id===signal.id,[signal.variableName.endsWith('2')?58:49]);setReported(runtimeLayered,signal=>signal.domain==='temperature_schedule'&&signal.keyValue==='Runtime Upper Target',[60]);setReported(runtimeLayered,signal=>signal.domain==='temperature_schedule'&&signal.keyValue==='Runtime Lower Target',[55]);
+ setReported(runtimeLayered,signal=>signal.role==='activity',[0]);for(const signal of elementDuties)setReported(runtimeLayered,binding=>binding.id===signal.id,[signal.variableName.includes('Heater 1')?.375:.25]);
+ state.simulationResult={...runtimeResult,runId:'runtime-layered-water-heater',purposeResults:{hvacLoops:[runtimeLayered]}};simulation.renderSimulation();chooseLocal(layeredFixture);
+ check(!host.querySelector('[data-hvac-runtime-error]')&&layeredNodes.length===2&&elementDuties.length===2&&layeredNodes.every(signal=>onOffPanel().querySelector('[data-hvac-runtime-value="'+CSS.escape(signal.id)+'"]')?.closest('.hvac-runtime-decision-reading').querySelector('strong').textContent==='Tank node '+signal.variableName.at(-1)+' (interval average)')&&elementDuties.every(signal=>onOffPanel().querySelector('[data-hvac-runtime-value="'+CSS.escape(signal.id)+'"]')?.textContent===(signal.variableName.includes('Heater 1')?'0.38':'0.25')),'stratified UI merged distinct native sensor nodes or failed to present individual continuous heater duties');
+ for(const target of runtimeLayered.controlSignals.filter(signal=>signal.role==='setpoint'&&signal.domain==='temperature_schedule'))clickTemperatureProvider(runtimeLayered,layeredFixture,target);
+ for(const family of ['waterheater-hpwh-pumped','waterheater-hpwh-wrapped']){
+  const fixture=fixtures.find(fixture=>fixture.family===family),captured=runtimeClone(fixtures,family),backup=fixture.sources.find(source=>source.objectType==='WaterHeater:Mixed'),control=captured.controlSignals.find(signal=>signal.variableName==='Water Heater Heat Pump Control Tank Temperature'),compressor=captured.controlSignals.find(signal=>signal.role==='activity'&&signal.variableName==='Water Heater Compressor Part Load Ratio');
+  setReported(captured,signal=>signal.id===control.id,[54,60,56,58]);setReported(captured,signal=>signal.domain==='temperature_schedule',[60]);setReported(captured,signal=>signal.id===compressor.id,[.5,0,.25,1]);
+  const compressorSeries=captured.controlSeries.find(series=>series.sourceId===compressor.seriesId),backupDutySeries={...structuredClone(compressorSeries),sourceId:family+'-backup-duty',keyValue:backup.objectName,name:'Water Heater Runtime Fraction',column:backup.objectName+':Water Heater Runtime Fraction [](Timestep)'};backupDutySeries.points.forEach(point=>point.value=0);
+  const backupDuty={...compressor,id:family+'-backup-duty-binding',source:backup,keyValue:backup.objectName,variableName:backupDutySeries.name,seriesId:backupDutySeries.sourceId};captured.controlSeries.push(backupDutySeries);captured.controlSignals.push(backupDuty);
+  state.simulationResult={...runtimeResult,runId:'runtime-'+family,purposeResults:{hvacLoops:[captured]}};simulation.renderSimulation();chooseLocal(fixture);
+  const panel=onOffPanel(),reading=binding=>panel.querySelector('[data-hvac-runtime-value="'+CSS.escape(binding.id)+'"]');
+  check(!host.querySelector('[data-hvac-runtime-error]')&&reading(control)?.textContent==='54 °C'&&reading(control).closest('.hvac-runtime-decision-reading').querySelector('strong').textContent==='Control tank temperature (interval average)'&&reading(compressor)?.textContent==='0.5'&&reading(backupDuty)?.textContent==='0'&&panel.querySelector('[data-hvac-runtime-decision-response]').textContent==='Activity reported'&&host.querySelector('[data-hvac-runtime-activity]')?.dataset.hvacRuntimeActivity==='active','inactive backup element overrode own HPWH compressor activity/header or replaced its native control temperature: '+family);
+  clickTemperatureProvider(captured,fixture,captured.controlSignals.find(signal=>signal.role==='setpoint'&&signal.domain==='temperature_schedule'));
+  frame(1);check(onOffPanel()===panel&&reading(control).textContent==='60 °C'&&reading(compressor).textContent==='0'&&panel.querySelector('[data-hvac-runtime-decision-response]').textContent==='No activity reported'&&host.querySelector('[data-hvac-runtime-activity]')?.dataset.hvacRuntimeActivity==='inactive','HPWH own compressor duty/control temperature failed to follow the common native frame: '+family);
+  const missing=structuredClone(captured);missing.controlSeries=missing.controlSeries.filter(series=>series.sourceId!==compressor.seriesId);setReported(missing,signal=>signal.id===backupDuty.id,[1]);state.simulationResult={...runtimeResult,runId:'runtime-'+family+'-missing-compressor',purposeResults:{hvacLoops:[missing]}};simulation.renderSimulation();chooseLocal(fixture);
+  check(host.querySelector('[data-hvac-runtime-error]')?.title.includes(compressor.variableName)&&onOffPanel().querySelector('[data-hvac-runtime-decision-response]')?.textContent==='—'&&host.querySelector('[data-hvac-runtime-activity]')?.dataset.hvacRuntimeActivity==='error','missing own compressor data borrowed child activity or displayed a raw/false activity state: '+family);
+ }
+ for(const variant of ['unavailable-typed-target','two-visible-aliases']){
+  const captured=structuredClone(runtimeWaterHeater),target=captured.controlSignals.find(signal=>signal.id===tankTarget.id);let second;
+  if(variant==='unavailable-typed-target'){target.status='missing';target.message='Required typed temperature target was not collected.';}
+  else{second={...target,id:'second-collected-temperature-alias',keyValue:target.keyValue.toUpperCase()};check(second.keyValue!==target.keyValue,'alias-count regression does not contain two distinct visible bindings');captured.controlSignals.push(second);}
+  state.simulationResult={...runtimeResult,runId:'runtime-provider-'+variant,purposeResults:{hvacLoops:[captured]}};simulation.renderSimulation();chooseEquipment(waterHeaterFixture);
+  const selected=clickTemperatureProvider(captured,waterHeaterFixture,target,true),history=host.querySelector('[data-hvac-runtime-history]'),typedToggle=history.querySelector('[data-hvac-runtime-trace="'+CSS.escape(target.id)+'"]');
+  check(!typedToggle.checked&&!history.querySelector('[data-hvac-chart-series="'+CSS.escape(target.id)+'"]')&&!typedToggle.closest('label').classList.contains('related'),'provider fallback arbitrarily selected or highlighted a typed target: '+variant);
+  if(second)check(!host.querySelector('[data-hvac-runtime-error]')&&!history.querySelector('[data-hvac-runtime-trace="'+CSS.escape(second.id)+'"]').checked&&!history.querySelector('[data-hvac-chart-series="'+CSS.escape(second.id)+'"]')&&selected.profile.signals.filter(signal=>signal.role==='setpoint'&&signal.domain==='temperature_schedule'&&signal.seriesId===target.seriesId&&signal.status==='collected').length===2,'ambiguous visible aliases were collapsed to an arbitrary target instead of retaining the valid provider');
+  else check(typedToggle.disabled&&host.querySelector('[data-hvac-runtime-error]')?.title.includes(target.variableName),'provider fallback hid required typed-target acquisition diagnostics');
+ }
+ const ambiguousProvider=structuredClone(runtimeWaterHeater),ambiguousNative=ambiguousProvider.controlSeries.find(series=>series.sourceId===tankTarget.seriesId);ambiguousProvider.controlSeries.push(structuredClone(ambiguousNative));state.simulationResult={...runtimeResult,runId:'runtime-provider-ambiguous-source',purposeResults:{hvacLoops:[ambiguousProvider]}};simulation.renderSimulation();chooseEquipment(waterHeaterFixture);
+ const ambiguousSelection=temperatureProvider(ambiguousProvider,waterHeaterFixture,tankTarget);ambiguousSelection.button.click();const ambiguousHistory=host.querySelector('[data-hvac-runtime-history]');
+ check(ambiguousSelection.provider.status==='ambiguous'&&ambiguousSelection.typed.status==='ambiguous'&&host.querySelector('[data-hvac-runtime-error]')?.title.includes(tankTarget.variableName)&&[ambiguousSelection.provider,ambiguousSelection.typed].every(signal=>ambiguousHistory.querySelector('[data-hvac-runtime-trace="'+CSS.escape(signal.id)+'"]')?.disabled&&!ambiguousHistory.querySelector('[data-hvac-chart-series="'+CSS.escape(signal.id)+'"]')),'ambiguous native source acquired an arbitrary provider/target path or lost required acquisition diagnostics');
  const iconOnly=withHourly(runtimeClone(fixtures,'fan'),fanFixture);iconOnly.components=[];
  state.simulationResult={...runtimeResult,runId:'runtime-native-icon',purposeResults:{hvacLoops:[iconOnly]}};simulation.renderSimulation();
  const nativeIcon=host.querySelector('[data-hvac-inspect-native-component="'+fanFixture.component.objectIndex+'"]');check(nativeIcon,'equipment with no Hourly response lacks clickable native loop icon');
@@ -498,6 +635,7 @@ try{
   if(review.get('transitions')==='1')nativeStatusTransitions(captured);
   if(family==='coil'){setReported(captured,signal=>signal.role==='sensor'&&/temperature/i.test(signal.variableName),[20]);coilTemperature(captured,'Air Inlet Node Name',[10]);coilTemperature(captured,'Air Outlet Node Name',[20]);coilTemperature(captured,'Water Inlet Node Name',[82]);setReported(captured,signal=>signal.role==='setpoint',[20]);setReported(captured,signal=>signal.role==='actuator_request',[.8]);setReported(captured,signal=>signal.role==='actuator',[.3]);}
   if(family==='chiller'){setReported(captured,signal=>signal.role==='demand',[20000]);setReported(captured,signal=>signal.role==='dispatch',[-6000]);setReported(captured,signal=>signal.role==='activity',[0]);}
+  if(family==='waterheater'){setReported(captured,signal=>signal.role==='sensor'&&/temperature/i.test(signal.variableName),[99]);setReported(captured,signal=>signal.variableName==='Water Heater Tank Temperature',[58.5]);setReported(captured,signal=>signal.domain==='temperature_schedule',[60]);setReported(captured,signal=>signal.role==='activity',[1000]);setReported(captured,signal=>signal.variableName==='Water Heater Runtime Fraction',[.025]);}
   const {setLanguage}=await import('/src/js/i18n.js');setLanguage(review.get('language')||'en');document.documentElement.dataset.theme=review.get('theme')||'dark';
   state.simulationResult={...runtimeResult,runId:'runtime-review-'+family,purposeResults:{hvacLoops:[captured]}};simulation.renderSimulation();chooseEquipment(fixture);if(review.get('review')!=='error')frame(1);
   if(review.get('focus')==='control')host.querySelector('[data-hvac-runtime-control]')?.scrollIntoView({block:'start'});

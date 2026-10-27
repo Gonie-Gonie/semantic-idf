@@ -65,6 +65,11 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
+- Water-heater operating decisions collect native tank/control temperatures,
+  source-backed temperature targets and heater/compressor duty evidence.
+  Stratified nodes and individual heaters retain their identities; heat-pump
+  operation is separated from backup heating, without inferring ON/OFF from
+  averaged temperature or relabeling it as an exact interval-end state.
 - HVAC node charts reflow into one to three columns with bounded drawing height,
   preserving font size, controls and existing chart state on resize. Equipment
   inspection restores the On / Off decision graph beside permission, native

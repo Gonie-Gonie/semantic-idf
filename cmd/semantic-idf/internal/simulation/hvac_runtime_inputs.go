@@ -1,6 +1,9 @@
 package simulation
 
 import (
+	"fmt"
+	"math"
+	"strconv"
 	"strings"
 
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/idf"
@@ -10,6 +13,145 @@ import (
 // replacement implementation of its timer, adaptive history or solver logic.
 type hvacRuntimeReasonInput struct {
 	role, parameter, key, variable string
+}
+
+// Tank thermostat quantities are distinct from plant dispatch and fluid-port
+// temperatures. Native tank temperatures and duties below are reported interval
+// quantities; they never reconstruct the solver's internal hysteresis state.
+func hvacRuntimeWaterHeaterObservations(component idf.HVACOperatingSource, doc *idf.Document) []HVACControlSignalBinding {
+	if doc == nil {
+		return nil
+	}
+	var object *idf.Object
+	for i := range doc.Objects {
+		candidate := &doc.Objects[i]
+		if candidate.Index == component.ObjectIndex && strings.EqualFold(candidate.Type, component.ObjectType) && len(candidate.Fields) > 0 && strings.EqualFold(strings.TrimSpace(candidate.Fields[0].Value), component.ObjectName) {
+			if object != nil {
+				return nil
+			}
+			object = candidate
+		}
+	}
+	if object == nil {
+		return nil
+	}
+	field := func(index int) string {
+		if index >= len(object.Fields) {
+			return ""
+		}
+		return strings.TrimSpace(object.Fields[index].Value)
+	}
+	var observations []HVACControlSignalBinding
+	add := func(role, domain, parameter, key, variable string) {
+		if key == "" {
+			return
+		}
+		observations = append(observations, HVACControlSignalBinding{Graph: "onOff", NodeID: "demand", Role: role, Domain: domain, Source: component, ParameterName: parameter, KeyValue: key, VariableName: variable})
+	}
+	target := func(index int, name string) {
+		add("setpoint", "temperature_schedule", name, field(index), "Schedule Value")
+	}
+	switch strings.ToLower(object.Type) {
+	case "waterheater:mixed":
+		add("sensor", "continuous", "Tank temperature (interval average)", component.ObjectName, "Water Heater Tank Temperature")
+		target(2, "Setpoint Temperature Schedule Name")
+	case "waterheater:stratified":
+		target(8, "Heater 1 Setpoint Temperature Schedule Name")
+		target(12, "Heater 2 Setpoint Temperature Schedule Name")
+		for _, number := range hvacRuntimeStratifiedTemperatureNodes(*object) {
+			add("sensor", "continuous", "Tank temperature node (interval average)", component.ObjectName, fmt.Sprintf("Water Heater Temperature Node %d", number))
+		}
+	case "waterheater:heatpump:pumpedcondenser", "waterheater:heatpump:wrappedcondenser":
+		typeIndex, nameIndex := 16, 17
+		if strings.EqualFold(object.Type, "WaterHeater:HeatPump:WrappedCondenser") {
+			typeIndex, nameIndex = 15, 16
+		}
+		tankType, tankName := field(typeIndex), field(nameIndex)
+		if !strings.EqualFold(tankType, "WaterHeater:Mixed") && !strings.EqualFold(tankType, "WaterHeater:Stratified") {
+			return nil
+		}
+		matches := 0
+		for _, tank := range doc.Objects {
+			if strings.EqualFold(tank.Type, tankType) && len(tank.Fields) > 0 && strings.EqualFold(strings.TrimSpace(tank.Fields[0].Value), tankName) {
+				matches++
+			}
+		}
+		if matches != 1 {
+			return nil
+		}
+		// SetupWaterHeaterOutputVars registers these with HPWH.Name, unlike
+		// backup-element tank temperature/runtime outputs owned by Tank.Name.
+		add("sensor", "continuous", "Heat pump control tank temperature (interval average)", component.ObjectName, "Water Heater Heat Pump Control Tank Temperature")
+		target(2, "Compressor Setpoint Temperature Schedule Name")
+	}
+	return observations
+}
+
+// Native SetupStratifiedNodes divides vertical/Other tanks into equal-height
+// nodes numbered top-down, then assigns each element to (lower, upper]. Reuse
+// that exact simple geometry only when its numeric inputs are declared. The
+// horizontal solver uses a nonlinear geometry; retain its native node identities
+// instead of assigning an approximate heater sensor or substituting tank mean.
+func hvacRuntimeStratifiedTemperatureNodes(object idf.Object) []int {
+	field := func(index int) string {
+		if index >= len(object.Fields) {
+			return ""
+		}
+		return strings.TrimSpace(object.Fields[index].Value)
+	}
+	count := 1 // Native 24.2 IDD default for Number of Nodes.
+	if value := field(51); value != "" {
+		parsed, err := strconv.ParseFloat(value, 64)
+		if err != nil || parsed < 1 || parsed > 12 || math.Trunc(parsed) != parsed {
+			return nil
+		}
+		count = int(parsed)
+	}
+	all := make([]int, count)
+	for i := range all {
+		all[i] = i + 1
+	}
+	shape := field(4)
+	if shape != "" && !strings.EqualFold(shape, "VerticalCylinder") && !strings.EqualFold(shape, "Other") {
+		return all
+	}
+	height, err := strconv.ParseFloat(field(3), 64)
+	if err != nil || height <= 0 || math.IsNaN(height) || math.IsInf(height, 0) {
+		return all
+	}
+	selected := map[int]bool{}
+	for _, index := range []int{11, 15} {
+		value := field(index)
+		if value == "" {
+			value = "0"
+		} // Native numeric blank height is zero.
+		position, err := strconv.ParseFloat(value, 64)
+		if err != nil || position < 0 || position > height || math.IsNaN(position) || math.IsInf(position, 0) {
+			return all
+		}
+		upper := height
+		for number := 1; number <= count; number++ {
+			lower := upper - height/float64(count)
+			if number == count {
+				lower = -1
+			}
+			if position <= upper && position > lower {
+				selected[number] = true
+				break
+			}
+			upper = lower
+		}
+	}
+	if len(selected) == 0 {
+		return all
+	}
+	var nodes []int
+	for number := 1; number <= count; number++ {
+		if selected[number] {
+			nodes = append(nodes, number)
+		}
+	}
+	return nodes
 }
 
 func hvacRuntimeHasPlantDispatch(profile idf.HVACOperatingProfile, loop idf.HVACLoop, component idf.HVACOperatingSource) bool {
