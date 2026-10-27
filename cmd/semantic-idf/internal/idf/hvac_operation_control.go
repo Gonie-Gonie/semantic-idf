@@ -78,7 +78,16 @@ func (b *hvacOperatingBuilder) control(occ hvacOperatingOccurrence, layers []HVA
 	b.addZoneDispatch(&g, occ, decision)
 	if dispatch, ok := b.dispatch(occ); ok {
 		for _, choice := range dispatch.choices {
-			id := g.node(fmt.Sprintf("dispatch:%d", choice.operation.Index), "dispatch", "plant_dispatch", choice.operation, hvacOperatingDispatchParameters(choice, occ.object))
+			parameters := hvacOperatingDispatchParameters(choice, occ.object)
+			if occ.loop != nil {
+				owner := b.objects[occ.loop.ObjectIndex]
+				for _, name := range []string{"Load Distribution Scheme", "Plant Loop Demand Calculation Scheme"} {
+					if parameter, found := hvacOperatingNamedParameter(owner, name); found {
+						parameters = append(parameters, parameter)
+					}
+				}
+			}
+			id := g.node(fmt.Sprintf("dispatch:%d", choice.operation.Index), "dispatch", "plant_dispatch", choice.operation, parameters)
 			g.edge(id, decision, "dispatches")
 		}
 	}
@@ -228,7 +237,7 @@ func hvacOperatingFallbackFieldName(obj Object, index int) string {
 	switch {
 	case strings.HasPrefix(lower, "availabilitymanager:scheduled") && index == 1:
 		return "Schedule Name"
-	case lower == "plantequipmentlist":
+	case lower == "plantequipmentlist" || lower == "condenserequipmentlist":
 		if index%2 == 1 {
 			return "Equipment Object Type"
 		}

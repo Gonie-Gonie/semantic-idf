@@ -229,6 +229,10 @@ export function prepareHVACRuntimeInspection(loop = {}) {
     const values = { get(key) {
       const offset = offsets.get(key), value = offset === null || offset === undefined ? null : axis.values[offset];
       return finite(value) && !(/setpoint/i.test(signal.variableName) && !hasHVACTemperatureSetpoint(value)) ? value * signal.factor : null;
+    }, nativeInterval(key) {
+      const offset = offsets.get(key), frame = byRow.get(key);
+      return offset !== null && offset !== undefined && String(axis.labels[offset]) === frame?.label
+        ? nativeMetadata(nativeIntervalsFor(signal.series), offset, axis.rows.length) : null;
     } };
     alignedValues.set(signal.series, values); return values;
   };
@@ -376,6 +380,62 @@ function evaluatePermission(profile, observed, expression, depth = 0, domain = "
 
 export function hvacRuntimePermission(profile, signals, expression, domain = "boolean") { return evaluatePermission(profile, signals, expression, 0, domain); }
 
+const unique = (entries) => entries.length === 1 ? entries[0] : undefined;
+const graphNode = (graph, id) => unique((graph.nodes || []).filter((node) => node.id === id));
+const nodeParameter = (node, name) => unique((node.parameters || []).filter((parameter) => token(parameter.name) === name
+  && parameter.objectIndex === sourceIndex(node.source)))?.value;
+
+function residualInput(graph, observed, node, relation, role) {
+  const edge = unique((graph.edges || []).filter((entry) => entry.to === node.id && entry.relation === relation));
+  const input = edge && graphNode(graph, edge.from);
+  return input && unique(observed.filter((signal) => signal.graph === "parameterControl" && signal.nodeId === input.id
+    && sameSource(signal.source, input.source) && signal.role === role && signal.status === "collected" && finite(signal.value)
+    && token(signal.variableName) === (role === "sensor" ? "system node temperature" : "system node setpoint temperature")));
+}
+
+// These differences describe the reported air stream, not an unobserved
+// no-control state or the controller's internal root-finder iterations.
+function waterCoilThermal(model, profile, observed, frame, residual) {
+  const graph = profile.definition.parameterControl, edges = graph.edges || [];
+  const next = (node, relation) => {
+    if (!node) return;
+    const edge = unique(edges.filter((entry) => entry.from === node?.id && entry.relation === relation));
+    return edge && graphNode(graph, edge.to);
+  };
+  const comparison = graphNode(graph, residual.id), controller = next(comparison, "compares"), command = next(controller, "determines_command"), equipment = next(command, "actuates");
+  if (token(controller?.source?.objectType) !== "controller:watercoil" || controller?.code !== "feedback_controller"
+    || !sameSource(controller.source, residual.source) || command?.code !== "water_flow_command" || !sameSource(command.source, controller.source)
+    || equipment?.code !== "equipment_response" || !sameSource(equipment.source, profile.source)
+    || !/^coil:(heating|cooling):water(?:$|:)/.test(token(equipment.source.objectType))) return;
+  const port = (direction) => unique((graph.nodes || []).filter((node) => node.code === `${direction}_state` && sameSource(node.source, equipment.source)
+    && token(nodeParameter(node, `air ${direction} node name`))
+    && edges.filter((edge) => edge.relation === `${direction}_conditions`
+      && (direction === "inlet" ? edge.from === node.id && edge.to === equipment.id : edge.from === equipment.id && edge.to === node.id)).length === 1));
+  const inletNode = port("inlet"), outletNode = port("outlet");
+  if (!inletNode || !outletNode || residual.sensor.nodeId !== outletNode.id
+    || token(residual.sensor.keyValue) !== token(nodeParameter(outletNode, "air outlet node name"))) return;
+  const inlet = unique(observed.filter((signal) => signal.graph === "parameterControl" && signal.nodeId === inletNode.id
+    && sameSource(signal.source, equipment.source) && signal.role === "sensor" && signal.status === "collected" && finite(signal.value)
+    && token(signal.variableName) === "system node temperature" && token(signal.keyValue) === token(nodeParameter(inletNode, "air inlet node name"))));
+  if (!inlet || inlet.unit !== residual.sensor.unit) return;
+  const interval = (signal) => {
+    if (!frame?.metadata || fileKey(signal.series) !== model.primary || cadence(signal.reportingFrequency) !== cadence(frame.frequency)) return;
+    const metadata = signal.values.nativeInterval?.(frame.key);
+    return metadata && sameEnvironment(metadata, frame.metadata) && metadata.simulationDays === frame.metadata.simulationDays
+      && metadata.timeIndex === frame.metadata.timeIndex && metadata.intervalMinutes === frame.metadata.intervalMinutes ? metadata : undefined;
+  };
+  const inletInterval = interval(inlet);
+  const paired = (signal) => {
+    const other = interval(signal);
+    return inletInterval && other && fileKey(signal.series) === fileKey(inlet.series)
+      && other.timeIndex === inletInterval.timeIndex && other.intervalMinutes === inletInterval.intervalMinutes;
+  };
+  const thermal = { inlet, outlet: residual.sensor, unit: "K" };
+  if (token(residual.setpoint.keyValue) === token(residual.sensor.keyValue) && paired(residual.setpoint)) thermal.inletToTarget = residual.setpoint.value - inlet.value;
+  if (paired(residual.sensor)) thermal.inletToOutlet = residual.sensor.value - inlet.value;
+  return "inletToTarget" in thermal || "inletToOutlet" in thermal ? thermal : undefined;
+}
+
 export function hvacRuntimeSnapshot(model, profileID, frameIndex = 0) {
   const profile = profileID === undefined ? model.profiles[0] : model.profiles.find((entry) => entry.id === String(profileID));
   const frame = Number.isInteger(frameIndex) && frameIndex >= 0 ? model.frames[frameIndex] : undefined;
@@ -399,13 +459,13 @@ export function hvacRuntimeSnapshot(model, profileID, frameIndex = 0) {
   const demand = observed.filter((signal) => signal.role === "demand" && finite(signal.value)), residuals = [];
   for (const node of profile.definition.parameterControl?.nodes || []) {
     if (node.code !== "sensed_minus_setpoint") continue;
-    const input = (relation, role) => {
-      const edge = profile.definition.parameterControl.edges.find((entry) => entry.to === node.id && entry.relation === relation);
-      const candidates = observed.filter((signal) => signal.role === role && signal.graph === "parameterControl" && finite(signal.value) && /temperature/i.test(signal.variableName));
-      return candidates.find((signal) => signal.nodeId === edge?.from) || candidates.find((signal) => sourceIndex(signal.source) === sourceIndex(node.source));
-    };
-    const sensor = input("adds_measurement", "sensor"), setpoint = input("subtracts_target", "setpoint");
-    if (sensor && setpoint && sensor.unit === setpoint.unit) residuals.push({ id: node.id, source: node.source, sensor, setpoint, value: sensor.value - setpoint.value, unit: sensor.unit });
+    const graph = profile.definition.parameterControl, sensor = residualInput(graph, observed, node, "adds_measurement", "sensor"), setpoint = residualInput(graph, observed, node, "subtracts_target", "setpoint");
+    if (sensor && setpoint && sensor.unit === setpoint.unit) {
+      const residual = { id: node.id, source: node.source, sensor, setpoint, value: sensor.value - setpoint.value, unit: sensor.unit };
+      const thermal = waterCoilThermal(model, profile, observed, frame, residual);
+      if (thermal) residual.thermal = thermal;
+      residuals.push(residual);
+    }
   }
   const reason = errors.length ? "acquisition_error" : profile.definition.onOffExpression?.op === "passive_flow" ? "passive_flow" : activity === "not_collected" ? "reported_controls" : permission.state === "blocked" ? activity === "active" ? "permission_activity_conflict" : "permission_blocked"
     : activity === "active" ? "reported_activity" : demand.length && demand.every((signal) => Math.abs(signal.value) < 1e-8) ? "zero_reported_demand" : "reported_inactivity";

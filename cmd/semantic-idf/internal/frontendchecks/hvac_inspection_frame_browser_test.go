@@ -84,7 +84,7 @@ func hvacRuntimeBrowserResult(t *testing.T, input string, fixture hvacRuntimeBro
 			value, unit = 20, "C"
 		case "actuator", "actuator_request":
 			unit = "kg/s"
-		case "demand", "activity":
+		case "demand", "dispatch", "activity":
 			value, unit = 1000, "W"
 		}
 		lower := strings.ToLower(name)
@@ -214,6 +214,8 @@ func TestHVACInspectionSharedFrameActualAppBrowser(t *testing.T) {
 		for _, capture := range []struct{ name, query, viewport string }{
 			{"fan-loop-dark.png", "?review=fan", "1900,1300"},
 			{"coil-control-dark.png", "?review=coil&focus=control", "2560,1500"},
+			{"coil-control-narrow.png", "?review=coil&focus=control", "1360,1200"},
+			{"chiller-onoff-dispatch.png", "?review=chiller&focus=onoff", "1900,1400"},
 			{"chiller-availability-ko-light.png", "?review=chiller&focus=availability&language=ko&theme=light", "1900,1400"},
 			{"missing-required.png", "?review=error&focus=error", "1600,1200"},
 			{"fan-availability-narrow.png", "?review=fan&focus=availability", "1360,1200"},
@@ -221,6 +223,9 @@ func TestHVACInspectionSharedFrameActualAppBrowser(t *testing.T) {
 			{"fan-native-substeps.png", "?review=fan&focus=availability&transitions=1", "1900,1400"},
 			{"coil-legend-highlight.png", "?review=coil&focus=history&legend=1", "2560,1500"},
 		} {
+			if filter := os.Getenv("HVAC_RUNTIME_CAPTURE_FILTER"); filter != "" && !strings.Contains(","+filter+",", ","+capture.name+",") {
+				continue
+			}
 			path, err := filepath.Abs(filepath.Join(directory, capture.name))
 			if err != nil {
 				t.Fatal(err)
@@ -294,6 +299,7 @@ try{
 
  // The loop's Hourly cursor is shared; history retains native Timestep data.
  const fixtures=await(await fetch('/runtime-fixtures')).json(),fixturesBefore=JSON.stringify(fixtures),fanFixture=fixtures.find(fixture=>fixture.family==='fan'),coilFixture=fixtures.find(fixture=>fixture.family==='coil'),chillerFixture=fixtures.find(fixture=>fixture.family==='chiller'),localFixture=fixtures.find(fixture=>fixture.family==='local');
+ const {prepareHVACInspection}=await import('/src/js/hvac-inspection-data.js'),frameAt=(captured,wanted)=>{const index=prepareHVACInspection(captured).frames.findIndex(frame=>frame.label===wanted);check(index>=0,'main result lacks native frame '+wanted);frame(index);};
  const nativeMember=fixture=>[fixture.topology.supplySide,fixture.topology.demandSide].flatMap(side=>side?.branches||[]).flatMap(branch=>branch.components||[]).find(item=>item.objectType===fixture.component.objectType&&item.objectName===fixture.component.objectName);
  const hourlySeries=(fixture,key,name,unit,values)=>({name,keyValue:key,file:'eplusout.sql',column:key+':'+name+' ['+unit+'](Hourly)',reportingFrequency:'Hourly',points:[1,2,3].map((hour,index)=>({x:hour,label:'01-01 0'+hour+':00',value:values[index%values.length]}))});
  const withHourly=(captured,fixture)=>{
@@ -313,6 +319,11 @@ try{
   const nodes=new Set(base.series.map(signature));for(const series of other.series)if(!nodes.has(signature(series))){nodes.add(signature(series));base.series.push(series);}return base;
  };
  const runtimeFan=mergeEquipment(withHourly(runtimeClone(fixtures,'fan'),fanFixture),withHourly(runtimeClone(fixtures,'coil'),coilFixture)),runtimeChiller=withHourly(runtimeClone(fixtures,'chiller'),chillerFixture);
+ const chillerDispatch=runtimeChiller.controlSignals.find(signal=>signal.role==='dispatch'&&signal.graph==='onOff'&&signal.nodeId==='decision'&&signal.source.objectIndex===chillerFixture.component.objectIndex&&signal.source.objectType===chillerFixture.component.objectType&&signal.source.objectName===chillerFixture.component.objectName);
+ check(chillerDispatch?.variableName==='Plant Component Distributed Demand Rate'&&chillerDispatch.keyValue===chillerFixture.component.objectName&&chillerDispatch.reportingFrequency==='Timestep'&&chillerDispatch.required,'plant dispatch is not bound to the exact selected component native assignment');
+ setReported(runtimeChiller,signal=>signal.role==='demand',[20000]);setReported(runtimeChiller,signal=>signal.role==='dispatch',[0,0,0,0,-6000,-6000,-6000,-6000,-6000,-6000,-6000,-6000]);
+ setReported(runtimeChiller,signal=>signal.role==='activity',[0,0,0,0,0,0,0,0,6000,6000,6000,6000]);
+ for(const signal of runtimeChiller.controlSignals.filter(signal=>signal.role==='activity'&&/ratio|fraction/i.test(signal.variableName)))setReported(runtimeChiller,entry=>entry.id===signal.id,[0,0,0,0,0,0,0,0,.6,.6,.6,.6]);
  const managerBinding=runtimeFan.controlSignals.find(signal=>signal.componentIndex===fanFixture.component.objectIndex&&signal.role==='manager_status');check(managerBinding,'native fan lacks its manager');
  const fanGate=expressionNodes(fanFixture.profile.finalAvailability).find(expression=>expression.op==='fan_gate'),ownSchedule=expressionNodes(fanGate?.children?.[1]).find(expression=>expression.op==='schedule_positive')?.scheduleName;check(ownSchedule,'native fan lacks its own schedule');
  setReported(runtimeFan,signal=>signal.role==='schedule'&&signal.keyValue.toLowerCase()===ownSchedule.toLowerCase(),[1,1,1,1,0,0,0,0,1,1,1,1]);
@@ -334,7 +345,7 @@ try{
  state.simulationResult=runtimeResult;simulation.renderSimulation();
  const componentTarget=fixture=>[...host.querySelectorAll('[data-hvac-inspect-component]')].find(target=>target.dataset.hvacInspectPointName===fixture.component.objectName&&target.dataset.hvacInspectComponent.toLowerCase().includes(fixture.component.objectType.toLowerCase()));
  const chooseEquipment=fixture=>{const target=componentTarget(fixture);check(target,'typed equipment is not clickable: '+fixture.component.objectName);target.dispatchEvent(new MouseEvent('click',{bubbles:true}));};
- const runtimePanel=()=>host.querySelector('[data-hvac-runtime]'),stack=()=>host.querySelector('[data-hvac-runtime-availability]'),finalRow=()=>stack()?.querySelector('[data-hvac-runtime-availability-row="final-availability"]');
+ const runtimePanel=()=>host.querySelector('[data-hvac-runtime]'),stack=()=>host.querySelector('[data-hvac-runtime-availability]'),finalRow=()=>stack()?.querySelector('[data-hvac-runtime-availability-row="final-availability"]'),onOffPanel=()=>host.querySelector('[data-hvac-runtime-onoff]');
  const bottomFrame=()=>{const control=slider()?.closest('.hvac-inspection-frame-control'),snapshot=host.querySelector('[data-hvac-inspect-snapshot]'),custom=host.querySelector('.hvac-inspection-custom');return control&&snapshot&&custom&&Boolean(snapshot.compareDocumentPosition(control)&Node.DOCUMENT_POSITION_FOLLOWING)&&Boolean(custom.compareDocumentPosition(control)&Node.DOCUMENT_POSITION_FOLLOWING)&&(!runtimePanel()||Boolean(runtimePanel().compareDocumentPosition(control)&Node.DOCUMENT_POSITION_FOLLOWING));};
  check(host.querySelector('[data-hvac-inspect-topology]')&&!runtimePanel(),'default result is not basic loop view');
  check(!host.querySelector('select[data-hvac-inspect-view], select[data-hvac-runtime-profile], [data-hvac-runtime-frame]'),'loop view retained separate view/equipment/time selectors');
@@ -344,6 +355,9 @@ try{
  check(runtimePanel()&&host.querySelector('[data-hvac-inspect-topology]')&&host.querySelector('[data-hvac-runtime-control]')&&host.querySelector('[data-hvac-runtime-history]'),'equipment selection replaced loop instead of inline control history');
  check(!host.textContent.includes('EDITOR MODEL MUST NOT APPEAR')&&!host.textContent.includes('FOREIGN LOOP MUST NOT APPEAR')&&runtimePanel().textContent.includes(fanFixture.component.objectName),'equipment selection borrowed editor/foreign-loop profile');
  check(!host.querySelector('[data-hvac-runtime-error]')&&bottomFrame(),'exact-time controls failed or frame moved above details');
+ const nativeFanConditions=expressionNodes(fanFixture.profile.onOffExpression).filter(expression=>expression.referenceId),fanCommand=onOffPanel()?.querySelector('[data-hvac-boolean-definition="command"]');
+ check(onOffPanel()&&onOffPanel().querySelector('[data-hvac-operation-graph="onoff"]')&&nativeFanConditions.length&&nativeFanConditions.every(expression=>fanCommand?.querySelector('[data-hvac-inspect-condition="'+CSS.escape(expression.referenceId)+'"]'))&&fanCommand.querySelector('[data-hvac-expression-reference="availability"]'),'runtime OnOff panel omitted the executed native condition AST or availability operand');
+ check(!stack().contains(onOffPanel())&&!onOffPanel().contains(stack())&&onOffPanel().querySelector('[data-hvac-runtime-decision-permission]').textContent==='Allowed'&&onOffPanel().querySelector('[data-hvac-runtime-decision-response]').textContent==='Activity reported','run permission, native decision inputs and reported operation were conflated');
  const resultBounds=host.closest('.result-pane').getBoundingClientRect(),bounded=[stack(),slider().closest('.hvac-inspection-frame-control'),host.querySelector('[data-hvac-inspect-frame-label]')];
  check(bounded.every(element=>{const rect=element.getBoundingClientRect();return rect.left>=resultBounds.left-1&&rect.right<=resultBounds.right+1;}),'loop min-content widened schedule/status/frame beyond visible pane: '+JSON.stringify({pane:[resultBounds.left,resultBounds.right],items:bounded.map(element=>{const rect=element.getBoundingClientRect();return [element.className,rect.left,rect.right];})}));
  check(host.querySelector('[data-hvac-inspect-basic-charts]')===nodeCharts&&host.querySelector('[data-hvac-inspect-custom-controls]')===customControls&&JSON.stringify([...host.querySelectorAll('[data-hvac-inspect-node-visible]')].map(input=>input.dataset.hvacInspectNodeVisible))===JSON.stringify(nodeToggles),'equipment selection changed existing node UI');
@@ -376,17 +390,35 @@ try{
  chooseEquipment(coilFixture);check(runtimePanel()?.textContent.includes(coilFixture.component.objectName)&&!host.querySelector('[data-hvac-runtime-error]'),'same-loop equipment did not select exact controls');
  select(runtimeChiller.name);check(label()==='01-01 03:00'&&!runtimePanel(),'loop switch retained another circuit equipment');chooseEquipment(chillerFixture);
  check(runtimePanel()?.textContent.includes(chillerFixture.component.objectName)&&!host.querySelector('[data-hvac-runtime-error]'),'chiller borrowed fan/coil profile');
+ const chillerDecision=onOffPanel(),decisionReading=binding=>chillerDecision.querySelector('[data-hvac-runtime-value="'+CSS.escape(binding.id)+'"]')?.textContent,chillerDemand=runtimeChiller.controlSignals.find(signal=>signal.role==='demand'&&chillerDecision.querySelector('[data-hvac-runtime-value="'+CSS.escape(signal.id)+'"]')),chillerActivity=runtimeChiller.controlSignals.find(signal=>signal.role==='activity'&&/evaporator cooling rate/i.test(signal.variableName));
+ check(chillerActivity&&chillerDecision.querySelector('[data-hvac-inspect-condition="decision"]')&&chillerDecision.querySelector('[data-hvac-boolean-definition="command"]'),'chiller native load-dispatch decision is missing from the runtime AST');
+ frameAt(runtimeChiller,'01-01 01:00');check(finalRow()?.dataset.state==='allowed'&&decisionReading(chillerDispatch)==='0.00 kW'&&decisionReading(chillerDemand)==='20.00 kW'&&decisionReading(chillerActivity)==='0.00 kW'&&chillerDecision.querySelector('[data-hvac-runtime-decision-response]').textContent==='No activity reported','positive whole-loop demand was mistaken for component assignment or operation');
+ const operationFormula=chillerDecision.querySelector('[data-hvac-boolean-definition="availability"]'),commandFormula=chillerDecision.querySelector('[data-hvac-boolean-definition="command"]'),minimumPermission=chillerDecision.querySelector('[data-hvac-runtime-decision-permission]');
+ check(operationFormula?.querySelector('.hvac-expression-lhs')?.textContent==='Operation conditions'&&commandFormula?.querySelector('[data-hvac-expression-reference="availability"]')?.textContent==='Operation conditions'&&minimumPermission.closest('article').querySelector('h5')?.textContent==='Availability'&&minimumPermission.textContent==='Allowed'&&operationFormula.querySelector('[data-hvac-condition-reason="runtime_dispatch"]'),'zero dispatched load conflated native operation conditions with minimum Availability, or On command references a different formula label');
+ frameAt(runtimeChiller,'01-01 02:00');check(onOffPanel()===chillerDecision&&decisionReading(chillerDispatch)==='-6.00 kW'&&decisionReading(chillerDemand)==='20.00 kW'&&decisionReading(chillerActivity)==='0.00 kW'&&chillerDecision.querySelector('[data-hvac-runtime-decision-response]').textContent==='No activity reported','signed cooling assignment was lost, inferred actual equipment operation or failed to follow the frame: '+JSON.stringify({samePanel:onOffPanel()===chillerDecision,dispatch:decisionReading(chillerDispatch),demand:decisionReading(chillerDemand),activity:decisionReading(chillerActivity),response:chillerDecision.querySelector('[data-hvac-runtime-decision-response]').textContent,label:label()}));
+ frameAt(runtimeChiller,'01-01 03:00');check(onOffPanel()===chillerDecision&&decisionReading(chillerDispatch)==='-6.00 kW'&&decisionReading(chillerActivity)==='6.00 kW'&&chillerDecision.querySelector('[data-hvac-runtime-decision-response]').textContent==='Activity reported','reported operation did not update independently of permission and signed dispatch');
  select(runtimeFan.name);check(label()==='01-01 03:00','loop switch discarded shared time');
  state.simulationResult={...runtimeResult,runId:'runtime-2'};simulation.renderSimulation();check(slider().value==='0'&&label()==='01-01 01:00'&&!runtimePanel(),'new run retained prior time/equipment');
+ const coilTemperature=(captured,field,values)=>{
+  const definition=captured.operatingProfiles.find(profile=>profile.componentIndex===coilFixture.component.objectIndex&&profile.loopId===coilFixture.profile.loopId),node=definition.parameterControl.nodes.find(node=>node.source.objectIndex===coilFixture.component.objectIndex&&node.source.objectType===coilFixture.component.objectType&&node.source.objectName===coilFixture.component.objectName&&node.parameters?.some(parameter=>parameter.name===field&&parameter.objectIndex===coilFixture.component.objectIndex));
+  check(node,'native coil lacks distinct '+field);setReported(captured,signal=>signal.graph==='parameterControl'&&signal.nodeId===node.id&&signal.role==='sensor'&&signal.variableName==='System Node Temperature',values);return node;
+ };
  const runtimeCoil=withHourly(runtimeClone(fixtures,'coil'),coilFixture);
- setReported(runtimeCoil,signal=>signal.role==='sensor'&&/temperature/i.test(signal.variableName),[22,22,22,22,23,23,23,23,24,24,24,24]);setReported(runtimeCoil,signal=>signal.role==='setpoint',[20]);
+ setReported(runtimeCoil,signal=>signal.role==='sensor'&&/temperature/i.test(signal.variableName),[22]);
+ const coilAirInlet=coilTemperature(runtimeCoil,'Air Inlet Node Name',[10,10,10,10,0,0,0,0,-10,-10,-10,-10]),coilAirOutlet=coilTemperature(runtimeCoil,'Air Outlet Node Name',[20,20,20,20,0,0,0,0,-7,-7,-7,-7]);coilTemperature(runtimeCoil,'Water Inlet Node Name',[82]);
+ setReported(runtimeCoil,signal=>signal.role==='setpoint',[20,20,20,20,0,0,0,0,-5,-5,-5,-5]);
  setReported(runtimeCoil,signal=>signal.role==='actuator_request',[.8,.8,.8,.8,.7,.7,.7,.7,.6,.6,.6,.6]);setReported(runtimeCoil,signal=>signal.role==='actuator',[.3,.3,.3,.3,.2,.2,.2,.2,.1,.1,.1,.1]);
  state.simulationResult={...runtimeResult,runId:'runtime-coil-cards',purposeResults:{hvacLoops:[runtimeCoil]}};simulation.renderSimulation();chooseEquipment(coilFixture);
  const commandCard=()=>host.querySelector('.hvac-parameter-flow-stage.commands [data-hvac-flow-card]'),requestCardValue=()=>commandCard()?.querySelector('[data-hvac-runtime-card-value]')?.textContent,actualCardValue=()=>commandCard()?.querySelector('[data-hvac-runtime-card-actual]')?.textContent;
  check(requestCardValue()==='Requested flow: 0.8 kg/s'&&actualCardValue()==='Actual: 0.3 kg/s','sequence conflated request/actual or joined Hourly row1 to Timestep00:15');
+ const controlTerm=term=>host.querySelector('.hvac-parameter-flow-stage.controls [data-hvac-runtime-control-term="'+term+'"] b')?.textContent,controllerCard=host.querySelector('.hvac-parameter-flow-stage.controls [data-hvac-runtime-control-term="tracking-error"]')?.closest('[data-hvac-flow-card]');
+ check(controllerCard?.querySelector('strong')?.textContent==='Temperature · Feedback control'&&controlTerm('target-change')==='10.00 K'&&controlTerm('actual-change')==='10.00 K'&&controlTerm('tracking-error')==='0.00 K','converged controller omitted its actual air-stream change/nonzero flow or retained a comparison-first title: '+JSON.stringify({title:controllerCard?.querySelector('strong')?.textContent,target:controlTerm('target-change'),actual:controlTerm('actual-change'),error:controlTerm('tracking-error'),label:label(),controls:host.querySelector('.hvac-parameter-flow-stage.controls')?.textContent}));
+ const nativeAirInlet=runtimeCoil.controlSignals.find(signal=>signal.nodeId===coilAirInlet.id&&signal.variableName==='System Node Temperature'),nativeAirOutlet=runtimeCoil.controlSignals.find(signal=>signal.nodeId===coilAirOutlet.id&&signal.variableName==='System Node Temperature'),controllerReadings=controllerCard.querySelector('[data-hvac-runtime-card-value]');
+ check(controllerReadings.title.includes(nativeAirInlet.keyValue)&&controllerReadings.title.includes(nativeAirOutlet.keyValue)&&controllerReadings.title.includes('10 °C')&&controllerReadings.title.includes('20 °C')&&!controllerReadings.textContent.includes('82'),'controller explanation lacks its exact reported air sources or borrowed water-inlet temperature');
  const originalCommandCard=commandCard();frame(1);
  check(commandCard()===originalCommandCard&&requestCardValue()==='Requested flow: 0.7 kg/s'&&actualCardValue()==='Actual: 0.2 kg/s','shared frame rebuilt graph or failed to update exact values');
- check([...host.querySelectorAll('.hvac-parameter-flow-stage.controls [data-hvac-runtime-card-value]')].some(value=>value.textContent==='Δ 3 °C'&&value.title.includes('23 °C − 20 °C')),'controller comparison did not follow current timestep');
+ check(controllerCard===host.querySelector('.hvac-parameter-flow-stage.controls [data-hvac-runtime-control-term="tracking-error"]')?.closest('[data-hvac-flow-card]')&&controlTerm('target-change')==='0.00 K'&&controlTerm('actual-change')==='0.00 K'&&controlTerm('tracking-error')==='0.00 K'&&!controllerReadings.title.includes('10 °C'),'valid zero native temperatures retained stale controller comparison text');
+ frame(2);check(controlTerm('target-change')==='5.00 K'&&controlTerm('actual-change')==='3.00 K'&&controlTerm('tracking-error')==='-2.00 K'&&requestCardValue()==='Requested flow: 0.6 kg/s'&&actualCardValue()==='Actual: 0.1 kg/s','negative native temperatures or signed tracking error failed to follow the shared frame');frame(1);
  commandCard().querySelector('button').click();check(host.querySelector('[data-hvac-runtime-history] .hvac-chart-svg')&&!host.querySelector('[data-hvac-parameter-inspector]:not([hidden])'),'sequence card opened raw parameter specs instead of history');
  const requestedBinding=runtimeCoil.controlSignals.find(signal=>signal.role==='actuator_request'),requestedTrace=host.querySelector('[data-hvac-runtime-history] [data-hvac-chart-series="'+CSS.escape(requestedBinding.id)+'"]');
  const {prepareHVACRuntimeInspection,hvacRuntimeTrace}=await import('/src/js/hvac-runtime-data.js'),traceModel=prepareHVACRuntimeInspection(runtimeCoil),nativeRequestedTrace=hvacRuntimeTrace(traceModel,traceModel.signals.find(signal=>signal.id===requestedBinding.id));
@@ -405,6 +437,14 @@ try{
  // dump-dom can be an unfocused window, so verify the actual app's delegation.
  requestedLegend.dispatchEvent(new FocusEvent('focusin',{bubbles:true}));check(requestedChart.dataset.hvacChartHighlight===requestedBinding.id,'legend focusin did not reach the actual app delegate');requestedLegend.dispatchEvent(new FocusEvent('focusout',{bubbles:true,relatedTarget:requestedChart}));
  check(!requestedChart.dataset.hvacChartHighlight&&!host.querySelector('[data-hvac-inspection-chart="line"] circle'),'legend blur did not restore lines or HVAC data-point markers remain');
+ for(const gap of ['inlet','target']){
+  const captured=structuredClone(runtimeCoil),targetNode=coilFixture.profile.parameterControl.edges.find(edge=>edge.relation==='subtracts_target').from,binding=captured.controlSignals.find(signal=>gap==='inlet'?signal.id===nativeAirInlet.id:signal.role==='setpoint'&&signal.graph==='parameterControl'&&signal.nodeId===targetNode),series=captured.controlSeries.find(series=>series.sourceId===binding.seriesId),retained=series.points.map((point,index)=>point.label==='01-01 02:00'?-1:index).filter(index=>index>=0);
+  series.points=retained.map(index=>series.points[index]);series.nativeIntervals=retained.map(index=>series.nativeIntervals[index]);
+  state.simulationResult={...runtimeResult,runId:'runtime-coil-missing-'+gap,purposeResults:{hvacLoops:[captured]}};simulation.renderSimulation();chooseEquipment(coilFixture);
+  check(controlTerm('target-change')==='10.00 K'&&controlTerm('actual-change')==='10.00 K','missing-observation regression lacks the preceding complete controller frame');
+  frame(1);check(host.querySelector('[data-hvac-runtime-error]')&&!controlTerm('target-change')&&!controlTerm('actual-change')&&controlTerm('tracking-error')===(gap==='inlet'?'0.00 K':undefined)&&requestCardValue()==='Requested flow: 0.7 kg/s','missing '+gap+' timestep retained stale thermal rows or damaged separately reported flow');
+  const currentLabels=[...host.querySelectorAll('.hvac-parameter-flow-stage.controls [data-hvac-runtime-card-value]')];check(currentLabels.every(value=>!value.textContent.includes('10.00 K')&&!value.title.includes('10 °C')),'missing '+gap+' timestep retained the preceding comparison text/title');
+ }
  const iconOnly=withHourly(runtimeClone(fixtures,'fan'),fanFixture);iconOnly.components=[];
  state.simulationResult={...runtimeResult,runId:'runtime-native-icon',purposeResults:{hvacLoops:[iconOnly]}};simulation.renderSimulation();
  const nativeIcon=host.querySelector('[data-hvac-inspect-native-component="'+fanFixture.component.objectIndex+'"]');check(nativeIcon,'equipment with no Hourly response lacks clickable native loop icon');
@@ -456,11 +496,13 @@ try{
   if(review.get('review')==='error'){const source=captured.controlSignals.find(signal=>signal.required&&signal.role==='manager_status');captured.controlSeries=captured.controlSeries.filter(series=>series.sourceId!==source.seriesId);}
   if(review.get('override')==='1'){setReported(captured,signal=>signal.role==='schedule'&&signal.keyValue.toLowerCase()===ownSchedule.toLowerCase(),[0]);setReported(captured,signal=>signal.role==='manager_status'||signal.role==='loop_status',[2]);setReported(captured,signal=>signal.role==='activity',[1000]);}
   if(review.get('transitions')==='1')nativeStatusTransitions(captured);
-  if(family==='coil'){setReported(captured,signal=>signal.role==='sensor'&&/temperature/i.test(signal.variableName),[22,23,24,25]);setReported(captured,signal=>signal.role==='setpoint',[20]);setReported(captured,signal=>signal.role==='actuator_request',[.8]);setReported(captured,signal=>signal.role==='actuator',[.3]);}
+  if(family==='coil'){setReported(captured,signal=>signal.role==='sensor'&&/temperature/i.test(signal.variableName),[20]);coilTemperature(captured,'Air Inlet Node Name',[10]);coilTemperature(captured,'Air Outlet Node Name',[20]);coilTemperature(captured,'Water Inlet Node Name',[82]);setReported(captured,signal=>signal.role==='setpoint',[20]);setReported(captured,signal=>signal.role==='actuator_request',[.8]);setReported(captured,signal=>signal.role==='actuator',[.3]);}
+  if(family==='chiller'){setReported(captured,signal=>signal.role==='demand',[20000]);setReported(captured,signal=>signal.role==='dispatch',[-6000]);setReported(captured,signal=>signal.role==='activity',[0]);}
   const {setLanguage}=await import('/src/js/i18n.js');setLanguage(review.get('language')||'en');document.documentElement.dataset.theme=review.get('theme')||'dark';
   state.simulationResult={...runtimeResult,runId:'runtime-review-'+family,purposeResults:{hvacLoops:[captured]}};simulation.renderSimulation();chooseEquipment(fixture);if(review.get('review')!=='error')frame(1);
   if(review.get('focus')==='control')host.querySelector('[data-hvac-runtime-control]')?.scrollIntoView({block:'start'});
   if(review.get('focus')==='availability')host.querySelector('[data-hvac-runtime-availability]')?.scrollIntoView({block:'start'});
+  if(review.get('focus')==='onoff')host.querySelector('[data-hvac-runtime-onoff]')?.scrollIntoView({block:'start'});
   if(review.get('focus')==='error')host.querySelector('[data-hvac-runtime-error]')?.scrollIntoView({block:'start'});
   if(review.get('focus')==='history')host.querySelector('[data-hvac-runtime-history]')?.scrollIntoView({block:'start'});
   if(review.get('legend')==='1')host.querySelector('[data-hvac-runtime-history] [data-hvac-chart-legend]')?.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));

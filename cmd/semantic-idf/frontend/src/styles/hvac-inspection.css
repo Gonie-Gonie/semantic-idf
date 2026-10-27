@@ -16,7 +16,13 @@
 .hvac-inspection-node-toggles label { display: flex; align-items: center; gap: 6px; max-width: 100%; }
 .hvac-inspection-node-toggles span { overflow-wrap: anywhere; }
 .hvac-inspection-basic, .hvac-inspection-custom { min-width: 0; }
-[data-hvac-inspect-basic-charts] { display: grid; gap: 16px; }
+[data-hvac-inspect-basic-charts] {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, max(600px, calc(var(--graph-label-font-size, 11px) * 50 + 32px))), 1fr));
+  align-items: start;
+  gap: 16px;
+}
+[data-hvac-inspect-basic-chart] { min-width: 0; }
 .hvac-inspection-y-controls { display: grid; gap: 10px; margin: 8px 0 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; }
 .hvac-inspection-y-heading, .hvac-inspection-y-values { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; }
 .hvac-inspection-y-heading button { padding: 3px 10px; min-height: 28px; }

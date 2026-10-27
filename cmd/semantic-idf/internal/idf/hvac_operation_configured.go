@@ -269,8 +269,12 @@ func (b *hvacOperatingBuilder) configuredScheduleDefinitionError(name, namespace
 func (b *hvacOperatingBuilder) configuredDispatchAvailability(occ hvacOperatingOccurrence, layer HVACAvailabilityLayer) HVACOperatingExpression {
 	configured := b.configuredExpression(layer.Expression)
 	owner, found := b.objects[layer.Owner.ObjectIndex]
-	if !found || !strings.EqualFold(owner.Type, "PlantEquipmentOperationSchemes") {
+	if !found || !hvacOperatingOperationSchemesType(owner.Type) {
 		return configured // Original missing-scheme error remains explicit.
+	}
+	listType := "PlantEquipmentList"
+	if strings.EqualFold(owner.Type, "CondenserEquipmentOperationSchemes") {
+		listType = "CondenserEquipmentList"
 	}
 	var validation []HVACOperatingExpression
 	for index := 1; index+2 < len(owner.Fields); index += 3 {
@@ -282,7 +286,7 @@ func (b *hvacOperatingBuilder) configuredDispatchAvailability(occ hvacOperatingO
 		if !found {
 			continue // Existing expression carries the exact missing-operation error.
 		}
-		_, _, resolved := b.operationMembership(operation, occ.object)
+		_, _, resolved := b.operationMembership(operation, occ.object, listType)
 		if !resolved {
 			source := hvacOperatingSource(operation)
 			validation = append(validation, HVACOperatingExpression{Op: "unknown", Reason: "unresolved_dispatch_membership", Source: &source})
@@ -293,7 +297,7 @@ func (b *hvacOperatingBuilder) configuredDispatchAvailability(occ hvacOperatingO
 
 func (b *hvacOperatingBuilder) dispatchAvailabilityDefinitions(g *hvacOperatingControlBuilder, occ hvacOperatingOccurrence, layer HVACAvailabilityLayer) {
 	owner, found := b.objects[layer.Owner.ObjectIndex]
-	if !found || !strings.EqualFold(owner.Type, "PlantEquipmentOperationSchemes") {
+	if !found || !hvacOperatingOperationSchemesType(owner.Type) {
 		return
 	}
 	id := g.node(fmt.Sprintf("definition:%d", owner.Index), "definition", "plant_operation_schemes", owner, hvacOperatingAllParameters(owner))
@@ -310,4 +314,8 @@ func (b *hvacOperatingBuilder) dispatchAvailabilityDefinitions(g *hvacOperatingC
 			g.edge(id, g.node(fmt.Sprintf("operation:%d", operation.Index), "definition", "plant_operation_definition", operation, hvacOperatingAllParameters(operation)), "references_operation")
 		}
 	}
+}
+
+func hvacOperatingOperationSchemesType(objectType string) bool {
+	return strings.EqualFold(objectType, "PlantEquipmentOperationSchemes") || strings.EqualFold(objectType, "CondenserEquipmentOperationSchemes")
 }

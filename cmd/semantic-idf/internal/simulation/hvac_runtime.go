@@ -210,14 +210,70 @@ func hvacRuntimeSetpointVariables(quantity string) []string {
 		return []string{""}
 	}
 }
+
+// Exact object types and native families (selectors ending in ':') share one
+// response registry, including pre-ExpandObjects wildcard acquisition. These
+// reported responses are never substitutes for an ON command: a tower/HX can
+// transfer heat without powered operation.
+var hvacRuntimeActivityDefinitions = []struct {
+	selectors []string
+	variables []string
+}{
+	{[]string{"fan:"}, []string{"Fan Electricity Rate"}},
+	{[]string{"pump:", "headeredpumps:"}, []string{"Pump Electricity Rate"}},
+	{[]string{"coil:cooling:"}, []string{"Cooling Coil Total Cooling Rate"}},
+	{[]string{"coil:heating:"}, []string{"Heating Coil Heating Rate"}},
+	{[]string{"chiller:"}, []string{"Chiller Evaporator Cooling Rate"}},
+	{[]string{"boiler:"}, []string{"Boiler Heating Rate"}},
+	{[]string{"coolingtower:", "fluidcooler:", "evaporativefluidcooler:"}, []string{"Cooling Tower Heat Transfer Rate"}},
+	{[]string{"heatexchanger:fluidtofluid"}, []string{"Fluid Heat Exchanger Heat Transfer Rate"}},
+	{[]string{"heatpump:plantloop:eir:cooling", "heatpump:plantloop:eir:heating", "heatpump:watertowater:equationfit:cooling", "heatpump:watertowater:equationfit:heating"}, []string{"Heat Pump Load Side Heat Transfer Rate"}},
+	{[]string{"waterheater:mixed", "waterheater:stratified"}, []string{"Water Heater Heating Rate"}},
+	{[]string{"districtheating:water"}, []string{"District Heating Water Rate"}},
+	{[]string{"districtheating:steam"}, []string{"District Heating Steam Rate"}},
+	{[]string{"districtcooling"}, []string{"District Cooling Water Rate"}},
+	{[]string{"zonehvac:baseboard:convective:water", "zonehvac:baseboard:convective:electric", "zonehvac:baseboard:radiantconvective:electric", "zonehvac:baseboard:radiantconvective:water", "zonehvac:baseboard:radiantconvective:steam"}, []string{"Baseboard Total Heating Rate"}},
+	{[]string{"zonehvac:idealloadsairsystem"}, []string{"Zone Ideal Loads Zone Total Heating Rate", "Zone Ideal Loads Zone Total Cooling Rate"}},
+	{[]string{"airloophvac:unitarysystem"}, []string{"Unitary System Total Heating Rate", "Unitary System Total Cooling Rate"}},
+	{[]string{"zonehvac:packagedterminalairconditioner"}, []string{"Zone Packaged Terminal Air Conditioner Total Heating Rate", "Zone Packaged Terminal Air Conditioner Total Cooling Rate"}},
+	{[]string{"zonehvac:packagedterminalheatpump"}, []string{"Zone Packaged Terminal Heat Pump Total Heating Rate", "Zone Packaged Terminal Heat Pump Total Cooling Rate"}},
+	{[]string{"zonehvac:watertoairheatpump"}, []string{"Zone Water to Air Heat Pump Total Heating Rate", "Zone Water to Air Heat Pump Total Cooling Rate"}},
+	{[]string{"zonehvac:fourpipefancoil"}, []string{"Fan Coil Heating Rate", "Fan Coil Total Cooling Rate"}},
+	{[]string{"zonehvac:unitheater"}, []string{"Zone Unit Heater Heating Rate"}},
+	{[]string{"zonehvac:unitventilator"}, []string{"Zone Unit Ventilator Heating Rate", "Zone Unit Ventilator Total Cooling Rate"}},
+	{[]string{"zonehvac:outdoorairunit"}, []string{"Zone Outdoor Air Unit Total Heating Rate", "Zone Outdoor Air Unit Total Cooling Rate"}},
+	{[]string{"zonehvac:windowairconditioner"}, []string{"Zone Window Air Conditioner Total Cooling Rate"}},
+	{[]string{"zonehvac:lowtemperatureradiant:variableflow", "zonehvac:lowtemperatureradiant:constantflow"}, []string{"Zone Radiant HVAC Heating Rate", "Zone Radiant HVAC Cooling Rate"}},
+	{[]string{"zonehvac:lowtemperatureradiant:electric"}, []string{"Zone Radiant HVAC Heating Rate"}},
+	{[]string{"airconditioner:variablerefrigerantflow", "airconditioner:variablerefrigerantflow:fluidtemperaturecontrol", "airconditioner:variablerefrigerantflow:fluidtemperaturecontrol:hr"}, []string{"VRF Heat Pump Total Heating Rate", "VRF Heat Pump Total Cooling Rate"}},
+	{[]string{"zonehvac:terminalunit:variablerefrigerantflow"}, []string{"Zone VRF Air Terminal Total Heating Rate", "Zone VRF Air Terminal Total Cooling Rate"}},
+	{[]string{"zonehvac:dehumidifier:dx"}, []string{"Zone Dehumidifier Removed Water Mass Flow Rate"}},
+	{[]string{"zonehvac:evaporativecoolerunit"}, []string{"Zone Evaporative Cooler Unit Total Cooling Rate"}},
+	{[]string{"heatexchanger:airtoair:", "heatexchanger:desiccant:"}, []string{"Heat Exchanger Total Heating Rate", "Heat Exchanger Total Cooling Rate"}},
+	{[]string{"humidifier:"}, []string{"Humidifier Water Volume Flow Rate"}},
+	{[]string{"evaporativecooler:"}, []string{"Evaporative Cooler Electricity Rate"}},
+}
+
 func hvacRuntimeActivityVariables(objectType string) []string {
-	typ := strings.ToLower(objectType)
-	for _, item := range []struct{ prefix, variable string }{{"fan:", "Fan Electricity Rate"}, {"pump:", "Pump Electricity Rate"}, {"headeredpumps:", "Pump Electricity Rate"}, {"coil:cooling:", "Cooling Coil Total Cooling Rate"}, {"coil:heating:", "Heating Coil Heating Rate"}, {"chiller:", "Chiller Evaporator Cooling Rate"}, {"boiler:", "Boiler Heating Rate"}, {"coolingtower:", "Cooling Tower Heat Transfer Rate"}} {
-		if strings.HasPrefix(typ, item.prefix) {
-			return []string{item.variable}
+	typ := strings.ToLower(strings.TrimSpace(objectType))
+	for _, definition := range hvacRuntimeActivityDefinitions {
+		for _, selector := range definition.selectors {
+			if typ == selector || strings.HasSuffix(selector, ":") && strings.HasPrefix(typ, selector) {
+				return definition.variables
+			}
 		}
 	}
 	return nil
+}
+
+func hvacRuntimeActivityVariableNames() []string {
+	var variables []string
+	for _, definition := range hvacRuntimeActivityDefinitions {
+		for _, variable := range definition.variables {
+			variables = appendUniquePurposeString(variables, variable)
+		}
+	}
+	return variables
 }
 
 func hvacRuntimeSignals(profile idf.HVACOperatingProfile, loop idf.HVACLoop, doc *idf.Document) []HVACControlSignalBinding {
@@ -249,7 +305,7 @@ func hvacRuntimeSignals(profile idf.HVACOperatingProfile, loop idf.HVACLoop, doc
 			typ := strings.ToLower(node.Source.ObjectType)
 			if node.Kind == "schedule" && !strings.HasPrefix(typ, "schedule:day:") && !strings.HasPrefix(typ, "schedule:week:") {
 				domain := "boolean_schedule"
-				if current.name == "parameterControl" {
+				if current.name != "availabilityDefinitions" {
 					domain = "continuous"
 				}
 				add(current.name, node.ID, "schedule", domain, node.Source, "", node.Source.ObjectName, "Schedule Value")
@@ -266,7 +322,7 @@ func hvacRuntimeSignals(profile idf.HVACOperatingProfile, loop idf.HVACLoop, doc
 				}
 				add(current.name, node.ID, "manager_status", domain, node.Source, "", key, variable)
 			}
-			if current.name == "availabilityDefinitions" || current.name == "parameterControl" {
+			if current.name == "availabilityDefinitions" || current.name == "onOff" || current.name == "parameterControl" {
 				for _, input := range hvacRuntimeReasonInputs(node, loop, doc) {
 					add(current.name, node.ID, input.role, "continuous", node.Source, input.parameter, input.key, input.variable)
 				}
@@ -329,6 +385,24 @@ func hvacRuntimeSignals(profile idf.HVACOperatingProfile, loop idf.HVACLoop, doc
 			}
 		}
 	}
+	// MyLoad is the supervisor's individual assignment, not whole-loop
+	// demand or measured heat output. PlantManager registers it only for
+	// non-demand components; a shared component's other loop must not borrow
+	// this source-specific assignment.
+	if hvacRuntimeHasPlantDispatch(profile, loop, component) {
+		add("onOff", "decision", "dispatch", "continuous", component, "", component.ObjectName, "Plant Component Distributed Demand Rate")
+	}
+	if typ := strings.ToLower(component.ObjectType); strings.HasPrefix(typ, "fan:") || strings.HasPrefix(typ, "pump:") || strings.HasPrefix(typ, "headeredpumps:") {
+		for _, node := range profile.ParameterControl.Nodes {
+			if node.Code == "inlet_state" && node.Source == component {
+				if p, ok := hvacRuntimeNodeParameter(node.Parameters); ok {
+					// Actual inlet flow is an observed operating input, not a
+					// fabricated native command or an availability schedule.
+					add("onOff", "demand", "sensor", "continuous", component, p.Name, p.Value, "System Node Mass Flow Rate")
+				}
+			}
+		}
+	}
 	if loop.Type == "AirLoopHVAC" {
 		add("loop", "", "loop_status", "manager_status", idf.HVACOperatingSource{ObjectIndex: loop.ObjectIndex, ObjectType: loop.Type, ObjectName: loop.Name}, "", loop.Name, "Air System Simulation Cycle On Off Status")
 	}
@@ -357,7 +431,7 @@ func (builder *purposePlanBuilder) addHVACRuntimeOutputs() {
 		}
 		unique[key] = true
 		builder.addVariableWithReason(SimulationPurposeHVACLoopCheck, binding.KeyValue, binding.VariableName, hvacRuntimeFrequency(binding.VariableName), "heavy", "Native interval observation for source-backed HVAC availability and control diagnostics.", "HVAC control diagnostics")
-		advanced = advanced || strings.Contains(binding.VariableName, "Requested Mass Flow") || strings.Contains(binding.VariableName, "Setpoint Mass Flow")
+		advanced = advanced || strings.Contains(binding.VariableName, "Requested Mass Flow") || strings.Contains(binding.VariableName, "Setpoint Mass Flow") || binding.VariableName == "Plant Component Distributed Demand Rate"
 	}
 	for _, loop := range report.Loops {
 		if !hvacResultLoopInScope(loop, builder.request.Scope) {
@@ -379,6 +453,10 @@ func (builder *purposePlanBuilder) addHVACRuntimeOutputs() {
 			continue
 		}
 		variables := []string{"Schedule Value", "Air System Simulation Cycle On Off Status", "System Node Temperature", "System Node Mass Flow Rate", "System Node Setpoint Temperature", "System Node Setpoint High Temperature", "System Node Setpoint Low Temperature", "System Node Humidity Ratio", "System Node Setpoint Humidity Ratio", "System Node Setpoint Minimum Humidity Ratio", "System Node Setpoint Maximum Humidity Ratio", "System Node Requested Mass Flow Rate", "System Node Minimum Available Mass Flow Rate", "System Node Maximum Available Mass Flow Rate", "Zone Thermostat Air Temperature", "Zone Thermostat Control Type", "Zone Thermostat Heating Setpoint Temperature", "Zone Thermostat Cooling Setpoint Temperature", "Zone Predicted Sensible Load to Setpoint Heat Transfer Rate", "Zone Predicted Sensible Load to Heating Setpoint Heat Transfer Rate", "Zone Predicted Sensible Load to Cooling Setpoint Heat Transfer Rate", "Plant Supply Side Cooling Demand Rate", "Plant Supply Side Heating Demand Rate", "Site Outdoor Air Drybulb Temperature", "Site Outdoor Air Wetbulb Temperature", "Site Ground Temperature", "Site Surface Ground Temperature", "Site Deep Ground Temperature", "Site Simple Factor Model Ground Temperature"}
+		variables = append(variables, "Plant Component Distributed Demand Rate", "VRF Heat Pump Terminal Unit Cooling Load Rate", "VRF Heat Pump Terminal Unit Heating Load Rate")
+		for _, variable := range hvacRuntimeActivityVariableNames() {
+			variables = appendUniquePurposeString(variables, variable)
+		}
 		for _, variable := range hvacRuntimeManagerVariables {
 			variables = append(variables, variable)
 		}
@@ -395,7 +473,7 @@ func (builder *purposePlanBuilder) addHVACRuntimeOutputs() {
 		break
 	}
 	if advanced {
-		builder.addObject(PurposeOutputObject{ObjectType: "Output:Diagnostics", Fields: []idf.OutputFieldValue{{Name: "Key 1", Value: "DisplayAdvancedReportVariables"}}, PurposeIDs: []SimulationPurposeID{SimulationPurposeHVACLoopCheck}, Weight: "light", Description: "Enables native requested and setpoint flow observations for HVAC control diagnostics.", Reason: "HVAC control diagnostics"})
+		builder.addObject(PurposeOutputObject{ObjectType: "Output:Diagnostics", Fields: []idf.OutputFieldValue{{Name: "Key 1", Value: "DisplayAdvancedReportVariables"}}, PurposeIDs: []SimulationPurposeID{SimulationPurposeHVACLoopCheck}, Weight: "light", Description: "Enables native requested/setpoint flow and per-component plant dispatch observations for HVAC control diagnostics.", Reason: "HVAC control diagnostics"})
 	}
 	if len(unique) > 0 {
 		builder.warn("info", "hvac_control_diagnostics", fmt.Sprintf("HVAC control diagnostics adds %d source-specific series: discrete availability actions at native Detailed intervals, other observations at Timestep cadence.", len(unique)), SimulationPurposeHVACLoopCheck, "")

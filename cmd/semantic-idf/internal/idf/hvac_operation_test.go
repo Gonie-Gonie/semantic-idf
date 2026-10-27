@@ -324,6 +324,57 @@ func TestHVACOperatingLocalTerminalFanPermissionIsRetained(t *testing.T) {
 }
 
 func TestHVACOperatingDispatchHighlightsOnlyEquipmentRange(t *testing.T) {
+	t.Run("legacy condenser namespace remains exact", func(t *testing.T) {
+		tower := hvacOperationTestObject(0, "CoolingTower:SingleSpeed", "Tower")
+		condenser := hvacOperationTestObject(1, "CondenserLoop", "Condenser")
+		schemes := hvacOperationTestRaw(2, "CondenserEquipmentOperationSchemes", "Schemes", "PlantEquipmentOperation:CoolingLoad", "Cooling", "Hours")
+		operation := hvacOperationTestRaw(3, "PlantEquipmentOperation:CoolingLoad", "Cooling", "0", "10000", "Selected")
+		list := hvacOperationTestRaw(4, "CondenserEquipmentList", "Selected", tower.Type, "Tower")
+		otherSchemes := hvacOperationTestRaw(5, "PlantEquipmentOperationSchemes", "Schemes", "PlantEquipmentOperation:Uncontrolled", "Other", "Hours")
+		otherList := hvacOperationTestRaw(6, "PlantEquipmentList", "Selected", tower.Type, "Tower")
+		doc := Document{Objects: []Object{tower, condenser, schemes, operation, list, otherSchemes, otherList, hvacOperationTestRaw(7, "Schedule:Constant", "Hours", "", "1")}}
+		loop := HVACLoop{ID: "condenser:c", Name: "Condenser", Type: "CondenserLoop", ObjectIndex: 1, OperationScheme: "Schemes", SupplySide: HVACLoopSide{Branches: []HVACBranch{{Components: []HVACComponent{hvacOperationTestComponent(tower, "In", "Out")}}}}}
+		profile := hvacOperationTestProfile(t, buildHVACOperatingProfiles(newHVACContext(doc), []HVACLoop{loop}, nil), 0, loop.ID)
+		if hvacGraphTestNode(t, profile.OnOff, "dispatch:3").Source.ObjectIndex != operation.Index || hvacGraphTestNode(t, profile.AvailabilityDefinitions, "definition:2").Source.ObjectType != schemes.Type {
+			t.Fatal("condenser dispatch acquired same-named plant namespace")
+		}
+		for _, missing := range []int{schemes.Index, list.Index} {
+			copy := Document{}
+			for _, object := range doc.Objects {
+				if object.Index != missing {
+					copy.Objects = append(copy.Objects, object)
+				}
+			}
+			profile := hvacOperationTestProfile(t, buildHVACOperatingProfiles(newHVACContext(copy), []HVACLoop{loop}, nil), 0, loop.ID)
+			text := hvacOperationExpressionJSON(t, profile.ConfiguredAvailability)
+			if !strings.Contains(text, "missing_operation_schemes") && !strings.Contains(text, "unresolved_dispatch_membership") {
+				t.Fatalf("missing condenser object borrowed same-named plant object: %s", text)
+			}
+		}
+	})
+	t.Run("owning loop dispatch policy is source backed", func(t *testing.T) {
+		chiller := hvacOperationTestObject(0, "Chiller:Electric:EIR", "Chiller")
+		plant := hvacOperationTestObject(1, "PlantLoop", "Plant", "Load Distribution Scheme", "SequentialLoad", "Plant Loop Demand Calculation Scheme", "DualSetpointDeadband")
+		schemes := hvacOperationTestRaw(2, "PlantEquipmentOperationSchemes", "Schemes", "PlantEquipmentOperation:CoolingLoad", "Cooling", "Hours")
+		operation := hvacOperationTestRaw(3, "PlantEquipmentOperation:CoolingLoad", "Cooling", "0", "10000", "Selected")
+		list := hvacOperationTestRaw(4, "PlantEquipmentList", "Selected", chiller.Type, "Chiller")
+		doc := Document{Objects: []Object{chiller, plant, schemes, operation, list}}
+		loop := HVACLoop{ID: "plant:p", Name: "Plant", Type: "PlantLoop", ObjectIndex: 1, OperationScheme: "Schemes", SupplySide: HVACLoopSide{Branches: []HVACBranch{{Components: []HVACComponent{hvacOperationTestComponent(chiller, "In", "Out")}}}}}
+		profile := hvacOperationTestProfile(t, buildHVACOperatingProfiles(newHVACContext(doc), []HVACLoop{loop}, nil), 0, loop.ID)
+		node := hvacGraphTestNode(t, profile.OnOff, "dispatch:3")
+		found := map[string]bool{}
+		for _, parameter := range node.Parameters {
+			if parameter.Name == "Load Distribution Scheme" || parameter.Name == "Plant Loop Demand Calculation Scheme" {
+				if parameter.ObjectIndex != plant.Index {
+					t.Fatal("loop policy acquired operation scheme source identity")
+				}
+				found[parameter.Name] = true
+			}
+		}
+		if len(found) != 2 {
+			t.Fatalf("dispatch graph lacks exact loop policy: %+v", node)
+		}
+	})
 	equipment := hvacOperationTestObject(0, "Boiler:HotWater", "Boiler")
 	selected := hvacOperationTestRaw(1, "PlantEquipmentList", "Selected", "Boiler:HotWater", "Boiler")
 	op := hvacOperationTestRaw(2, "PlantEquipmentOperation:HeatingLoad", "Heating", "0", "10", "Other", "20", "30", "Selected")

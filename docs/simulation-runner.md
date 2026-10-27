@@ -480,6 +480,15 @@ topology alongside retained observations.
 The result HVAC view retains the default loop schematic, node controls/charts
 and custom plots. Equipment selection opens its availability stack and control
 sequence inline. One bottom Frame control drives the loop and equipment values.
+The node chart grid uses one to three columns as width allows, with a bounded
+SVG viewport height and the existing font-size floor. Resizing preserves node
+selections, limits, legend behavior and the mounted chart/frame controls.
+Equipment also has a separate On / Off panel reusing the executed expression
+graph. It keeps permission, observed demand/dispatch inputs and actual response
+separate, rather than equating positive loop demand with individual operation.
+The post-run **Operation conditions** formula retains the broader native
+dispatch dependencies, and its references use the same displayed name.
+The numeric **Availability** card keeps the minimum permission boundary.
 Its right-hand buttons and Ctrl+Left/Right advance one source frame, clamp at
 the bounds and do not intercept text editing, modal dialogs or another view.
 HVAC time-series have no data-point markers; their current-time cursor remains.
@@ -507,7 +516,7 @@ not categorical evidence even when it equals an integer status code.
 Graph identities distinguish `availabilityDefinitions`, `onOff`,
 `parameterControl` and `loop`; node IDs alone can collide between graphs.
 Roles distinguish schedule, manager/loop status, sensor, setpoint, requested
-and actual actuator, demand and activity. Schedule values use boolean schedule
+and actual actuator, demand, dispatch and activity. Schedule values use boolean schedule
 semantics only where the native expression specifies them; parameter-control
 schedules remain continuous. Standard manager status is NoAction=0,
 ForceOff=1, CycleOn=2, CycleOnZoneFansOnly=3. NoAction is not OFF, and Hybrid
@@ -526,6 +535,20 @@ badge explaining the override. Patch geometry preserves original interval
 boundaries without pixel binning, minimum-width inflation or state averaging.
 Plant demand and control observations stay separate from permission.
 
+The additive `dispatch` role uses the exact supply component's native
+`Plant Component Distributed Demand Rate`, retaining its signed load and
+individual source. Demand-side occurrences cannot borrow the same named
+component's supply assignment. Advanced reporting is enabled for this request.
+On / Off bindings retain their native continuous schedules, exact thermostat
+inputs and dispatch policy/setpoint sources. They share ordinary Timestep
+observation storage and history plots. Family-specific reported output rates
+remain separate activity evidence, including plant and local equipment.
+CondenserLoop operation schemes and equipment lists use their declared
+Condenser namespaces, without falling back to a same-named Plant list.
+HVACTemplate planning requests the dispatch and family-response wildcards
+needed before generated names are known; post-expansion bindings still require
+the executed typed equipment owner and real loop membership.
+
 The main view promotes to already-loaded Timestep series only when every
 existing visible node/component property has one source-backed counterpart and
 every previously valid observation time retains a valid value for that property.
@@ -542,6 +565,15 @@ selection, current values and time-series plots with the shared frame marker.
 Selecting a card selects its related observations without exposing a raw
 variable/parameter table. Valid sensor/target pairs show a same-cadence residual;
 requested flow, actual flow and equipment response retain distinct meanings.
+WaterCoil comparison cards identify the controller separately from its reported
+temperature error. An additive `residual.thermal` is attached only after proving
+the exact controller-to-coil command, unique air inlet/outlet ports and matching
+source/cadence/native intervals. It contains the original `inlet` and `outlet`
+signals, `unit: "K"` and independently valid `inletToTarget = Ttarget − Tin` and
+`inletToOutlet = Tout − Tin`. The existing residual remains `Tsensor − Ttarget`.
+No water-port substitution, implicit nearest-time joins, counterfactual outlet
+prediction or solver-iteration reconstruction is permitted. The reported error
+is not proof of the internal convergence residual or sensor-fault corrections.
 Required gaps and invalid definitions remain explicit diagnostics, with exact
 source evidence on the error indicator.
 

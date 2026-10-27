@@ -75,7 +75,11 @@ func (b *hvacOperatingBuilder) dispatch(occ hvacOperatingOccurrence) (hvacOperat
 	if !onSupply {
 		return hvacOperatingDispatch{}, false
 	}
-	schemes, found := b.exactObject("PlantEquipmentOperationSchemes", occ.loop.OperationScheme)
+	schemeType, listType := "PlantEquipmentOperationSchemes", "PlantEquipmentList"
+	if strings.EqualFold(occ.loop.Type, "CondenserLoop") {
+		schemeType, listType = "CondenserEquipmentOperationSchemes", "CondenserEquipmentList"
+	}
+	schemes, found := b.exactObject(schemeType, occ.loop.OperationScheme)
 	if !found {
 		return hvacOperatingDispatch{owner: b.objects[occ.loop.ObjectIndex], permission: HVACOperatingExpression{Op: "unknown", Reason: "missing_operation_schemes"}}, true
 	}
@@ -97,7 +101,7 @@ func (b *hvacOperatingBuilder) dispatch(occ hvacOperatingOccurrence) (hvacOperat
 			alternatives = append(alternatives, hvacOperatingCombine("all", permission, HVACOperatingExpression{Op: "unknown", Reason: "missing_operation_scheme"}))
 			continue
 		}
-		lists, member, resolved := b.operationMembership(operation, occ.object)
+		lists, member, resolved := b.operationMembership(operation, occ.object, listType)
 		if member {
 			// Active schemes are considered in assignment order. Range-based
 			// dispatch further depends on runtime load or environmental inputs.
@@ -127,7 +131,7 @@ func hvacOperatingDispatchEquipment(objectType string) bool {
 	return isPlantSourceEquipmentType(objectType) && !strings.HasPrefix(lower, "pipe:") || strings.HasPrefix(lower, "fluidcooler:") || strings.HasPrefix(lower, "evaporativefluidcooler:")
 }
 
-func (b *hvacOperatingBuilder) operationMembership(operation, equipment Object) ([]Object, bool, bool) {
+func (b *hvacOperatingBuilder) operationMembership(operation, equipment Object, listType string) ([]Object, bool, bool) {
 	lower := strings.ToLower(operation.Type)
 	lists := []Object{}
 	member, resolved := false, true
@@ -161,7 +165,7 @@ func (b *hvacOperatingBuilder) operationMembership(operation, equipment Object) 
 		return nil, false, false
 	}
 	for _, name := range listNames {
-		list, exists := b.exactObject("PlantEquipmentList", name)
+		list, exists := b.exactObject(listType, name)
 		if !exists {
 			resolved = false
 			continue

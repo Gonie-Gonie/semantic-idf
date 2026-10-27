@@ -368,7 +368,7 @@ buttons and **Ctrl+← / Ctrl+→** move one recorded frame, stopping at either 
 Shortcuts apply only to this result view, outside text editing and dialogs.
 
 Click equipment in the schematic or its reported-value annotation to show its
-**Availability** stack and **Control sequence** directly below the loop.
+**Availability**, **On / Off decisions** and **Control sequence** directly below the loop.
 Selecting a node returns to the existing node inspection. Equipment definitions
 come from the executed input, including ExpandObjects output; later editor
 changes do not rewrite the result.
@@ -385,12 +385,38 @@ schedule stays OFF, with a badge identifying the override. The legend separates
 schedule/permission, manager action, deciding conditions and the current time.
 Hover or focus a legend item to highlight its matching observations.
 
+On / Off decisions retains the executed control rules and their owning sources.
+Current demand and dispatch inputs sit beside reported equipment response.
+**Operation conditions** includes the native dispatch dependencies, while the
+numeric **Availability** card reports minimum permission. They describe
+different boundaries; an allowed schedule does not establish dispatch selection.
+For plant supply equipment, **Assigned load** is the native load distributed
+to that individual component; it is separate from total loop demand. Load
+distribution policy and equipment-list membership remain in the source details.
+A positive loop demand or an allowed availability does not prove that a
+particular chiller, boiler or pump operated. Actual heat output and electricity
+remain separate observations. Passive components follow the connected flow.
+
 Control cards show the current sensed values, targets, valid comparisons,
 commands and responses. **Requested flow** and **Actual flow** are separate.
 The plots below the sequence group related signals by unit. Each checkbox shows
 its current value, and the plots mark the same selected time as the loop.
 Selecting a control card chooses its related observations. Day, Week and Full
 run change the displayed window without dropping native Timestep samples.
+
+A WaterCoil controller searches for the water flow that brings its sensed
+outlet condition to the target. Its reported **Outlet tracking error** is
+`Tsensed − Ttarget`; it can be zero while nonzero water flow maintains the
+required heating or cooling. It is not a proportional command or an iteration
+history. Where the exact controlled coil's air ports and native intervals are
+verified, the same card also shows **Target − inlet** (`Ttarget − Tin`) and
+**Outlet − inlet** (`Tout − Tin`), in K. For example, air entering at 22 °C and
+leaving at its 14 °C target has −8 K required/actual temperature change and
+0 K tracking error. These are differences of reported temperatures, not an
+estimated uncontrolled outlet temperature. Reported averages do not establish
+the controller's internal residual or convergence, including sensor-fault
+adjustments. Missing or ambiguous pairs are omitted instead of borrowing water
+temperatures, another controller or a neighboring time.
 
 The view reuses data already loaded for the result. It uses **Timestep** for the
 whole loop only when every existing node and equipment property has one exact,
@@ -419,7 +445,9 @@ with source evidence available on the error indicator.
 
 ## HVAC time-series and scatter {#hvac-charts}
 
-The basic charts show node flow, temperature, and humidity. Use the per-node
+The basic charts show node flow, temperature, and humidity in one to three
+columns as panel width allows. Their drawing height is bounded so a wide
+window adds useful chart space without magnifying the entire SVG. Use the per-node
 controls to compare selected traces. Y ranges and Auto reset apply independently
 to different units. HVAC and Comfort plots use the app font and the graph
 label size in Settings. Larger labels keep a readable chart width; narrow

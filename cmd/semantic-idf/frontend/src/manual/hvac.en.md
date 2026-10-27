@@ -270,11 +270,17 @@ does not imply positive feedback. Feedback references retain their source and
 meaning without repeatedly expanding a cycle; diagram order is not simulation
 execution order.
 Use Simulation HVAC and actual output variables to inspect numerical operating
-states and convergence.
+states and reported target tracking.
 
 For a supported Controller:WaterCoil temperature comparison, EnergyPlus uses
 `residual = sensed value − setpoint`: the measurement enters with **+**, the
 target with **−**. These are residual signs, not the actuator's response sign.
+The main card identifies the controller; its comparison is a separate reported
+quantity. A near-zero reported error can coexist with nonzero actuated flow:
+the controller finds the flow needed to meet the target. Simulation displays
+the exact air inlet/target and inlet/outlet temperature differences separately
+when their sources and intervals are verified; it does not invent an
+uncontrolled-temperature prediction or expose unreported solver iterations.
 The native **Action** field separately describes the response to increasing
 actuated flow: Normal for a heating response and Reverse for a cooling response.
 See the [EnergyPlus controller reference](https://bigladdersoftware.com/epx/docs/24-2/input-output-reference/group-controllers.html#field-action)

@@ -12,6 +12,28 @@ type hvacRuntimeReasonInput struct {
 	role, parameter, key, variable string
 }
 
+func hvacRuntimeHasPlantDispatch(profile idf.HVACOperatingProfile, loop idf.HVACLoop, component idf.HVACOperatingSource) bool {
+	if !hvacWaterLoop(loop.Type) || profile.LoopID != loop.ID {
+		return false
+	}
+	declared := false
+	for _, node := range profile.OnOff.Nodes {
+		declared = declared || node.Code == "plant_dispatch"
+	}
+	if !declared {
+		return false
+	}
+	matches := 0
+	for _, branch := range loop.SupplySide.Branches {
+		for _, candidate := range branch.Components {
+			if candidate.ObjectIndex == component.ObjectIndex && strings.EqualFold(candidate.ObjectType, component.ObjectType) && strings.EqualFold(candidate.ObjectName, component.ObjectName) {
+				matches++
+			}
+		}
+	}
+	return matches == 1
+}
+
 func hvacRuntimeFollowSystemNodeInput(node idf.HVACControlNode, graph idf.HVACControlSequence, doc *idf.Document) (idf.HVACControlParameter, string) {
 	reference, _ := hvacRuntimeParameter(node.Parameters, "Reference Node Name")
 	var temperatureType string
@@ -87,6 +109,51 @@ func hvacRuntimeReasonInputs(node idf.HVACControlNode, loop idf.HVACLoop, doc *i
 		zones(p.Name, hvacRuntimeZones(doc, p.Value), heat, cool, control)
 	}
 	typ := strings.ToLower(node.Source.ObjectType)
+	if node.Code == "terminal_load_and_operating_mode" {
+		switch typ {
+		case "airconditioner:variablerefrigerantflow", "airconditioner:variablerefrigerantflow:fluidtemperaturecontrol", "airconditioner:variablerefrigerantflow:fluidtemperaturecontrol:hr":
+			add("demand", "Terminal cooling request", node.Source.ObjectName, "VRF Heat Pump Terminal Unit Cooling Load Rate")
+			add("demand", "Terminal heating request", node.Source.ObjectName, "VRF Heat Pump Terminal Unit Heating Load Rate")
+		}
+	}
+	if node.Code == "zone_thermostat" {
+		p := parameter(1, "Zone or ZoneList Name")
+		names := hvacRuntimeZones(doc, p.Value)
+		zones(p.Name, names, true, true, true)
+		for _, name := range names {
+			// These are the zone's requests before individual equipment
+			// priority/dispatch, not the selected coil's assigned load.
+			add("demand", p.Name, name, "Zone Predicted Sensible Load to Heating Setpoint Heat Transfer Rate")
+			add("demand", p.Name, name, "Zone Predicted Sensible Load to Cooling Setpoint Heat Transfer Rate")
+		}
+	}
+	if node.Code == "plant_dispatch" && hvacWaterLoop(loop.Type) {
+		switch typ {
+		case "plantequipmentoperation:heatingload":
+			add("demand", "Loop heating demand", loop.Name, "Plant Supply Side Heating Demand Rate")
+		case "plantequipmentoperation:coolingload":
+			add("demand", "Loop cooling demand", loop.Name, "Plant Supply Side Cooling Demand Rate")
+		case "plantequipmentoperation:componentsetpoint":
+			if p, ok := hvacRuntimeParameter(node.Parameters, "Demand Calculation Node Name"); ok {
+				add("sensor", p.Name, p.Value, "System Node Temperature")
+				add("sensor", p.Name, p.Value, "System Node Mass Flow Rate")
+			}
+			if p, ok := hvacRuntimeParameter(node.Parameters, "Setpoint Node Name"); ok {
+				scheme, _ := hvacRuntimeParameter(node.Parameters, "Plant Loop Demand Calculation Scheme")
+				if strings.EqualFold(scheme.Value, "DualSetpointDeadband") {
+					operation, _ := hvacRuntimeParameter(node.Parameters, "Operation Type")
+					if strings.EqualFold(operation.Value, "Cooling") || strings.EqualFold(operation.Value, "Dual") {
+						add("setpoint", p.Name, p.Value, "System Node Setpoint High Temperature")
+					}
+					if strings.EqualFold(operation.Value, "Heating") || strings.EqualFold(operation.Value, "Dual") {
+						add("setpoint", p.Name, p.Value, "System Node Setpoint Low Temperature")
+					}
+				} else {
+					add("setpoint", p.Name, p.Value, "System Node Setpoint Temperature")
+				}
+			}
+		}
+	}
 	if strings.HasPrefix(typ, "plantequipmentoperation:outdoor") {
 		variable := map[string]string{
 			"plantequipmentoperation:outdoordrybulb":            "Site Outdoor Air Drybulb Temperature",

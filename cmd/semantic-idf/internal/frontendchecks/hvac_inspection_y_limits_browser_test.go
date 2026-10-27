@@ -64,7 +64,25 @@ try{
   const labels=items.map(item=>item.querySelector('span').getBoundingClientRect()),swatches=items.map(item=>item.querySelector('i').getBoundingClientRect());
   check(labels[0].left===labels[1].left&&swatches[0].left===swatches[1].left&&labels[1].top>=labels[0].bottom,'legend rows/swatch labels are not vertically aligned');
  }
- mount.style.width='1600px';
+ const originalNodeSVG=plot('flow').querySelector('svg'),originalNodePath=plot('flow').querySelector('path'),originalNodeGeometry=originalNodePath.getAttribute('d'),originalNodeHandle=input('flow','kg/s','high');
+ const cards=()=>[...mount.querySelectorAll('[data-hvac-inspect-basic-chart]')],rect=item=>item.getBoundingClientRect(),screenFont=item=>parseFloat(getComputedStyle(item).fontSize)*Math.hypot(item.getScreenCTM().a,item.getScreenCTM().b);
+ for(const [width,columns] of [[360,1],[720,1],[1280,2],[1920,3],[3840,3]]){
+  mount.style.width=width+'px';
+  const boxes=cards().map(rect),firstRow=boxes.filter(box=>Math.abs(box.top-boxes[0].top)<.1);
+  check(firstRow.length===columns,'node chart columns do not follow available panel width: '+JSON.stringify({width,columns,boxes:boxes.map(box=>({x:box.x,y:box.y,width:box.width}))}));
+  for(const card of cards()){
+   const svg=card.querySelector('.hvac-chart-svg'),scroll=card.querySelector('.hvac-chart-scroll');
+   check(rect(svg).height<=340.1&&rect(scroll).width<=1000.1,'wide node SVG became an oversized tall plot at '+width);
+   check(rect(card).width<=width&&rect(scroll).left>=rect(card).left-.1&&rect(scroll).right<=rect(card).right+.1&&getComputedStyle(scroll).overflowX==='auto','node plot lost its contained horizontal scrolling at '+width);
+   check(Math.abs(screenFont(svg.querySelector('.hvac-chart-tick'))-11)<.05,'responsive node plot changed physical label size at '+width);
+  }
+  check(rect(mount.querySelector('[data-hvac-inspect-custom-chart] .hvac-chart-svg')).height<=340.1,'custom node plot grew without a useful height bound at '+width);
+  check(plot('flow').querySelector('svg')===originalNodeSVG&&plot('flow').querySelector('path')===originalNodePath&&originalNodePath.getAttribute('d')===originalNodeGeometry&&input('flow','kg/s','high')===originalNodeHandle,'resizing rebuilt a node plot or changed source geometry/controls');
+ }
+ document.documentElement.style.setProperty('--graph-label-font-size','18px');mount.style.width='1920px';
+ check(cards().filter(card=>Math.abs(rect(card).top-rect(cards()[0]).top)<.1).length===2&&cards().every(card=>Math.abs(screenFont(card.querySelector('.hvac-chart-tick'))-18)<.05),'larger configured labels did not retain usable node chart columns/font size');
+ document.documentElement.style.removeProperty('--graph-label-font-size');
+ mount.style.width='3200px';
  for(const kind of ['flow','temperature','humidity']){
   const items=[...plot(kind).querySelectorAll('[data-hvac-chart-legend]')],labels=items.map(item=>item.querySelector('span').getBoundingClientRect()),swatches=items.map(item=>item.querySelector('i').getBoundingClientRect());
   check(labels[0].top===labels[1].top&&labels[1].left>labels[0].right,'wide graph did not use multiple legend columns');

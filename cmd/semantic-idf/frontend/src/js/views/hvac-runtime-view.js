@@ -5,6 +5,7 @@ import { matchHVACRuntimeFrame } from "../hvac-inspection-data.js";
 import { buildHVACRuntimeAvailability } from "../hvac-runtime-availability.js";
 import { buildHVACControlExpressions } from "../hvac-control-expressions.js";
 import { renderHVACParameterFlow, connectHVACParameterFlow } from "./hvac-parameter-flow-view.js";
+import { renderHVACOnOffFlow, connectHVACOnOffFlow } from "./hvac-onoff-flow-view.js";
 import { renderHVACInspectionChart, updateHVACInspectionChartFrame } from "../hvac-inspection-charts.js";
 
 const safe = escapeHTML, finite = (value) => typeof value === "number" && Number.isFinite(value);
@@ -12,11 +13,15 @@ const copy = (key, fallback) => t(`simulation.hvacRuntime${key}`, {}, fallback);
 const connections = new WeakMap(), flowModels = new WeakMap();
 const stateNames = { allowed: "Available", blocked: "Unavailable", no_action: "NoAction", force_off: "ForceOff", cycle_on: "CycleOn", zone_fans_only: "Zone fans only", active: "Activity reported", inactive: "No activity reported", error: "Data acquisition error" };
 const stateName = (state) => copy("State." + state, stateNames[state] || state);
-const number = (value, unit = "") => finite(value) ? value.toLocaleString(undefined, { minimumFractionDigits: unit === "kW" ? 2 : 0, maximumFractionDigits: unit === "kg/s" ? 4 : 2 }) + (unit && unit !== "—" ? " " + unit : "") : "—";
+const number = (value, unit = "") => finite(value) ? value.toLocaleString(undefined, { minimumFractionDigits: ["kW", "K"].includes(unit) ? 2 : 0, maximumFractionDigits: unit === "kg/s" ? 4 : 2 }) + (unit && unit !== "—" ? " " + unit : "") : "—";
 const distinct = (signals) => [...new Map(signals.map((signal) => [signal.seriesId + "|" + signal.keyValue + "|" + signal.variableName + "|" + signal.role, signal])).values()];
 
 function metric(signal) {
-  const name = signal.variableName.toLowerCase();
+  const name = String(signal.variableName || "").toLowerCase();
+  if (signal.role === "dispatch") return copy("Metric.assignedLoad", "Assigned load");
+  if (/part load ratio/.test(name)) return copy("Metric.partLoad", "Part-load ratio");
+  if (/cycling ratio/.test(name)) return copy("Metric.cycling", "Cycling ratio");
+  if (/heat transfer/.test(name) && !/cooling|heating/.test(name)) return copy("Metric.heatTransfer", "Heat transfer");
   const id = signal.role === "demand" ? /cooling/.test(name) ? "coolingDemand" : /heating/.test(name) ? "heatingDemand" : "demand"
     : signal.role === "actuator_request" ? "requestedFlow" : signal.role === "actuator" ? "actualFlow"
     : /minimum.*mass flow/.test(name) ? "minimumFlow" : /maximum.*mass flow/.test(name) ? "maximumFlow"
@@ -30,10 +35,12 @@ function metric(signal) {
   return copy("Metric." + id, id === "coolingDemand" ? "Cooling demand" : id === "heatingDemand" ? "Heating demand" : labels[id]);
 }
 
-function controlModel(profile) {
-  if (!flowModels.has(profile)) flowModels.set(profile, buildHVACControlExpressions(profile.definition, { component: profile.source }).parameters);
+function expressions(profile) {
+  if (!flowModels.has(profile)) flowModels.set(profile, buildHVACControlExpressions(profile.definition, { component: profile.source }));
   return flowModels.get(profile);
 }
+
+const controlModel = (profile) => expressions(profile).parameters;
 
 function cards(profile) {
   return controlModel(profile).groups.flatMap((group) => group.cards.map((card) => ({ ...card, group: group.id })));
@@ -47,7 +54,8 @@ function cardSignals(profile, card) {
 }
 
 function plottedSignals(profile) {
-  return distinct(profile.signals.filter((signal) => signal.graph === "parameterControl" || signal.graph === "loop" && signal.role === "demand"))
+  return distinct([...profile.signals.filter((signal) => signal.graph === "parameterControl" || signal.graph === "loop" && signal.role === "demand"),
+    ...profile.signals.filter((signal) => signal.graph === "onOff")])
     .filter((signal) => !["manager_status", "loop_status"].includes(signal.role));
 }
 
@@ -184,6 +192,19 @@ function availability(data) {
   }).join("")}<div class="hvac-runtime-stack-axis"><span></span><div><span>${safe(frames[0]?.label || "")}</span><span>${safe(frames.at(-1)?.label || "")}</span></div><span></span></div></div>${availabilityLegend()}</section>`;
 }
 
+function onOff(data) {
+  const { profile, snapshot, stack } = data;
+  const inputs = distinct(snapshot.signals.filter((signal) => signal.graph === "onOff" || signal.graph === "loop" && signal.role === "demand"))
+    .filter((signal) => !["manager_status", "loop_status", "activity"].includes(signal.role));
+  const outputs = distinct(snapshot.signals.filter((signal) => signal.role === "activity"));
+  const readings = (signals) => signals.map((signal) => `<div class="hvac-runtime-decision-reading" title="${safe(signal.variableName)}"><span><strong>${safe(metric(signal))}</strong><small>${safe(signal.keyValue)}</small></span><b data-hvac-runtime-value="${safe(signal.id)}">${safe(number(signal.value, signal.unit))}</b></div>`).join("");
+  const passive = profile.definition.onOffExpression?.op === "passive_flow";
+  const response = passive ? copy("Passive", "Follows connected flow") : ["active", "inactive"].includes(snapshot.activity) ? stateName(snapshot.activity) : "—";
+  const presentation = expressions(profile).onOffPresentation;
+  const runtimePresentation = { ...presentation, formulas: presentation.formulas.map((formula) => formula.id === "availability" ? { ...formula, code: "runConditions" } : formula) };
+  return `<section class="hvac-runtime-logic hvac-runtime-decisions" data-hvac-runtime-onoff><h4>${safe(copy("OnOff", "On / Off decisions"))}</h4>${renderHVACOnOffFlow(runtimePresentation, profile.definition)}<div class="hvac-runtime-decision-values"><article><h5>${safe(copy("AvailabilityStack", "Availability"))}</h5><strong data-hvac-runtime-decision-permission>${safe(stateName(stack.rows.at(-1)?.current.state || "error"))}</strong></article>${inputs.length ? `<article><h5>${safe(copy("DecisionInputs", "Demand / dispatch inputs"))}</h5>${readings(inputs)}</article>` : ""}<article><h5>${safe(copy("ReportedResponse", "Reported response"))}</h5>${outputs.length || passive ? `<strong data-hvac-runtime-decision-response>${safe(response)}</strong>` : ""}${readings(outputs)}</article></div></section>`;
+}
+
 function control(data) {
   return `<section class="hvac-runtime-logic parameters" data-hvac-runtime-control><h4>${safe(copy("ControlSequence", "Control sequence"))}</h4>${renderHVACParameterFlow(controlModel(data.profile), { component: data.profile.source, details: false, hint: false })}</section>`;
 }
@@ -219,7 +240,7 @@ export function renderHVACRuntimeInspection(loop, ui, inspection) {
   const data = context(loop, ui, inspection);
   if (!data) return ui.runtimeSelected ? `<section class="hvac-runtime" data-hvac-runtime><div class="empty" data-hvac-runtime-error>${safe(copy("DefinitionError", "Control definition error"))}</div></section>` : "";
   const { profile, logic, frames } = data;
-  return `<section class="hvac-runtime" data-hvac-runtime data-hvac-runtime-profile-id="${safe(profile.id)}" data-window="${safe((frames[0]?.key || "") + "|" + (frames.at(-1)?.key || ""))}"><header class="hvac-runtime-heading"><div><h3>${safe(profile.source.objectName)}</h3><span>${safe(profile.source.objectType)}</span></div><div data-hvac-runtime-states>${statusHeader(data)}</div><select data-hvac-runtime-window aria-label="${safe(copy("Window", "Time window"))}">${["day", "week", "all"].map((value) => `<option value="${value}"${logic.window === value ? " selected" : ""}>${safe(copy("Window." + value, { day: "Day", week: "Week", all: "Full run" }[value]))}</option>`).join("")}</select></header><div data-hvac-runtime-diagnostic>${diagnostic(data.snapshot)}</div>${availability(data)}${control(data)}${history(data)}</section>`;
+  return `<section class="hvac-runtime" data-hvac-runtime data-hvac-runtime-profile-id="${safe(profile.id)}" data-window="${safe((frames[0]?.key || "") + "|" + (frames.at(-1)?.key || ""))}"><header class="hvac-runtime-heading"><div><h3>${safe(profile.source.objectName)}</h3><span>${safe(profile.source.objectType)}</span></div><div data-hvac-runtime-states>${statusHeader(data)}</div><select data-hvac-runtime-window aria-label="${safe(copy("Window", "Time window"))}">${["day", "week", "all"].map((value) => `<option value="${value}"${logic.window === value ? " selected" : ""}>${safe(copy("Window." + value, { day: "Day", week: "Week", all: "Full run" }[value]))}</option>`).join("")}</select></header><div data-hvac-runtime-diagnostic>${diagnostic(data.snapshot)}</div>${availability(data)}${onOff(data)}${control(data)}${history(data)}</section>`;
 }
 
 function flowValues(mount, data) {
@@ -232,11 +253,29 @@ function flowValues(mount, data) {
     const pick = roles.map((role) => related.find((signal) => signal.role === role)).find(Boolean);
     const ids = new Set(card.members.map((node) => node.id));
     const residual = data.snapshot.residuals.find((entry) => ids.has(entry.id));
-    if (!pick && !residual) continue;
     let label = tile.querySelector("[data-hvac-runtime-card-value]");
+    if (!pick && !residual) { if (label) { label.textContent = "—"; label.title = ""; } continue; }
     if (!label) { label = document.createElement("span"); label.dataset.hvacRuntimeCardValue = ""; tile.querySelector("button").append(label); }
-    label.textContent = residual ? "Δ " + number(residual.value, residual.unit) : (card.group === "commands" ? metric(pick) + ": " : "") + number(pick.value, pick.unit);
-    label.title = residual ? number(residual.sensor.value, residual.unit) + " − " + number(residual.setpoint.value, residual.unit) : metric(pick) + " · " + pick.keyValue;
+    if (residual) {
+      const thermal = residual.thermal, unit = residual.unit === "°C" ? "K" : residual.unit;
+      const row = (term, title, value) => `<span data-hvac-runtime-control-term="${term}"><span>${safe(title)}</span><b>${safe(number(value, unit))}</b></span>`;
+      label.innerHTML = (finite(thermal?.inletToTarget) ? row("target-change", copy("TargetChange", "Target − inlet"), thermal.inletToTarget) : "")
+        + (finite(thermal?.inletToOutlet) ? row("actual-change", copy("ActualChange", "Outlet − inlet"), thermal.inletToOutlet) : "")
+        + row("tracking-error", thermal?.outlet ? copy("TrackingError", "Outlet tracking error") : copy("ReportedError", "Reported temperature error"), residual.value);
+      label.title = copy("TrackingErrorDetail", "Reported sensor − target; zero error can require nonzero flow.")
+        + "\n" + residual.sensor.keyValue + ": " + number(residual.sensor.value, residual.unit) + " − " + number(residual.setpoint.value, residual.unit)
+        + (thermal?.inlet ? "\n" + thermal.inlet.keyValue + ": " + number(thermal.inlet.value, residual.unit) : "");
+    } else if (card.group === "inputs" && card.members.some((node) => node.code === "inlet_state")) {
+      const inlet = distinct(related.filter((signal) => signal?.role === "sensor" && /temperature/i.test(signal.variableName)));
+      label.innerHTML = inlet.length ? inlet.map((signal) => {
+        const name = /air inlet/i.test(signal.parameterName) ? copy("AirInlet", "Air inlet") : /water|fluid/i.test(signal.parameterName) ? copy("FluidInlet", "Fluid inlet") : metric(signal);
+        return `<span><span>${safe(name)}</span><b>${safe(number(signal.value, signal.unit))}</b></span>`;
+      }).join("") : safe(number(pick.value, pick.unit));
+      label.title = inlet.map((signal) => signal.keyValue + ": " + number(signal.value, signal.unit)).join("\n");
+    } else {
+      label.textContent = (card.group === "commands" ? metric(pick) + ": " : "") + number(pick.value, pick.unit);
+      label.title = metric(pick) + " · " + pick.keyValue;
+    }
     if (card.group === "commands" && pick?.role === "actuator_request") {
       const actual = related.find((signal) => signal.role === "actuator");
       if (actual) {
@@ -251,6 +290,9 @@ function flowValues(mount, data) {
 function synchronize(mount, data) {
   mount.querySelector("[data-hvac-runtime-states]").innerHTML = statusHeader(data);
   mount.querySelector("[data-hvac-runtime-diagnostic]").innerHTML = diagnostic(data.snapshot);
+  mount.querySelector("[data-hvac-runtime-decision-permission]").textContent = stateName(data.stack.rows.at(-1)?.current.state || "error");
+  const response = mount.querySelector("[data-hvac-runtime-decision-response]");
+  if (response) response.textContent = data.profile.definition.onOffExpression?.op === "passive_flow" ? copy("Passive", "Follows connected flow") : ["active", "inactive"].includes(data.snapshot.activity) ? stateName(data.snapshot.activity) : "—";
   const current = new Map(data.snapshot.signals.map((signal) => [signal.id, signal]));
   for (const label of mount.querySelectorAll("[data-hvac-runtime-value]")) {
     const signal = current.get(label.dataset.hvacRuntimeValue);
@@ -287,7 +329,9 @@ export function connectHVACRuntimeInspection(container, loop, ui, inspection) {
   const data = context(loop, ui, inspection);
   if (!data) return;
   synchronize(container.querySelector("[data-hvac-runtime]"), data);
-  connections.set(container, connectHVACParameterFlow(mount));
+  const disconnectControl = connectHVACParameterFlow(mount);
+  const disconnectOnOff = connectHVACOnOffFlow(container.querySelector("[data-hvac-runtime-onoff]"));
+  connections.set(container, () => { disconnectControl(); disconnectOnOff(); });
 }
 
 export function updateHVACRuntimeInspection(container, loop, ui, inspection) {

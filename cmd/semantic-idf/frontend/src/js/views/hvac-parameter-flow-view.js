@@ -37,7 +37,7 @@ function tileLabel(card, group) {
   const quantities = [...new Set(card.members.flatMap((node) => (node.parameters || []).filter((parameter) => /^control variable$/i.test(parameter.name)).map((parameter) => parameter.value).filter(Boolean)))];
   const withQuantity = (label) => quantities.length === 1 ? `${copy(`value.${quantities[0]}`, quantities[0])} · ${label}` : label;
   if (group.id === "commands") return nodeLabel(member("control_variable", "actuator", "modulation") || card.members[0]);
-  if (group.id === "controls") return withQuantity(nodeLabel(member("comparison", "controller", "control", "condition", "decision") || card.members[0]));
+  if (group.id === "controls") return withQuantity(nodeLabel(member("controller", "control", "comparison", "condition", "decision") || card.members[0]));
   if (group.id === "response") return nodeLabel(member("state_variable", "external_output", "equipment", "parameter") || card.members[0]);
   const target = member("setpoint");
   if (target) return withQuantity(nodeLabel(target));

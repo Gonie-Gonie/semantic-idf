@@ -370,6 +370,50 @@ try {
  runtimeModel=prepareRuntime(coilLoop);const coilProfile=selectedRuntimeProfile(runtimeModel,coilFixture);observed=runtimeSnapshot(runtimeModel,coilProfile.id,0);
  check(observed.errors.length===0&&observed.residuals.some(residual=>residual.value===2&&residual.unit==='°C'),'native sensed-minus-setpoint residual lost its actual measurement/target sign');
  check(observed.signals.some(signal=>signal.role==='actuator_request'&&signal.value===.8)&&observed.signals.some(signal=>signal.role==='actuator'&&signal.value===.3),'requested and actual actuator flows were conflated');
+ const coilDefinition=captured=>captured.operatingProfiles.find(profile=>profile.componentIndex===coilFixture.component.objectIndex&&profile.loopId===coilFixture.profile.loopId),coilGraph=coilDefinition(coilLoop).parameterControl;
+ const coilPort=(code,field)=>coilGraph.nodes.find(node=>node.code===code&&sourceIdentity(node.source)===sourceIdentity(coilFixture.component)&&node.parameters?.some(parameter=>parameter.name===field&&parameter.objectIndex===coilFixture.component.objectIndex));
+ const coilAirInlet=coilPort('inlet_state','Air Inlet Node Name'),coilAirOutlet=coilPort('outlet_state','Air Outlet Node Name'),coilWaterInlet=coilPort('inlet_state','Water Inlet Node Name');
+ check(coilAirInlet&&coilAirOutlet&&coilWaterInlet,'native water coil must retain distinct source-backed air and water ports');
+ const portTemperature=(captured,node,value)=>setReported(captured,signal=>signal.graph==='parameterControl'&&signal.nodeId===node.id&&signal.role==='sensor'&&signal.variableName==='System Node Temperature',[value]);
+ const convergedCoil=structuredClone(coilLoop);portTemperature(convergedCoil,coilAirInlet,10);portTemperature(convergedCoil,coilAirOutlet,20);portTemperature(convergedCoil,coilWaterInlet,82);
+ const convergedSnapshot=runtimeSnapshot(prepareRuntime(convergedCoil),coilProfile.id,0),convergedResidual=convergedSnapshot.residuals.find(residual=>residual.thermal);
+ check(convergedSnapshot.errors.length===0&&convergedResidual?.value===0&&convergedResidual.thermal.unit==='K'&&convergedResidual.thermal.inletToTarget===10&&convergedResidual.thermal.inletToOutlet===10,'zero reported tracking error erased the nonzero target/actual air-stream temperature change');
+ check(convergedResidual.thermal.inlet.nodeId===coilAirInlet.id&&convergedResidual.thermal.inlet.value===10&&convergedResidual.thermal.outlet.nodeId===coilAirOutlet.id&&convergedResidual.thermal.outlet.value===20&&convergedSnapshot.signals.some(signal=>signal.role==='actuator_request'&&signal.value===.8)&&convergedSnapshot.signals.some(signal=>signal.role==='actuator'&&signal.value===.3),'thermal comparison borrowed water-inlet temperature or treated converged error as zero commanded/actual water flow');
+ for(const [inlet,outlet,target,targetChange,actualChange=targetChange,error=0]of [[30,20,20,-10],[-10,0,0,10],[-20,-5,-5,15],[0,0,0,0],[10,18,20,10,8,-2]]){
+  const captured=structuredClone(convergedCoil);portTemperature(captured,coilAirInlet,inlet);portTemperature(captured,coilAirOutlet,outlet);setReported(captured,signal=>signal.role==='setpoint',[target]);
+  const current=runtimeSnapshot(prepareRuntime(captured),coilProfile.id,0),residual=current.residuals.find(entry=>entry.thermal);
+  check(current.errors.length===0&&residual?.value===error&&residual.thermal.inletToTarget===targetChange&&residual.thermal.inletToOutlet===actualChange,'air-stream differences lost cooling/tracking sign or a valid zero/negative native temperature: '+[inlet,outlet,target]);
+ }
+ const airInletBinding=convergedCoil.controlSignals.find(signal=>signal.graph==='parameterControl'&&signal.nodeId===coilAirInlet.id&&signal.role==='sensor'&&signal.variableName==='System Node Temperature');
+ const noThermal=(captured,message)=>check(!runtimeSnapshot(prepareRuntime(captured),coilProfile.id,0).residuals.some(residual=>residual.thermal),message);
+ for(const variant of ['missing-inlet','missing-air-port','duplicate-inlet','duplicate-edge','different-source','different-controller','broken-command','different-sensor','missing-native-interval','different-cadence','different-interval','different-environment','different-timestep']){
+  const captured=structuredClone(convergedCoil),graph=coilDefinition(captured).parameterControl,binding=captured.controlSignals.find(signal=>signal.id===airInletBinding.id),native=captured.controlSeries.find(series=>series.sourceId===binding.seriesId);
+  if(variant==='missing-inlet')captured.controlSignals=captured.controlSignals.filter(signal=>signal.id!==binding.id);
+  if(variant==='missing-air-port')graph.nodes=graph.nodes.filter(node=>node.id!==coilAirInlet.id);
+  if(variant==='duplicate-inlet')captured.controlSignals.push({...binding,id:binding.id+'-duplicate'});
+  if(variant==='duplicate-edge')graph.edges.push({...graph.edges.find(edge=>edge.from===coilAirInlet.id&&edge.relation==='inlet_conditions')});
+  if(variant==='different-source')binding.source={...binding.source,objectName:'Another water coil'};
+  if(variant==='different-controller')graph.nodes.find(node=>node.code==='water_flow_command').source.objectName='Another controller';
+  if(variant==='broken-command')graph.edges=graph.edges.filter(edge=>edge.relation!=='actuates');
+  if(variant==='different-sensor')graph.edges.find(edge=>edge.relation==='adds_measurement').from=coilWaterInlet.id;
+  if(variant==='missing-native-interval'){delete native.nativeIntervals;delete native.nativeIntervalsSourceId;}
+  if(variant==='different-cadence'){binding.reportingFrequency='Detailed';native.reportingFrequency='Detailed';}
+  if(['different-interval','different-environment','different-timestep'].includes(variant)){
+   native.nativeIntervals=structuredClone(captured.controlSeries.find(series=>series.nativeIntervals)?.nativeIntervals);delete native.nativeIntervalsSourceId;
+   check(native.nativeIntervals?.length===4,'thermal timing regression lacks native source metadata');
+   for(const interval of native.nativeIntervals){if(variant==='different-interval')interval.intervalMinutes=5;if(variant==='different-environment')interval.environmentPeriodIndex=2;if(variant==='different-timestep')interval.timeIndex+=100;}
+  }
+  noThermal(captured,'thermal comparison borrowed missing, ambiguous or unrelated air/control/native observations: '+variant);
+ }
+ const inletGap=structuredClone(convergedCoil),inletGapSeries=inletGap.controlSeries.find(series=>series.sourceId===airInletBinding.seriesId);inletGapSeries.points.shift();
+ noThermal(inletGap,'missing inlet timestep borrowed a neighboring air temperature');
+ const unpairedTarget=structuredClone(convergedCoil),targetBinding=unpairedTarget.controlSignals.find(signal=>signal.graph==='parameterControl'&&signal.role==='setpoint'&&signal.nodeId===convergedResidual.setpoint.nodeId),targetSeries=unpairedTarget.controlSeries.find(series=>series.sourceId===targetBinding.seriesId);
+ delete targetSeries.nativeIntervals;delete targetSeries.nativeIntervalsSourceId;
+ const actualOnly=runtimeSnapshot(prepareRuntime(unpairedTarget),coilProfile.id,0).residuals.find(residual=>residual.thermal);
+ check(actualOnly?.thermal.inletToOutlet===10&&!('inletToTarget'in actualOnly.thermal),'unproved target interval damaged a valid actual air change or acquired an invented target change');
+ const foreignTarget=structuredClone(convergedCoil),foreignTargetBinding=foreignTarget.controlSignals.find(signal=>signal.id===targetBinding.id),foreignTargetSeries=foreignTarget.controlSeries.find(series=>series.sourceId===foreignTargetBinding.seriesId);foreignTargetBinding.keyValue=foreignTargetSeries.keyValue='Another controlled air outlet';
+ const foreignTargetResidual=runtimeSnapshot(prepareRuntime(foreignTarget),coilProfile.id,0).residuals.find(residual=>residual.thermal);
+ check(foreignTargetResidual?.thermal.inletToOutlet===10&&!('inletToTarget'in foreignTargetResidual.thermal),'another node target was borrowed as the selected coil air-outlet target');
  const zeroTarget=structuredClone(coilLoop);setReported(zeroTarget,signal=>signal.role==='setpoint',[0]);
  observed=runtimeSnapshot(prepareRuntime(zeroTarget),coilProfile.id,0);check(observed.residuals.some(residual=>residual.value===22)&&observed.errors.length===0,'valid 0 °C target was interpreted as missing data');
  const noTarget=structuredClone(coilLoop);setReported(noTarget,signal=>signal.role==='setpoint',[-998.9999999999999]);

@@ -65,6 +65,15 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
+- HVAC node charts reflow into one to three columns with bounded drawing height,
+  preserving font size, controls and existing chart state on resize. Equipment
+  inspection restores the On / Off decision graph beside permission, native
+  per-component assigned load and reported response, including plant and local
+  equipment. Exact legacy condenser operation namespaces retain their sources.
+- WaterCoil control cards identify the controller and separate reported target
+  error from the verified air inlet-to-target and inlet-to-outlet differences.
+  A zero reported error no longer visually implies zero commanded flow or an
+  unreported prediction of uncontrolled temperature.
 - Repeated result reads use stable boundary-source/month accumulation and
   cross-loop relationship ordering, avoiding map-order rounding differences
   and reordered equipment links for the same input.

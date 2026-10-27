@@ -64,7 +64,7 @@ function expressionHTML(expression = {}, labels = new Map(), depth = 0, describe
     return `<span class="hvac-expression-group" data-hvac-expression-op="${op}"><span class="hvac-expression-terms">${children.map((child) => expressionHTML(child, labels, depth + 1, describe)).join(`<span class="hvac-expression-operator">${op === "all" ? "AND" : "OR"}</span>`) || safe(op === "all" ? "TRUE" : "FALSE")}</span></span>`;
   }
   if (op === "rule_reference") return `<button type="button" class="hvac-expression-reference" data-hvac-rule-reference="${safe(expression.referenceId)}" data-hvac-inspect-rule="${safe(expression.referenceId)}">${safe(labels.get(expression.referenceId) || expression.referenceId)}</button>`;
-  if (op === "reference") return `<span class="hvac-expression-reference" data-hvac-expression-reference="${safe(expression.referenceId)}">${safe(copy(expression.referenceId === "availability" ? "runPermission" : expression.referenceId, human(expression.referenceId)))}</span>`;
+  if (op === "reference") return `<span class="hvac-expression-reference" data-hvac-expression-reference="${safe(expression.referenceId)}">${safe(labels.get(expression.referenceId) || copy(expression.referenceId === "availability" ? "runPermission" : expression.referenceId, human(expression.referenceId)))}</span>`;
   if (op === "schedule_positive") return `<span class="hvac-expression-leaf" data-hvac-expression-op="${op}" data-hvac-expression-schedule="${safe(expression.scheduleName || "")}" title="${safe(expression.source?.objectName || "")}">${safe(expression.scheduleName || copy("unresolved", "Unresolved"))} &gt; 0</span>`;
   if (op === "always") return `<span class="hvac-expression-leaf" data-hvac-expression-op="always">${safe(expression.domain === "manager" ? expression.managerStatus : expression.booleanValue === false ? "FALSE" : "TRUE")}</span>`;
   const node = expression.node, diagnostic = describe(expression), label = node && ["runtime_condition", "passive_flow"].includes(op) ? nodeLabel(node) : diagnostic.label;
@@ -100,6 +100,7 @@ function permissionHTML(rule, labels) {
 
 export function renderHVACOnOffFlow(presentation, profile) {
   const rules = presentation.rules || [], managers = rules.filter((rule) => rule.kind === "manager"), permissions = rules.filter((rule) => rule.kind === "permission"), labels = new Map();
+  for (const formula of presentation.formulas) labels.set(formula.id, copy(formula.code, human(formula.code)));
   const issues = managerDefinitionIssues(profile), hasConfiguredReport = Boolean(profile.configuredAvailability || profile.configuredAvailabilityLayers), describe = (expression) => conditionDescription(expression, issues, hasConfiguredReport);
   for (const [kind, items] of [["manager", managers], ["permission", permissions]]) items.forEach((rule, index) => labels.set(rule.id, `${copy(kind === "manager" ? "flow.managerAction" : rule.op === "fan_gate" ? "flow.fanPermission" : "flow.managerPermission", kind === "manager" ? "Manager action" : rule.op === "fan_gate" ? "Fan permission" : "Manager permission")}${items.length > 1 ? ` ${index + 1}` : ""}`));
   const tile = (rule) => {

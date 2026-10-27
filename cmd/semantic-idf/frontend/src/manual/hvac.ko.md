@@ -256,11 +256,18 @@ Controller:WaterCoil의 원본 **Control Variable** 필드는 출구 공기 온�
 Action은 서로 다른 제어 단계를 설명합니다. 미확인 부호가 positive
 feedback이라는 뜻은 아닙니다. Feedback 참조는 순환을 반복해서 펼치지
 않고 원본과 의미를 유지하며 그림의 배치 순서가 시뮬레이션 실행 순서는 아닙니다. 실제
-운전 상태의 수치와 수렴은 Simulation HVAC와 실행 출력 변수로 확인합니다.
+운전 상태의 수치와 보고된 목표 추종 편차는 Simulation HVAC와 실행 출력 변수로 확인합니다.
 
 지원되는 Controller:WaterCoil 온도 비교에서 EnergyPlus는
 `residual = 감지값 − setpoint`를 사용합니다. 감지값 입력은 **+**, 목표값
-입력은 **−**이며 actuator의 반응 부호가 아닙니다. 원본 **Action** 필드는
+입력은 **−**이며 actuator의 반응 부호가 아닙니다.
+주 카드에는 controller를 표시하고, 비교값은 별도로 보고된 물리량으로 구분합니다.
+목표를 유지하는 데 필요한 유량을 찾으므로 보고 편차가 0에 가까워도 조작 유량은
+0이 아닐 수 있습니다. Simulation에서는 원천과 구간이 확인된 공기 입구·목표,
+입구·출구 온도차를 따로 보여주며, 제어하지 않았을 때의 예상온도나 보고되지 않은
+solver 반복 이력을 만들지 않습니다.
+
+원본 **Action** 필드는
 조작 유량 증가에 대한 응답을 별도로 나타냅니다. 난방 응답은 Normal,
 냉방 응답은 Reverse입니다.
 [EnergyPlus controller 설명](https://bigladdersoftware.com/epx/docs/24-2/input-output-reference/group-controllers.html#field-action)과

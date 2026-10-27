@@ -56,6 +56,16 @@
   .hvac-chart-axis-label { font-size: calc((var(--graph-label-font-size, 11px) + 1px) * var(--hvac-chart-font-scale)); }
 }
 
+/* Node plots use extra space for neighbouring metric groups. Cap their
+   plotting viewport so SVG proportions and the configured label size remain
+   intact instead of turning a wide inspection panel into a tall chart. */
+.hvac-inspection-basic .hvac-chart-scroll,
+.hvac-inspection-custom .hvac-chart-scroll {
+  width: 100%;
+  max-width: 1000px;
+  margin-inline: auto;
+}
+
 :root[data-theme="dark"] .hvac-inspection-chart {
   --hvac-chart-blue: #86b1ed;
   --hvac-chart-purple: #ba9ddd;
@@ -129,6 +139,18 @@
 .hvac-runtime-logic { --text: var(--ink); --panel: var(--surface); --border: var(--line); min-width: 0; }
 .hvac-runtime-logic [data-hvac-runtime-card-value] { color: var(--teal-dark); font-size: 12px; white-space: nowrap; font-weight: 650; }
 .hvac-runtime-logic [data-hvac-runtime-card-actual] { color: var(--ink); font-size: 12px; white-space: nowrap; font-weight: 650; }
+.hvac-runtime-logic [data-hvac-runtime-card-value] > span { display: flex; justify-content: space-between; gap: 10px; white-space: normal; }
+.hvac-runtime-logic [data-hvac-runtime-card-value] > span > span { color: var(--muted); font-weight: 400; }
+.hvac-runtime-logic [data-hvac-runtime-card-value] b { white-space: nowrap; font-weight: 650; }
+.hvac-runtime-decision-values { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 14px; margin-top: 14px; }
+.hvac-runtime-decision-values > article { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.hvac-runtime-decision-values h5 { margin: 0 0 10px; font-size: 13px; }
+.hvac-runtime-decision-values > article > strong { color: var(--teal-dark); font-size: 13px; }
+.hvac-runtime-decision-reading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 9px; font-size: 12px; }
+.hvac-runtime-decision-reading > span { display: grid; min-width: 0; gap: 3px; }
+.hvac-runtime-decision-reading strong { font-weight: 500; }
+.hvac-runtime-decision-reading small { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.hvac-runtime-decision-reading b { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .hvac-runtime-logic .hvac-parameter-flow-hint:has([data-hvac-flow-description][hidden]) { display: none; }
 [data-hvac-runtime-history] { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 500px), 1fr)); }
 .hvac-runtime-history-group { min-width: 0; }
