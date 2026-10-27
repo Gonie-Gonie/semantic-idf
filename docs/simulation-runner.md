@@ -612,6 +612,14 @@ traces. Building values require facility observations, never invented averages/
 sums of zone PMV or unmet hours. Custom periods omit full-run tabular unmet
 hours. Comfort exports use the same graphs and indicators.
 
+Comfort metrics preserve the source `reportingFrequency` (CSV may use its column
+suffix). Charts use marker-free lines and valid calendar labels for time spacing,
+with a common year/leap context across the result and a one-hour cadence for
+declared Hourly data. Interleaved SQL time indices do not split continuous hours;
+missing values and genuine hourly gaps still split lines. A chart with invalid,
+repeated or backward calendar labels retains its original observation coordinates.
+The projection leaves returned points, values and summaries unchanged.
+
 Integrity remains a backend result with ERR/SQL diagnostics, tabular previews,
 and static/SQL cross-checks for zones, surfaces, constructions, and nominal
 loads. Match statuses distinguish exact, normalized, compact alias, static-only,

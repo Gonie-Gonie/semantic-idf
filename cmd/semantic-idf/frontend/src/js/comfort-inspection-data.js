@@ -75,8 +75,62 @@ function metricsFor(metrics, scope) {
     if (seen.has(id)) return [];
     seen.add(id);
     const points = observations(metric.points, kind.factor);
-    return [{ ...kind, id, name: metric.name, keyValue, points, summary: summarize(points, metric, kind.factor) }];
+    return [{ ...kind, id, name: metric.name, keyValue, reportingFrequency: metric.reportingFrequency,
+      points, summary: summarize(points, metric, kind.factor) }];
   });
+}
+
+const calendarPattern = /^(?:(\d{4})[-/])?(\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/;
+
+function calendarCoordinates(metrics) {
+  const labels = new Map(), years = new Set();
+  let leap = false;
+  for (const metric of metrics) for (const point of metric.points) {
+    if (labels.has(point.label)) continue;
+    const match = calendarPattern.exec(point.label.trim());
+    labels.set(point.label, match);
+    if (match?.[1] && Number(match[1]) > 0) years.add(Number(match[1]));
+    if (match && Number(match[2]) === 2 && Number(match[3]) === 29) leap = true;
+  }
+  // Yearless labels use one common reference calendar, never a separate leap
+  // year for each People group, metric or zone. Do not guess a year rollover.
+  const referenceYear = years.size === 1 ? [...years][0] : leap ? 2000 : 2001;
+  const coordinates = new Map();
+  for (const [label, match] of labels) {
+    let value = null;
+    if (match && (match[1] || years.size <= 1)) {
+      const year = match[1] ? Number(match[1]) : referenceYear;
+      const month = Number(match[2]), day = Number(match[3]), hour = Number(match[4]), minute = Number(match[5]), second = Number(match[6] || 0);
+      if (year > 0 && month >= 1 && month <= 12 && day >= 1 && hour <= 24 && minute < 60 && second < 60 && (hour !== 24 || minute === 0 && second === 0)) {
+        const date = new Date(0);
+        date.setUTCFullYear(year, month - 1, day);
+        if (date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day) {
+          date.setUTCHours(hour, minute, second, 0);
+          value = date.getTime() / 3600000;
+        }
+      }
+    }
+    coordinates.set(label, value);
+  }
+  return coordinates;
+}
+
+function projectCalendar(metrics, coordinates) {
+  const categories = new Map();
+  for (const metric of metrics) {
+    if (!categories.has(metric.category)) categories.set(metric.category, []);
+    categories.get(metric.category).push(metric);
+  }
+  for (const group of categories.values()) {
+    // A chart cannot mix row-number and calendar coordinates. Repeated,
+    // backward or invalid dates retain the original axis for that category.
+    if (!group.every((metric) => metric.points.every((point, index) => finite(coordinates.get(point.label))
+      && (!index || coordinates.get(point.label) > coordinates.get(metric.points[index - 1].label))))) continue;
+    for (const metric of group) {
+      metric.points = metric.points.map((point) => ({ ...point, key: String(point.x), x: coordinates.get(point.label) }));
+      if (token(metric.reportingFrequency) === "hourly") metric.interval = 1;
+    }
+  }
 }
 
 function buildingRow(row) {
@@ -115,6 +169,8 @@ export function prepareComfortInspection(comfort = {}) {
   }
   const building = { id: COMFORT_BUILDING_SCOPE, name: "Building",
     metrics: metricsFor(comfort.buildingMetrics, COMFORT_BUILDING_SCOPE), hours: hoursFor(unmet.filter(buildingRow)) };
+  const coordinates = calendarCoordinates([building, ...zones].flatMap((scope) => scope.metrics));
+  for (const scope of [building, ...zones]) projectCalendar(scope.metrics, coordinates);
   const result = { zones, building };
   cache.set(comfort, result);
   return result;

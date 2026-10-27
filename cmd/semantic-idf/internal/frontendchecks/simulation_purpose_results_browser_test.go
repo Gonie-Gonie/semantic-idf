@@ -301,10 +301,24 @@ try{
  const comfortValue=id=>{const metric=comfort.querySelector('[data-comfort-inspect-metric="'+id+'"]');return Number((metric?.querySelector('[data-comfort-inspect-value]')||metric)?.dataset.comfortInspectValue);};
  check(comfortValue('temperature')===24&&comfortValue('heatingSetpoint')===20&&comfortValue('coolingSetpoint')===25,'Comfort T/Tset indicators lost the actual returned averages');
  const temperature=comfortChart('temperature');
- check(temperature?.querySelectorAll('[data-hvac-chart-series]').length===3&&[22,24,26,20,25].every(value=>temperature.querySelector('[data-hvac-chart-value="'+value+'"]')),'Comfort graph lost observed temperature or heating/cooling setpoints');
- check(comfortChart('humidity')?.querySelectorAll('[data-hvac-chart-series] circle').length===3&&comfortValue('relativeHumidity')===50,'Comfort RH graph or indicator lost the returned samples');
+ const {prepareComfortInspection}=await import('/src/js/comfort-inspection-data.js'),returnedComfort=state.simulationResult.purposeResults.comfort,office=prepareComfortInspection(returnedComfort).zones.find(zone=>zone.id==='OFFICE');
+ check(returnedComfort.zones.find(zone=>zone.zoneName==='OFFICE')?.metrics.every(metric=>metric.reportingFrequency==='Hourly'),'native Comfort purpose metrics lost their exact reported cadence');
+ const comfortLine=(kind,category,expected)=>{
+  const metric=office?.metrics.find(metric=>metric.kind===kind),chart=comfortChart(category),svg=chart?.querySelector('svg');
+  check(metric&&metric.points.length===expected.length&&metric.points.every((point,index)=>point.value===expected[index]),'Comfort adapter lost exact complete native '+kind+' observations');
+  if(!svg||!metric)return check(false,'Comfort '+kind+' graph or native metric is missing');
+  const yAxis=svg.querySelector('[data-hvac-chart-axis="left"]'),cursor=svg.querySelector('[data-hvac-chart-frame]'),path=svg.querySelector('[data-hvac-chart-series="'+CSS.escape(metric.id)+'"] path.hvac-chart-line'),vertices=[...(path?.getAttribute('d')||'').matchAll(/([ML])([^,\s]+),([^\s]+)/g)];
+  const yLow=Number(yAxis?.dataset.hvacChartYLow),yHigh=Number(yAxis?.dataset.hvacChartYHigh),plotTop=Number(cursor?.getAttribute('y1')),plotBottom=Number(cursor?.getAttribute('y2')),xLow=Number(svg.dataset.hvacChartDomainLow),xHigh=Number(svg.dataset.hvacChartDomainHigh),plotLeft=Number(svg.dataset.hvacChartPlotLeft),plotWidth=Number(svg.dataset.hvacChartPlotWidth);
+  check(vertices.length===expected.length&&vertices.filter(vertex=>vertex[1]==='M').length===1&&!svg.querySelector('circle'),'Comfort '+kind+' ordinary line lost source vertices, acquired a false gap or retained point markers');
+  check(vertices.every((vertex,index)=>Math.abs(yHigh-(Number(vertex[3])-plotTop)/(plotBottom-plotTop)*(yHigh-yLow)-expected[index])<1e-7&&Math.abs(xLow+(Number(vertex[2])-plotLeft)/plotWidth*(xHigh-xLow)-metric.points[index].x)<1e-7),'Comfort '+kind+' rendered line does not preserve exact time-aligned native values');
+  check(metric.points.slice(1).every((point,index)=>point.x>metric.points[index].x&&point.x-metric.points[index].x===metric.points[1].x-metric.points[0].x),'consecutive hourly Comfort labels do not have uniform increasing chart times');
+ };
+ check(temperature?.querySelectorAll('[data-hvac-chart-series]').length===3,'Comfort graph lost observed temperature or heating/cooling setpoints');
+ comfortLine('temperature','temperature',[22,24,26]);comfortLine('heatingSetpoint','temperature',[20,20,20]);comfortLine('coolingSetpoint','temperature',[25,25,25]);comfortLine('relativeHumidity','humidity',[45,50,55]);
+ check(comfortChart('humidity')?.querySelectorAll('[data-hvac-chart-series]').length===1&&comfortValue('relativeHumidity')===50,'Comfort RH graph or indicator lost the returned samples');
  check(temperature?.querySelector('[data-hvac-chart-axis="x"]')&&temperature?.querySelector('[data-hvac-chart-axis="left"]')&&temperature?.querySelector('.hvac-chart-grid'),'Comfort graph is missing time/value axes or grid');
  check(!comfort.querySelector('table, dl, [data-semantic-id], [data-semantic-ref], [data-hvac-graph-key]')&&!['Source data','Related model entities','eplusout.sql','Zone Mean Air Temperature'].some(label=>comfort.textContent.includes(label)),'Comfort still exposes tables, raw source descriptions or navigation links');
+ check(JSON.stringify(state.simulationResult)===installedJSON,'Comfort zone/line rendering mutated exact returned metric metadata or observations');
  check(JSON.stringify(original)===originalJSON,"Run or purpose tabs mutated previous result");
  const capture=new URLSearchParams(location.search).get('capture');
  if(capture){

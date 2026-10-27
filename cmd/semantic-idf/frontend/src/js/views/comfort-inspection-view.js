@@ -68,8 +68,8 @@ function renderScope(scope) {
     const series = metrics.map((metric) => ({ id: metric.id, label: metricLabel(metric, metrics, scope),
       legendLabel: category === "unmet" ? hoursLabel(metric) : metricLabel(metric, metrics, scope), unit: metric.unit,
       axisLabel: category === "temperature" ? "T" : category === "humidity" ? metric.label : category === "unmet" ? copy("UnmetTime", "Unmet time") : metric.label,
-      points: metric.points }));
-    return `<div data-comfort-inspect-chart="${category}">${renderHVACInspectionChart({ title: headings[category], series, legendLayout: "vertical" })}</div>`;
+      points: metric.points, interval: metric.interval }));
+    return `<div data-comfort-inspect-chart="${category}">${renderHVACInspectionChart({ title: headings[category], series, legendLayout: "vertical", markers: false })}</div>`;
   }).join("");
   const indicators = renderIndicators(scope);
   if (!charts && !indicators) return `<div class="comfort-inspection-empty" role="status">${escapeHTML(scope.id === COMFORT_BUILDING_SCOPE

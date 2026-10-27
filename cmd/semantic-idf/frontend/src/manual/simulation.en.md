@@ -487,6 +487,12 @@ visual range does not convert one into the other.
 
 Comfort is an observation view, not an energy-accounting view.
 
+Charts use plain lines without point markers. Valid timestamps determine the
+spacing between observations; interleaved SQL rows do not create artificial
+breaks. Missing observations and gaps in the reported hourly sequence remain
+visible. If timestamps are invalid, repeated or out of order, that chart keeps
+the original observation coordinates instead of guessing a calendar.
+
 | Trace/indicator | Interpretation |
 | --- | --- |
 | T | Zone air temperature. |

@@ -275,14 +275,15 @@ type ComfortZoneResult struct {
 }
 
 type ComfortMetricResult struct {
-	Name     string            `json:"name"`
-	KeyValue string            `json:"keyValue,omitempty"`
-	Unit     string            `json:"unit,omitempty"`
-	Source   string            `json:"source,omitempty"`
-	Min      float64           `json:"min"`
-	Max      float64           `json:"max"`
-	Average  float64           `json:"average"`
-	Points   []SimulationPoint `json:"points,omitempty"`
+	Name               string            `json:"name"`
+	ReportingFrequency string            `json:"reportingFrequency,omitempty"`
+	KeyValue           string            `json:"keyValue,omitempty"`
+	Unit               string            `json:"unit,omitempty"`
+	Source             string            `json:"source,omitempty"`
+	Min                float64           `json:"min"`
+	Max                float64           `json:"max"`
+	Average            float64           `json:"average"`
+	Points             []SimulationPoint `json:"points,omitempty"`
 }
 
 type ComfortIssueRank struct {
@@ -1762,9 +1763,14 @@ func buildComfortResult(series []SimulationSeries, scope SimulationPurposeScope,
 		keyValue, variableName := splitPurposeSeriesColumn(item.Column)
 		foundVariables[normalizePurposeToken(variableName)] = true
 		result.Series = append(result.Series, filteredItem)
+		reportingFrequency := filteredItem.ReportingFrequency
+		if reportingFrequency == "" && strings.EqualFold(filepath.Ext(filteredItem.File), ".csv") {
+			reportingFrequency = purposeSeriesFrequency(filteredItem)
+		}
 		metric := ComfortMetricResult{
 			Name: variableName, KeyValue: keyValue,
-			Unit: seriesDisplayUnit(filteredItem), Source: filteredItem.File,
+			ReportingFrequency: reportingFrequency,
+			Unit:               seriesDisplayUnit(filteredItem), Source: filteredItem.File,
 			Min: seriesDisplayMin(filteredItem), Max: seriesDisplayMax(filteredItem), Average: seriesDisplayAverage(filteredItem),
 			Points: append([]SimulationPoint(nil), seriesDisplayPoints(filteredItem)...),
 		}

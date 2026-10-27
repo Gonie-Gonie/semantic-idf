@@ -65,6 +65,9 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
+- Comfort charts and reports use marker-free lines and actual timestamps,
+  avoiding false breaks caused by interleaved SQL records while preserving
+  missing observations and genuine gaps in the hourly sequence.
 - Water-heater operating decisions collect native tank/control temperatures,
   source-backed temperature targets and heater/compressor duty evidence.
   Stratified nodes and individual heaters retain their identities; heat-pump
