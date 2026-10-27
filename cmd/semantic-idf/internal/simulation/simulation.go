@@ -1609,13 +1609,16 @@ func parseSimulationCSVForPlan(path string, plan PurposeRunPlan) (CSVSummary, []
 	accumulators := make([]columnAccumulator, len(header))
 	purposeSelection := newPurposeSeriesSelection(plan)
 	plotSelection := newPurposePlotSeriesSelection(plan)
+	timestepSelection := newPurposeTimestepSeriesSelection(plan)
 	includeSeries := make([]bool, len(header))
 	fullPlotSeries := make([]bool, len(header))
 	for index, name := range header {
 		accumulators[index] = columnAccumulator{index: index, name: strings.TrimSpace(name), min: math.Inf(1), max: math.Inf(-1)}
 		keyValue, variableName := splitPurposeSeriesColumn(name)
-		includeSeries[index] = index <= maxCSVSeriesColumns || purposeSelection.matches(keyValue, variableName)
-		fullPlotSeries[index] = plotSelection.matches(keyValue, variableName) && hvacSeriesIsHourly(SimulationSeries{Column: name})
+		frequency := purposeSeriesFrequency(SimulationSeries{Column: name})
+		timestep := timestepSelection.matches(keyValue, variableName) && purposeTimestepFrequency(frequency)
+		includeSeries[index] = index <= maxCSVSeriesColumns || purposeSelection.matches(keyValue, variableName) || timestep
+		fullPlotSeries[index] = plotSelection.matches(keyValue, variableName) && hvacSeriesIsHourly(SimulationSeries{Column: name}) || timestep
 	}
 	seriesPoints := make(map[int][]SimulationPoint)
 	rowCount := 0

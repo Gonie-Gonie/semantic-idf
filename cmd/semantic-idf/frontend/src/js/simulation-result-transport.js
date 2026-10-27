@@ -5,7 +5,19 @@ const unsafePathKeys = new Set(["__proto__", "prototype", "constructor"]);
 const object = (value) => value !== null && typeof value === "object";
 const index = (value, length) => Number.isInteger(value) && value >= 0 && value < length;
 const validatedColumns = new WeakMap();
+const pointSources = new WeakMap(), validatedTimelines = new WeakSet(), validatedPointSets = new WeakSet();
 const invalidColumn = () => { throw new Error("Invalid simulation result transfer data"); };
+
+// Read shared columns without materializing an object for every observation.
+// Canonical results and already materialized sets retain their public arrays.
+export function simulationSeriesPointColumns(series, { timelineOnly = false } = {}) {
+  const sources = pointSources.get(series);
+  if (!sources?.points) return null;
+  const raw = sources.points(timelineOnly);
+  if (!raw) return null;
+  const display = sources.displayPoints?.(timelineOnly);
+  return display && display.rows.length === raw.rows.length ? display : raw;
+}
 
 function validateColumnValues(kind, values) {
   if (!["number", "boolean", "string"].includes(kind) || !Array.isArray(values)) invalidColumn();
@@ -111,6 +123,22 @@ export function decodeSimulationResultTransfer(payload, { deferData = false } = 
     });
   }
   for (const { owner, key, data } of pointTargets) {
+    const sources = pointSources.get(owner) || {};
+    sources[key] = (timelineOnly) => {
+      if (pointsBySet[data] || !Object.getOwnPropertyDescriptor(owner, key)?.get) return null;
+      const set = pointSets[data], timeline = timelines[set.timeline];
+      if (!validatedTimelines.has(timeline)) {
+        if (!Array.isArray(timeline.x) || !Array.isArray(timeline.labels) || timeline.x.length !== timeline.labels.length) invalid();
+        for (let i = 0; i < timeline.x.length; i++) if (!Number.isSafeInteger(timeline.x[i]) || typeof timeline.labels[i] !== "string") invalid();
+        validatedTimelines.add(timeline);
+      }
+      if (!timelineOnly && !validatedPointSets.has(set)) {
+        if (!Array.isArray(set.values) || set.values.length !== timeline.x.length || set.values.some(value => typeof value !== "number" || !Number.isFinite(value))) invalid();
+        validatedPointSets.add(set);
+      }
+      return { rows: timeline.x, labels: timeline.labels, ...(timelineOnly ? {} : { values: set.values }) };
+    };
+    pointSources.set(owner, sources);
     const assign = (value) => Object.defineProperty(owner, key, { value, enumerable: true, configurable: true, writable: true });
     Object.defineProperty(owner, key, {
       enumerable: true, configurable: true,

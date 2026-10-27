@@ -199,14 +199,26 @@ func parseSimulationSQLSeriesForPlanWithProgress(path string, plan PurposeRunPla
 	ids := make([]int, 0, len(dictionaries))
 	accumulators := map[int]*columnAccumulator{}
 	plotSelection := newPurposePlotSeriesSelection(plan)
+	timestepSelection := newPurposeTimestepSeriesSelection(plan)
 	fullPlotSeries := map[int]bool{}
-	var weatherFrames map[int64]bool
+	weatherFrames := map[int]map[int64]bool{}
+	var hourlyFrames, timestepFrames map[int64]bool
 	if len(plotSelection) > 0 {
-		weatherFrames = purposeWeatherHourlyFrames(db)
+		hourlyFrames = purposeWeatherPlotFrames(db, "Hourly")
+	}
+	if len(timestepSelection) > 0 {
+		timestepFrames = purposeWeatherPlotFrames(db, "Timestep")
 	}
 	for position, dictionary := range dictionaries {
 		ids = append(ids, dictionary.index)
-		fullPlotSeries[dictionary.index] = plotSelection.matches(dictionary.keyValue, dictionary.name) && strings.EqualFold(dictionary.reportingFrequency, "Hourly")
+		hourly := plotSelection.matches(dictionary.keyValue, dictionary.name) && strings.EqualFold(dictionary.reportingFrequency, "Hourly")
+		timestep := timestepSelection.matches(dictionary.keyValue, dictionary.name) && purposeTimestepFrequency(dictionary.reportingFrequency)
+		fullPlotSeries[dictionary.index] = hourly || timestep
+		if hourly {
+			weatherFrames[dictionary.index] = hourlyFrames
+		} else if timestep {
+			weatherFrames[dictionary.index] = timestepFrames
+		}
 		accumulators[dictionary.index] = &columnAccumulator{
 			index: position + 1,
 			name:  sqlOutputSeriesName(dictionary),
@@ -227,7 +239,7 @@ func parseSimulationSQLSeriesForPlanWithProgress(path string, plan PurposeRunPla
 		minute := row.Minute
 		dictionaryIndex := row.DictionaryIndex
 		value := row.Value
-		if fullPlotSeries[dictionaryIndex] && weatherFrames != nil && !weatherFrames[timeIndex] {
+		if frames := weatherFrames[dictionaryIndex]; fullPlotSeries[dictionaryIndex] && frames != nil && !frames[timeIndex] {
 			return nil
 		}
 		if !value.Valid || math.IsNaN(value.Float64) || math.IsInf(value.Float64, 0) {
@@ -911,6 +923,7 @@ ORDER BY rdd.ReportDataDictionaryIndex`, sqlAliasedTextColumnExpr(columns, "rdd"
 	defer rows.Close()
 	out := []sqlOutputDictionaryRow{}
 	purposeSelection := newPurposeSeriesSelection(plan)
+	timestepSelection := newPurposeTimestepSeriesSelection(plan)
 	position := 0
 	for rows.Next() {
 		var row sqlOutputDictionaryRow
@@ -919,7 +932,8 @@ ORDER BY rdd.ReportDataDictionaryIndex`, sqlAliasedTextColumnExpr(columns, "rdd"
 			return nil, err
 		}
 		position++
-		if position > maxSQLSeriesColumns && !purposeSelection.matches(row.keyValue, row.name) {
+		if position > maxSQLSeriesColumns && !purposeSelection.matches(row.keyValue, row.name) &&
+			!(timestepSelection.matches(row.keyValue, row.name) && purposeTimestepFrequency(row.reportingFrequency)) {
 			continue
 		}
 		row.reportingFrequency = strings.TrimSpace(row.reportingFrequency)

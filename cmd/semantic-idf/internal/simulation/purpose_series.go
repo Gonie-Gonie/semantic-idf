@@ -72,17 +72,77 @@ func newPurposePlotSeriesSelection(plan PurposeRunPlan) purposeSeriesSelection {
 	return newPurposeSeriesSelection(plan)
 }
 
+// Control diagnostics are a separate, source-specific cadence. The explicit
+// HVAC output plan is authoritative; an unrelated or legacy preview must not
+// retain every Timestep variable just because it happens to be in the file.
+func newPurposeTimestepSeriesSelection(plan PurposeRunPlan) purposeSeriesSelection {
+	selection := purposeSeriesSelection{}
+	if !purposeIDsContain(plan.Purposes, SimulationPurposeHVACLoopCheck) {
+		return selection
+	}
+	for _, output := range plan.OutputObjects {
+		if !strings.EqualFold(output.ObjectType, "Output:Variable") ||
+			!purposeIDsContain(output.PurposeIDs, SimulationPurposeHVACLoopCheck) || !purposeTimestepFrequency(output.ReportingFrequency) {
+			continue
+		}
+		name, key := normalizePurposeToken(output.VariableName), normalizePurposeToken(output.KeyValue)
+		if name == "" {
+			continue
+		}
+		if key == "" {
+			key = "*"
+		}
+		if selection[name] == nil {
+			selection[name] = map[string]bool{}
+		}
+		selection[name][key] = true
+	}
+	return selection
+}
+
+func purposeTimestepFrequency(frequency string) bool {
+	return strings.EqualFold(strings.TrimSpace(frequency), "Timestep") || strings.EqualFold(strings.TrimSpace(frequency), "Zone Timestep")
+}
+
+func purposeSeriesFrequency(series SimulationSeries) string {
+	if frequency := strings.TrimSpace(series.ReportingFrequency); frequency != "" {
+		return frequency
+	}
+	if index := strings.LastIndex(series.Column, "("); index >= 0 && strings.HasSuffix(series.Column, ")") {
+		return strings.TrimSpace(strings.TrimSuffix(series.Column[index+1:], ")"))
+	}
+	return ""
+}
+
 // SQL has explicit environment metadata; CSV does not. When weather-run rows
-// exist, keep purpose plots on those actual hourly observations, excluding sizing
+// exist, keep purpose plots on their reported cadence, excluding sizing
 // days and warmup. Legacy schemas without that metadata retain their own axis.
-func purposeWeatherHourlyFrames(db *sql.DB) map[int64]bool {
-	var environments int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM EnvironmentPeriods WHERE EnvironmentType=3`).Scan(&environments); err != nil || environments == 0 {
+func purposeWeatherPlotFrames(db *sql.DB, frequency string) map[int64]bool {
+	interval := "t.IntervalType=1"
+	if purposeTimestepFrequency(frequency) {
+		// Native zone-cadence output dictionaries may use either Zone or HVAC
+		// Time records. Detailed dictionaries are never selected by this path.
+		interval = "t.IntervalType IN (-1,0)"
+	} else if !strings.EqualFold(strings.TrimSpace(frequency), "Hourly") {
 		return nil
+	}
+	var environments int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM EnvironmentPeriods WHERE EnvironmentType=3`).Scan(&environments); err != nil {
+		return nil
+	}
+	environment := "e.EnvironmentType=3"
+	if environments == 0 {
+		if !purposeTimestepFrequency(frequency) {
+			return nil
+		}
+		// A design/sizing-only run still has a real native axis. Keep its
+		// observed non-warmup control steps without inventing a weather period.
+		// Joining the native table also leaves an empty table explicitly empty.
+		environment = "1=1"
 	}
 	rows, err := db.Query(`SELECT t.TimeIndex FROM "Time" t
 JOIN EnvironmentPeriods e ON e.EnvironmentPeriodIndex=t.EnvironmentPeriodIndex
-WHERE e.EnvironmentType=3 AND t.IntervalType=1 AND (t.WarmupFlag=0 OR t.WarmupFlag IS NULL)`)
+WHERE ` + environment + ` AND ` + interval + ` AND (t.WarmupFlag=0 OR t.WarmupFlag IS NULL)`)
 	if err != nil {
 		return nil
 	}

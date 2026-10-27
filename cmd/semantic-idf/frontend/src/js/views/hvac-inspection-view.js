@@ -3,6 +3,7 @@ import { t } from "../i18n.js";
 import { prepareHVACInspection, hvacInspectionSnapshots, hvacInspectionTrace, hvacInspectionBasicProperties } from "../hvac-inspection-data.js";
 import { renderHVACInspectionChart, updateHVACInspectionChartFrame, hvacInspectionChartYRanges } from "../hvac-inspection-charts.js";
 import { renderHVACInspectionTopology } from "./hvac-inspection-topology.js";
+import { renderHVACRuntimeInspection, handleHVACRuntimeEvent, connectHVACRuntimeInspection, disconnectHVACRuntimeInspection } from "./hvac-runtime-view.js";
 
 const copy = (key, fallback) => t(`simulation.hvacInspect${key}`, {}, fallback);
 const option = (value, label, selected, disabled = false) => `<option value="${escapeHTML(value)}"${selected ? " selected" : ""}${disabled ? " disabled" : ""}>${escapeHTML(label)}</option>`;
@@ -152,9 +153,12 @@ function renderCustomControls(model, ui) {
 }
 
 export function renderHVACInspection(loop, ui = {}) {
+  if (!["loop", "logic"].includes(ui.inspectionView)) ui.inspectionView = loop.operatingProfiles?.length && !loop.series?.length && !loop.components?.some((component) => component.series?.length) ? "logic" : "loop";
+  const viewPicker = `<label class="hvac-inspection-view-picker"><span>${escapeHTML(copy("View", "View"))}</span><select data-hvac-inspect-view>${option("loop", copy("LoopValues", "Loop values"), ui.inspectionView === "loop")}${option("logic", copy("OperatingLogic", "Operating logic"), ui.inspectionView === "logic")}</select></label>`;
+  if (ui.inspectionView === "logic") return `<div class="hvac-inspection" data-hvac-inspection>${viewPicker}${renderHVACRuntimeInspection(loop, ui)}</div>`;
   const model = prepareHVACInspection(loop);
   normalize(model, ui);
-  return `<div class="hvac-inspection" data-hvac-inspection>
+  return `<div class="hvac-inspection" data-hvac-inspection>${viewPicker}
     <div class="hvac-inspection-frame-control"><label for="hvac-inspection-frame">${escapeHTML(copy("Frame", "Frame"))}</label>
       <input id="hvac-inspection-frame" data-simulation-hvac-frame type="range" min="0" max="${Math.max(0, model.frames.length - 1)}" value="${ui.frameIndex}"${model.frames.length ? "" : " disabled"}/>
       <output data-hvac-inspect-frame-label for="hvac-inspection-frame">${escapeHTML(model.frames[ui.frameIndex]?.label || copy("NoFrame", "No frame"))}</output>
@@ -170,6 +174,18 @@ export function renderHVACInspection(loop, ui = {}) {
 }
 
 export function handleHVACInspectionEvent(event, container, loop, ui) {
+  if (handleHVACRuntimeEvent(event, container, loop, ui)) return true;
+  const view = event.target.closest?.("[data-hvac-inspect-view]");
+  if (view && container.contains(view) && ["input", "change"].includes(event.type)) {
+    event.stopPropagation();
+    if (ui.inspectionView === view.value) return true;
+    ui.inspectionView = view.value;
+    disconnectHVACRuntimeInspection(container);
+    container.querySelector("[data-hvac-inspection]").outerHTML = renderHVACInspection(loop, ui);
+    connectHVACRuntimeInspection(container, loop, ui);
+    container.querySelector("[data-hvac-inspect-view]")?.focus({ preventScroll: true });
+    return true;
+  }
   const target = event.target.closest?.("[data-simulation-hvac-frame], [data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-node-visible], [data-hvac-inspect-entity], [data-hvac-inspect-property], [data-hvac-inspect-mode], [data-hvac-inspect-add], [data-hvac-inspect-remove], [data-hvac-inspect-y-bound], [data-hvac-inspect-y-reset]");
   if (!target || !container.contains(target)) return false;
   const isClick = event.type === "click", clickControl = target.matches("[data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-add], [data-hvac-inspect-remove], [data-hvac-inspect-y-reset]");
@@ -249,3 +265,6 @@ function refreshSnapshot(container, model, ui) {
   const next = mount.querySelector("[data-hvac-inspect-topology-viewport]");
   if (next) { next.scrollTop = top; next.scrollLeft = left; }
 }
+
+export function connectHVACInspection(container, loop, ui) { connectHVACRuntimeInspection(container, loop, ui); }
+export function disconnectHVACInspection(container) { disconnectHVACRuntimeInspection(container); }

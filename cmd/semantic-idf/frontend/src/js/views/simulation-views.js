@@ -32,7 +32,7 @@ import { energyPathDisplayContext } from "../energy-path-display.js";
 import { buildEnergyPathReport, renderEnergyPathReportHTML } from "../energy-path-report.js";
 import { resolveEnergyPathOutputRequest, energyPathOutputRequestKey, prepareEnergyPathOutputRequests } from "../energy-path-output-requests.js";
 import { hvacInspectionLoopKey, hvacInspectionSharedFrame, rememberHVACInspectionFrame } from "../hvac-inspection-data.js";
-import { renderHVACInspection, handleHVACInspectionEvent } from "./hvac-inspection-view.js";
+import { renderHVACInspection, handleHVACInspectionEvent, connectHVACInspection, disconnectHVACInspection } from "./hvac-inspection-view.js";
 import { renderComfortInspection, handleComfortInspectionEvent, renderComfortInspectionReport } from "./comfort-inspection-view.js";
 import { decodeSimulationResultTransfer, simulationResultTransferMediaType } from "../simulation-result-transport.js";
 import { loadSimulationResultParts, simulationResultStore, simulationResultPartsMediaType, isPendingSimulationResource } from "../simulation-result-parts.js";
@@ -4054,6 +4054,7 @@ function shortEnergyExplanationLabel(label = "") {
 }
 
 function renderSimulationHVACLoopEmpty(message) {
+  if (elements.simulationHVACLoopResults) disconnectHVACInspection(elements.simulationHVACLoopResults);
   if (elements.simulationHVACLoopResults) {
     elements.simulationHVACLoopResults.innerHTML = `<div class="empty">${escapeHTML(message)}</div>`;
   }
@@ -4095,6 +4096,7 @@ function renderSimulationHVACLoopsReady(result) {
     <section class="simulation-hvac-loop-result" ${simulationHVACLoopSemanticAttributes(loop)}>
       ${renderHVACInspection(loop, ui)}
     </section>`;
+  connectHVACInspection(elements.simulationHVACLoopResults, loop, ui);
   state.simulationHVACFrameIndex = ui.frameIndex;
   pruneSimulationSemanticBindings();
 }

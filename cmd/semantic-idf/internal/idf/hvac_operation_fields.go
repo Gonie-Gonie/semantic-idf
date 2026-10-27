@@ -156,6 +156,7 @@ func hvacOperatingManagerListName(obj Object) string {
 // Control metadata is deliberately limited to the fields needed by the compact
 // operating graph. Existing catalog fields retain priority over these fallbacks.
 var hvacOperatingControlFieldNames = map[string]map[int]string{
+	"setpointmanager:followsystemnodetemperature":       {1: "Control Variable", 2: "Reference Node Name", 3: "Reference Temperature Type", 4: "Offset Temperature Difference", 5: "Maximum Limit Setpoint Temperature", 6: "Minimum Limit Setpoint Temperature", 7: "Setpoint Node or NodeList Name"},
 	"setpointmanager:singlezone:humidity:maximum":       {1: "Setpoint Node or NodeList Name", 2: "Control Zone Air Node Name"},
 	"setpointmanager:singlezone:humidity:minimum":       {1: "Setpoint Node or NodeList Name", 2: "Control Zone Air Node Name"},
 	"setpointmanager:multizone:maximumhumidity:average": {1: "HVAC Air Loop Name", 2: "Minimum Setpoint Humidity Ratio", 3: "Maximum Setpoint Humidity Ratio", 4: "Setpoint Node or NodeList Name"},

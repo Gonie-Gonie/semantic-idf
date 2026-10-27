@@ -157,7 +157,8 @@ fallback does not repeat the simulation POST. Other errors, or a larger
 snapshot that cannot be partitioned, report an explicit loading error.
 Metadata paging bounds large selector catalogs and binding lists as well as
 observation arrays. Structural catalogs preserve source/scope/period identity;
-hourly observations remain independent of their source metadata.
+Hourly and control Timestep observations remain independent of their source
+metadata.
 
 The server partitions the existing serialized snapshot with byte slices. It
 does not rebuild results, read SQL, or write a result JSON file for each request.
@@ -176,6 +177,9 @@ including observed masks and labels. Every value, negative zero, timestamp,
 array order and missing/empty distinction survives; no observation is sampled
 or rounded by transport. The encoder copies structural containers and never
 changes the source result. Ordinary API/CLI results keep their public shape.
+HVAC `controlSeries` participates in the same point pooling and deferred
+observation loading. Profiles and signal bindings refer to a series by ID;
+they do not copy its point arrays into every logic node.
 
 The browser validates all binding paths before installing them and rejects
 prototype paths, duplicate targets and invalid typed columns. Receipt checks
@@ -206,6 +210,21 @@ air/plant/condenser loops, components, output signatures, custom output objects,
 and custom period. Zone Heat Flow and Comfort use scoped zones. HVAC Loop Check
 resolves selected nodes/components from analyzed HVAC; broad or unresolved
 scope falls back to wildcard keys.
+
+HVAC Loop Check preserves the existing Hourly node/component plan and adds
+source-specific Timestep control diagnostics through
+[`hvac_runtime.go`](../cmd/semantic-idf/internal/simulation/hvac_runtime.go).
+Exact schedules, manager/loop states, relevant sensors and targets, native
+requested/actual actuator flows and available flow limits, demand and equipment
+activity are requested only for the selected executed profiles. Manager reason
+inputs use the native control mode's declared zone/ZoneList or served zones;
+supported setpoint strategies add their relevant zone-demand or environment
+inputs. Native advanced flow observations enable
+`Output:Diagnostics,DisplayAdvancedReportVariables` on the run copy.
+An existing Hourly request is retained alongside the required Timestep request,
+with `hvac_control_timestep_added` rather than silently changing its frequency.
+HVACTemplate generated names require an explicit wildcard Timestep fallback
+before expansion; bindings are still exact to the expanded executed model.
 
 Plans retain output signatures, purpose tags, state, estimated series/frame
 counts and weight, SQL/discovery requirements, and wildcard/frequency warnings.
@@ -287,6 +306,11 @@ Generic preview is capped at 256 SQL or 16 CSV columns and samples points.
 Requested HVAC/Comfort series and Energy Path source traces retain full
 matching observations beyond preview limits. The plan is attached before
 parsing for new runs and saved results.
+This includes explicitly planned, exact key/name Timestep control observations;
+it does not broaden unrelated Timestep or Detailed outputs. SQL filters warmup
+and non-weather environments when a weather environment is known. Without one,
+the original non-warmup native environment axis remains; missing metadata cannot
+create a weather calendar. CSV keeps its reported cadence and source rows.
 
 Energy normalizes `J`/`kJ`/`MJ`/`GJ`/`Wh` to `kWh`; rate-only sources integrate
 over reporting intervals. Reported energy takes precedence over a same-target
@@ -440,6 +464,58 @@ within `0.000001 °C`, is excluded from snapshots, availability, and deviation
 checks; valid zero/negative setpoints remain. Missing setpoints alone create
 no control alert. Older results without executed topology show unavailable
 topology alongside retained observations.
+
+The result HVAC selector separates **Loop values** (legacy Hourly frames) and
+**Operating logic** (control Timestep frames), with independent frame/chart
+state. Each `HVACLoopRunResult` adds:
+
+| Field | Contract |
+| --- | --- |
+| `operatingProfiles` | Source-exact `HVACOperatingProfile` definitions from the executed document, filtered by the occurrence's real loop and selected component. |
+| `controlSignals` | Bindings with `id`, `componentIndex`, optional `loopId`, `graph`, optional `nodeId`, `role`, `domain`, exact `source`, optional `parameterName`, `keyValue`, `variableName`, `reportingFrequency`, `seriesId`, `required`, `status`, and optional diagnostic `message`. |
+| `controlSeries` | Deduplicated native `SimulationSeries`; a collected binding's `seriesId` equals its series' `sourceId`. Native row identity, cadence, gaps and real zero remain intact. |
+| `controlCoverage` | `status` (`complete` or `error`), `required`, `collected`, `missing`, and optional `message`. Counts measure required channels with valid coverage of every reported control interval. Missing, ambiguous or unsupported required bindings and invalid/incomplete interval coverage are acquisition failures. |
+
+Coverage validates the shared native Timestep axis, preferring the SQL source,
+without merging cadences or borrowing a value from another frame. Duplicate or
+conflicting rows, required gaps, unset native targets, non-finite values and
+out-of-domain manager statuses fail both loop and bundle completeness. A
+partially valid channel retains its raw series and `collected` binding status
+for valid-frame inspection; its binding message explains the interval failure,
+while `controlCoverage` reports the incomplete channel. Interval averages
+inside the native status domain remain valid mixed observations.
+
+Graph identities distinguish `availabilityDefinitions`, `onOff`,
+`parameterControl` and `loop`; node IDs alone can collide between graphs.
+Roles distinguish schedule, manager/loop status, sensor, setpoint, requested
+and actual actuator, demand and activity. Schedule values use boolean schedule
+semantics only where the native expression specifies them; parameter-control
+schedules remain continuous. Standard manager status is NoAction=0,
+ForceOff=1, CycleOn=2, CycleOnZoneFansOnly=3. NoAction is not OFF, and Hybrid
+Ventilation has a separate domain. Native manager precedence and overrides
+remain part of permission evaluation. Timestep averages, including fractional
+or apparently integral statuses, cannot reconstruct an instantaneous event
+sequence, cycling timers, adaptive history or solver iterations.
+**Availability with manager actions** evaluates the minimum permission
+projection; native plant dispatch rules and their reported load/environment
+inputs appear as separate dispatch context rather than an unproven Boolean
+permission condition.
+
+Operating logic shares a selected Day/Week/Full run interval across status
+patches, formulas, source definitions and controller values. The source table
+supports up to four checked history signals and two units. Valid sensor/target
+pairs show a same-cadence residual; reported requested flow, actual flow, limits,
+demand and equipment response provide evidence without an invented causal
+diagnosis. Performance-only curves stay in the response inspector's
+Performance model details. Required acquisition gaps explicitly request a
+rerun, rather than becoming OFF or a routine unknown condition. Old saved
+results lacking executed profiles/control outputs retain Loop values and need
+a new HVAC Loop Check for Operating logic.
+
+Profiles without physical loop membership form a **Zone / local equipment**
+display group (`loopType: "ZoneHVAC"`, nil topology). Their profile `loopId`
+stays empty and their exact local observations are retained. This grouping
+does not invent a physical loop or borrow membership from an unrelated loop.
 
 Flow, temperature, and humidity graphs have per-node controls, independent
 Y ranges by unit, and Auto reset. Custom graphs choose object then property;

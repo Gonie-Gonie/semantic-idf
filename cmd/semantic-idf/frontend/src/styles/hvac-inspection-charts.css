@@ -1,3 +1,5 @@
+@import url("./hvac-operation.css");
+
 .hvac-inspection-chart {
   --hvac-chart-blue: #4d6f9f;
   --hvac-chart-purple: #7a5a9e;
@@ -54,3 +56,56 @@
   --hvac-chart-gray: #a2adc1;
   --hvac-chart-cyan: #75c6ce;
 }
+
+.hvac-inspection-view-picker, .hvac-runtime-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 10px 0 16px; }
+.hvac-inspection-view-picker, .hvac-runtime-toolbar label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
+.hvac-runtime-toolbar select { max-width: 100%; }
+.hvac-inspection-view-picker select, .hvac-runtime-toolbar select { padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; }
+.hvac-inspection-view-picker select { width: min(100%, 320px); }
+.hvac-runtime { min-width: 0; display: grid; gap: 18px; }
+.hvac-runtime h4 { margin: 0 0 12px; font-size: 15px; }
+.hvac-runtime .hvac-runtime-toolbar, .hvac-runtime .hvac-runtime-cadence { margin: 0; }
+.hvac-runtime-cadence, .hvac-runtime-signals > p { color: var(--muted); font-size: 12px; }
+.hvac-runtime-facts, .hvac-runtime-residuals { display: flex; flex-wrap: wrap; gap: 10px; }
+.hvac-runtime-facts article, .hvac-runtime-residuals article { display: grid; gap: 5px; min-width: 170px; padding: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); }
+.hvac-runtime-facts span, .hvac-runtime-residuals span { color: var(--muted); font-size: 12px; }
+.hvac-runtime-facts strong, .hvac-runtime-residuals strong { font-size: 14px; }
+.hvac-runtime-reason { line-height: 1.5; font-size: 13px; }
+.hvac-runtime-error { padding: 14px; border: 1px solid var(--red); border-radius: 6px; color: var(--red); overflow-wrap: anywhere; }
+.hvac-runtime-error ul { padding-left: 20px; line-height: 1.6; font-size: 12px; }
+.hvac-runtime-status-row { display: grid; grid-template-columns: minmax(170px, 28%) minmax(0, 1fr); gap: 12px; align-items: center; margin: 8px 0; border-bottom: 1px solid var(--line); padding: 6px 0; }
+.hvac-runtime-status-row > div { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.hvac-runtime-status-row strong { font-size: 12px; }
+.hvac-runtime-status-row small, .hvac-runtime-status-row span { font-size: 11px; color: var(--muted); }
+.hvac-runtime-status-row svg { width: 100%; height: 28px; cursor: crosshair; background: var(--surface-2); }
+.hvac-runtime-patch { fill: var(--teal); }
+.hvac-runtime-patch.is-nonpositive, .hvac-runtime-patch.is-inactive, .hvac-runtime-patch.is-no_action, .hvac-runtime-patch.is-hybrid_idle { fill: var(--muted); opacity: .4; }
+.hvac-runtime-patch.is-force_off, .hvac-runtime-patch.is-error, .hvac-runtime-patch.is-natural_blocked { fill: var(--red); }
+.hvac-runtime-patch.is-mixed, .hvac-runtime-patch.is-zone_fans_only { fill: var(--amber); }
+[data-hvac-runtime-cursor] { stroke: var(--ink); stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
+.hvac-runtime-axis { display: flex; justify-content: space-between; gap: 12px; margin-left: 28%; font-size: 11px; color: var(--muted); }
+.hvac-runtime-logic { --text: var(--ink); --panel: var(--surface); --border: var(--line); padding: 12px; border: 1px solid var(--line); border-radius: 6px; }
+.hvac-runtime-logic [data-hvac-runtime-card-value] { color: var(--teal-dark); font-size: 12px; white-space: nowrap; font-weight: 650; }
+.hvac-runtime-table { max-width: 100%; overflow-x: auto; }
+.hvac-runtime-table table { width: 100%; min-width: 500px; border-collapse: collapse; font-size: 12px; }
+.hvac-runtime-table th, .hvac-runtime-table td { padding: 8px; border-bottom: 1px solid var(--line); text-align: left; }
+.hvac-runtime-table td:last-child { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+.hvac-runtime-table td strong, .hvac-runtime-table td small { display: block; overflow-wrap: anywhere; }
+.hvac-runtime-table td small { margin-top: 4px; color: var(--muted); }
+@media (max-width: 620px) { .hvac-runtime-status-row { grid-template-columns: minmax(130px, 40%) minmax(0, 1fr); } .hvac-runtime-axis { margin-left: 40%; } }
+.hvac-runtime-source-button { border: 0; padding: 0; background: none; color: var(--teal-dark); text-align: left; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; overflow-wrap: anywhere; }
+.hvac-runtime-expression-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 9px; border: 1px solid var(--line); border-radius: 5px; }
+.hvac-runtime-expression-group > strong { font-size: 11px; color: var(--amber); }
+.hvac-runtime-expression-group > div { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; min-width: 0; }
+.hvac-runtime-expression-leaf { display: grid; gap: 4px; padding: 8px; border-radius: 4px; background: var(--surface-2); font-size: 12px; overflow-wrap: anywhere; }
+.hvac-runtime-expression-leaf span { color: var(--muted); }
+.hvac-runtime-expression-leaf b { color: var(--teal-dark); }
+.hvac-runtime-expression-leaf[data-hvac-runtime-state="blocked"] b { color: var(--red); }
+.hvac-runtime-expression-leaf[data-hvac-runtime-state="mixed"] b { color: var(--amber); }
+.hvac-runtime-source-button[aria-pressed="true"] { text-decoration: underline; }
+.hvac-runtime-source-detail { padding: 14px; border: 1px solid var(--line); background: var(--surface); border-radius: 6px; }
+.hvac-runtime-source-detail > span { font-size: 12px; color: var(--muted); }
+.hvac-runtime-source-detail dl > div { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(0, 2fr); gap: 12px; padding: 5px 0; font-size: 12px; }
+.hvac-runtime-source-detail dt { color: var(--muted); overflow-wrap: anywhere; }
+.hvac-runtime-source-detail dd { margin: 0; overflow-wrap: anywhere; }
+.hvac-runtime-logic [data-hvac-runtime-card-actual] { font-size: 12px; font-weight: 650; color: var(--ink); white-space: nowrap; }

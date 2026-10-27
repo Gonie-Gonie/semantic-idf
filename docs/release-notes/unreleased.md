@@ -14,6 +14,11 @@ The release script infers bump size from these sections:
 
 ## Added
 
+- Simulation HVAC adds Operating logic beside Loop values. Executed availability
+  and control definitions now share a Timestep cursor with native schedule,
+  manager, sensor/target, demand, requested/actual flow and equipment activity
+  observations. Source inspection and selectable history expose control context;
+  required output gaps produce acquisition errors with a rerun action.
 - Profile adds Cooling setpoint and Heating setpoint as independent checkbox
   dimensions alongside existing loads and airflow. Configured thermostat targets
   are shown in °C, with gaps for inactive, missing or unsupported values rather

@@ -93,6 +93,7 @@ func CompactResultTransport(result *SimulationRunResult) any {
 			loop := &bundle.HVACLoops[i]
 			path := []any{"purposeResults", "hvacLoops", i}
 			loop.Series = builder.series(loop.Series, resultPath(path, "series"))
+			loop.ControlSeries = builder.series(loop.ControlSeries, resultPath(path, "controlSeries"))
 			loop.Components = copyResultSlice(loop.Components)
 			for j := range loop.Components {
 				component := &loop.Components[j]

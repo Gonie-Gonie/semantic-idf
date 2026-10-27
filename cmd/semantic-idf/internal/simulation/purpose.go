@@ -174,17 +174,21 @@ type EnergyTotal struct {
 }
 
 type HVACLoopRunResult struct {
-	Name           string                    `json:"name"`
-	LoopType       string                    `json:"loopType,omitempty"`
-	Topology       *idf.HVACLoop             `json:"topology,omitempty"`
-	Status         string                    `json:"status,omitempty"`
-	StatusMessage  string                    `json:"statusMessage,omitempty"`
-	Series         []SimulationSeries        `json:"series,omitempty"`
-	NodeSummaries  []HVACNodeRunSummary      `json:"nodeSummaries,omitempty"`
-	Components     []HVACComponentRunSummary `json:"components,omitempty"`
-	DerivedMetrics []HVACLoopDerivedMetric   `json:"derivedMetrics,omitempty"`
-	Alerts         []HVACLoopAlert           `json:"alerts,omitempty"`
-	Completeness   []PurposeCompletenessItem `json:"completeness,omitempty"`
+	OperatingProfiles []idf.HVACOperatingProfile `json:"operatingProfiles,omitempty"`
+	ControlSignals    []HVACControlSignalBinding `json:"controlSignals,omitempty"`
+	ControlSeries     []SimulationSeries         `json:"controlSeries,omitempty"`
+	ControlCoverage   *HVACControlCoverage       `json:"controlCoverage,omitempty"`
+	Name              string                     `json:"name"`
+	LoopType          string                     `json:"loopType,omitempty"`
+	Topology          *idf.HVACLoop              `json:"topology,omitempty"`
+	Status            string                     `json:"status,omitempty"`
+	StatusMessage     string                     `json:"statusMessage,omitempty"`
+	Series            []SimulationSeries         `json:"series,omitempty"`
+	NodeSummaries     []HVACNodeRunSummary       `json:"nodeSummaries,omitempty"`
+	Components        []HVACComponentRunSummary  `json:"components,omitempty"`
+	DerivedMetrics    []HVACLoopDerivedMetric    `json:"derivedMetrics,omitempty"`
+	Alerts            []HVACLoopAlert            `json:"alerts,omitempty"`
+	Completeness      []PurposeCompletenessItem  `json:"completeness,omitempty"`
 }
 
 type HVACNodeRunSummary struct {
@@ -766,6 +770,9 @@ func buildPurposeResultBundleWithProgress(result *SimulationRunResult, request S
 				hasComponentSeries,
 				hvacLoopResultSource(bundle.HVACLoops),
 			))
+			if controls := hvacRuntimeControlCompleteness(bundle.HVACLoops); controls != nil {
+				bundle.Completeness = append(bundle.Completeness, *controls)
+			}
 		case SimulationPurposeComfort:
 			report("comfort", "Building comfort and unmet-hours results")
 			if sharedDocument == nil {
@@ -3400,6 +3407,7 @@ func purposeZoneKeysForScope(scope SimulationPurposeScope) ([]string, bool, stri
 }
 
 func (builder *purposePlanBuilder) addHVACLoopCheck() {
+	builder.addHVACRuntimeOutputs()
 	keys := []string{"*"}
 	componentTargets := []hvacLoopCheckComponentTarget{}
 	targets := builder.hvacLoopCheckTargets()
@@ -3960,10 +3968,14 @@ func (builder *purposePlanBuilder) addObject(object PurposeOutputObject) {
 		}
 		object.ObjectIndex = existing.ObjectIndex
 	} else if conflict, ok := builder.existingBase[purposeOutputBaseSignature(object.ObjectType, object.Fields)]; ok {
-		if object.Reason == "Basic Energy Path" && (strings.EqualFold(object.ReportingFrequency, "Monthly") || strings.EqualFold(object.ReportingFrequency, "Hourly") || strings.EqualFold(object.ReportingFrequency, "Daily") || strings.EqualFold(object.ReportingFrequency, "Timestep")) && purposeObjectIsSeries(object.ObjectType) {
+		if (object.Reason == "Basic Energy Path" && (strings.EqualFold(object.ReportingFrequency, "Monthly") || strings.EqualFold(object.ReportingFrequency, "Hourly") || strings.EqualFold(object.ReportingFrequency, "Daily") || strings.EqualFold(object.ReportingFrequency, "Timestep")) || object.Reason == "HVAC control diagnostics" && strings.EqualFold(object.ReportingFrequency, "Timestep")) && purposeObjectIsSeries(object.ObjectType) {
 			object.State = purposeTemporaryState(builder.request)
 			object.ObjectIndex = nil
-			builder.warn("info", "energy_path_"+strings.ToLower(object.ReportingFrequency)+"_added", fmt.Sprintf("%s exists at %s frequency; adding the %s Energy Path series without changing it.", purposeOutputLabel(conflict), conflict.ReportingFrequency, object.ReportingFrequency), firstPurposeID(object.PurposeIDs), object.Signature)
+			if object.Reason == "HVAC control diagnostics" {
+				builder.warn("info", "hvac_control_timestep_added", fmt.Sprintf("%s exists at %s frequency; adding required Timestep control diagnostics without changing it.", purposeOutputLabel(conflict), conflict.ReportingFrequency), firstPurposeID(object.PurposeIDs), object.Signature)
+			} else {
+				builder.warn("info", "energy_path_"+strings.ToLower(object.ReportingFrequency)+"_added", fmt.Sprintf("%s exists at %s frequency; adding the %s Energy Path series without changing it.", purposeOutputLabel(conflict), conflict.ReportingFrequency, object.ReportingFrequency), firstPurposeID(object.PurposeIDs), object.Signature)
+			}
 		} else {
 			requestedReason := object.Reason
 			object = builder.applyFrequencyConflictPolicy(object, conflict)

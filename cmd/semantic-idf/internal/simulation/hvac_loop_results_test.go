@@ -116,18 +116,38 @@ func TestHVACDefaultSampleAllLoopScopeIncludesWaterLoops(t *testing.T) {
 		series = append(series, hvacResultTestSeries(loop.SupplySide.InletNode, "System Node Temperature", "C"))
 	}
 	bundle := BuildPurposeResultBundle(&SimulationRunResult{InputPath: inputPath, PurposeRunPlan: &plan, Series: series}, request)
-	if len(bundle.HVACLoops) != len(want) {
-		t.Fatalf("all-loop result lost default sample loops: got %d, want %d", len(bundle.HVACLoops), len(want))
+	localSources := map[int]bool{}
+	for _, profile := range report.OperatingProfiles {
+		if profile.LoopID == "" {
+			localSources[profile.ComponentIndex] = true
+		}
 	}
+	if len(localSources) == 0 || len(bundle.HVACLoops) != len(want)+1 {
+		t.Fatalf("all-loop result must retain eight physical loops and one local-equipment group: got %d groups, %d local sources", len(bundle.HVACLoops), len(localSources))
+	}
+	localGroups := 0
 	for _, loop := range bundle.HVACLoops {
+		if loop.LoopType == "ZoneHVAC" {
+			localGroups++
+			if loop.Topology != nil || len(loop.OperatingProfiles) != len(localSources) || loop.ControlCoverage == nil || loop.ControlCoverage.Status != "error" {
+				t.Fatalf("local diagnostics must retain native profiles without inventing topology or claiming missing Timestep outputs: %+v", loop)
+			}
+			for _, profile := range loop.OperatingProfiles {
+				if profile.LoopID != "" || !localSources[profile.ComponentIndex] {
+					t.Fatalf("local group borrowed another circuit's operating profile: %+v", profile)
+				}
+				delete(localSources, profile.ComponentIndex)
+			}
+			continue
+		}
 		if loop.LoopType != want[loop.Name] || loop.Topology == nil || loop.Topology.Name != loop.Name || len(loop.Series) == 0 {
 			t.Fatalf("default sample loop lacks inspectable executed topology or measurements: %+v", loop)
 		}
 		delete(want, loop.Name)
 		t.Logf("%s %s: executed topology and node observations available", loop.LoopType, loop.Name)
 	}
-	if len(want) != 0 {
-		t.Fatalf("missing default sample loops: %v", want)
+	if len(want) != 0 || localGroups != 1 || len(localSources) != 0 {
+		t.Fatalf("missing/duplicated default sample groups: physical=%v local groups=%d local sources=%v", want, localGroups, localSources)
 	}
 }
 

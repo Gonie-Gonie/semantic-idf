@@ -935,7 +935,8 @@ output|Output:Variable|Office|Zone Mean Air Temperature|Hourly|temporary|zone_he
 					AirLoopNames: []string{"Main Air Loop"},
 				},
 			},
-			want: `requires_sql=true requires_discovery=false weight=Heavy frames=8760
+			want: `requires_sql=true requires_discovery=false weight=Heavy frames=35040
+warning|info|hvac_control_diagnostics|hvac_loop_check
 warning|info|hvac_scope_selected|hvac_loop_check
 warning|warning|output_weight_heavy|hvac_loop_check
 output|Output:SQLite||||temporary|hvac_loop_check
@@ -969,8 +970,10 @@ output|Output:Variable|Fan Outlet|System Node Mass Flow Rate|Hourly|temporary|hv
 output|Output:Variable|Fan Outlet|System Node Relative Humidity|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Fan Outlet|System Node Setpoint Temperature|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Fan Outlet|System Node Temperature|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Main Air Loop|Air System Simulation Cycle On Off Status|Timestep|temporary|hvac_loop_check
 output|Output:Variable|Supply Fan|Fan Electricity Energy|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Supply Fan|Fan Electricity Rate|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Supply Fan|Fan Electricity Rate|Timestep|temporary|hvac_loop_check
 `,
 		},
 		{

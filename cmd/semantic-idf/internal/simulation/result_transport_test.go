@@ -30,7 +30,7 @@ func TestSimulationResultTransportLosslessSharedColumns(t *testing.T) {
 		{Points: otherTimeline}, {Points: otherLabels},
 		{Points: nil}, {Points: []SimulationPoint{}},
 	}, PurposeResults: &PurposeResultBundle{
-		HVACLoops: []HVACLoopRunResult{{Name: "Air", Series: []SimulationSeries{series},
+		HVACLoops: []HVACLoopRunResult{{Name: "Air", Series: []SimulationSeries{series}, ControlSeries: []SimulationSeries{series},
 			Components: []HVACComponentRunSummary{{ComponentName: "Coil", Series: []SimulationSeries{series}}}},
 			{Name: "Water", Series: []SimulationSeries{{Points: copyResultSlice(points)}}}},
 		Comfort: ComfortResult{Series: []SimulationSeries{series},

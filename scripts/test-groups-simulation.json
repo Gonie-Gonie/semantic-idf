@@ -339,7 +339,9 @@
           ],
           "tier": "regression"
         },
-        {"files":["thermal_topology_test.go"],"tests":["TestBuildThermalTopologySimulationResultMapsBoundaryAndNormalizesEnergy","TestLoadThermalTopologyRawSeriesReadsAllSurfaceSQLRows","TestThermalTopologySimulationUsesCanonicalInterzoneSide","TestTOPO284SimulationOverlayIntegratedFlow"],"tier":"regression"}
+        {"files":["thermal_topology_test.go"],"tests":["TestBuildThermalTopologySimulationResultMapsBoundaryAndNormalizesEnergy","TestLoadThermalTopologyRawSeriesReadsAllSurfaceSQLRows","TestThermalTopologySimulationUsesCanonicalInterzoneSide","TestTOPO284SimulationOverlayIntegratedFlow"],"tier":"regression"},
+        {"files":["hvac_runtime*_test.go"],"areas":["hvac","simulation-plan","simulation-results"],"tier":"fast"},
+        {"files":["hvac_runtime_test.go"],"tests":["TestHVACRuntimeNativeAcceptance"],"areas":["simulation-run"],"tier":"regression"}
       ]
     }
   ]

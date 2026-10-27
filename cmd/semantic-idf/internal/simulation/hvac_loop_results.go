@@ -14,7 +14,7 @@ func buildHVACLoopRunResultsWithDocument(series []SimulationSeries, request Simu
 		return buildHVACLoopRunResults(series, request)
 	}
 	report := idf.AnalyzeHVAC(*doc)
-	if len(report.Loops) == 0 {
+	if len(report.Loops) == 0 && len(report.OperatingProfiles) == 0 {
 		return buildHVACLoopRunResults(series, request)
 	}
 	selectedComponents := purposeComponentIDSet(request.Scope.ComponentIDs)
@@ -66,6 +66,15 @@ func buildHVACLoopRunResultsWithDocument(series []SimulationSeries, request Simu
 		// Derivations depend on the individual loop type, never the wildcard run.
 		result.DerivedMetrics = buildHVACLoopDerivedMetrics(result.NodeSummaries, result.LoopType)
 		result.Status, result.StatusMessage = classifyHVACLoopStatus(result.NodeSummaries, result.DerivedMetrics, result.Alerts)
+		attachHVACRuntimeControls(&result, hvacRuntimeProfiles(report, loop, request.Scope), loop, doc, series)
+		results = append(results, result)
+	}
+	if local := hvacRuntimeLocalProfiles(report, request.Scope); len(local) > 0 {
+		result := HVACLoopRunResult{Name: "Zone / local equipment", LoopType: "ZoneHVAC", Status: "info", StatusMessage: "Local equipment controls from the executed input; no physical loop is implied."}
+		if legacy := buildHVACLoopRunResults(hvacRuntimeLocalHourlySeries(local, doc, series), request); len(legacy) > 0 {
+			result.Series, result.Components, result.NodeSummaries = legacy[0].Series, legacy[0].Components, legacy[0].NodeSummaries
+		}
+		attachHVACRuntimeControls(&result, local, idf.HVACLoop{}, doc, series)
 		results = append(results, result)
 	}
 	return results

@@ -353,6 +353,64 @@ History는 원본 프레임을 stride sampling이나 평균화 없이 모두 그
 공유 장비의 다른 회로 포트나 위치가 확인되지 않는 값은 계통도에 별도 라벨로
 나열하지 않습니다.
 
+## 시뮬레이션 후 HVAC 운전 로직 {#hvac-runtime-control}
+
+**HVAC Loop Check**를 실행한 뒤 결과의 HVAC 화면에서 **Operating logic**을
+선택합니다. ExpandObjects 결과를 포함하여 실제 실행한 입력의 availability,
+On / Off, parameter control 정의를 사용합니다. 실행 후 편집 모델을 바꾸어도
+해당 결과를 설명하는 로직은 바뀌지 않습니다.
+
+HVAC Loop Check는 실행 사본에 필요한 원천별 **Timestep** 출력을 추가합니다.
+Schedule 값, 실제 manager·loop 상태, 관련 온도와 설정값, demand, actuator
+관측값, 장비 활동량을 수집합니다. 기존 **Loop values** 화면은 Hourly 관측값을
+유지합니다. 두 화면의 선택 시각과 그래프 상태는 별도로 유지되며, 같은 프레임
+번호가 같은 시각이나 보고 간격을 뜻하지 않습니다. Zone / local equipment는
+물리적 루프나 계통도를 만들어 붙이지 않고도 검사할 수 있습니다.
+
+장비와 **Day**, **Week**, **Full run** 범위를 선택합니다. 슬라이더, 이전·다음
+버튼, availability patch는 같은 보고 구간을 선택합니다. 상태 행에는 소유 객체와
+실제 출력이 표시됩니다. 원천 이름을 누르면 schedule, manager의 tolerance와
+cycling 설정, controller parameter 등 원래 정의를 확인할 수 있습니다.
+최대 네 관측값을 체크하여 시계열로 비교하며, 단위는 최대 두 가지를 사용합니다.
+
+서로 관련되지만 다른 판단을 구분해서 읽어야 합니다.
+
+- **Configured permission**은 설정된 최소 조건을 검사합니다.
+  **Manager 동작을 반영한 허용 조건**에는 보고된 manager 동작과 실제 override 우선순위도
+  적용됩니다. Manager의 **NoAction**은 override를 요구하지 않는다는 뜻이며
+  OFF를 뜻하지 않습니다. **ForceOff**, **CycleOn**, **Zone fans only**는
+  서로 다른 상태입니다. Hybrid ventilation은 별도의 상태 의미를 사용합니다.
+- **Plant 장비 배분 입력**은 장비 선택과 Availability를 구분합니다.
+  운전전략의 실제 범위와 장비 목록, 보고된 loop 부하와 해당 전략에 필요한
+  입력을 함께 보여줍니다. 칠러가 허용된 상태라도 실제 냉방을 담당하도록
+  선택되거나 출력 명령을 받은 것은 아닙니다.
+- Schedule 관측값은 실행 중 보고된 값이므로 달력 처리나 runtime override에
+  따라 정적 미리보기와 다를 수 있습니다. NightCycle은 실제 control mode가
+  사용하는 존, thermostat mode, 온도, 냉·난방 설정값을 함께 수집합니다.
+  관련 manager의 센서와 외기 입력도 동작 상태 옆에서 확인할 수 있습니다.
+- **Requested actuator value**와 **Actual actuator value**는 controller의
+  유량 요구와 계통이 실제 공급한 유량을 구분합니다. Actuator의 사용 가능한
+  최소·최대 유량은 유량 제한 여부를 검토하는 근거입니다. 유효한 controller
+  비교는 같은 구간·단위의 **측정값 − 설정값**을 보여줍니다. 부호만으로
+  제어 이상을 판정하지 않습니다.
+- 보고된 demand와 장비 활동량은 운전 맥락을 설명합니다. Permission만으로
+  실제 운전을 확정하지 않으며, 냉방 출력이 0이라는 이유만으로 fan이나 pump가
+  정지했다고 판단하지 않습니다. Performance curve는 장비 응답 inspector의
+  **Performance model** 상세에 남아 있습니다.
+
+Timestep 값은 zone 보고 구간을 요약합니다. System 상태는 여러 HVAC timestep의
+평균일 수 있으므로 혼합 상태나 소수 상태값은 한 순간의 동작이 아닙니다.
+정수 평균이라도 구간 내 사건 순서, cycling timer, adaptive history, solver
+iteration을 재현할 수는 없습니다. 화면은 관측된 맥락과 원천 규칙을 함께
+보여주며 보고되지 않은 원인을 만들어내지 않습니다.
+
+필수 채널이 없으면 **제어 출력 수집 오류**로 표시합니다. 정확한 원천, 출력,
+보고 빈도를 확인한 뒤 HVAC Loop Check를 다시 실행하세요. 누락값을 OFF나 0,
+일반적인 미해결 운전 조건으로 취급하지 않습니다. 일부 구간이 누락되면 빈
+구간으로 유지합니다. 실행 control metadata나 해당 출력이 없는 오래된 저장
+결과는 다시 실행해야 하며, 화면을 바꾸는 것만으로 미보고 데이터를 복구할 수는
+없습니다.
+
 ## HVAC 시계열과 산점도 {#hvac-charts}
 
 기본 차트는 노드 유량, 온도, 습도를 보여줍니다.
