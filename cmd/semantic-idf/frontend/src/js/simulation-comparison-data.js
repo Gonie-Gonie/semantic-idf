@@ -246,7 +246,7 @@ export function prepareSimulationComparison(result = {}, view = "energy", contex
 }
 
 export function normalizeSimulationComparison(model, ui = {}) {
-  ui.mode = ui.mode === "scatter" ? "scatter" : "line";
+  ui.mode = ["scatter", "histogram"].includes(ui.mode) ? ui.mode : "line";
   const scopeChanged = uiScopes.has(ui) && uiScopes.get(ui) !== model.scopeKey;
   const zone = token(model.scopeZone);
   const preferred = model.entities.find(entity => token(entity.name) === zone && entity.category !== "reported") || model.entities.find(entity => entity.category !== "reported" && entity.category !== "environment");

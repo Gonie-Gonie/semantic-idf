@@ -1,5 +1,6 @@
 import { t } from "./i18n.js";
 import { escapeHTML } from "./state.js";
+import { renderHVACInspectionHistogram } from "./hvac-inspection-histogram.js";
 
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const copy = (key, fallback) => t(`simulation.hvacChart${key}`, {}, fallback);
@@ -17,10 +18,11 @@ export function renderHVACInspectionChart({ series = [], mode = "line", frameKey
   const traces = series.filter(Boolean).map((trace, index) => ({ ...trace,
     id: String(trace.id ?? index), label: String(trace.label || trace.id || ""),
     unit: unitLabel(trace.unit), color: colors[(Number.isInteger(trace.colorIndex) && trace.colorIndex >= 0 ? trace.colorIndex : index) % colors.length],
-    points: normalizedPoints(trace.points || [], trace.interval),
+    points: mode === "histogram" ? trace.points || [] : normalizedPoints(trace.points || [], trace.interval),
   }));
   const heading = title ? `<h4>${escapeHTML(title)}</h4>` : "";
-  const empty = (message) => `<section class="hvac-inspection-chart" data-hvac-inspection-chart="${mode === "scatter" ? "scatter" : "line"}">${heading}<div class="hvac-inspection-chart-empty" data-hvac-chart-empty role="status">${escapeHTML(message)}</div></section>`;
+  const empty = (message) => `<section class="hvac-inspection-chart" data-hvac-inspection-chart="${mode === "histogram" ? "histogram" : mode === "scatter" ? "scatter" : "line"}">${heading}<div class="hvac-inspection-chart-empty" data-hvac-chart-empty role="status">${escapeHTML(message)}</div></section>`;
+  if (mode === "histogram") return renderHVACInspectionHistogram({ traces, title, heading, empty, legend: (items) => chartLegend(items, legendLayout) });
   if (mode === "scatter" && traces.length !== 2) return empty(copy("ScatterTwo", "Select exactly two properties for a scatter plot."));
   const units = [...new Set(traces.map((trace) => trace.unit))];
   if (mode !== "scatter" && units.length > 2) return empty(copy("TwoUnits", "A line graph supports up to two different units."));
@@ -59,7 +61,7 @@ export function renderHVACInspectionChart({ series = [], mode = "line", frameKey
   const frame = !scatter ? `<g data-hvac-chart-frame-marker${frameVisible ? "" : ' style="display:none"'}><line class="hvac-chart-frame" data-hvac-chart-frame="${frameVisible ? frameKey : ""}" x1="${frameX}" x2="${frameX}" y1="${top}" y2="${height - bottom}"/><text class="hvac-chart-frame-label" x="${frameX}" y="${height - bottom - 8}" text-anchor="${frameX > width / 2 ? "end" : "start"}">${escapeHTML(copy("Frame", "Frame"))}</text></g>` : "";
   const xTitle = scatter ? withUnit(traces[0].label, traces[0].unit) : xLabel || copy("DateTime", "Date & time");
   const label = title || copy(scatter ? "Scatter" : "Line", scatter ? "Scatter plot" : "Time series");
-  const legend = scatter ? "" : `<div class="hvac-chart-legend${legendLayout === "vertical" ? " is-vertical" : ""}">${traces.map((trace) => `<span data-hvac-chart-legend="${escapeHTML(trace.id)}" tabindex="0"><i style="--hvac-chart-color:${trace.color}"></i><span title="${escapeHTML(trace.legendLabel ?? withUnit(trace.label, trace.unit))}">${escapeHTML(trace.legendLabel ?? withUnit(trace.label, trace.unit))}</span></span>`).join("")}</div>`;
+  const legend = scatter ? "" : chartLegend(traces, legendLayout);
   return `<section class="hvac-inspection-chart" data-hvac-inspection-chart="${scatter ? "scatter" : "line"}">${heading}<div class="hvac-chart-scroll"><svg class="hvac-chart-svg" viewBox="0 0 ${width} ${height}" data-hvac-chart-domain-low="${xDomain.low}" data-hvac-chart-domain-high="${xDomain.high}" data-hvac-chart-plot-left="${left}" data-hvac-chart-plot-width="${plotWidth}" role="img" aria-label="${escapeHTML(label)}"><title>${escapeHTML(label)}</title>${yAxes}${xGrid}<line class="hvac-chart-axis" x1="${left}" x2="${width - right}" y1="${height - bottom}" y2="${height - bottom}"/>${clippedMarks}${frame}<text class="hvac-chart-axis-label" data-hvac-chart-axis="x"${scatter ? ` data-hvac-chart-unit="${escapeHTML(traces[0].unit)}"` : ""} x="${left + plotWidth / 2}" y="${height - 16}" text-anchor="middle">${escapeHTML(xTitle)}</text></svg></div>${legend}</section>`;
 }
 
@@ -139,6 +141,10 @@ export function handleHVACChartLegendEvent(event, container) {
 }
 
 function withUnit(label, unit) { return `${label} (${unit})`; }
+
+function chartLegend(traces, layout) {
+  return `<div class="hvac-chart-legend${layout === "vertical" ? " is-vertical" : ""}">${traces.map((trace) => `<span data-hvac-chart-legend="${escapeHTML(trace.id)}" tabindex="0"><i style="--hvac-chart-color:${trace.color}"></i><span title="${escapeHTML(trace.legendLabel ?? withUnit(trace.label, trace.unit))}">${escapeHTML(trace.legendLabel ?? withUnit(trace.label, trace.unit))}</span></span>`).join("")}</div>`;
+}
 
 function normalizedPoints(points, interval) {
   const sorted = points.filter((point) => point && finite(point.x)).map((point) => ({ x: point.x, label: String(point.label ?? point.x), key: point.key == null ? null : String(point.key), value: finite(point.value) ? point.value : null })).sort((a, b) => a.x - b.x);

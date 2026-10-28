@@ -486,7 +486,25 @@ times can form a pair; values are not interpolated, carried forward, or replaced
 with zero to fill a gap. A shared timestamp does not make an hourly average and
 a timestep value the same reporting interval.
 
-## HVAC time-series and scatter {#hvac-charts}
+Histogram overlays up to eight selected variables as translucent bars with
+outlines. Variables with the same display unit use the same X range and bin
+boundaries. Different units use independent linear X axes stacked below the
+same plot. Read each distribution against its unit's axis; sharing a horizontal
+position does not make different physical quantities equal.
+
+Bin sizing starts from the square root of the largest observation count in
+each unit group, rounded up and capped at 40 bins. Readable interval widths
+cover the group's full value range; a constant value uses one bin.
+
+The Y axis counts known observations in each bin. Zero is included; missing
+values are excluded. The right edge is included in the last bin. Counts use
+all observations rather than a reduced drawing sample, and do not change when
+the current frame moves. These are observation counts, not hours or probability
+density. Check the reporting cadence in the legend when comparing variables
+sampled at different intervals. Hover or focus a legend entry to highlight that
+distribution.
+
+## HVAC comparison charts {#hvac-charts}
 
 The basic charts show node flow, temperature, and humidity in one to three
 columns as panel width allows. Their drawing height is bounded so a wide
@@ -502,6 +520,8 @@ trace and dim the other traces in that chart.
 Custom charts choose an equipment/node first, then a property. A line chart
 can use at most two units on separate axes. Scatter uses exactly two
 properties at matching observation times.
+Histogram supports up to eight properties with the same overlaid distributions,
+observation counts and stacked X axes described above.
 
 Primary observations align by source row identity. A secondary file can join
 by a timestamp label only when that label is unique in both files. Duplicate

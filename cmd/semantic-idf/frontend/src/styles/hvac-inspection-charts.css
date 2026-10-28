@@ -30,6 +30,9 @@
 .hvac-chart-axis-label { fill: var(--muted); font-size: calc((var(--graph-label-font-size, 11px) + 1px) * 1.4); font-weight: 600; }
 .hvac-chart-line { stroke: var(--hvac-chart-color); stroke-width: 2; fill: none; vector-effect: non-scaling-stroke; }
 .hvac-chart-point { fill: var(--hvac-chart-color); }
+.hvac-chart-histogram-bin { fill: var(--hvac-chart-color); fill-opacity: .2; }
+.hvac-chart-histogram-outline { stroke-width: 1.7; pointer-events: none; }
+[data-hvac-chart-series].is-highlighted .hvac-chart-histogram-bin { fill-opacity: .36; }
 .hvac-chart-scatter-point { opacity: .78; }
 .hvac-chart-point.is-frame { stroke: var(--ink); stroke-width: 2; opacity: 1; vector-effect: non-scaling-stroke; }
 .hvac-chart-frame { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 5 4; pointer-events: none; vector-effect: non-scaling-stroke; }

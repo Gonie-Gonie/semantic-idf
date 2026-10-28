@@ -52,6 +52,25 @@ func TestHVACInspectionChartsBrowser(t *testing.T) {
 	}
 	ready(server.URL + "/chart")
 	t.Log(string(browser.evaluate(`document.getElementById('result').textContent`)))
+	if path := os.Getenv("HISTOGRAM_CHART_SCREENSHOT"); path != "" {
+		if !filepath.IsAbs(path) {
+			t.Fatal("HISTOGRAM_CHART_SCREENSHOT must name an absolute optional local capture")
+		}
+		ready(server.URL + "/chart?histogram=1")
+		browser.evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`)
+		var screenshot struct {
+			Data string `json:"data"`
+		}
+		browser.call("Page.captureScreenshot", map[string]any{"format": "png", "fromSurface": true, "captureBeyondViewport": false}, &screenshot)
+		data, err := base64.StdEncoding.DecodeString(screenshot.Data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+		t.Log("Optional histogram review screenshot: " + path)
+	}
 	if os.Getenv("HVAC_CHART_REVIEW") != "" {
 		ready(server.URL + "/chart?review=1")
 		directory := t.TempDir()
@@ -202,6 +221,95 @@ try {
  const replacementLegend=mount.querySelector('[data-hvac-chart-legend]');replacementLegend.focus();
  check(mount.querySelector('[data-hvac-chart-series]').classList.contains('is-highlighted'),'replaced chart lost stable-host legend delegation');replacementLegend.blur();
  check(!mount.querySelector('.is-highlighted,.is-muted'),'replaced chart retained stale legend state');
+ const histogramSeries=[
+  {id:'indoor',label:'Office · Air temperature',unit:'°C',points:[-5,0,5,10,null,Infinity,NaN].map((value,x)=>point(x,value))},
+  {id:'outdoor',label:'Environment · Outdoor temperature',unit:'°C',points:[-5,10,10,10].map((value,x)=>point(x,value))},
+  {id:'rh',label:'Office · Relative humidity',unit:'%',points:[0,50,100].map((value,x)=>point(x,value))},
+  {id:'power',label:'Equipment · Electric power',unit:'kW',points:[-100,0,200].map((value,x)=>point(x,value))}
+ ];
+ const histogramJSON=JSON.stringify(histogramSeries);
+ const histogramOriginalValues=histogramSeries.map(trace=>trace.points.map(point=>point.value));
+ const bins=group=>[...group.querySelectorAll('[data-hvac-chart-bin-count]')].map(bin=>({node:bin,low:Number(bin.dataset.hvacChartBinLow),high:Number(bin.dataset.hvacChartBinHigh),count:Number(bin.dataset.hvacChartBinCount)}));
+ const count=group=>bins(group).reduce((sum,bin)=>sum+bin.count,0);
+ const histogramValues=new Map([['indoor',[-5,0,5,10]],['outdoor',[-5,10,10,10]],['rh',[0,50,100]],['power',[-100,0,200]]]);
+ mount.innerHTML=render({mode:'histogram',series:histogramSeries,frameKey:2});
+ check(mount.querySelectorAll('svg').length===1&&mount.querySelectorAll('[data-hvac-inspection-chart="histogram"]').length===1,'histogram split variables into separate plotting panels');
+ check(!mount.querySelector('circle,[data-hvac-chart-frame-marker],[data-hvac-chart-frame]'),'histogram restored markers or misrepresented a time cursor on a value axis');
+ const histogramSVG=mount.querySelector('svg'),histogramGroups=[...mount.querySelectorAll('[data-hvac-chart-series]')],histogramAxes=[...mount.querySelectorAll('[data-hvac-chart-histogram-axis]')];
+ check(histogramGroups.length===4&&histogramAxes.length===3,'histogram rejected a third unit or gave same-unit variables different axes');
+ for(const group of histogramGroups){
+  const values=histogramValues.get(group.dataset.hvacChartSeries),rectangles=bins(group),total=count(group);
+  check(total===values.length&&Number(group.dataset.hvacChartObservations)===values.length,'histogram count lost zero/negative values or included missing/nonfinite observations: '+group.dataset.hvacChartSeries);
+  check(rectangles.length>0&&rectangles.length<=40&&rectangles.every(bin=>Number.isFinite(bin.low)&&Number.isFinite(bin.high)&&bin.high>bin.low&&Number.isInteger(bin.count)&&bin.count>=0),'histogram has unbounded, nonfinite, negative or degenerate bins');
+  check(rectangles.every((bin,index)=>index===0||Math.abs(bin.low-rectangles[index-1].high)<1e-9),'histogram bins overlap or leave a gap');
+  for(const [index,bin]of rectangles.entries())check(bin.count===values.filter(value=>value>=bin.low&&(value<bin.high||index===rectangles.length-1&&value<=bin.high)).length,'histogram double-counted a boundary or omitted its maximum');
+  const axis=histogramAxes.find(axis=>axis.dataset.hvacChartHistogramAxis===group.dataset.hvacChartUnit),low=Number(axis?.dataset.hvacChartXLow),high=Number(axis?.dataset.hvacChartXHigh);
+  check(axis&&low<=Math.min(...values)&&high>=Math.max(...values)&&high>low,'histogram axis does not contain its own original variable values');
+ }
+ const indoorBins=bins(histogramGroups[0]),outdoorBins=bins(histogramGroups[1]);
+ check(indoorBins.length===outdoorBins.length&&indoorBins.every((bin,index)=>bin.low===outdoorBins[index].low&&bin.high===outdoorBins[index].high&&bin.node.getAttribute('x')===outdoorBins[index].node.getAttribute('x')&&bin.node.getAttribute('width')===outdoorBins[index].node.getAttribute('width')),'same-unit histograms do not share aligned bin boundaries and geometry');
+ const axisBaseline=axis=>Number(axis.querySelector('line.hvac-chart-axis')?.getAttribute('y1'));
+ const axisLevels=histogramAxes.map(axisBaseline);
+ check(axisLevels.every((value,index)=>Number.isFinite(value)&&(index===0||value>axisLevels[index-1])),'different-unit histogram axes are not stacked downward under the same plot');
+ const histY=mount.querySelector('[data-hvac-chart-axis="left"]');
+ check(histY?.textContent.includes('Observations')&&Number(histY.dataset.hvacChartYLow)===0,'histogram Y scale does not explicitly count observations from zero');
+ const histogramFirstRect=histogramGroups[0].querySelector('rect'),histogramShape=histogramSVG.innerHTML;
+ updateFrame(mount,12345);
+ check(mount.querySelector('svg')===histogramSVG&&histogramGroups[0].querySelector('rect')===histogramFirstRect&&histogramSVG.innerHTML===histogramShape,'frame change rebuilt/rebinned histogram or moved a time cursor onto value axes');
+ const histogramLegend=mount.querySelector('[data-hvac-chart-legend="indoor"]');
+ histogramLegend.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));
+ check(histogramGroups[0].classList.contains('is-highlighted')&&histogramGroups.slice(1).every(group=>group.classList.contains('is-muted')),'histogram legend hover did not isolate the matching overlaid series');
+ histogramLegend.dispatchEvent(new PointerEvent('pointerout',{bubbles:true,relatedTarget:mount}));
+ histogramLegend.focus();check(histogramGroups[0].classList.contains('is-highlighted'),'histogram legend keyboard focus is not equivalent to hover');histogramLegend.blur();
+ for(const font of [11,18])for(const width of [350,720,1100]){
+  document.documentElement.style.setProperty('--graph-label-font-size',font+'px');mount.style.width=width+'px';await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  const viewport=histogramSVG.viewBox.baseVal;
+  check(mount.scrollWidth===width&&Math.abs(screenFont(mount.querySelector('.hvac-chart-tick'))-font)<.02,'histogram font or horizontal containment differs from other result charts');
+  for(const axis of histogramAxes){
+   for(const label of axis.querySelectorAll('text')){const box=label.getBBox();check(box.x>=viewport.x-.1&&box.x+box.width<=viewport.x+viewport.width+.1&&box.y+box.height<=viewport.height+.1,'stacked histogram axis clips configured labels outside SVG');}
+   const ticks=[...axis.querySelectorAll('[data-hvac-chart-tick="x"]')].map(label=>label.getBoundingClientRect());
+   check(ticks.every((bounds,index)=>index===0||bounds.left>=ticks[index-1].right+1),'stacked histogram tick labels overlap at configured font/panel width');
+  }
+ }
+ document.documentElement.style.setProperty('--graph-label-font-size','11px');mount.style.width='720px';
+ check(JSON.stringify(histogramSeries)===histogramJSON&&histogramSeries.every((trace,index)=>trace.points.every((point,offset)=>Object.is(point.value,histogramOriginalValues[index][offset]))),'histogram binned values by mutating original observations');
+ for(const values of [[0],[5,5,5],[-3,-3],[]]){
+  mount.innerHTML=render({mode:'histogram',series:[{id:'constant',label:'Constant',unit:'°C',points:values.map((value,x)=>point(x,value))}]});
+  if(!values.length){check(mount.querySelector('[data-hvac-chart-empty]')&&!mount.querySelector('svg'),'empty histogram fabricated a distribution');continue;}
+  const group=mount.querySelector('[data-hvac-chart-series]'),axis=mount.querySelector('[data-hvac-chart-histogram-axis]');
+  check(count(group)===values.length&&Number(axis.dataset.hvacChartXHigh)>Number(axis.dataset.hvacChartXLow)&&!group.innerHTML.includes('NaN'),'single/constant/negative histogram is degenerate or has wrong count');
+ }
+ for(const values of [[1.0000001,1.0000002,1.0000003,1.0000004],[100000000.1,100000000.2],[Number.MIN_VALUE,2*Number.MIN_VALUE]]){
+  mount.innerHTML=render({mode:'histogram',series:[{id:'precision',label:'Precise values',unit:'°C',points:values.map((value,x)=>point(x,value))}]});
+  const group=mount.querySelector('[data-hvac-chart-series]'),rectangles=bins(group),axis=mount.querySelector('[data-hvac-chart-histogram-axis]'),labels=[...axis.querySelectorAll('[data-hvac-chart-tick="x"]')].map(label=>label.textContent);
+  check(count(group)===values.length&&rectangles.every(bin=>Number.isFinite(bin.low)&&Number.isFinite(bin.high)&&bin.high>bin.low),'histogram precision fallback created zero-width bins or lost finite adjacent values');
+  check(labels.length>=2&&new Set(labels).size===labels.length,'histogram rounded distinct narrow/offset/subnormal axis ticks to duplicate labels: '+JSON.stringify(labels));
+  for(const [index,bin]of rectangles.entries()){
+   check(bin.count===values.filter(value=>value>=bin.low&&(value<bin.high||index===rectangles.length-1&&value<=bin.high)).length,'precision bins do not count their exact original numeric boundaries');
+   const interval=bin.node.querySelector('title')?.textContent.split(' · ').find(text=>text.includes(' ≤ x ')),bounds=interval?.replace(/ °C$/,'').split(/ ≤ x [<≤] /);
+   check(bounds?.length===2&&bounds[0]!==bounds[1],'histogram tooltip rounds distinct bin boundaries to the same value: '+interval);
+  }
+ }
+ const unsortedPoints=[point(4,4),point(0,0),point(2,2),point(1,-1),point(2,99)],unsortedBefore=JSON.stringify(unsortedPoints),unsortedIdentity=unsortedPoints.slice();
+ mount.innerHTML=render({mode:'histogram',series:[{...flow,points:unsortedPoints}]});
+ const unsortedBins=bins(mount.querySelector('[data-hvac-chart-series]')),unsortedValues=[-1,0,4];
+ check(count(mount.querySelector('[data-hvac-chart-series]'))===3&&unsortedBins.every((bin,index)=>bin.count===unsortedValues.filter(value=>value>=bin.low&&(value<bin.high||index===unsortedBins.length-1&&value<=bin.high)).length),'unsorted histogram silently selected duplicate timestamps or lost exact independent observations');
+ check(JSON.stringify(unsortedPoints)===unsortedBefore&&unsortedPoints.every((point,index)=>point===unsortedIdentity[index]),'histogram sorted or replaced source observations in place');
+ mount.innerHTML=render({mode:'histogram',series:[{...flow,points:[point(0,10),point(0,20),point(1,0),point(2,null),point(3,Infinity),{x:NaN,value:4}]}]});
+ check(count(mount.querySelector('[data-hvac-chart-series]'))===1,'histogram silently chose ambiguous duplicate time or included invalid coordinate/missing values');
+ mount.innerHTML=render({mode:'histogram',series:[{...flow,points:[point(0,null),point(1,NaN)]}]});check(mount.querySelector('[data-hvac-chart-empty]'),'all-missing histogram drew observations');
+ const histogramLarge=Array.from({length:24000},(_,x)=>point(x,x===12003?9000:x===17998?-7000:x%2?3:4));histogramLarge[11999].value=null;
+ mount.innerHTML=render({mode:'histogram',series:Array.from({length:8},(_,index)=>({id:'many-'+index,label:'Trace '+index,unit:'unit-'+index,points:histogramLarge}))});
+ check(mount.querySelectorAll('svg').length===1&&mount.querySelectorAll('[data-hvac-chart-histogram-axis]').length===8&&mount.querySelectorAll('[data-hvac-chart-bin-count]').length<=320,'eight-unit histogram split into charts or emitted unbounded geometry');
+ for(const group of mount.querySelectorAll('[data-hvac-chart-series]'))check(count(group)===23999,'large histogram sampled away observations or extrema before binning');
+ mount.innerHTML=render({mode:'histogram',series:[{...flow,label:'<img src=x>',unit:'<script>',points:[point(0,1)]}],title:'<button>unsafe</button>'});
+ check(!mount.querySelector('img,script,button')&&mount.textContent.includes('<img'),'histogram labels or units injected markup');
+ if(new URLSearchParams(location.search).has('histogram')){
+  mount.style.cssText='width:min(1100px,calc(100vw - 40px));margin:20px auto';
+  const trend=(id,label,unit,offset,amplitude)=>({id,label,unit,points:Array.from({length:8760},(_,x)=>point(x,offset+amplitude*Math.sin(x/500)+amplitude*.2*Math.sin(x/24)))});
+  mount.innerHTML=render({mode:'histogram',title:'Overlaid result distributions',series:[trend('indoor','Office · Air temperature','°C',22,2),trend('outdoor','Environment · Outdoor temperature','°C',12,15),trend('rh','Office · Relative humidity','%',50,20),trend('power','HVAC · Electric power','kW',30,20)]});
+  document.getElementById('result').hidden=true;
+ }
  if(new URLSearchParams(location.search).has('review')){
   mount.style.cssText='width:min(1100px,calc(100vw - 40px));margin:20px auto';
   mount.innerHTML=render({series:[flow,temp],frameKey:3,title:'HVAC node trends'})+'<div style="height:20px"></div>'+render({series:[flow,temp],mode:'scatter',frameKey:3,title:'Flow rate / temperature'});

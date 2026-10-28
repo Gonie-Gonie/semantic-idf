@@ -172,6 +172,7 @@ func simulationPurposeResultsBrowserFixture(runID, inputPath string, request sim
 			series("OFFICE", "Zone Air Relative Humidity", "%", 45, 50, 55),
 			series("Environment", "Site Outdoor Air Drybulb Temperature", "C", -5, 0, 8),
 			series("Environment", "Site Outdoor Air Relative Humidity", "%", 30, 45, 60),
+			series("Environment", "Site Outdoor Air Barometric Pressure", "Pa", 100000, 100500, 101000),
 		},
 	}
 	for index := range result.Series {
@@ -315,6 +316,12 @@ try{
  hvac.querySelector('[data-hvac-inspect-add]').click();chooseEntity(2,'SUPPLY INLET');
  const third=hvac.querySelector('[data-hvac-inspect-property="2"]');
  check([...third.options].find(item=>item.textContent.startsWith('Relative humidity ('))?.disabled&&![...third.options].find(item=>item.textContent.startsWith('Temperature ('))?.disabled,'line graph selector allowed third incompatible unit or blocked existing scale');
+ change('[data-hvac-inspect-mode]','histogram');
+ check(hvac.querySelector('[data-hvac-inspect-mode]').value==='histogram'&&hvac.querySelector('[data-hvac-inspect-add]')&&![...hvac.querySelector('[data-hvac-inspect-property="2"]').options].find(item=>item.textContent.startsWith('Relative humidity ('))?.disabled,'HVAC histogram mode is unavailable or retained line-only unit restrictions');
+ chooseProperty(2,'Relative humidity');
+ check(custom().querySelector('[data-hvac-inspection-chart="histogram"]')&&custom().querySelectorAll('[data-hvac-chart-series]').length===3&&custom().querySelectorAll('[data-hvac-chart-histogram-axis]').length===3,'native HVAC custom histogram did not overlay three units with stacked value axes');
+ for(const trace of custom().querySelectorAll('[data-hvac-chart-series]'))check([...trace.querySelectorAll('[data-hvac-chart-bin-count]')].reduce((sum,bin)=>sum+Number(bin.dataset.hvacChartBinCount),0)===3,'native HVAC histogram lost complete observations');
+ hvac.querySelector('[data-hvac-inspect-add]').click();check(hvac.querySelectorAll('[data-hvac-inspect-entity]').length===4,'HVAC histogram Add did not add one row');hvac.querySelector('[data-hvac-inspect-remove="3"]').click();check(hvac.querySelectorAll('[data-hvac-inspect-entity]').length===3,'HVAC histogram Remove did not remove one row');
  change('[data-hvac-inspect-mode]','scatter');
  check(hvac.querySelectorAll('[data-hvac-inspect-entity]').length===2&&!hvac.querySelector('[data-hvac-inspect-add]'),'scatter did not limit custom comparison to two properties');
  check(custom().querySelectorAll('[data-hvac-chart-scatter] circle').length===3&&custom().querySelector('[data-hvac-chart-x-value="0"][data-hvac-chart-y-value="14"]'),'scatter did not compare exact power/temperature observations including zero');
@@ -399,6 +406,18 @@ try{
  check(comfortLines.length===2&&!comparison('comfort').querySelector('circle')&&comfortLines.some(trace=>valuesEqual(drawnComparison(trace),[22,24,26]))&&comfortLines.some(trace=>valuesEqual(drawnComparison(trace),[-5,0,8])),'Comfort line comparison omitted native values or restored point markers');
  const comparisonLegend=comparison('comfort').querySelector('[data-hvac-chart-legend]');comparisonLegend?.dispatchEvent(new MouseEvent('pointerover',{bubbles:true}));
  check(comparison('comfort').querySelectorAll('[data-hvac-chart-series].is-highlighted').length===1&&comparison('comfort').querySelectorAll('[data-hvac-chart-series].is-muted').length===1,'comparison legend hover did not highlight only its matching trace');comparisonLegend?.dispatchEvent(new MouseEvent('pointerout',{bubbles:true}));
+ comparisonChange('comfort','[data-simulation-comparison-mode]','histogram');
+ check(comparison('comfort').querySelector('[data-hvac-inspection-chart="histogram"]')&&comparison('comfort').querySelectorAll('[data-hvac-chart-series]').length===2&&comparison('comfort').querySelectorAll('[data-hvac-chart-histogram-axis]').length===1,'Comfort comparison did not overlay indoor/outdoor histograms on the same temperature axis');
+ comparison('comfort').querySelector('[data-simulation-comparison-add]').click();
+ comparisonChoice('comfort',2,nativeEntry('comfort','Zone Air Relative Humidity'));
+ comparison('comfort').querySelector('[data-simulation-comparison-add]').click();
+ comparisonChoice('comfort',3,nativeEntry('comfort','Site Outdoor Air Barometric Pressure'));
+ check(comparison('comfort').querySelectorAll('[data-hvac-chart-histogram-axis]').length===3,'purpose histogram retained the two-unit line restriction');
+ const comfortHistogramGroups=[...comparison('comfort').querySelectorAll('[data-hvac-chart-series]')];
+ check(comfortHistogramGroups.length>=3&&comfortHistogramGroups.every(trace=>[...trace.querySelectorAll('[data-hvac-chart-bin-count]')].reduce((sum,bin)=>sum+Number(bin.dataset.hvacChartBinCount),0)===3),'Comfort histogram did not preserve complete purpose/environment observations');
+ comparison('comfort').querySelector('[data-simulation-comparison-remove="3"]').click();comparison('comfort').querySelector('[data-simulation-comparison-remove="2"]').click();
+ comparisonChange('comfort','[data-simulation-comparison-mode]','line');
+ check(comparison('comfort').querySelectorAll('[data-hvac-chart-series]').length===2&&comparison('comfort').querySelectorAll('[data-simulation-comparison-property]').length===2,'Histogram Remove or return to Line lost the original selected traces');
  const chooseComfortScope=value=>{const input=comfort.querySelector('[data-comfort-inspect-zone]');input.value=value;input.dispatchEvent(new Event('change',{bubbles:true}));};
  chooseComfortScope('__building__');
  check(comparisonEntries('comfort').every(entry=>entry.entity.category==='environment'||entry.entity.name==='Building'),'Building comparison fabricated a facility result from another zone or exposed an unrelated zone target');
@@ -415,6 +434,11 @@ try{
  check(state.simulationComparisons.zone_heat_flow.rows.length===heatRows+1,'one native Add click did not add exactly one comparison row');comparison('zone_heat_flow').querySelector('[data-simulation-comparison-remove="'+heatRows+'"]')?.click();check(state.simulationComparisons.zone_heat_flow.rows.length===heatRows,'native Remove did not remove exactly its comparison row');
  const heatSVG=comparison('zone_heat_flow').querySelector('svg'),heatCursor=heatSVG?.querySelector('[data-hvac-chart-frame]'),heatFrame=document.getElementById('simulationHeatFlowSlider');heatFrame.value='2';heatFrame.dispatchEvent(new Event('input',{bubbles:true}));
  check(comparison('zone_heat_flow').querySelector('svg')===heatSVG&&heatCursor&&Math.abs(Number(heatCursor.getAttribute('x1'))-(Number(heatSVG.dataset.hvacChartPlotLeft)+Number(heatSVG.dataset.hvacChartPlotWidth)))<1e-7,'Heat Flow frame did not move the current-time cursor without rebuilding its comparison chart');
+ comparisonChange('zone_heat_flow','[data-simulation-comparison-mode]','histogram');
+ const heatHistogram=comparison('zone_heat_flow').querySelector('svg'),heatBins=[...heatHistogram.querySelectorAll('[data-hvac-chart-series]')].map(trace=>[...trace.querySelectorAll('[data-hvac-chart-bin-count]')].reduce((sum,bin)=>sum+Number(bin.dataset.hvacChartBinCount),0));
+ check(heatBins.length===2&&heatBins.includes(2)&&heatBins.includes(3),'Heat Flow histogram counted unobserved masked values or omitted exact environment observations');
+ const heatHistogramHTML=heatHistogram.innerHTML;heatFrame.value='1';heatFrame.dispatchEvent(new Event('input',{bubbles:true}));
+ check(comparison('zone_heat_flow').querySelector('svg')===heatHistogram&&heatHistogram.innerHTML===heatHistogramHTML,'Heat Flow current frame rebuilt/rebinned the complete selected-range histogram');
  tab('comfort').click();await tick();check(JSON.stringify(state.simulationComparisons.comfort.rows)===comfortComparisonRows&&comparison('comfort').querySelectorAll('[data-hvac-chart-series]').length===2,'switching purpose tabs lost Comfort comparison choices or mixed Heat Flow selections');
  check(JSON.stringify(state.simulationResult)===installedJSON,'Comfort zone/line rendering mutated exact returned metric metadata or observations');
  check(JSON.stringify(original)===originalJSON,"Run or purpose tabs mutated previous result");
@@ -428,7 +452,7 @@ try{
   }else hvac.querySelector('[data-simulation-hvac-loop]').scrollIntoView({block:'start'});}
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
  }
- evidence.push("Native purpose checkboxes preserve all four purposes in one SQL-first Run & Inspect request. Production Go builder returns two executed loop topologies with exact membership. Native loop/frame/node/custom property controls render clean topology, exact inline temperature/setpoint comparisons, status and three node graphs; frame changes retain slider and trace SVG; yyaxes and exactly-two-property scatter use observed values. The timestamp is shared across loops while graph type, node selections/toggles and custom properties remain loop-local. Comfort retains its T/Tset/RH charts and adds exact indoor/outdoor line/scatter comparison at the bottom. Heat Flow comparison preserves its observed mask, kW scaling, known zero, separate purpose choices and shared-frame cursor without rebuilding the SVG.");
+ evidence.push("Native purpose checkboxes preserve all four purposes in one SQL-first Run & Inspect request. Production Go builder returns two executed loop topologies with exact membership. Native loop/frame/node/custom property controls render clean topology, exact inline temperature/setpoint comparisons, status and three node graphs; frame changes retain slider and trace SVG; yyaxes and exactly-two-property scatter use observed values. The timestamp is shared across loops while graph type, node selections/toggles and custom properties remain loop-local. HVAC Custom and Comfort comparison overlay complete distributions with three unit axes stacked below one plot, and retain Add/Remove plus line/scatter choices. Comfort retains its T/Tset/RH charts. Heat Flow comparison preserves observed masks, kW scaling, known zero, separate purpose choices and the shared-frame cursor; its histogram remains unchanged during frame stepping.");
 }catch(error){failures.push(error.stack||String(error));}
 document.body.dataset.purposeResultsStatus=failures.length?"failed":"passed";
 document.getElementById("purpose-results-evidence").textContent=JSON.stringify({failures,evidence});

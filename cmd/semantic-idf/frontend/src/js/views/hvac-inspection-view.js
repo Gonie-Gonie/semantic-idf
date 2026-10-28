@@ -18,7 +18,7 @@ function normalize(model, ui) {
   ui.frameIndex = Math.max(0, Math.min(model.frames.length - 1, Math.round(Number(ui.frameIndex) || 0)));
   ui.visibleNodes ||= {};
   ui.basicYLimits ||= {};
-  ui.mode = ui.mode === "scatter" ? "scatter" : "line";
+  ui.mode = ["scatter", "histogram"].includes(ui.mode) ? ui.mode : "line";
   if (!model.entities.some((entity) => entity.id === ui.selectedComponent)) ui.selectedComponent = "";
   if (!model.entities.some((entity) => entity.id === ui.selectedNode)) ui.selectedNode = ui.selectedComponent || ui.runtimeSelected ? "" : model.entities.find((entity) => entity.kind === "node")?.id || "";
   if (!Array.isArray(ui.rows)) {
@@ -27,9 +27,13 @@ function normalize(model, ui) {
     const second = properties.find((property) => property.kind === "temperature" && property !== first) || properties.find((property) => property !== first);
     ui.rows = [first, second].map((property) => ({ entity: property?.entity.id || "", property: property?.id || "" }));
   }
+  const units = new Set(), selected = new Set();
   ui.rows = ui.rows.slice(0, ui.mode === "scatter" ? 2 : 8).map((row) => {
     const entity = model.entities.find((item) => item.id === row.entity);
-    return { entity: entity?.id || "", property: entity?.properties.some((property) => property.id === row.property) ? row.property : "" };
+    const property = entity?.properties.find((item) => item.id === row.property);
+    if (!property || selected.has(property.id) || ui.mode === "line" && units.size >= 2 && !units.has(property.unit)) return { entity: entity?.id || "", property: "" };
+    units.add(property.unit); selected.add(property.id);
+    return { entity: entity.id, property: property.id };
   });
   while (ui.rows.length < 2) ui.rows.push({ entity: "", property: "" });
   return ui;
@@ -130,7 +134,10 @@ function updateBasicYControl(group, range, selected) {
 
 function renderCustomChart(model, ui) {
   return renderHVACInspectionChart({ markers: false, mode: ui.mode, frameKey: model.frames[ui.frameIndex]?.x,
-    series: selectedProperties(model, ui).map((property) => ({ ...hvacInspectionTrace(model, property), axisLabel: property.label })) });
+    series: selectedProperties(model, ui).map((property) => {
+      const trace = hvacInspectionTrace(model, property);
+      return { ...trace, axisLabel: property.label, ...(ui.mode === "histogram" ? { legendLabel: `${trace.label} (${trace.unit}${model.reportingFrequency ? ` · ${model.reportingFrequency}` : ""})` } : {}) };
+    }) });
 }
 
 function renderCustomControls(model, ui) {
@@ -149,12 +156,12 @@ function renderCustomControls(model, ui) {
         ${(entity?.properties || []).map((property) => option(property.id, `${property.label} (${property.unit})`, property.id === row.property,
           otherProperties.some((other) => other.id === property.id) || ui.mode === "line" && otherUnits.size >= 2 && !otherUnits.has(property.unit))).join("")}
       </select></label>
-      ${ui.mode === "line" && ui.rows.length > 2 ? `<button type="button" data-hvac-inspect-remove="${index}" aria-label="${escapeHTML(copy("Remove", "Remove series"))}">×</button>` : ""}
+      ${ui.mode !== "scatter" && ui.rows.length > 2 ? `<button type="button" data-hvac-inspect-remove="${index}" aria-label="${escapeHTML(copy("Remove", "Remove series"))}">×</button>` : ""}
     </div>`;
   }).join("");
-  return `<div class="hvac-inspection-custom-heading"><h4>${escapeHTML(copy("Custom", "Custom graph"))}</h4><label><span>${escapeHTML(copy("GraphType", "Graph type"))}</span><select data-hvac-inspect-mode>${option("line", "Line", ui.mode === "line")}${option("scatter", "Scatter", ui.mode === "scatter")}</select></label></div>
+  return `<div class="hvac-inspection-custom-heading"><h4>${escapeHTML(copy("Custom", "Custom graph"))}</h4><label><span>${escapeHTML(copy("GraphType", "Graph type"))}</span><select data-hvac-inspect-mode>${option("line", "Line", ui.mode === "line")}${option("scatter", "Scatter", ui.mode === "scatter")}${option("histogram", t("simulation.hvacChartHistogram", {}, "Histogram"), ui.mode === "histogram")}</select></label></div>
     <div class="hvac-inspection-custom-rows">${rows}</div>
-    ${ui.mode === "line" ? `<button type="button" data-hvac-inspect-add${ui.rows.length >= 8 ? " disabled" : ""}>${escapeHTML(copy("Add", "Add series"))}</button>` : ""}`;
+    ${ui.mode !== "scatter" ? `<button type="button" data-hvac-inspect-add${ui.rows.length >= 8 ? " disabled" : ""}>${escapeHTML(copy("Add", "Add series"))}</button>` : ""}`;
 }
 
 function selectRuntimeEquipment(loop, model, ui, entityID, objectIndex) {
@@ -265,8 +272,8 @@ export function handleHVACInspectionEvent(event, container, loop, ui) {
   if (data.hvacInspectMode !== undefined) ui.mode = target.value;
   if (data.hvacInspectEntity !== undefined) ui.rows[Number(data.hvacInspectEntity)] = { entity: target.value, property: "" };
   if (data.hvacInspectProperty !== undefined) ui.rows[Number(data.hvacInspectProperty)].property = target.selectedOptions?.[0]?.disabled ? "" : target.value;
-  if (data.hvacInspectAdd !== undefined && ui.mode === "line" && ui.rows.length < 8) ui.rows.push({ entity: "", property: "" });
-  if (data.hvacInspectRemove !== undefined && ui.rows.length > 2) ui.rows.splice(Number(data.hvacInspectRemove), 1);
+  if (data.hvacInspectAdd !== undefined && ui.mode !== "scatter" && ui.rows.length < 8) ui.rows.push({ entity: "", property: "" });
+  if (data.hvacInspectRemove !== undefined && ui.mode !== "scatter" && ui.rows.length > 2) ui.rows.splice(Number(data.hvacInspectRemove), 1);
   normalize(model, ui);
   const attribute = [...target.attributes].find((item) => item.name.startsWith("data-hvac-inspect-"));
   container.querySelector("[data-hvac-inspect-custom-controls]").innerHTML = renderCustomControls(model, ui);

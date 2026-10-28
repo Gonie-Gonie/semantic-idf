@@ -44,6 +44,7 @@ $modules = @(
     "command-palette.js",
     "comfort-inspection-data.js",
     "simulation-comparison-data.js",
+    "hvac-inspection-histogram.js",
     "guide-manual.js",
     "i18n.js",
     "localized-text.js",

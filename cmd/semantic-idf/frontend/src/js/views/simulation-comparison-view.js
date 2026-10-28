@@ -11,19 +11,20 @@ const selected = (model, ui) => ui.rows.map(row => model.properties.find(propert
 const plots = new WeakMap();
 
 function controls(model, ui) {
-  return `<div class="hvac-inspection-custom-heading"><h4>${safe(copy("Title", "Comparison graph"))}</h4><label><span>${safe(hvacCopy("GraphType", "Graph type"))}</span><select data-simulation-comparison-mode>${option("line", "Line", ui.mode === "line")}${option("scatter", "Scatter", ui.mode === "scatter")}</select></label></div>
+  return `<div class="hvac-inspection-custom-heading"><h4>${safe(copy("Title", "Comparison graph"))}</h4><label><span>${safe(hvacCopy("GraphType", "Graph type"))}</span><select data-simulation-comparison-mode>${option("line", "Line", ui.mode === "line")}${option("scatter", "Scatter", ui.mode === "scatter")}${option("histogram", t("simulation.hvacChartHistogram", {}, "Histogram"), ui.mode === "histogram")}</select></label></div>
     <div class="hvac-inspection-custom-rows">${ui.rows.map((row, index) => {
       const entity = model.entities.find(item => item.id === row.entity), current = entity?.properties.find(property => property.id === row.property), others = selected(model, { rows: ui.rows.filter((_, other) => other !== index) }), units = new Set(others.map(property => property.unit));
       return `<div class="hvac-inspection-custom-row simulation-comparison-row"><span>${ui.mode === "scatter" ? index === 0 ? "X" : "Y" : index + 1}</span>
         <label><span>${safe(copy("Category", "Category"))}</span><select data-simulation-comparison-category="${index}">${option("", "—", !entity)}${model.categories.map(category => option(category.id, category.label, category.id === entity?.category)).join("")}</select></label>
         <label><span>${safe(copy("Target", "Target"))}</span><select data-simulation-comparison-entity="${index}"${entity ? "" : " disabled"}>${option("", "—", !entity)}${model.entities.filter(item => item.category === entity?.category).map(item => option(item.id, item.name, item.id === row.entity)).join("")}</select></label>
         <label><span>${safe(copy("Variable", "Variable"))}</span><select data-simulation-comparison-property="${index}"${current?.name ? ` title="${safe(current.name)}"` : ""}${entity ? "" : " disabled"}>${option("", "—", !row.property)}${(entity?.properties || []).map(property => option(property.id, `${property.label} (${property.unit}${property.frequency ? ` · ${property.frequency}` : ""})`, property.id === row.property, others.some(other => other.id === property.id) || ui.mode === "line" && units.size >= 2 && !units.has(property.unit), property.name)).join("")}</select></label>
-        ${ui.mode === "line" && ui.rows.length > 2 ? `<button type="button" data-simulation-comparison-remove="${index}" aria-label="${safe(hvacCopy("Remove", "Remove series"))}">×</button>` : ""}</div>`;
-    }).join("")}</div>${ui.mode === "line" ? `<button type="button" data-simulation-comparison-add${ui.rows.length >= 8 ? " disabled" : ""}>${safe(hvacCopy("Add", "Add series"))}</button>` : ""}`;
+        ${ui.mode !== "scatter" && ui.rows.length > 2 ? `<button type="button" data-simulation-comparison-remove="${index}" aria-label="${safe(hvacCopy("Remove", "Remove series"))}">×</button>` : ""}</div>`;
+    }).join("")}</div>${ui.mode !== "scatter" ? `<button type="button" data-simulation-comparison-add${ui.rows.length >= 8 ? " disabled" : ""}>${safe(hvacCopy("Add", "Add series"))}</button>` : ""}`;
 }
 
 function chart(model, ui, mount) {
-  const series = simulationComparisonTraces(model, selected(model, ui)), frameKey = simulationComparisonFrame(model, series);
+  const properties = selected(model, ui), traces = simulationComparisonTraces(model, properties), frameKey = simulationComparisonFrame(model, traces);
+  const series = ui.mode === "histogram" ? traces.map((trace, index) => ({ ...trace, legendLabel: `${trace.label} (${trace.unit}${properties[index].frequency ? ` · ${properties[index].frequency}` : ""})` })) : traces;
   if (mount) plots.set(mount, { model, series });
   return renderHVACInspectionChart({ markers: false, mode: ui.mode, frameKey, series });
 }
@@ -49,8 +50,8 @@ export function handleSimulationComparisonEvent(event, container, result, view, 
   }
   if (target.hasAttribute("data-simulation-comparison-entity")) ui.rows[Number(target.dataset.simulationComparisonEntity)] = { entity: target.value, property: "" };
   if (target.hasAttribute("data-simulation-comparison-property")) ui.rows[Number(target.dataset.simulationComparisonProperty)].property = target.value;
-  if (target.hasAttribute("data-simulation-comparison-add") && ui.mode === "line" && ui.rows.length < 8) ui.rows.push({ entity: "", property: "" });
-  if (target.hasAttribute("data-simulation-comparison-remove") && ui.mode === "line" && ui.rows.length > 2) ui.rows.splice(Number(target.dataset.simulationComparisonRemove), 1);
+  if (target.hasAttribute("data-simulation-comparison-add") && ui.mode !== "scatter" && ui.rows.length < 8) ui.rows.push({ entity: "", property: "" });
+  if (target.hasAttribute("data-simulation-comparison-remove") && ui.mode !== "scatter" && ui.rows.length > 2) ui.rows.splice(Number(target.dataset.simulationComparisonRemove), 1);
   normalizeSimulationComparison(model, ui);
   const attribute = [...target.attributes].find(item => item.name.startsWith("data-simulation-comparison-"));
   wrapper.querySelector("[data-simulation-comparison-controls]").innerHTML = controls(model, ui);

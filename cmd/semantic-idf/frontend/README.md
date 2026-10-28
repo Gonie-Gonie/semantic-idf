@@ -30,10 +30,13 @@
   Action fields; their compact grouping does not invent control equations.
 - `src/js/simulation-comparison-data.js` builds metadata catalogs for related
   Energy Path, Heat Flow and Comfort variables plus shared environment outputs.
-  `views/simulation-comparison-view.js` places their line/scatter controls at the
+  `views/simulation-comparison-view.js` places their line/scatter/histogram controls at the
   bottom of each result. Materialize selected traces through the existing result
   resource owner, preserving source identity, reporting intervals, gaps and zero.
   The canonical `series` API remains available without a standalone Series tab.
+  `hvac-inspection-histogram.js` counts complete selected observations for these
+  comparisons and HVAC Custom graphs, with common bins per display unit and
+  independent unit axes stacked beneath one overlaid plot.
 - `src/js/simulation-progress.js`: measured work, approximate remaining-time
   presentation, HTTP progress polling and response-byte progress. Unknown totals
   remain indeterminate; legacy stage-count percentages are not displayed as time.

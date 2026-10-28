@@ -354,13 +354,26 @@ thermal/site links, allocation, and frozen v1 compatibility live in
 Energy Transfer, Zone Heat Flow, and Thermal Comfort place a related-variable comparison
 plot after their existing content. The former standalone Series tab is removed;
 canonical raw `series` data remains available to API/export and source resolution.
-Each comparison has its own trace choices and line/scatter mode. Line plots use
+Each comparison has its own trace choices and line/scatter/histogram mode. Line plots use
 up to eight properties, no point markers, and at most two unit axes; scatter
 uses exactly two variables with unambiguous matching timestamp and reporting
 cadence. Missing observations, duplicate/ambiguous matches and differing
 intervals are not interpolated or silently paired. Environment variables are
 shared choices in each purpose. Source jumps select the exact source in the
 current purpose's bottom comparison rather than opening a separate result tab.
+
+Histograms overlay up to eight selected properties in one plot. Properties with
+the same display unit share a domain and bin boundaries. Different units have
+independent linear X axes stacked below that plot; their numeric ranges are not
+silently equated. Y is the number of known observations in each bin, not elapsed
+hours or probability density. Every finite observed value, including zero,
+contributes once; missing observations are excluded. Legend labels include
+reporting cadence because differently sampled properties can have different
+observation counts. Bin statistics use complete observations, not geometry
+sampling. Per-unit automatic bins start from the largest trace's square-root
+sample count, with readable steps and at most 40 intervals. The last interval
+includes its upper edge; duplicate timestamps remain ambiguous and excluded.
+Frame changes do not recompute the distribution or change its axes.
 
 ### Energy Path
 
@@ -631,7 +644,8 @@ does not invent a physical loop or borrow membership from an unrelated loop.
 Flow, temperature, and humidity graphs have per-node controls, independent
 Y ranges by unit, and Auto reset. Custom graphs choose object then property;
 lines use at most two unit axes, and scatter compares two properties at matching
-times. Humidity uses RH, otherwise humidity ratio in `g/kg`. HVAC and Simulation
+times. Histogram uses the same overlay, count and stacked-X-axis rules as the
+purpose comparison plots. Humidity uses RH, otherwise humidity ratio in `g/kg`. HVAC and Simulation
 selection stays local.
 
 ### Comfort and Integrity
