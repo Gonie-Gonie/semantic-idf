@@ -63,10 +63,10 @@ epJSON model must first be converted to IDF. Ordinary epJSON runs need no expans
 
 | Purpose | Main question | Typical observations |
 | --- | --- | --- |
-| Basic Energy | What drives thermal load and site consumption? | Monthly accounting and Hourly component sources for Energy Path. |
+| Energy Transfer | What drives thermal load and site consumption? | Monthly accounting and Hourly component sources for Energy Path. |
 | Zone Heat Flow | How does the zone heat balance change with time? | Heat-balance rates, zone temperatures, and detailed surface outputs. |
-| HVAC Loop Check | What happened along an executed loop? | Node flow, temperature, humidity, setpoints, and component operation. |
-| Comfort | What thermal conditions and reported discomfort occurred? | Zone/People temperatures, PMV, PPD, humidity, and unmet time. |
+| HVAC Loops | What happened along an executed loop? | Node flow, temperature, humidity, setpoints, and component operation. |
+| Thermal Comfort | What thermal conditions and reported discomfort occurred? | Zone/People temperatures, PMV, PPD, humidity, and unmet time. |
 
 The main view uses all zones, all loops, and the full run period. Result
 Scope/Period selections are display choices applied after execution.
@@ -77,8 +77,8 @@ measurements do not establish direct zone consumption. This is explained in
 [Direct, allocated, and unassigned](./energy-path.en.md#allocation-bases).
 
 Integrity and custom output capabilities exist in automation; they are not
-additional purpose controls in the main view. Batch Simulation has Basic Energy,
-Zone Heat Flow, and HVAC Loop Check purposes.
+additional purpose controls in the main view. Batch Simulation has Energy Transfer,
+Zone Heat Flow, and HVAC Loops purposes.
 
 ## Output plan and reporting frequency {#output-plan}
 
@@ -97,7 +97,7 @@ The energy plan keeps Monthly accounting observations and requests native
 Hourly observations for component charts. A purpose can reuse a matching
 request from another purpose. Existing requests retain their frequency.
 
-Basic Energy, Zone Heat Flow, and Comfort share Hourly environmental outputs:
+Energy Transfer, Zone Heat Flow, and Thermal Comfort share Hourly environmental outputs:
 outdoor dry-bulb and wet-bulb temperature, relative humidity, barometric pressure,
 direct and diffuse solar radiation per area, wind speed, and wind direction.
 These observations are available in each view's comparison plot. Their output
@@ -138,7 +138,7 @@ Use the actual observation calendar. Do not assume every run has exactly
 EnergyPlus interval-end labels can include 24:00; read the complete label
 rather than treating it as an ordinary hour-of-day index.
 
-For Hourly HVAC and Comfort plots, SQL weather-run metadata is used when
+For Hourly HVAC and Thermal Comfort plots, SQL weather-run metadata is used when
 available to exclude sizing days and warmup. Older SQL schemas and CSV retain
 their available axes. Missing metadata is not permission to manufacture a
 weather calendar.
@@ -147,7 +147,7 @@ Some aggregate SQL rows have a NULL warmup flag. NULL alone does not make a
 valid Monthly or Run Period observation a warmup row. Interpretation also
 depends on reporting frequency and environment metadata.
 
-Requested HVAC/Comfort observations and Energy Path source traces retain their
+Requested HVAC/Thermal Comfort observations and Energy Path source traces retain their
 reported observations beyond generic source-preview limits. A graph can reduce
 its drawing geometry for a long run while preserving source extrema and gaps;
 this does not change the stored observations or create a finer reporting cadence.
@@ -185,7 +185,7 @@ required. Missing intervals cannot be treated as observed operation at zero.
 
 The Energy Path display divides thermal and site energy by executed-model
 floor area. See [Intensity](./energy-path.en.md#floor-area-and-intensity).
-HVAC rate and Comfort state plots keep their own units.
+HVAC rate and Thermal Comfort state plots keep their own units.
 
 ## Missing, zero, and unavailable {#missing-data}
 
@@ -201,7 +201,7 @@ A flat-looking chart can contain rounded small values. Conversely, no line or
 an unavailable chart is not a zero-energy run. Missing observations should not
 be replaced with nearby times, another zone, or the Building value.
 
-## Heat-Flow Ledger {#heat-flow-ledger}
+## Zone Heat Flow {#heat-flow-ledger}
 
 Select a zone number in the compact floor plans to inspect the current timestamp
 in the right-hand ledger. Zone numbers are unique across the model. A zone with
@@ -367,7 +367,7 @@ Ports of another circuit are not annotated, and detached labels are omitted.
 
 ## HVAC operating logic after simulation {#hvac-runtime-control}
 
-Run **HVAC Loop Check**, then open **HVAC Loops**. The default view keeps the
+Run **HVAC Loops**, then inspect its result tab. The default view keeps the
 loop schematic, node charts, visibility controls, Y limits and custom graphs.
 The shared **Frame** slider stays at the bottom of this view. Its right-hand
 buttons and **Ctrl+← / Ctrl+→** move one recorded frame, stopping at either end.
@@ -462,14 +462,14 @@ with source evidence available on the error indicator.
 
 ## Compare variables {#comparison-plots}
 
-Energy Path, Heat-Flow Ledger, and Comfort each place a variable-comparison
+Energy Transfer, Zone Heat Flow, and Thermal Comfort each place a variable-comparison
 plot at the bottom of the result view. Use the selected view's related variables
 and reported environmental inputs, such as outdoor temperature, to compare the
 same run without opening a separate Series tab. The existing diagrams and
 purpose-specific charts remain above the comparison plot.
 
-Energy Path follows the current Scope and Period. Heat-Flow Ledger follows its
-zone and visible time range, with the current frame shown on the plot. Comfort
+Energy Transfer follows the current Scope and Period. Zone Heat Flow follows its
+zone and visible time range, with the current frame shown on the plot. Thermal Comfort
 follows the selected zone or Building. Environmental observations describe the
 shared run conditions rather than a fabricated per-zone weather series.
 
@@ -486,7 +486,7 @@ The basic charts show node flow, temperature, and humidity in one to three
 columns as panel width allows. Their drawing height is bounded so a wide
 window adds useful chart space without magnifying the entire SVG. Use the per-node
 controls to compare selected traces. Y ranges and Auto reset apply independently
-to different units. HVAC and Comfort plots use the app font and the graph
+to different units. HVAC and Thermal Comfort plots use the app font and the graph
 label size in Settings. Larger labels keep a readable chart width; narrow
 panes scroll horizontally.
 HVAC time-series use plain lines without sample-point markers. The vertical
@@ -509,9 +509,9 @@ Humidity uses reported relative humidity where available; otherwise it can
 use humidity ratio in g/kg. These units are different quantities. A shared
 visual range does not convert one into the other.
 
-## Comfort interpretation {#comfort}
+## Thermal Comfort interpretation {#comfort}
 
-Comfort is an observation view, not an energy-accounting view.
+Thermal Comfort is an observation view, not an energy-accounting view.
 
 Charts use plain lines without point markers. Valid timestamps determine the
 spacing between observations; interleaved SQL rows do not create artificial
@@ -625,7 +625,7 @@ cannot explain which outputs, units, or assumptions produced them.
 | Engine completed but view is still busy | Current reading/building/receiving stage; do not assume the engine is still executing. |
 | Energy component lacks Hourly chart | Actual Hourly request, exact key/frequency, complete calendar, usable floor area. |
 | HVAC property is absent | Whether the executed run reported it and whether values align with frames. |
-| Comfort Building is empty | Actual facility observations; zone data is not a substitute. |
+| Thermal Comfort Building is empty | Actual facility observations; zone data is not a substitute. |
 | Comparison differs unexpectedly | Executed inputs, engine, weather, periods, frequencies, allocation, and missing versus zero. |
 
 Batch workers run independent inputs with bounded concurrency. Each file

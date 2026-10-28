@@ -60,10 +60,10 @@ Purpose에 필요한 출력 요청은 실행용 사본에 추가됩니다.
 
 | Purpose | 확인하려는 내용 | 대표 관측값 |
 | --- | --- | --- |
-| Basic Energy | 무엇이 열부하와 현장 에너지 소비를 설명하는가? | Energy Path의 월별 회계와 구성요소의 시간별 원천값입니다. |
+| Energy Transfer | 무엇이 열부하와 현장 에너지 소비를 설명하는가? | Energy Path의 월별 회계와 구성요소의 시간별 원천값입니다. |
 | Zone Heat Flow | 존 열수지가 시간에 따라 어떻게 변하는가? | 열수지율, 존 온도, 상세 표면 출력입니다. |
-| HVAC Loop Check | 실행된 루프에서 무엇이 일어났는가? | 노드 유량·온도·습도·설정값과 장비 운전값입니다. |
-| Comfort | 어떤 열환경과 보고된 불쾌적 상태가 발생했는가? | 존/People 온도, PMV, PPD, 습도, 미충족 시간입니다. |
+| HVAC Loops | 실행된 루프에서 무엇이 일어났는가? | 노드 유량·온도·습도·설정값과 장비 운전값입니다. |
+| Thermal Comfort | 어떤 열환경과 보고된 불쾌적 상태가 발생했는가? | 존/People 온도, PMV, PPD, 습도, 미충족 시간입니다. |
 
 기본 화면은 모든 존, 모든 루프, 전체 실행 기간을 사용합니다.
 결과의 Scope/Period 선택은 실행 후 표시 범위를 바꾸는 기능입니다.
@@ -74,8 +74,8 @@ Purpose에 필요한 출력 요청은 실행용 사본에 추가됩니다.
 [직접·배분·미배정](./energy-path.ko.md#allocation-bases)을 참고하세요.
 
 Integrity와 사용자 정의 출력 기능은 자동화에 존재하지만 기본 화면의
-추가 Purpose 선택지는 아닙니다. Batch Simulation은 Basic Energy,
-Zone Heat Flow, HVAC Loop Check를 제공합니다.
+추가 Purpose 선택지는 아닙니다. Batch Simulation은 Energy Transfer,
+Zone Heat Flow, HVAC Loops를 제공합니다.
 
 ## 출력 계획과 보고 빈도 {#output-plan}
 
@@ -94,7 +94,7 @@ Zone Heat Flow, HVAC Loop Check를 제공합니다.
 실제 Hourly 관측값도 요청합니다. 다른 Purpose가 요청한 일치하는 출력은
 재사용할 수 있습니다. 기존 요청의 보고 빈도는 유지됩니다.
 
-Basic Energy, Zone Heat Flow, Comfort는 외기 건구·습구 온도, 상대습도,
+Energy Transfer, Zone Heat Flow, Thermal Comfort는 외기 건구·습구 온도, 상대습도,
 대기압, 단위 면적당 직달·산란 일사, 풍속, 풍향의 Hourly 환경변수를
 공유합니다. 각 화면의 변수 비교 plot에서 이 관측값을 선택할 수 있으며,
 여러 Purpose가 필요로 해도 같은 출력 요청을 반복해서 추가하지 않습니다.
@@ -134,7 +134,7 @@ eplusout.sql 파일이 있다는 사실만으로 실행 완료나 에너지 설�
 EnergyPlus의 구간 종료 라벨에는 24:00이 나타날 수 있으므로
 단순한 하루 시간 번호 대신 전체 라벨을 읽어야 합니다.
 
-Hourly HVAC와 Comfort 차트는 SQL에 기상 실행 메타데이터가 있으면
+Hourly HVAC와 Thermal Comfort 차트는 SQL에 기상 실행 메타데이터가 있으면
 설계일과 워밍업을 제외합니다. 오래된 SQL 구조나 CSV는 제공된 시간축을
 사용합니다. 메타데이터가 없다고 기상 달력을 만들어 채우지는 않습니다.
 
@@ -142,7 +142,7 @@ Hourly HVAC와 Comfort 차트는 SQL에 기상 실행 메타데이터가 있으�
 Monthly 또는 Run Period 관측값을 워밍업이라고 판정할 수 없습니다.
 보고 빈도와 실행 환경 메타데이터도 함께 해석해야 합니다.
 
-요청한 HVAC/Comfort 관측값과 Energy Path 원천 추적값은 일반 원천값
+요청한 HVAC/Thermal Comfort 관측값과 Energy Path 원천 추적값은 일반 원천값
 미리보기의 제한과 별도로 보존합니다. 긴 실행의 그래프는 최대·최소값과
 공백을 유지하며 그릴 점 수를 줄일 수 있지만, 저장된 관측값을 바꾸거나
 원래 보고 빈도보다 촘촘한 데이터를 만들지는 않습니다.
@@ -180,7 +180,7 @@ W 값 네 개를 더한 8,000 W는 2 kWh가 아닙니다. 시간 구간을 반�
 
 Energy Path는 열에너지와 현장 에너지를 실행 모델의 바닥 면적으로 나눠
 표시합니다. [면적당 에너지](./energy-path.ko.md#floor-area-and-intensity)를
-참고하세요. HVAC 변화율과 Comfort 상태 차트는 각자의 단위를 유지합니다.
+참고하세요. HVAC 변화율과 Thermal Comfort 상태 차트는 각자의 단위를 유지합니다.
 
 ## 없음, 0, 사용 불가 {#missing-data}
 
@@ -196,7 +196,7 @@ Energy Path는 열에너지와 현장 에너지를 실행 모델의 바닥 면�
 반대로 선이 없거나 차트가 사용 불가라고 해서 에너지가 0인 실행은 아닙니다.
 없는 관측값을 인접 시간, 다른 존, Building 값으로 대체하면 안 됩니다.
 
-## Heat-Flow Ledger {#heat-flow-ledger}
+## Zone Heat Flow {#heat-flow-ledger}
 
 작은 층별 평면도에서 존 번호를 선택하면 오른쪽 원장에서 현재 시각의 값을
 확인할 수 있습니다. 번호는 모델 전체에서 고유합니다. 플래넘처럼 바닥 조각이
@@ -360,7 +360,7 @@ History는 원본 프레임을 stride sampling이나 평균화 없이 모두 그
 
 ## 시뮬레이션 후 HVAC 운전 로직 {#hvac-runtime-control}
 
-**HVAC Loop Check** 실행 후 **HVAC Loops**를 엽니다. 기본 화면은 기존 loop 계통도,
+**HVAC Loops** 실행 후 해당 결과 탭을 엽니다. 기본 화면은 기존 loop 계통도,
 node 그래프, 표시 체크박스, Y축 범위와 사용자 그래프를 유지합니다.
 공통 **Frame** 슬라이더는 화면 아래에 있습니다. 오른쪽 버튼이나
 **Ctrl+← / Ctrl+→**로 기록된 프레임을 하나씩 이동하며 첫/마지막 프레임에서
@@ -448,13 +448,13 @@ NoAction=0과 CycleOn=2의 평균은 ForceOff의 코드인 1이 될 수 있습�
 
 ## 변수 비교 {#comparison-plots}
 
-Energy Path, Heat-Flow Ledger, Comfort의 결과 화면 맨 아래에는 변수 비교
+Energy Transfer, Zone Heat Flow, Thermal Comfort의 결과 화면 맨 아래에는 변수 비교
 plot이 있습니다. 해당 화면의 관련 변수와 외기온 등의 보고된 환경변수를
 선택하여 같은 실행 안에서 비교할 수 있습니다. 별도의 Series 탭은 사용하지
 않으며, 기존 계통도와 목적별 그래프는 비교 plot 위에 유지됩니다.
 
-Energy Path는 현재 Scope와 Period, Heat-Flow Ledger는 존과 표시 기간을
-따릅니다. Heat-Flow Ledger의 현재 frame 위치도 plot에 표시합니다. Comfort는
+Energy Transfer는 현재 Scope와 Period, Zone Heat Flow는 존과 표시 기간을
+따릅니다. Zone Heat Flow의 현재 frame 위치도 plot에 표시합니다. Thermal Comfort는
 선택된 존 또는 Building을 따릅니다. 환경변수는 같은 실행의 공통 조건이며
 존별로 다른 기상값을 만들어 표시하지 않습니다.
 
@@ -470,7 +470,7 @@ Energy Path는 현재 Scope와 Period, Heat-Flow Ledger는 존과 표시 기간�
 그래프 높이는 제한하여 넓은 창에서 SVG 전체가 과도하게 커지지 않도록 합니다.
 노드별 선택으로 비교할 추적값을 정합니다.
 Y축 범위와 Auto 초기화는 서로 다른 단위에 독립적으로 적용됩니다.
-HVAC·Comfort 그래프는 앱 글꼴과 Settings의 그래프 글자 크기를 따릅니다.
+HVAC·Thermal Comfort 그래프는 앱 글꼴과 Settings의 그래프 글자 크기를 따릅니다.
 글자를 크게 설정하면 읽을 수 있는 그래프 폭을 유지하며, 좁은 화면에서는
 가로로 스크롤할 수 있습니다.
 HVAC 시계열은 데이터 점 marker 없이 일반 선으로 표시하며 현재 프레임을
@@ -493,9 +493,9 @@ HVAC 시계열은 데이터 점 marker 없이 일반 선으로 표시하며 현�
 절대습도비를 사용할 수 있습니다. 둘은 다른 물리량입니다.
 축 범위를 비슷하게 표시해도 서로 변환되는 것은 아닙니다.
 
-## Comfort 해석 {#comfort}
+## Thermal Comfort 해석 {#comfort}
 
-Comfort는 상태 관측 화면이며 에너지 회계 화면이 아닙니다.
+Thermal Comfort는 상태 관측 화면이며 에너지 회계 화면이 아닙니다.
 
 그래프는 점 marker 없이 선으로 표시합니다. 유효한 날짜·시각을 기준으로
 관측값 사이의 간격을 정하므로, 다른 SQL 기록이 사이에 있어도 불필요하게
@@ -608,7 +608,7 @@ Energy Path의 **Data details → Data → Export**에서 HTML, XLSX,
 | 엔진 완료 후에도 화면이 처리 중 | 읽기/구성/수신 단계인지 확인합니다. 엔진이 계속 실행 중이라고 단정하지 않습니다. |
 | 에너지 구성요소의 Hourly 차트 없음 | 실제 Hourly 요청, 정확한 키/빈도, 완전한 달력, 유효한 바닥 면적입니다. |
 | HVAC 속성 없음 | 실행이 해당 속성을 보고했는지, 프레임과 정렬되는지 확인합니다. |
-| Comfort Building 비어 있음 | 실제 시설 관측값이 필요하며 존 데이터로 대체하지 않습니다. |
+| Thermal Comfort Building 비어 있음 | 실제 시설 관측값이 필요하며 존 데이터로 대체하지 않습니다. |
 | 비교값의 예상 밖 차이 | 실행 입력, 엔진, 기상, 기간, 빈도, 배분 방식, 없음과 0의 차이입니다. |
 
 배치 작업자는 독립적인 입력을 제한된 동시 실행 수로 처리합니다.

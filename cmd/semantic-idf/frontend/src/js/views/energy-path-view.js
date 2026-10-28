@@ -1451,7 +1451,7 @@ function energyPathServiceNavigationLabel(item = {}, model = {}, fallback = "") 
     plant_loop: ["simulation.energyPathServicePlantLoop", "Plant loop"],
     system: ["simulation.energyPathServiceSystem", "Connected system"],
     component: ["simulation.energyPathServiceComponent", "Connected component"],
-    heat_flow_ledger: ["simulation.heatFlow", "Heat-Flow Ledger"],
+    heat_flow_ledger: ["simulation.heatFlow", "Zone Heat Flow"],
     output_request: ["simulation.energyPathOutputRequest", "Output request"],
     output_input: ["simulation.energyPathServiceOutputInput", "Input-source Output request"],
     building_source_group: ["simulation.energyPathDriverBuildingGroup", "Building source group"],
@@ -1495,7 +1495,7 @@ export function renderEnergyPathServiceNavigation(node = {}, navigation = null, 
     { kind: "hvac", title: t("simulation.energyPathRelatedHVAC", {}, "Related HVAC"), action: t("simulation.energyPathOpenHVAC", {}, "Open HVAC"),
       choose: t("simulation.energyPathServiceChooseHVAC", {}, "Choose a service path, loop, or system"),
       note: t("simulation.energyPathServiceModelContext", {}, "Verified model relationships are shown here; no energy contribution is assigned to an individual target.") },
-    { kind: "heat_flow", title: t("simulation.heatFlow", {}, "Heat-Flow Ledger"), action: t("simulation.energyPathServiceOpenLedger", {}, "Open Zone ledger"),
+    { kind: "heat_flow", title: t("simulation.heatFlow", {}, "Zone Heat Flow"), action: t("simulation.energyPathServiceOpenLedger", {}, "Open Zone ledger"),
       choose: t("simulation.energyPathServiceChooseZone", {}, "Choose a Zone ledger"),
       note: t("simulation.energyPathServiceLedgerContext", {}, "Zone heat-balance context for this period, not the source of the displayed load total.") },
     { kind: "output", title: t("simulation.energyPathServiceOutput", {}, "Output requests"), action: t("simulation.energyPathServiceOpenOutput", {}, "Open exact Output request"),
@@ -3222,11 +3222,11 @@ export function renderEnergyPathGraph(scene, viewState = {}) {
   }).join("");
   const inputNotice = inputColumn
     ? ""
-    : `<p class="energy-path-input-note" data-energy-path-input-unavailable>${escapeHTML(t("simulation.energyPathInputsUnavailable", {}, "Boundary input observations are unavailable in this saved result. Run Basic Energy again to collect them."))}</p>`;
+    : `<p class="energy-path-input-note" data-energy-path-input-unavailable>${escapeHTML(t("simulation.energyPathInputsUnavailable", {}, "Boundary input observations are unavailable in this saved result. Run Energy Transfer again to collect them."))}</p>`;
   const netOnly = visibleNodes.some((node) => ["input", "driver"].includes(node.level) &&
     (node.heatDirectionBasis === "net_only" || !node.heatDirectionBasis && !energyPathHeatDirection(node) &&
       (node.level === "driver" || ["input.exterior_convection", "input.exterior_longwave", "input.ground_conduction", "input.surface_storage"].includes(node.kind))));
-  const directionNotice = netOnly ? `<p class="energy-path-input-note" data-energy-path-net-only>${escapeHTML(t("simulation.energyPathNetOnlyNotice", {}, "Some quantities retain net-only evidence. Separate gains and losses require compatible interval or native Gain/Loss observations; rerun Basic Energy to collect interval outputs. Derived balance differences remain net-only."))}</p>` : "";
+  const directionNotice = netOnly ? `<p class="energy-path-input-note" data-energy-path-net-only>${escapeHTML(t("simulation.energyPathNetOnlyNotice", {}, "Some quantities retain net-only evidence. Separate gains and losses require compatible interval or native Gain/Loss observations; rerun Energy Transfer to collect interval outputs. Derived balance differences remain net-only."))}</p>` : "";
   return `${inputNotice}${directionNotice}<div class="energy-path-layout${inputColumn ? " energy-path-layout-with-inputs" : ""}" data-energy-path-layout>
     <span class="energy-path-unit" data-energy-path-unit>${escapeHTML(energyPathDisplayUnit("kWh", display))}</span>
     <div class="energy-path-stage-grid" data-energy-path-canvas role="group" aria-label="${escapeHTML(inputColumn ? t("simulation.energyPathDirectionWithInputs", {}, "Boundary inputs → Load drivers → Thermal load → End-use energy → Energy sources") : t("simulation.energyPathDirection", {}, "Load drivers → Thermal load → End-use energy → Energy sources"))}" style="height:${layout.height}px">

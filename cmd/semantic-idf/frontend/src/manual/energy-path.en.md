@@ -4,7 +4,7 @@ Energy Path reads left to right: **Boundary inputs → Load drivers → Thermal 
 explicitly labelled allocations. It is a load explanation and energy-accounting
 view, not a calculation of savings caused by a model change.
 
-Run Basic Energy as described in [Simulation](./simulation.en.md#purposes).
+Run Energy Transfer as described in [Simulation](./simulation.en.md#purposes).
 Use [Tools](./tools.en.md) for Building/Annual comparisons and
 [Automation](./automation.en.md) for file/API consumption.
 
@@ -81,7 +81,7 @@ Select an input or association for its Monthly graph. Directional values show
 positive magnitudes with direction in their labels; missing months remain gaps.
 Older net-only observations retain their signed values. Hourly requires actual compatible source
 observations and is otherwise unavailable. Older results may lack the new input
-outputs: rerun **Basic Energy** to obtain them. Daily solar integration uses the
+outputs: rerun **Energy Transfer** to obtain them. Daily solar integration uses the
 executed surface area and actual reported days, including short runs.
 
 ## Scope, period, and component charts {#scope-and-period}
@@ -226,13 +226,13 @@ Zone-air storage removes heat from the air (loss/charging), while release adds
 heat (gain). Exterior exchange retains the outside-face boundary. Building-wide
 interzone accounting still removes matched internal transfer.
 
-New Basic Energy runs request Timestep observations for reversible thermal
+New Energy Transfer runs request Timestep observations for reversible thermal
 quantities. Complete compatible Hourly observations can supply older results.
 Separation preserves reversals within the reported interval resolution; it
 cannot reveal changes inside one interval. Explicit native Gain/Loss variables
 already supply both directions. Monthly-only signed evidence and derived net
 balance differences are marked **Net-only** because their hidden reversals
-cannot be recovered. Rerun Basic Energy to obtain finer evidence. Additional
+cannot be recovered. Rerun Energy Transfer to obtain finer evidence. Additional
 Timestep outputs increase result size and reading work.
 
 Opposite-sign pressure is retained as offset context. It is not an additional

@@ -37,7 +37,7 @@ current failed result directory through the existing storage reference contract.
 | --- | --- |
 | `BuildSimulationRunPlan` | Preview the backend plan without executing EnergyPlus. |
 | `RunSimulationText` | Run text or an input path; use purpose flow when `purposeRequest` exists. |
-| `RunPurposeSimulationText` | Purpose wrapper, defaulting to Basic Energy and Zone Heat Flow. |
+| `RunPurposeSimulationText` | Purpose wrapper, defaulting to Energy Transfer and Zone Heat Flow. |
 | `ApplyPurposeOutputsText` | Permanently apply a plan through the Output preview/apply pipeline. |
 
 `SimulationRunRequest` is defined in
@@ -55,9 +55,10 @@ current failed result directory through the existing storage reference contract.
 
 ## Current desktop defaults
 
-The single-file view offers Basic Energy, Zone Heat Flow, HVAC Loop Check, and
-Comfort. **Run & Inspect** sits beside Weather. Batch Simulation offers the
-first three purposes, weather mapping, recursive file search, and worker count.
+The single-file view offers Energy Transfer, Zone Heat Flow, HVAC Loops, and
+Thermal Comfort. Purpose options and their result tabs use the same names.
+**Run & Inspect** sits beside Weather. Batch Simulation offers the first three
+purposes, weather mapping, recursive file search, and worker count.
 Run-plan preview, Custom Outputs, Integrity, and advanced output policy remain
 backend capabilities.
 
@@ -75,7 +76,7 @@ Both views send these fixed purpose options:
 | `discoveryAllowed` | UI sends `false`; normalized Energy Path enables post-run dictionaries. |
 | `scope.zoneMode`, `scope.loopMode`, `scope.periodMode` | `all`, `all`, `full` |
 
-Period endpoints and zone filters are empty. HVAC Loop Check requests all loops
+Period endpoints and zone filters are empty. HVAC Loops requests all loops
 independently of HVAC tab selection. Result display scope is separate: choosing
 a Zone or month does not rerun the model or change the output plan.
 
@@ -213,11 +214,11 @@ normalization, planning, and bundle construction. Purpose IDs are
 
 Backend scope supports all/selected/visible/filtered zones, selected
 air/plant/condenser loops, components, output signatures, custom output objects,
-and custom period. Zone Heat Flow and Comfort use scoped zones. HVAC Loop Check
+and custom period. Zone Heat Flow and Thermal Comfort use scoped zones. HVAC Loops
 resolves selected nodes/components from analyzed HVAC; broad or unresolved
 scope falls back to wildcard keys.
 
-HVAC Loop Check preserves the existing Hourly node/component plan and adds
+HVAC Loops preserves the existing Hourly node/component plan and adds
 source-specific Timestep control diagnostics through
 [`hvac_runtime.go`](../cmd/semantic-idf/internal/simulation/hvac_runtime.go).
 Exact schedules, manager/loop states, relevant sensors and targets, native
@@ -235,7 +236,7 @@ before expansion; bindings are still exact to the expanded executed model.
 Plans retain output signatures, purpose tags, state, estimated series/frame
 counts and weight, SQL/discovery requirements, and wildcard/frequency warnings.
 
-Basic Energy, Zone Heat Flow, and Comfort share eight Environment Hourly
+Energy Transfer, Zone Heat Flow, and Thermal Comfort share eight Environment Hourly
 variables: outdoor dry-bulb/wet-bulb temperature, relative humidity, barometric
 pressure, direct/diffuse solar radiation per area, wind speed, and wind direction.
 Matching existing Hourly requests are reused and purpose IDs are merged; other
@@ -253,7 +254,7 @@ the selected compatibility tier keeps energy accounting at Monthly frequency.
 | `will_be_persisted` | Planned for explicit permanent apply. |
 | `conflict` | Same target with a different frequency or field set. |
 
-### Basic Energy options
+### Energy Transfer options
 
 Omitted `basicEnergyDetail` normalizes to `energy_path`. Its model-aware plan
 keeps Monthly accounting observations and adds native Hourly observations for
@@ -268,7 +269,7 @@ heat-balance drivers. Detail is Monthly or Hourly with `highest_resolution`;
 hourly Zone Heat Flow requests can be reused. Unrequested groups are
 `not_applicable`, distinct from missing requested data.
 
-Omitted allocation defaults to `by_service_path_load_share` for Basic Energy
+Omitted allocation defaults to `by_service_path_load_share` for Energy Transfer's
 Energy Path. Non-Energy-Path modes and explicit `direct_only` retain direct-only
 behavior. `by_zone_load_share` and `by_service_path_load_share` allocate supported
 remaining consumption, preserving exact direct observations and an unassigned
@@ -350,7 +351,7 @@ thermal/site links, allocation, and frozen v1 compatibility live in
 
 ## Current result views
 
-Energy Path, Heat-Flow Ledger, and Comfort place a related-variable comparison
+Energy Transfer, Zone Heat Flow, and Thermal Comfort place a related-variable comparison
 plot after their existing content. The former standalone Series tab is removed;
 canonical raw `series` data remains available to API/export and source resolution.
 Each comparison has its own trace choices and line/scatter mode. Line plots use
@@ -485,7 +486,7 @@ A displayed frame count is not elapsed hours; rate values require their actual
 intervals for energy integration. Static Topology remains separate; see
 [Topology data contracts](topology.md#data-contracts).
 
-HVAC Loop Check uses executed-input topology and the shared supply/demand
+HVAC Loops uses executed-input topology and the shared supply/demand
 schematic. Nodes show flow, temperature, humidity, and available setpoints;
 equipment retains operation, power, load, and reported COP. Observations
 are not added as disconnected diagram objects: annotations require a drawn

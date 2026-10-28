@@ -1144,7 +1144,7 @@ export function initializeMultiSimulationTool(context) {
   function renderEnergyExplanationBatchCompare(result) {
     const selected = selectedEnergyCompareResults(result);
     if (selected.length < 2) {
-      return `<div class="empty" data-batch-energy-comparison>${escapeHTML(t("batch.needTwoEnergyCases", {}, "Need two Basic Energy results"))}</div>`;
+      return `<div class="empty" data-batch-energy-comparison>${escapeHTML(t("batch.needTwoEnergyCases", {}, "Need two Energy Transfer results"))}</div>`;
     }
     const comparison = energyPathBatchComparison(selected[0], selected[1]);
     const unknown = t("common.notAvailable", {}, "—");
@@ -1218,7 +1218,7 @@ export function initializeMultiSimulationTool(context) {
     }
     const candidates = energyCompareCandidates(result);
     if (candidates.length < 2) {
-      const empty = `<option value="">${escapeHTML(t("batch.needTwoEnergyCases", {}, "Need two Basic Energy results"))}</option>`;
+      const empty = `<option value="">${escapeHTML(t("batch.needTwoEnergyCases", {}, "Need two Energy Transfer results"))}</option>`;
       elements.multiSimulationCompareBaseline.innerHTML = empty;
       elements.multiSimulationCompareTarget.innerHTML = empty;
       elements.multiSimulationCompareBaseline.disabled = true;

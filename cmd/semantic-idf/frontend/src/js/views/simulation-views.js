@@ -1515,9 +1515,9 @@ function renderSimulationEmpty({ controlsReady = false, blockingIssue: preparedB
   elements.simulationPercent.textContent = "0%";
   elements.simulationProgressBar.style.width = "0%";
   renderSimulationResultTabs(null);
-  renderSimulationEnergyEmpty(t("simulation.noEnergyResult", {}, "Run Basic Energy to inspect monthly energy results."));
-  renderSimulationHVACLoopEmpty(t("simulation.noHVACLoopResult", {}, "Run HVAC Loop Check to inspect node state series."));
-  renderSimulationComfortEmpty(t("simulation.noComfortResult", {}, "Run Comfort Check to inspect zone temperature and setpoint series."));
+  renderSimulationEnergyEmpty(t("simulation.noEnergyResult", {}, "Run Energy Transfer to inspect monthly energy results."));
+  renderSimulationHVACLoopEmpty(t("simulation.noHVACLoopResult", {}, "Run HVAC Loops to inspect node state series."));
+  renderSimulationComfortEmpty(t("simulation.noComfortResult", {}, "Run Thermal Comfort to inspect zone temperature and setpoint series."));
   renderSimulationHeatFlowEmpty(t("simulation.noHeatFlow", {}, "Select Zone Heat Flow to inspect the zone heat-flow ledger."));
   elements.simulationOutputMessage.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "Variables will appear after a run with numeric output.")}</div>`;
   toggleSimulationResultSections();
@@ -1691,7 +1691,7 @@ function renderSimulationEnergyDashboardReady(result) {
   const explanationNodes = explanationGraph.nodes || [];
   if (useEnergyPathV2) validateSimulationEnergyResultContext(explanation, explanationGraph);
   if (!facility.length && !endUse.length && !zones.length && !explanationNodes.length && !(useEnergyPathV2 && energyPathHasPayload(explanation))) {
-    renderSimulationEnergyEmpty(t("simulation.noEnergyResult", {}, "Run Basic Energy to inspect monthly energy results."));
+    renderSimulationEnergyEmpty(t("simulation.noEnergyResult", {}, "Run Energy Transfer to inspect monthly energy results."));
     elements.simulationEnergyDashboard?.insertAdjacentHTML("beforeend", simulationComparisonMarkup(result, "energy"));
     return;
   }
@@ -4132,7 +4132,7 @@ function renderSimulationHVACLoops(result) {
 function renderSimulationHVACLoopsReady(result) {
   const { loops, loop, ui, context } = simulationHVACInspectionContext(result);
   if (!loop) {
-    renderSimulationHVACLoopEmpty(t("simulation.noHVACLoopResult", {}, "Run HVAC Loop Check to inspect node state series."));
+    renderSimulationHVACLoopEmpty(t("simulation.noHVACLoopResult", {}, "Run HVAC Loops to inspect node state series."));
     return;
   }
   elements.simulationHVACLoopResults.innerHTML = `

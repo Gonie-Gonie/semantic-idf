@@ -274,28 +274,28 @@
                         <label class="simulation-purpose-card">
                           <input type="checkbox" data-simulation-purpose="basic_energy" checked />
                           <span>
-                            <strong data-i18n="simulation.purposeBasicEnergy">Basic Energy</strong>
+                            <strong data-i18n="simulation.energy">Energy Transfer</strong>
                             <small data-i18n="simulation.purposeBasicEnergyDesc">Monthly meters, end-use energy, and heat-driver explanations.</small>
                           </span>
                         </label>
                         <label class="simulation-purpose-card">
                           <input type="checkbox" data-simulation-purpose="zone_heat_flow" checked />
                           <span>
-                            <strong data-i18n="simulation.purposeZoneHeatFlow">Zone Heat Flow</strong>
+                            <strong data-i18n="simulation.heatFlow">Zone Heat Flow</strong>
                             <small data-i18n="simulation.purposeZoneHeatFlowDesc">Hourly zone heat-balance ledger and temperature overlay.</small>
                           </span>
                         </label>
                         <label class="simulation-purpose-card">
                           <input type="checkbox" data-simulation-purpose="hvac_loop_check" />
                           <span>
-                            <strong data-i18n="simulation.purposeHVACLoop">HVAC Loop Check</strong>
+                            <strong data-i18n="simulation.hvacLoops">HVAC Loops</strong>
                             <small data-i18n="simulation.purposeHVACLoopDesc">System node trends for loop operation review.</small>
                           </span>
                         </label>
                         <label class="simulation-purpose-card">
                           <input type="checkbox" data-simulation-purpose="comfort_check" />
                           <span>
-                            <strong data-i18n="simulation.purposeComfort">Comfort</strong>
+                            <strong data-i18n="simulation.comfort">Thermal Comfort</strong>
                             <small data-i18n="simulation.purposeComfortDesc">Zone temperature, setpoint, PMV, and PPD trends.</small>
                           </span>
                         </label>
@@ -315,15 +315,15 @@
                 </section>
               </div>
               <nav id="simulationResultTabs" class="simulation-result-tabs" aria-label="Simulation result views" data-i18n-aria-label="shell.simulationViews">
-                <button type="button" data-simulation-result-view-button="energy" data-i18n="simulation.energy">Energy</button>
-                <button type="button" data-simulation-result-view-button="zone_heat_flow" data-i18n="simulation.heatFlow">Heat-Flow Ledger</button>
+                <button type="button" data-simulation-result-view-button="energy" data-i18n="simulation.energy">Energy Transfer</button>
+                <button type="button" data-simulation-result-view-button="zone_heat_flow" data-i18n="simulation.heatFlow">Zone Heat Flow</button>
                 <button type="button" data-simulation-result-view-button="hvac_loops" data-i18n="simulation.hvacLoops">HVAC Loops</button>
-                <button type="button" data-simulation-result-view-button="comfort" data-i18n="simulation.comfort">Comfort</button>
+                <button type="button" data-simulation-result-view-button="comfort" data-i18n="simulation.comfort">Thermal Comfort</button>
               </nav>
               <div id="simulationOutputMessage" class="simulation-output-message" role="status"></div>
               <section class="simulation-section" data-simulation-result-view="energy">
                 <div class="profile-section-head">
-                  <h3 data-i18n="simulation.energy">Energy</h3>
+                  <h3 data-i18n="simulation.energy">Energy Transfer</h3>
                   <span id="simulationEnergyStats" class="tool-muted">No energy result</span>
                 </div>
                 <div id="simulationEnergyDashboard" class="simulation-energy-dashboard"></div>
@@ -333,14 +333,14 @@
               </section>
               <section class="simulation-section" data-simulation-result-view="comfort">
                 <div class="profile-section-head">
-                  <h3 data-i18n="simulation.comfort">Comfort</h3>
+                  <h3 data-i18n="simulation.comfort">Thermal Comfort</h3>
                   <span id="simulationComfortStats" class="tool-muted">No comfort result</span>
                 </div>
                 <div id="simulationComfortResults" class="simulation-comfort-results"></div>
               </section>
               <section class="simulation-section simulation-heatflow-section" data-simulation-result-view="zone_heat_flow">
                 <div class="profile-section-head simulation-heatflow-head">
-                  <h3 data-i18n="simulation.heatFlow">Heat-Flow Ledger</h3>
+                  <h3 data-i18n="simulation.heatFlow">Zone Heat Flow</h3>
                   <span id="simulationHeatFlowStats" class="tool-muted">No heat-flow output</span>
                 </div>
                 <div class="simulation-heatflow-controls" aria-label="Heat-flow controls" data-i18n-aria-label="shell.heatFlowControls">
