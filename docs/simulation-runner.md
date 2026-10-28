@@ -491,9 +491,17 @@ schematic. Nodes show flow, temperature, humidity, and available setpoints;
 equipment retains operation, power, load, and reported COP. Observations
 are not added as disconnected diagram objects: annotations require a drawn
 circuit port/equipment anchor or a unique typed parent/zone-port relationship.
-Unplaced observations remain available to chart controls. Layout reserves
-local annotation space around icons and between branches, and keeps bus
-readings in the outer gutters. Missing readings
+Unplaced observations remain available to chart controls. Rounded information
+boxes use measured text and complete-run numeric ranges. Native occurrence/port
+ownership groups inlet/outlet readings around equipment; equipment readings
+stay below it. The resolved layout owns the same pipe segments, port positions,
+box bounds and clipped leader paths used by the renderer. Pipes, titles, branch
+numbers, symbols, other boxes and leader routes participate in collision checks.
+Boundary readings use protected gutters. Crowded parallel branches can stagger
+horizontally and reserve adjacent-row space locally without changing their
+native connectivity or order. Geometry is cached by topology, displayed metric
+shape, language and font; frame/selection changes update values and emphasis in
+the mounted SVG. Missing readings
 cannot borrow an earlier frame. Unset setpoint `-999`, including roundoff
 within `0.000001 °C`, is excluded from snapshots, availability, and deviation
 checks; valid zero/negative setpoints remain. Missing setpoints alone create

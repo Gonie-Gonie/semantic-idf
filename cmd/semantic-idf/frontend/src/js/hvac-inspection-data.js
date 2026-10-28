@@ -216,6 +216,9 @@ function propertyValues(model, property) {
     values.set(frame.x, finite(value) ? value : null);
   }
   for (const x of duplicates) values.set(x, null);
+  let min = Infinity, max = -Infinity;
+  for (const value of values.values()) if (finite(value)) { min = Math.min(min, value); max = Math.max(max, value); }
+  property.valueRange = { min: min === Infinity ? null : min, max: max === -Infinity ? null : max };
   property.values = values;
   return values;
 }
@@ -234,8 +237,11 @@ export function hvacInspectionSnapshots(model, frameIndex, selection = {}) {
     const properties = entity.properties.filter((property) => entity.kind === "node"
       ? ["flow", "temperature", "relativeHumidity", "setpoint"].includes(property.kind) || property.kind === "humidity" && !hasRelativeHumidity
       : ["power", "cop", "status", "cooling", "heating", "heatTransfer"].includes(property.kind));
-    const metrics = properties.map((property) => ({ id: property.kind, label: property.label, unit: property.unit,
-      value: frame ? propertyValues(model, property).get(frame.x) ?? null : null }));
+    const metrics = properties.map((property) => {
+      const values = propertyValues(model, property);
+      return { id: property.kind, label: property.label, unit: property.unit, valueRange: property.valueRange,
+        value: frame ? values.get(frame.x) ?? null : null };
+    });
     if (entity.kind === "component") {
       const priority = ["power", "cop", "status", "cooling", "heating", "heatTransfer"];
       metrics.sort((a, b) => priority.indexOf(a.id) - priority.indexOf(b.id));

@@ -1938,10 +1938,11 @@ function pathMatchesPathTypeFilter(path = {}, filter = "all") {
 // port sizes stay fixed; the HVAC tab retains the default compact layout.
 // Port anchors describe the actual drawn circuit, not every port an object owns.
 export function buildHVACLoopDiagramLayout(loop, options = {}) {
-  const width = Number.isFinite(options.width) ? Math.max(1120, options.width) : 1120;
-  const leftX = 98;
+  const gutterWidth = Number.isFinite(options.gutterWidth) ? Math.max(98, options.gutterWidth) : 98;
+  const width = Math.max(Number.isFinite(options.width) ? options.width : 1120, 1120, gutterWidth * 2 + 640);
+  const leftX = gutterWidth;
   const rightX = width - leftX;
-  const branchStartX = 220 + (width - 1120) / 4;
+  const branchStartX = Math.max(220 + (width - 1120) / 4, leftX + 122);
   const branchEndX = width - branchStartX;
   const supplyFallbackItems = componentsForSide(loop.supplySide).length
     ? componentsForSide(loop.supplySide).map((component) => ({ kind: "component", component }))
@@ -1973,28 +1974,38 @@ export function buildHVACLoopDiagramLayout(loop, options = {}) {
   });
   const height = demandLayout.top + demandLayout.height + 92;
   const anchors = [];
-  const addNode = (name, x, y, side, role) => {
-    if (name) anchors.push({ kind: "node", name, x, y, side, role });
+  const addNode = (name, x, y, side, role, owner = {}) => {
+    if (name) anchors.push({ kind: "node", name, x, y, side, role, portRole: role, ...owner });
   };
   for (const layout of [supplyLayout, demandLayout]) {
     const direction = layout.reverse ? -1 : 1;
-    addNode(layout.sideData.inletNode, layout.reverse ? rightX : leftX, layout.busY, layout.side, "inlet");
-    addNode(layout.sideData.outletNode, layout.reverse ? leftX : rightX, layout.busY, layout.side, "outlet");
-    for (const { item, position } of loopSideItemPositions(layout)) {
+    const sideOwner = { ownerId: `loop:${loop.id || loop.name}:${layout.side}`, ownerKind: "loop-side", ownerName: loop.name, ownerType: loop.type };
+    addNode(layout.sideData.inletNode, layout.reverse ? rightX : leftX, layout.busY, layout.side, "inlet", sideOwner);
+    addNode(layout.sideData.outletNode, layout.reverse ? leftX : rightX, layout.busY, layout.side, "outlet", sideOwner);
+    for (const entry of loopSideItemPositions(layout)) {
+      const { item, position, ownerId, area, rowIndex, branchIndex, componentIndex } = entry;
       if (item.kind === "component") {
-        anchors.push({ kind: "component", name: item.component.objectName, type: item.component.objectType, component: item.component, ...position, side: layout.side });
-        addNode(item.component.inletNode, position.x - direction * 42, position.y, layout.side, "inlet");
-        addNode(item.component.outletNode, position.x + direction * 42, position.y, layout.side, "outlet");
+        const owner = { ownerId, ownerKind: "component", ownerName: item.component.objectName, ownerType: item.component.objectType,
+          ownerX: position.x, ownerY: position.y, area, rowIndex, branchIndex, componentIndex };
+        anchors.push({ kind: "component", name: item.component.objectName, type: item.component.objectType, component: item.component, ...position, side: layout.side, ...owner });
+        addNode(item.component.inletNode, position.x - direction * 42, position.y, layout.side, "inlet", owner);
+        addNode(item.component.outletNode, position.x + direction * 42, position.y, layout.side, "outlet", owner);
       } else if (item.kind === "zone") {
-        anchors.push({ kind: "zone", name: item.zone, ...position, side: layout.side });
+        anchors.push({ kind: "zone", name: item.zone, ...position, side: layout.side, ownerId, area, rowIndex });
       }
     }
   }
-  return { width, height, leftX, rightX, supplyLayout, demandLayout, anchors };
+  const pipeSegments = [
+    { x1: rightX, y1: supplyLayout.busY, x2: rightX, y2: demandLayout.busY, side: "loop", kind: "outer-connector" },
+    { x1: leftX, y1: demandLayout.busY, x2: leftX, y2: supplyLayout.busY, side: "loop", kind: "outer-connector" },
+    ...supplyLayout.pipeSegments, ...demandLayout.pipeSegments,
+  ];
+  return { width, height, leftX, rightX, supplyLayout, demandLayout, anchors, pipeSegments };
 }
 
 export function renderHVACLoopDiagram(loop, options = {}) {
-  const { width, height, leftX, rightX, supplyLayout, demandLayout } = options.layout || buildHVACLoopDiagramLayout(loop, options);
+  const layout = options.layout || buildHVACLoopDiagramLayout(loop, options);
+  const { width, height, leftX, rightX, supplyLayout, demandLayout } = layout;
   const selectedKey = options.readOnly ? "" : state.activeHVACGraphKey || `loop:${loop.id}`;
   const loopSelected = selectedKey === `loop:${loop.id}` ? "selected" : "";
   const diagramKey = `loop:${loop.id}`;
@@ -2002,7 +2013,7 @@ export function renderHVACLoopDiagram(loop, options = {}) {
     <text class="hvac-loop-label" x="${leftX}" y="54">${escapeHTML(loop.type)}</text>
     <text class="hvac-loop-name" x="${leftX}" y="76">${escapeHTML(loop.name || t("hvac.unnamedLoop"))}</text>
     <path class="hvac-loop-connector ${options.readOnly ? "" : "navigable-row"} ${loopSelected}" ${loopDiagramAttributes(`loop:${loop.id}`, options.readOnly ? "" : hvacLoopSemanticAttributes(loop), options.readOnly)}
-      d="M${rightX},${supplyLayout.busY} V${demandLayout.busY} M${leftX},${demandLayout.busY} V${supplyLayout.busY}" marker-end="url(#hvacLoopArrow)"></path>
+      d="${layout.pipeSegments ? loopPipePath(layout.pipeSegments.filter((segment) => segment.kind === "outer-connector")) : `M${rightX},${supplyLayout.busY} V${demandLayout.busY} M${leftX},${demandLayout.busY} V${supplyLayout.busY}`}" marker-end="url(#hvacLoopArrow)"></path>
     ${renderLoopSideNetwork(supplyLayout, loop)}
     ${renderLoopSideNetwork(demandLayout, loop)}
     ${renderLoopEndpoint(leftX, supplyLayout.busY, loop.supplySide?.inletNode, t("hvac.supplyInlet"), loop, options.readOnly)}
@@ -2040,10 +2051,15 @@ function buildLoopSideLayout(sideData = {}, fallbackItems = [], options = {}) {
   const rowGap = options.rowGap || 64;
   const rowTopOffset = options.rowTopOffset || 46;
   const rowBottomPadding = options.rowBottomPadding || 42;
-  const height = Math.max(116, rowTopOffset + Math.max(options.reserveAnnotations ? 0 : 1, rows.length - 1) * rowGap + rowBottomPadding) + (options.extraBottom || 0);
-  const rowYs = rows.map((_, index) => options.top + rowTopOffset + index * rowGap);
+  const rowYs = [];
+  for (let index = 0; index < rows.length; index++) {
+    const localGap = options.rowGaps?.[index - 1];
+    rowYs.push(index ? rowYs[index - 1] + (Number.isFinite(localGap) ? Math.max(1, localGap) : rowGap) : options.top + rowTopOffset);
+  }
+  const rowSpan = Math.max(options.reserveAnnotations ? 0 : rowGap, rows.length > 1 ? rowYs.at(-1) - rowYs[0] : 0);
+  const height = Math.max(116, rowTopOffset + rowSpan + rowBottomPadding) + (options.extraBottom || 0);
   const busY = rowYs.length > 1 ? (rowYs[0] + rowYs[rowYs.length - 1]) / 2 : rowYs[0];
-  return {
+  const layout = {
     ...options,
     sideData,
     rows: rows.map((row, index) => ({ ...row, y: rowYs[index] })),
@@ -2053,6 +2069,11 @@ function buildLoopSideLayout(sideData = {}, fallbackItems = [], options = {}) {
     height,
     busY,
   };
+  // Resolve once: port anchors, symbols and collision geometry share these
+  // positions rather than independently redistributing the same equipment.
+  layout.itemPositions = loopSideItemPositions(layout);
+  layout.pipeSegments = loopSidePipeSegments(layout);
+  return layout;
 }
 
 function loopSideFlow(sideData = {}, fallbackItems = [], side = "") {
@@ -2113,20 +2134,20 @@ function loopBranchRow(branch, index, sideData = {}, side = "") {
     index,
     key: branchGraphKey(branch),
     label: branch.name || `${sideData.name || side} ${index + 1}`,
-    items: loopBranchItems(branch, sideData, side),
+    items: loopBranchItems(branch, sideData, side, index),
   };
 }
 
-function loopBranchItems(branch, sideData = {}, side = "") {
+function loopBranchItems(branch, sideData = {}, side = "", branchIndex = null) {
   return (branch.components || []).length
-    ? (branch.components || []).map((component) => ({ kind: "component", component }))
+    ? (branch.components || []).map((component, componentIndex) => ({ kind: "component", component, branchIndex, componentIndex }))
     : [{ kind: "placeholder", label: branch.name || sideData.name || side }];
 }
 
 function itemsForBranchNames(branchByName, names, sideData = {}, side = "") {
   return [...names].flatMap((name) => {
     const entry = branchByName.get(name);
-    return entry ? loopBranchItems(entry.branch, sideData, side) : [];
+    return entry ? loopBranchItems(entry.branch, sideData, side, entry.index) : [];
   });
 }
 
@@ -2138,40 +2159,75 @@ function loopDiagramAttributes(key, semanticAttributes = "", readOnly = false) {
   return readOnly ? "" : `data-hvac-graph-key="${escapeHTML(key)}" ${semanticAttributes} tabindex="0"`;
 }
 
-function loopSerialItemPositions(items, fromX, toX, y) {
+function resolvedLoopItemPositions(positions, requestedXs, startX, endX) {
+  if (!Array.isArray(requestedXs) || requestedXs.length !== positions.length || !requestedXs.every(Number.isFinite)) return positions;
+  const low = Math.min(startX, endX), high = Math.max(startX, endX), direction = endX >= startX ? 1 : -1;
+  const xs = requestedXs.map((x) => Math.max(low, Math.min(high, x)));
+  // Moving a drawing must not reverse the declared serial equipment order.
+  if (xs.some((x, index) => index && (x - xs[index - 1]) * direction < 0)) return positions;
+  return positions.map((position, index) => ({ ...position, x: xs[index] }));
+}
+
+function loopSerialItemPositions(items, fromX, toX, y, requestedXs) {
   const direction = toX >= fromX ? 1 : -1;
-  return distributeGraphPositions(items.length, fromX + direction * 54, toX - direction * 54, y);
+  const start = fromX + direction * 54, end = toX - direction * 54;
+  return resolvedLoopItemPositions(distributeGraphPositions(items.length, start, end, y), requestedXs, start, end);
 }
 
 function loopBranchItemPositions(row, layout) {
   const start = layout.reverse ? layout.branchEndX - 72 : layout.branchStartX + 72;
   const end = layout.reverse ? layout.branchStartX + 72 : layout.branchEndX - 72;
-  return distributeGraphPositions(row.items.length, start, end, row.y);
+  const requestedXs = layout.rowItemXs instanceof Map ? layout.rowItemXs.get(row.index) : layout.rowItemXs?.[row.index];
+  return resolvedLoopItemPositions(distributeGraphPositions(row.items.length, start, end, row.y), requestedXs, start, end);
 }
 
 function loopSideItemPositions(layout) {
+  if (layout.itemPositions) return layout.itemPositions;
   const startX = layout.reverse ? layout.rightX : layout.leftX;
   const endX = layout.reverse ? layout.leftX : layout.rightX;
   const splitX = layout.reverse ? layout.branchEndX : layout.branchStartX;
   const mixX = layout.reverse ? layout.branchStartX : layout.branchEndX;
   const entries = [];
-  const add = (items, positions) => items.forEach((item, index) => entries.push({ item, position: positions[index] }));
-  add(layout.leadInItems, loopSerialItemPositions(layout.leadInItems, startX, splitX, layout.busY));
-  add(layout.leadOutItems, loopSerialItemPositions(layout.leadOutItems, mixX, endX, layout.busY));
-  for (const row of layout.rows) add(row.items, loopBranchItemPositions(row, layout));
+  const add = (items, positions, area, rowIndex = null) => items.forEach((item, index) => {
+    // Reference identity comes from the parsed branch occurrence, including
+    // equipment on lead-in/out branches. Names or coordinates cannot own ports.
+    const branchIndex = Number.isInteger(item.branchIndex) ? item.branchIndex : -1;
+    const componentIndex = Number.isInteger(item.componentIndex) ? item.componentIndex : index;
+    const ownerId = item.kind === "component" && branchIndex >= 0 ? `component:${layout.side}:${branchIndex}:${componentIndex}` : `${item.kind}:${layout.side}:${area}:${rowIndex ?? 0}:${index}`;
+    entries.push({ item, position: positions[index], area, rowIndex, branchIndex, componentIndex, ownerId });
+  });
+  add(layout.leadInItems, loopSerialItemPositions(layout.leadInItems, startX, splitX, layout.busY, layout.leadInXs), "lead-in");
+  add(layout.leadOutItems, loopSerialItemPositions(layout.leadOutItems, mixX, endX, layout.busY, layout.leadOutXs), "lead-out");
+  for (const row of layout.rows) add(row.items, loopBranchItemPositions(row, layout), "branch", row.index);
   return entries;
 }
 
-function renderLoopSideNetwork(layout, loop) {
+function loopSidePipeSegments(layout) {
   const startX = layout.reverse ? layout.rightX : layout.leftX;
   const endX = layout.reverse ? layout.leftX : layout.rightX;
   const splitX = layout.reverse ? layout.branchEndX : layout.branchStartX;
   const mixX = layout.reverse ? layout.branchStartX : layout.branchEndX;
-  const minY = layout.rows[0]?.y || layout.busY;
-  const maxY = layout.rows[layout.rows.length - 1]?.y || layout.busY;
+  const minY = layout.rows[0]?.y ?? layout.busY, maxY = layout.rows.at(-1)?.y ?? layout.busY;
+  const segment = (x1, y1, x2, y2, kind) => ({ x1, y1, x2, y2, side: layout.side, kind });
+  return [
+    segment(startX, layout.busY, splitX, layout.busY, "bus"),
+    segment(splitX, minY, splitX, maxY, "splitter"),
+    segment(mixX, minY, mixX, maxY, "mixer"),
+    segment(mixX, layout.busY, endX, layout.busY, "bus"),
+    ...layout.rows.map((row) => ({ ...segment(splitX, row.y, mixX, row.y, "branch"), rowIndex: row.index })),
+  ];
+}
+
+function loopPipePath(segments) {
+  return segments.map((segment) => `M${segment.x1},${segment.y1} ${segment.x1 === segment.x2 ? `V${segment.y2}` : `H${segment.x2}`}`).join(" ");
+}
+
+function renderLoopSideNetwork(layout, loop) {
+  const splitX = layout.reverse ? layout.branchEndX : layout.branchStartX;
   const loopKey = `loop:${loop.id}`;
   const loopClass = layout.readOnly ? "" : state.activeHVACGraphKey === loopKey ? "selected" : state.activeHVACGraphKey ? "dimmed" : "";
   const sideLabel = layout.side === "supply" ? t("hvac.supplySide") : t("hvac.demandSide");
+  const pipeSegments = layout.pipeSegments || loopSidePipeSegments(layout);
   const branchPaths = layout.rows
     .map((row) => {
       const rowComponentKeys = row.items
@@ -2179,7 +2235,7 @@ function renderLoopSideNetwork(layout, loop) {
         .filter(Boolean);
       const branchClass = layout.readOnly ? "" : graphSelectionClass(row.key, [loopKey, ...rowComponentKeys]);
       return `
-        <path class="hvac-loop-branch-path ${branchClass}" ${layout.readOnly ? "" : `data-hvac-graph-key="${escapeHTML(row.key)}"`} d="M${splitX},${row.y} H${mixX}"></path>
+        <path class="hvac-loop-branch-path ${branchClass}" ${layout.readOnly ? "" : `data-hvac-graph-key="${escapeHTML(row.key)}"`} d="${loopPipePath(pipeSegments.filter((segment) => segment.kind === "branch" && segment.rowIndex === row.index))}"></path>
         ${renderLoopBranchMarker(row, splitX, row.y, loopKey, layout.readOnly)}
         ${renderLoopBranchItems(row, layout, loopKey)}`;
     })
@@ -2189,24 +2245,24 @@ function renderLoopSideNetwork(layout, loop) {
       <rect class="hvac-loop-side-panel" x="${layout.branchStartX - 62}" y="${layout.top}" width="${layout.branchEndX - layout.branchStartX + 124}" height="${layout.height}" rx="0"></rect>
       <text class="hvac-loop-side-note" x="${layout.branchStartX - 45}" y="${layout.top + 22}">${escapeHTML(sideLabel)}</text>
       <path class="hvac-loop-path ${loopClass}" ${layout.readOnly ? "" : `data-hvac-graph-key="${escapeHTML(loopKey)}"`}
-        d="M${startX},${layout.busY} H${splitX} M${splitX},${minY} V${maxY} M${mixX},${minY} V${maxY} M${mixX},${layout.busY} H${endX}"></path>
-      ${renderLoopSerialItems(layout.leadInItems, layout, startX, splitX, layout.busY, loopKey)}
-      ${renderLoopSerialItems(layout.leadOutItems, layout, mixX, endX, layout.busY, loopKey)}
+        d="${loopPipePath(pipeSegments.filter((segment) => segment.kind !== "branch"))}"></path>
+      ${renderLoopSerialItems(layout.leadInItems, layout, "lead-in", loopKey)}
+      ${renderLoopSerialItems(layout.leadOutItems, layout, "lead-out", loopKey)}
       ${branchPaths}
     </g>`;
 }
 
-function renderLoopSerialItems(items = [], layout, fromX, toX, y, loopKey) {
+function renderLoopSerialItems(items = [], layout, area, loopKey) {
   if (!items.length) {
     return "";
   }
-  const positions = loopSerialItemPositions(items, fromX, toX, y);
-  return items.map((item, index) => renderLoopDiagramItem(item, positions[index], layout.side, [loopKey], layout.readOnly)).join("");
+  return loopSideItemPositions(layout).filter((entry) => entry.area === area)
+    .map(({ item, position }) => renderLoopDiagramItem(item, position, layout.side, [loopKey], layout.readOnly)).join("");
 }
 
 function renderLoopBranchItems(row, layout, loopKey) {
-  const positions = loopBranchItemPositions(row, layout);
-  return row.items.map((item, index) => renderLoopDiagramItem(item, positions[index], layout.side, [row.key, loopKey], layout.readOnly)).join("");
+  return loopSideItemPositions(layout).filter((entry) => entry.area === "branch" && entry.rowIndex === row.index)
+    .map(({ item, position }) => renderLoopDiagramItem(item, position, layout.side, [row.key, loopKey], layout.readOnly)).join("");
 }
 
 function renderLoopBranchMarker(row, splitX, y, loopKey, readOnly = false) {

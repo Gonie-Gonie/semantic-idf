@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -154,24 +155,30 @@ func TestHVACInspectionExecutedCircuitBrowser(t *testing.T) {
 		if loop == "" {
 			loop = "HeatSys1"
 		}
-		output, err := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--virtual-time-budget=10000", "--window-size=1640,6800", "--force-device-scale-factor=1", "--user-data-dir="+t.TempDir(), "--screenshot="+screenshot, server.URL+"/circuit?review="+url.QueryEscape(loop)).CombinedOutput()
+		output, err := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--virtual-time-budget=10000", "--window-size=1640,6800", "--force-device-scale-factor=1", "--user-data-dir="+t.TempDir(), "--dump-dom", "--screenshot="+screenshot, server.URL+"/circuit?review="+url.QueryEscape(loop)).CombinedOutput()
 		if err != nil {
 			t.Fatalf("HVAC screenshot: %v\n%s", err, output)
+		}
+		if _, detail, ok := strings.Cut(string(output), `data-hvac-circuit-review="`); ok {
+			stats, _, _ := strings.Cut(detail, `"`)
+			t.Logf("HVAC screenshot geometry: %s", html.UnescapeString(stats))
 		}
 	}
 }
 
 const hvacInspectionCircuitHTML = `<!doctype html><html data-theme="dark"><head><meta charset="utf-8"><link rel="stylesheet" href="/src/styles.css"><style>body{display:block;overflow:auto;height:auto}#mount{width:1400px}</style></head><body><div id="mount"></div><pre id="result"></pre><script type="module">
 const check=(value,message)=>{if(!value)throw Error(message)};
+` + hvacInspectionBoxGeometryHTML + `
 try{
  const {renderHVACInspection:render}=await import('/src/js/views/hvac-inspection-view.js');
- const {prepareHVACInspection:prepare,hvacInspectionBasicProperties:basic,hvacInspectionTrace:trace}=await import('/src/js/hvac-inspection-data.js');
- const {buildHVACLoopDiagramLayout:layout}=await import('/src/js/views/hvac-views.js');
+ const {prepareHVACInspection:prepare,hvacInspectionBasicProperties:basic,hvacInspectionTrace:trace,hvacInspectionSnapshots:snapshot}=await import('/src/js/hvac-inspection-data.js');
+ const {buildHVACInspectionLayout:inspectionLayout}=await import('/src/js/views/hvac-inspection-topology.js');
  const loops=await (await fetch('/fixture')).json(),original=JSON.stringify(loops),mount=document.getElementById('mount');
  const overlap=(a,b)=>Math.min(a.right,b.right)-Math.max(a.left,b.left)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1;
  const coordinates=rect=>[rect.left,rect.top,rect.right,rect.bottom].map(value=>Math.round(value*10)/10).join(',');
  const topologyBounds=name=>{
   const svg=mount.querySelector('svg.hvac-loop-svg'),bounds=svg.getBoundingClientRect();
+  assertHVACInfoBoxes(mount,name);
   const annotations=[...svg.querySelectorAll('.hvac-inspect-annotation')].map(item=>({name:item.parentElement.dataset.hvacInspectPointName,rect:item.getBoundingClientRect()}));
   const obstacles=[...svg.querySelectorAll('.hvac-loop-icon,.hvac-inspect-node-ring,.hvac-loop-equipment .mini-label,.hvac-branch-badge,.hvac-loop-side-note,.hvac-loop-label,.hvac-loop-name')].map(item=>({name:item.closest('[data-hvac-inspect-point-name]')?.dataset.hvacInspectPointName||item.closest('.hvac-loop-equipment')?.getAttribute('aria-label')||item.textContent||item.getAttribute('class'),rect:item.getBoundingClientRect()})).filter(item=>item.rect.width&&item.rect.height);
   for(let i=0;i<annotations.length;i++){
@@ -200,6 +207,14 @@ try{
   check(trace(coolModel,property).points.map(p=>p.value).join(',')===[value,value+1].join(','),'graph differs from water snapshot');
  }
  check(!point('VAV_5_OA-VAV_5_CoolCNode')&&!point('VAV_5_CoolC-VAV_5_HeatCNode')&&!point('CoolSys1 Chiller Water Inlet Node 1'),'water diagram includes another circuit');
+ const ranged=structuredClone(cool),rangeNode='CoolSys1 Pump-CoolSys1 ChillerNode 1';
+ const rangeFlow=ranged.series.find(series=>series.keyValue.toLowerCase()===rangeNode.toLowerCase()&&series.name==='System Node Mass Flow Rate');
+ check(rangeFlow?.points.length===2,'whole-run numeric reservation fixture has no exact native flow source');rangeFlow.points[0].value=0;rangeFlow.points[1].value=123456.78;
+ mount.innerHTML=render(ranged,{frameIndex:0});const rangedGeometry=topologyBounds('whole-run extrema before large value');
+ const rangedModel=prepare(ranged),rangedProperty=basic(rangedModel,'flow').find(property=>property.entity.name.toLowerCase()===rangeNode.toLowerCase());
+ check(rangedProperty.valueRange.min===0&&rangedProperty.valueRange.max===123456.78,'snapshot did not reserve width from complete native whole-run extrema');
+ mount.innerHTML=render(ranged,{frameIndex:1});check(topologyBounds('whole-run extrema large-value frame')===rangedGeometry,'whole-run extrema changed node information positions at the large-value frame');
+ check(point(rangeNode).querySelector('[data-hvac-inspect-metric="flow"]').textContent.includes('123,456.78 kg/s')&&trace(rangedModel,rangedProperty).points.map(point=>point.value).join(',')==='0,123456.78','numeric width reservation changed or clipped native flow values');
  const tower=find('TowerWaterSys');mount.innerHTML=render(tower,{});
  check(point('CoolSys1 Chiller Water Inlet Node 1')?.classList.contains('anchored')&&!point('CoolSys1 Pump-CoolSys1 ChillerNode 1'),'condenser circuit replaced by chilled water');
  const air=find('VAV_5');mount.innerHTML=render(air,{});
@@ -216,7 +231,7 @@ try{
  const zoneLoop=loops.find(loop=>loop.loopType==='AirLoopHVAC'&&loop.topology.relatedZones.includes('Core_top'));mount.innerHTML=render(zoneLoop,{});
  const zoneNodes=zoneLoop.topology.demandGraph.nodes.filter(node=>node.zoneName==='Core_top'&&['zone_inlet','zone_return'].includes(node.role));
  check(zoneNodes.length===2,'Go result omitted Core_top inlet/return zone ownership');
- const zone=layout(zoneLoop.topology,{width:mount.querySelector('svg.hvac-loop-svg').viewBox.baseVal.width}).anchors.find(anchor=>anchor.kind==='zone'&&anchor.name==='Core_top');
+ const zone=inspectionLayout({loop:zoneLoop.topology,...snapshot(prepare(zoneLoop),0)}).layout.anchors.find(anchor=>anchor.kind==='zone'&&anchor.name==='Core_top');
  for(const node of zoneNodes){
   const item=point(node.nodeName),ring=item?.querySelector('.hvac-inspect-node-ring');
   check(item?.classList.contains('anchored')&&ring,'actual Go zone port is detached: '+node.nodeName);
@@ -226,6 +241,8 @@ try{
  const heat=find('HeatSys1');mount.innerHTML=render(heat,{});
  check(mount.querySelectorAll('.hvac-inspect-annotation').length>45,'dense heating-loop fixture lacks observed branch ports/equipment');
  const heatPositions=topologyBounds('HeatSys1');
+ const boiler=heat.topology.supplySide.branches.flatMap(branch=>branch.components).find(component=>component.objectType==='Boiler:HotWater'),boilerInlet=point(boiler.inletNode),boilerOutlet=point(boiler.outletNode);
+ check(boilerInlet?.dataset.hvacInspectOwner===boilerOutlet?.dataset.hvacInspectOwner&&boilerInlet?.dataset.hvacInspectPortRole==='inlet'&&boilerOutlet?.dataset.hvacInspectPortRole==='outlet'&&Number(boilerInlet.querySelector('.hvac-inspect-annotation').dataset.hvacInspectAnnotationY)===Number(boilerOutlet.querySelector('.hvac-inspect-annotation').dataset.hvacInspectAnnotationY),'unique native boiler inlet/outlet information boxes lost source ownership or a collision-free shared top line');
  const demandRows=[...mount.querySelectorAll('.node.anchored.demand .hvac-inspect-node-ring')].map(item=>Number(item.getAttribute('cy'))),rows=[...new Set(demandRows)].sort((a,b)=>a-b);
  check(rows.length>10&&rows.slice(1).every((y,index)=>y-rows[index]<=260),'parallel equipment lines retain excessive vertical spacing: '+JSON.stringify(rows));
  const setpointNodes=['HEATSYS1 SUPPLY EQUIPMENT OUTLET NODE','HEATSYS1 SUPPLY OUTLET NODE'];
@@ -244,7 +261,11 @@ try{
  check(mount.querySelectorAll('.hvac-inspect-annotation').length===1&&mount.querySelectorAll('.hvac-loop-side-block.demand .hvac-loop-icon').length>10,'sparse frame does not retain unmeasured neighboring branch symbols');
  topologyBounds('HeatSys1 sparse demand measurement');
  const review=new URLSearchParams(location.search).get('review');
- if(review){mount.style.width='1580px';mount.innerHTML=render(review==='dense-air'?denseAir:find(review)||heat,{});}else mount.innerHTML=render(zoneLoop,{});
+ if(review){
+  const displayed=review==='dense-air'?denseAir:find(review)||heat;mount.style.width='1580px';mount.innerHTML=render(displayed,{});
+  const placed=inspectionLayout({loop:displayed.topology,...snapshot(prepare(displayed),0)}).layout,ys=placed.demandLayout.rows.map(row=>row.y);
+  document.body.dataset.hvacCircuitReview=JSON.stringify({loop:displayed.name,width:placed.width,height:placed.height,demandGaps:ys.slice(1).map((y,index)=>Math.round((y-ys[index])*100)/100)});
+ }else mount.innerHTML=render(zoneLoop,{});
  document.body.dataset.hvacCircuitStatus='passed';document.getElementById('result').textContent='passed';
 }catch(error){document.body.dataset.hvacCircuitStatus='failed';document.getElementById('result').textContent=error.stack;}
 </script>`

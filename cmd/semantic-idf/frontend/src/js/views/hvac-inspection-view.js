@@ -2,7 +2,7 @@ import { escapeHTML } from "../state.js";
 import { t } from "../i18n.js";
 import { prepareHVACInspection, hvacInspectionSnapshots, hvacInspectionTrace, hvacInspectionBasicProperties } from "../hvac-inspection-data.js";
 import { renderHVACInspectionChart, updateHVACInspectionChartFrame, hvacInspectionChartYRanges } from "../hvac-inspection-charts.js";
-import { renderHVACInspectionTopology } from "./hvac-inspection-topology.js";
+import { renderHVACInspectionTopology, updateHVACInspectionTopology } from "./hvac-inspection-topology.js";
 import { renderHVACRuntimeInspection, handleHVACRuntimeEvent, connectHVACRuntimeInspection, disconnectHVACRuntimeInspection, updateHVACRuntimeInspection } from "./hvac-runtime-view.js";
 import { prepareHVACRuntimeInspection } from "../hvac-runtime-data.js";
 
@@ -277,6 +277,10 @@ export function handleHVACInspectionEvent(event, container, loop, ui) {
 
 function refreshSnapshot(container, model, ui) {
   const mount = container.querySelector("[data-hvac-inspect-snapshot]");
+  if (model.loop.topology && updateHVACInspectionTopology(mount, { loop: model.loop.topology,
+    ...hvacInspectionSnapshots(model, ui.frameIndex, ui), selectedNode: ui.selectedNode, selectedComponent: ui.selectedComponent,
+    operatingProfiles: prepareHVACRuntimeInspection(model.loop).profiles,
+    selectedProfile: ui.runtimeSelected ? ui.logic?.profileID : "" })) return;
   const viewport = mount.querySelector("[data-hvac-inspect-topology-viewport]");
   const top = viewport?.scrollTop || 0, left = viewport?.scrollLeft || 0;
   mount.innerHTML = renderSnapshot(model, ui);

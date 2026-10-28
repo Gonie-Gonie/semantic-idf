@@ -31,16 +31,60 @@ func TestHVACInspectionTopologyBrowser(t *testing.T) {
 	defer cancel()
 	output, err := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--virtual-time-budget=10000", "--user-data-dir="+t.TempDir(), "--dump-dom", server.URL+"/topology").CombinedOutput()
 	if err != nil || !strings.Contains(string(output), `data-inspection-topology-status="passed"`) {
+		if _, detail, ok := strings.Cut(string(output), `<pre id="result">`); ok {
+			message, _, _ := strings.Cut(detail, "</pre>")
+			if message != "" {
+				t.Fatalf("HVAC inspection topology acceptance failed: %v\n%s", err, message)
+			}
+		}
 		t.Fatalf("HVAC inspection topology acceptance failed: %v\n%s", err, output)
 	}
 }
 
+// Shared geometric acceptance uses rendered SVG paths and boxes, rather than
+// repeating the placement algorithm's obstacle list in its assertions.
+const hvacInspectionBoxGeometryHTML = `
+const inspectionPathPoint=(path,length)=>{const point=path.getPointAtLength(length);return new DOMPoint(point.x,point.y).matrixTransform(path.getScreenCTM());};
+const inspectionPathSamples=path=>{const length=path.getTotalLength(),count=Math.max(1,Math.ceil(length/3));return Array.from({length:count+1},(_,index)=>inspectionPathPoint(path,length*index/count));};
+const assertHVACInfoBoxes=(root,name)=>{
+ const svg=root.querySelector('svg.hvac-loop-svg');check(svg,name+' has no native loop SVG');
+ const bounds=svg.getBoundingClientRect(),cards=[...svg.querySelectorAll('.hvac-inspect-vertex')].filter(vertex=>vertex.querySelector('.hvac-inspect-annotation')).map(vertex=>({vertex,box:vertex.querySelector('.hvac-inspect-info-box'),annotation:vertex.querySelector('.hvac-inspect-annotation'),leader:vertex.querySelector('.hvac-inspect-leader')}));
+ const pipes=[...svg.querySelectorAll('.hvac-loop-path,.hvac-loop-branch-path,.hvac-loop-connector')].filter(path=>typeof path.getTotalLength==='function'&&(path.tagName.toLowerCase()!=='path'||path.getAttribute('d')?.trim())).map(path=>({points:inspectionPathSamples(path),radius:parseFloat(getComputedStyle(path).strokeWidth)/2}));
+ const obstacles=[...svg.querySelectorAll('.hvac-loop-icon,.hvac-inspect-node-ring,.hvac-loop-equipment .mini-label,.hvac-loop-cross-indicator circle,.hvac-branch-badge,.hvac-loop-side-note,.hvac-loop-label,.hvac-loop-name,.hvac-loop-endpoint text')].map(item=>({name:item.textContent||item.getAttribute('class')||item.closest('.hvac-loop-cross-indicator')?.getAttribute('class'),rect:item.getBoundingClientRect()})).filter(item=>item.rect.width&&item.rect.height);
+ const overlaps=(a,b)=>Math.min(a.right,b.right)-Math.max(a.left,b.left)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1;
+ const inside=(point,rect,padding=0)=>point.x>rect.left-padding+.1&&point.x<rect.right+padding-.1&&point.y>rect.top-padding+.1&&point.y<rect.bottom+padding-.1;
+ for(const card of cards){
+  const title=name+' / '+card.vertex.dataset.hvacInspectPointName;
+  check(card.box?.tagName.toLowerCase()==='rect'&&card.box.rx.baseVal.value>0,title+' lacks a rounded information box');
+  const rect=card.box.getBoundingClientRect();check(rect.width>0&&rect.height>0,title+' information box is empty');
+  check(rect.left>=bounds.left-1&&rect.right<=bounds.right+1&&rect.top>=bounds.top-1&&rect.bottom<=bounds.bottom+1,title+' information box is clipped');
+  for(const text of card.annotation.querySelectorAll('text')){const content=text.getBoundingClientRect();check(content.left>=rect.left-1&&content.right<=rect.right+1&&content.top>=rect.top-1&&content.bottom<=rect.bottom+1,title+' clips its actual text: '+text.textContent);}
+  for(const pipe of pipes)check(!pipe.points.some(point=>inside(point,rect,pipe.radius)),title+' covers a physical pipe segment');
+  for(const obstacle of obstacles)check(!overlaps(rect,obstacle.rect),title+' overlaps a physical node, equipment or schematic label: '+obstacle.name);
+  check(card.leader&&card.leader.getTotalLength()>0,title+' has no source leader');
+  check(getComputedStyle(card.leader).pointerEvents==='stroke',title+' leader cannot participate in its source hover/selection hit target');
+  const first=inspectionPathPoint(card.leader,0),last=inspectionPathPoint(card.leader,card.leader.getTotalLength());
+  const boxMatrix=card.box.getScreenCTM(),rx=card.box.rx.baseVal.value*Math.hypot(boxMatrix.a,boxMatrix.b),ry=(card.box.ry.baseVal.value||card.box.rx.baseVal.value)*Math.hypot(boxMatrix.c,boxMatrix.d);
+  const boxEdge=point=>{if(point.x<rect.left-1||point.x>rect.right+1||point.y<rect.top-1||point.y>rect.bottom+1)return false;const x=point.x<rect.left+rx?rect.left+rx:point.x>rect.right-rx?rect.right-rx:null,y=point.y<rect.top+ry?rect.top+ry:point.y>rect.bottom-ry?rect.bottom-ry:null;return x!==null&&y!==null?Math.abs(Math.hypot((point.x-x)/rx,(point.y-y)/ry)-1)*Math.max(rx,ry)<1:Math.min(Math.abs(point.x-rect.left),Math.abs(point.x-rect.right),Math.abs(point.y-rect.top),Math.abs(point.y-rect.bottom))<1;};
+  check(boxEdge(first),title+' leader does not start on the information-box boundary: '+JSON.stringify({first,rect:{left:rect.left,top:rect.top,right:rect.right,bottom:rect.bottom},rx,ry}));
+  const ring=card.vertex.querySelector('.hvac-inspect-node-ring');
+  if(ring){const center=new DOMPoint(ring.cx.baseVal.value,ring.cy.baseVal.value).matrixTransform(ring.getScreenCTM()),matrix=ring.getScreenCTM(),radius=ring.r.baseVal.value*Math.hypot(matrix.a,matrix.b);check(ring.r.baseVal.value===11,title+' changes node geometry with activity');check(Math.abs(Math.hypot(last.x-center.x,last.y-center.y)-radius)<1,title+' leader does not end on its own node-circle boundary');}
+  const leaderPoints=inspectionPathSamples(card.leader).slice(1,-1);
+  check(!leaderPoints.some(point=>inside(point,rect)),title+' leader doubles back through its own information box');
+  for(const other of cards)if(other!==card){const otherRect=other.box?.getBoundingClientRect();if(otherRect){check(!overlaps(rect,otherRect),title+' overlaps another information box');check(!leaderPoints.some(point=>inside(point,otherRect)),title+' leader crosses another information box');}}
+ }
+ return cards;
+};
+`
+
 const hvacInspectionTopologyHTML = `<!doctype html><html data-theme="dark"><head><link rel="stylesheet" href="/src/styles.css"><link rel="stylesheet" href="/src/styles/hvac-inspection-topology.css"></head><body style="display:block;overflow:auto"><div id="mount"></div><pre id="result"></pre>
 <script type="module">
 const check=(value,message)=>{if(!value)throw new Error(message);};
+` + hvacInspectionBoxGeometryHTML + `
 try {
- const {buildHVACInspectionTopology:build,renderHVACInspectionTopology:render}=await import('/src/js/views/hvac-inspection-topology.js');
- const {renderHVACLoopDiagram}=await import('/src/js/views/hvac-views.js');
+ const {buildHVACInspectionTopology:build,buildHVACInspectionLayout:inspectionLayout,renderHVACInspectionTopology:render,updateHVACInspectionTopology:update}=await import('/src/js/views/hvac-inspection-topology.js');
+ const {getLanguage,setLanguage}=await import('/src/js/i18n.js');
+ const {renderHVACLoopDiagram,buildHVACLoopDiagramLayout:baseLayout}=await import('/src/js/views/hvac-views.js');
  const {renderHVACInspection:renderInspection}=await import('/src/js/views/hvac-inspection-view.js');
  const {prepareHVACInspection:prepare}=await import('/src/js/hvac-inspection-data.js');
  const equipment=(name,inlet,outlet,type='Pump:VariableSpeed')=>({objectType:type,objectName:name,inletNode:inlet,outletNode:outlet,exists:true});
@@ -85,7 +129,15 @@ try {
  const diagram=mount.querySelector('svg.hvac-loop-svg'),referenceDiagram=reference.querySelector('svg.hvac-loop-svg');
  check(diagram.viewBox.baseVal.width===1480&&referenceDiagram.viewBox.baseVal.width===1120,'inspection did not widen or changed the default HVAC tab width');
  check(Math.abs(diagram.getBoundingClientRect().width-1480)<1,'wider inspection scaled the whole SVG instead of preserving native text/icon size');
- check(mount.querySelector('.hvac-loop-connector').getBBox().width>reference.querySelector('.hvac-loop-connector').getBBox().width&&Number(mount.querySelector('.hvac-loop-side-panel').getAttribute('width'))>Number(reference.querySelector('.hvac-loop-side-panel').getAttribute('width')),'extra width did not reach the pipe runs and branch annotation area');
+ const integrated=inspectionLayout({loop,nodes,components}),nativeBase=baseLayout(loop);
+ check(integrated.layout.leftX>nativeBase.leftX&&integrated.layout.width-integrated.layout.rightX>nativeBase.width-nativeBase.rightX,'inspection did not reserve dedicated outboard information gutters');
+ const boundaryRecords=integrated.records.filter(record=>record.kind==='node'&&record.anchor.ownerKind==='loop-side');
+ check(boundaryRecords.length===2&&boundaryRecords.every(record=>record.anchor.x===integrated.layout.leftX?record.x+record.width<=record.anchor.x-11:record.x>=record.anchor.x+11),'boundary information boxes do not occupy their own outboard gutter beyond the physical node/vertical pipe');
+ for(const anchor of integrated.layout.anchors.filter(anchor=>anchor.kind==='component'&&anchor.area==='branch')){
+  const block=mount.querySelector('.hvac-loop-side-block.'+anchor.side),panel=block.querySelector('.hvac-loop-side-panel').getBoundingClientRect(),native=[...block.querySelectorAll('.hvac-loop-equipment')].find(item=>item.querySelector('title')?.textContent.split(' - ')[0]===anchor.name);
+  check(native,'source-backed branch equipment was lost from its native panel: '+anchor.name);
+  for(const symbol of native.querySelectorAll('.hvac-loop-icon,.pipe-port')){const rect=symbol.getBoundingClientRect();check(rect.left>=panel.left-1&&rect.right<=panel.right+1&&rect.top>=panel.top-1&&rect.bottom<=panel.bottom+1,'branch panel no longer contains the native equipment icon/ports: '+anchor.name);}
+ }
  const checkAnnotationSpacing=()=>{
   const annotations=[...mount.querySelectorAll('.hvac-inspect-annotation')].map(item=>({item,rect:item.getBoundingClientRect()}));
   for(let i=0;i<annotations.length;i++)for(let j=i+1;j<annotations.length;j++){
@@ -95,8 +147,13 @@ try {
  };
  check(mount.querySelectorAll('.hvac-inspect-annotation').length>=nodes.length+components.length,'frame measurements must occupy annotation space on the original diagram');
  checkAnnotationSpacing();
+ assertHVACInfoBoxes(mount,'parallel chiller information boxes');
  const inlet=mount.querySelector('[data-hvac-inspect-node="inlet-point"]');
  check(inlet?.classList.contains('measured')&&inlet.classList.contains('selected'),'frame point did not match case-insensitive physical node or emphasize selected point');
+ const linkedStroke=vertex=>[vertex.querySelector('.hvac-inspect-info-box'),vertex.querySelector('.hvac-inspect-leader'),vertex.querySelector('.hvac-inspect-node-ring')].map(item=>getComputedStyle(item).stroke);
+ check(new Set(linkedStroke(inlet)).size===1&&linkedStroke(inlet)[0]!=='none','selection does not emphasize the owning information box, leader and node together');
+ const focusPoint=mount.querySelector('[data-hvac-inspect-node="outlet-point"]');focusPoint.focus();
+ check(focusPoint.matches(':focus-visible')&&new Set(linkedStroke(focusPoint)).size===1,'keyboard focus does not connect the information box, leader and node');focusPoint.blur();
  check(mount.querySelectorAll('.node.measured').length===2,'all observed node points were not highlighted');
  check(inlet.querySelectorAll('[data-hvac-inspect-metric]').length===3&&inlet.textContent.includes('0.00 kg/s')&&inlet.textContent.includes('0.0047 kg/kg'),'zero flow/humidity precision disappeared or setpoint retained a separate row');
  const compactLabel=id=>inlet.querySelector('[data-hvac-inspect-metric="'+id+'"] .hvac-inspect-metric-label').textContent.trim();
@@ -130,6 +187,39 @@ try {
  mount.innerHTML=render({loop,nodes:nodes.map(node=>({...node,metrics:node.metrics.map(metric=>({...metric,value:metric.id==='setpoint'?-998.9999999999999:metric.value}))})),components});
  check(!mount.querySelector('[data-hvac-setpoint-state]')&&mount.querySelector('[data-hvac-inspect-node="inlet-point"] [data-hvac-inspect-metric="temperature"] .hvac-inspect-metric-value').textContent==='7.00 °C','SQL roundoff produced a setpoint label/color on an uncontrolled node');
  check(annotationPositions()===positions,'missing setpoint changed topology positions');
+ const frameGeometry=()=>[...mount.querySelectorAll('.hvac-inspect-vertex')].filter(item=>item.querySelector('.hvac-inspect-annotation')).map(item=>{
+  const box=item.querySelector('.hvac-inspect-info-box'),annotation=item.querySelector('.hvac-inspect-annotation'),ring=item.querySelector('.hvac-inspect-node-ring,.hvac-inspect-equipment-ring');
+  return [item.dataset.hvacInspectPointName,annotation.getAttribute('transform'),box.getAttribute('width'),box.getAttribute('height'),item.querySelector('.hvac-inspect-leader').getAttribute('d'),ring.getAttribute('cx'),ring.getAttribute('cy'),ring.getAttribute('r')].join(':');
+ }).join('|');
+ const longLoop=structuredClone(loop),longSignedNodes=nodes.map(node=>({...node,metrics:node.metrics.map(metric=>({...metric,value:metric.id==='temperature'?-123.45:metric.id==='setpoint'?123.45:metric.id==='flow'?123456.78:metric.value}))}));
+ mount.innerHTML=render({loop:longLoop,nodes:longSignedNodes,components});assertHVACInfoBoxes(mount,'signed long node/setpoint values');
+ const longGeometry=frameGeometry();
+ const longDOM=[...mount.querySelectorAll('svg.hvac-loop-svg,.hvac-inspect-annotation,.hvac-inspect-info-box,.hvac-inspect-leader,.hvac-inspect-node-ring,.hvac-inspect-equipment-ring')];
+ const nextLongFrame={loop:longLoop,nodes:longSignedNodes.map(node=>({...node,active:false,metrics:node.metrics.map(metric=>({...metric,value:metric.id==='temperature'?123.45:metric.id==='setpoint'?-98.76:metric.id==='flow'?0:metric.value}))})),components:components.map(item=>({...item,status:'off'})),selectedNode:'outlet-point'};
+ check(update(mount,nextLongFrame),'same-shape frame did not use the in-place topology update');
+ const nextLongDOM=[...mount.querySelectorAll('svg.hvac-loop-svg,.hvac-inspect-annotation,.hvac-inspect-info-box,.hvac-inspect-leader,.hvac-inspect-node-ring,.hvac-inspect-equipment-ring')];
+ check(longDOM.length===nextLongDOM.length&&longDOM.every((item,index)=>item===nextLongDOM[index]&&item.isConnected),'frame update replaced SVG, information boxes, leaders or node rings');
+ check(mount.querySelector('[data-hvac-inspect-node="outlet-point"]').classList.contains('selected')&&!mount.querySelector('[data-hvac-inspect-node="inlet-point"]').classList.contains('selected'),'in-place frame update did not refresh selection');
+ check(mount.querySelector('[data-hvac-inspect-node="inlet-point"] [data-hvac-inspect-metric="flow"]').textContent.includes('0.00 kg/s')&&mount.querySelector('[data-hvac-setpoint-state="unmet"]')?.textContent.includes('123.45'),'in-place frame update retained stale numeric values or setpoint state');
+ assertHVACInfoBoxes(mount,'changed digits and equipment activity');check(frameGeometry()===longGeometry,'frame signs, digit counts or activity changed information-box, leader or node geometry');
+ const originalFont=document.body.style.fontFamily;document.body.style.fontFamily='monospace';
+ check(!update(mount,nextLongFrame),'font change reused geometry measured with another font');mount.innerHTML=render(nextLongFrame);assertHVACInfoBoxes(mount,'remeasured monospace font');document.body.style.fontFamily=originalFont;
+ mount.innerHTML=render(nextLongFrame);const originalLanguage=getLanguage();setLanguage('ko');
+ check(!update(mount,nextLongFrame),'language change reused localized geometry');mount.innerHTML=render(nextLongFrame);assertHVACInfoBoxes(mount,'remeasured localized labels');setLanguage(originalLanguage);mount.innerHTML=render(nextLongFrame);
+ const fewerMetrics={...nextLongFrame,nodes:nextLongFrame.nodes.map(node=>({...node,metrics:node.metrics.filter(metric=>metric.id!=='humidity')}))};
+ check(!update(mount,fewerMetrics),'changed displayed metric rows reused old information-box geometry');
+ const dedupNodes=[nodes[0],{...nodes[0],id:'duplicate-inlet',name:' supply inlet '},{...nodes[1],metrics:nodes[0].metrics.map(metric=>({...metric}))}];
+ mount.innerHTML=render({loop,nodes:dedupNodes,components});
+ check(mount.querySelectorAll('.node[data-hvac-inspect-topology-id="node:supply inlet"]').length===1&&mount.querySelectorAll('.node.measured').length===2,'same actual node was duplicated, or distinct equal-valued nodes were merged');
+ assertHVACInfoBoxes(mount,'canonical physical-node deduplication');
+ const serial={id:'serial-ports',name:'Serial ports',type:'PlantLoop',supplySide:{inletNode:'A',outletNode:'D',branches:[{name:'Serial branch',components:[equipment('Serial pump','A','B'),equipment('Serial boiler','B','C','Boiler:HotWater'),equipment('Serial valve','C','D','Valve:TwoWay')]}]},demandSide:{}};
+ const serialOriginal=JSON.stringify(serial),serialNodes=['A','B','C','D'].map((name,index)=>({id:'serial-'+index,name,metrics:[{id:'temperature',label:'Temperature',value:42,unit:'°C'},{id:'flow',label:'Flow',value:1.25,unit:'kg/s'}]}));
+ const serialComponents=serial.supplySide.branches[0].components.map((item,index)=>({id:'serial-equipment-'+index,name:item.objectName,type:item.objectType,status:'on',metrics:[{id:'power',label:'Power',value:100,unit:'W'}]}));
+ mount.innerHTML=render({loop:serial,nodes:serialNodes,components:serialComponents});assertHVACInfoBoxes(mount,'serial pump boiler valve ports');
+ check(mount.querySelectorAll('.node.measured').length===4,'serial shared ports gained duplicate labels or equal-valued distinct ports were lost');
+ const serialPlaced=inspectionLayout({loop:serial,nodes:serialNodes,components:serialComponents});
+ for(const [name,role]of [['B','inlet'],['C','outlet']])check(serialPlaced.layout.anchors.some(anchor=>anchor.kind==='node'&&anchor.name===name&&anchor.ownerName==='Serial boiler'&&anchor.ownerType==='Boiler:HotWater'&&anchor.portRole===role),'boiler '+role+' lost exact source port ownership');
+ check(JSON.stringify(serial)===serialOriginal,'integrated equipment/port placement mutated native serial connections');
  mount.innerHTML=render({loop:wrapper,nodes:extraNodes,components:children,selectedNode:'internal-point'});
  check(mount.querySelector('[data-hvac-inspect-component="fan-child"]')?.dataset.hvacInspectAnchorKind==='parent'&&mount.querySelector('[data-hvac-inspect-component="coil-child"]'),'owned typed child measurements lost their explicit wrapper anchor');
  check(!mount.querySelector('[data-hvac-inspect-node="internal-point"]'),'typed internal port without a physical schematic anchor gained a detached label');

@@ -364,6 +364,12 @@ The schematic annotates only its actual circuit nodes and equipment. A typed
 child can annotate its uniquely identified parent equipment. Observed readings
 without a drawn circuit position remain available in the graph controls.
 Ports of another circuit are not annotated, and detached labels are omitted.
+Rounded information boxes connect to their own node or equipment by distinct
+leader lines. Hover, focus or selection emphasizes the box, line and anchor
+together. Inlet/outlet readings stay near their source equipment, with equipment
+readings below it. Crowded branches use local spacing or staggered positions;
+the native connections and flow order stay the same. Values and colors update
+at each frame while box and pipe positions stay fixed.
 
 ## HVAC operating logic after simulation {#hvac-runtime-control}
 

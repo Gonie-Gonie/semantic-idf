@@ -12,7 +12,12 @@
 .hvac-inspect-topology-svg .hvac-loop-endpoint,
 .hvac-inspect-topology-svg .hvac-branch-badge { pointer-events: none; }
 .hvac-inspect-vertex { cursor: pointer; outline: none; }
-.hvac-inspect-leader { fill: none; stroke: var(--muted); stroke-width: 1; opacity: .65; pointer-events: none; }
+.hvac-inspect-leader { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 3 3; opacity: .75; pointer-events: stroke; }
+.hvac-inspect-info-box { fill: var(--surface); stroke: var(--line); stroke-width: 1; }
+.hvac-inspect-topology-svg .hvac-inspect-vertex:is(.selected, :hover, :focus-visible) .hvac-inspect-info-box,
+.hvac-inspect-topology-svg .hvac-inspect-vertex:is(.selected, :hover, :focus-visible) .hvac-inspect-leader,
+.hvac-inspect-topology-svg .hvac-inspect-vertex:is(.selected, :hover, :focus-visible) .hvac-inspect-node-ring,
+.hvac-inspect-topology-svg .hvac-inspect-vertex:is(.selected, :hover, :focus-visible) .hvac-inspect-equipment-ring { stroke: var(--selection-primary); opacity: 1; }
 .hvac-inspect-node-ring { fill: var(--surface); stroke: var(--muted); stroke-width: 2; }
 .hvac-inspect-node-core { fill: var(--muted); }
 .hvac-inspect-vertex.measured .hvac-inspect-node-ring { stroke: var(--teal); stroke-width: 3; fill: var(--teal-soft); }
