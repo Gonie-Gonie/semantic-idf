@@ -138,7 +138,7 @@ try{
   await settlePaint();
   const textRatios=[],graphicRatios=[],patternRatios=[],badgeRatios=[];
   check(geometry()===originalGeometry,theme+" theme changed quantitative paths/ports or node geometry");
-  check(pane.scrollHeight<=pane.clientHeight+1&&pane.scrollWidth<=pane.clientWidth+1,theme+" Building paint/badges introduced actual pane scrolling: "+pane.scrollHeight+"/"+pane.clientHeight);
+  window.checkEnergyPathComparisonViewport(host,pane,check,theme+' Building colors');
   for(const node of nodes){
    const element=button(node.id);if(!element)continue;
    check(element.dataset.energyPathColor&&["solid","allocated","residual"].includes(element.dataset.energyPathPaint),"native node lacks stable semantic color/paint token: "+node.id);
@@ -186,7 +186,7 @@ try{
  const checkCarrierColors=contextLabel=>{for(const node of graph().nodes.filter(node=>node.level==="carrier")){const expected=themeColors.get("dark")[node.carrier],paint=shapeBase(host.querySelector('[data-energy-path-bar="'+node.id+'"]')).slice(0,3);check(button(node.id).dataset.energyPathColor===expected.key&&JSON.stringify(paint)===JSON.stringify(expected.paint),contextLabel+" changed fixed carrier palette: "+node.carrier);}};
  check(!host.querySelector("[data-simulation-energy-service]"),"removed Service selector is still visible");checkCarrierColors("all services");
  change("[data-simulation-energy-scope]","zone:Office");
- check(pane.scrollHeight<=pane.clientHeight+1&&pane.scrollWidth<=pane.clientWidth+1,"Zone color encoding introduced scrolling: "+pane.scrollHeight+"/"+pane.clientHeight);
+ window.checkEnergyPathComparisonViewport(host,pane,check,'Zone colors');
  checkCarrierColors("Zone filter");
  change("[data-simulation-energy-path-period]","M1");checkCarrierColors("month filter");
  const partial=JSON.parse(fixtureJSON),office=partial.purposeResults.energyExplanation.zoneResults.find(zone=>zone.scope.zoneName==="Office");

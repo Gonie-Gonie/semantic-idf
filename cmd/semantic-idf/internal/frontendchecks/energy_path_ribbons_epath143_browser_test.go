@@ -126,7 +126,7 @@ try{
  check(innerWidth===1600&&innerHeight===900,"actual application viewport is not 1600x900: "+innerWidth+"x"+innerHeight);
  const inspectBounds=scope=>{
   check(!document.getElementById("simulationRunSetup").open,scope+" completed setup unexpectedly reopened");
-  check(pane.scrollHeight<=pane.clientHeight+1,scope+" actual inner pane requires vertical scroll: "+pane.scrollHeight+"/"+pane.clientHeight);
+  window.checkEnergyPathComparisonViewport(host,pane,check,scope+' ribbons');
   check(pane.scrollWidth<=pane.clientWidth+1,scope+" actual pane requires horizontal scroll");
   for(const selector of["[data-energy-path-layout]","[data-energy-path-quality-line]","[data-energy-path-legend]"]){const element=host.querySelector(selector),r=element?.getBoundingClientRect();check(r&&r.top>=0&&r.bottom<=innerHeight+1,scope+" graph/quality/legend clipped: "+selector+" bottom="+r?.bottom);}
   for(const node of graph().nodes){const button=nodeButton(node.id),r=button?.getBoundingClientRect();check(r&&r.left>=0&&r.right<=innerWidth+1&&r.top>=0&&r.bottom<=innerHeight+1,scope+" node outside viewport: "+node.id);if(r){const hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);check(hit&&button.contains(hit),scope+" node blocked by ribbon/ratio: "+node.id);}}

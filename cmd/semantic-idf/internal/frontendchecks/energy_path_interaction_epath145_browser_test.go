@@ -134,7 +134,7 @@ try{
  check(taxonomy("load").map(item=>item.serviceKind).join(",")==="cooling,heating","load service order is not fixed");
  check(taxonomy("end_use").map(item=>item.level==="residual"?"residual":item.endUse).join(",")==="cooling,heating,fans_pumps,lighting,equipment,water_systems,refrigeration,other,residual","end-use order is not fixed taxonomy / residuallast");
  check(taxonomy("carrier").map(item=>item.carrier).join(",")==="electricity,natural_gas","carrier order follows descending values instead of fixed taxonomy");
- check(pane.scrollHeight<=pane.clientHeight+1&&pane.scrollWidth<=pane.clientWidth+1,"default interaction layer creates app scrolling");
+ window.checkEnergyPathComparisonViewport(host,pane,check,'Building interaction');
  // This virtual-time fixture checks final paint. Retained buttons now animate,
  // so finish their test-only animation clock; EPATH161 measures natural timing.
  const settleOpacity=()=>{const controls=[...host.querySelectorAll("[data-energy-path-layout-node],[data-energy-path-bridge-ratio]")];controls.forEach(opacity);for(const control of controls)for(const animation of control.getAnimations())animation.finish();controls.forEach(opacity);};
@@ -178,7 +178,7 @@ try{
  check(host.querySelector('[data-energy-path-component-chart="'+monthlyLink.id+'"] [data-energy-path-chart-frequency]'),"selected monthly link lost its chart controls");
  const adapter={genericCaptureContext:()=>({marker:"145-history"}),genericRestoreContext:async()=>{}},snapshot=simulation.captureSimulationNavigationContext(adapter);
  change("[data-simulation-energy-scope]","zone:Office");check(state.simulationEnergySelection===""&&!host.querySelector("[data-energy-path-component-chart]"),"scope change retained an out-of-scope selected edge");
- check(pane.scrollHeight<=pane.clientHeight+1&&pane.scrollWidth<=pane.clientWidth+1,"Zone interaction graph requires scrolling");
+ window.checkEnergyPathComparisonViewport(host,pane,check,'Zone interaction');
  const restored=await simulation.restoreSimulationNavigationContext(snapshot,adapter);check(restored&&state.simulationEnergyScopeKind==="building"&&state.simulationEnergyPeriod==="M1"&&state.simulationEnergySelection===monthlyLink.id&&host.querySelector('[data-energy-path-component-chart="'+monthlyLink.id+'"]'),"history restore dropped exact selected monthly link/scope/chart");
  key(ratio(monthlyLink.id),"Escape");change("[data-simulation-energy-path-period]","annual");assertClear("history clear");
  const varied=JSON.parse(originalJSON),payload=varied.purposeResults.energyExplanation,byID=new Map(payload.nodes.map(item=>[item.id,item]));

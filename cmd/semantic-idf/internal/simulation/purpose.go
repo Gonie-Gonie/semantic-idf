@@ -503,6 +503,7 @@ func BuildPurposeRunPlan(doc idf.Document, request SimulationPurposeRequest) Pur
 			builder.addCustomOutputs()
 		}
 	}
+	builder.addEnvironmentPlotOutputs()
 	if purposeIDsContain(request.Purposes, SimulationPurposeBasicEnergy) && request.BasicEnergyDetail == PurposeBasicEnergyDetailEnergyPath {
 		builder.addEnergyPathHourlyOutputs()
 		builder.addEnergyPathFanPoolOutputs()
@@ -515,6 +516,29 @@ func BuildPurposeRunPlan(doc idf.Document, request SimulationPurposeRequest) Pur
 		builder.addDiscoveryDictionaryOutputs()
 	}
 	return builder.plan()
+}
+
+func (builder *purposePlanBuilder) addEnvironmentPlotOutputs() {
+	if !purposeHasEnvironmentPlots(builder.request.Purposes) {
+		return
+	}
+	for _, variable := range simulationEnvironmentPlotVariables() {
+		key := "Environment"
+		// A wildcard Hourly request already covers the one native Environment
+		// source. Prefer an exact existing key and never add both forms.
+		for _, candidate := range []string{"Environment", "*"} {
+			fields := []idf.OutputFieldValue{{Name: "Key Value", Value: candidate}, {Name: "Variable Name", Value: variable}, {Name: "Reporting Frequency", Value: "Hourly"}}
+			if _, exists := builder.existing[PurposeOutputSignature("Output:Variable", fields)]; exists {
+				key = candidate
+				break
+			}
+		}
+		for _, purpose := range builder.request.Purposes {
+			if environmentPlotPurpose(purpose) {
+				builder.addVariableWithReason(purpose, key, variable, "Hourly", "light", "Hourly environment observations shared by the result comparison plots.", "Simulation environment plots")
+			}
+		}
+	}
 }
 
 func (builder *purposePlanBuilder) addEnergyPathHourlyOutputs() {
@@ -3975,11 +3999,14 @@ func (builder *purposePlanBuilder) addObject(object PurposeOutputObject) {
 		object.ObjectIndex = existing.ObjectIndex
 	} else if conflict, ok := builder.existingBase[purposeOutputBaseSignature(object.ObjectType, object.Fields)]; ok {
 		hvacControlCadence := object.Reason == "HVAC control diagnostics" && (strings.EqualFold(object.ReportingFrequency, "Timestep") || strings.EqualFold(object.ReportingFrequency, "Detailed"))
-		if (object.Reason == "Basic Energy Path" && (strings.EqualFold(object.ReportingFrequency, "Monthly") || strings.EqualFold(object.ReportingFrequency, "Hourly") || strings.EqualFold(object.ReportingFrequency, "Daily") || strings.EqualFold(object.ReportingFrequency, "Timestep")) || hvacControlCadence) && purposeObjectIsSeries(object.ObjectType) {
+		environmentPlotCadence := object.Reason == "Simulation environment plots" && strings.EqualFold(object.ReportingFrequency, "Hourly")
+		if (object.Reason == "Basic Energy Path" && (strings.EqualFold(object.ReportingFrequency, "Monthly") || strings.EqualFold(object.ReportingFrequency, "Hourly") || strings.EqualFold(object.ReportingFrequency, "Daily") || strings.EqualFold(object.ReportingFrequency, "Timestep")) || hvacControlCadence || environmentPlotCadence) && purposeObjectIsSeries(object.ObjectType) {
 			object.State = purposeTemporaryState(builder.request)
 			object.ObjectIndex = nil
 			if object.Reason == "HVAC control diagnostics" {
 				builder.warn("info", "hvac_control_"+strings.ToLower(object.ReportingFrequency)+"_added", fmt.Sprintf("%s exists at %s frequency; adding required %s control diagnostics without changing it.", purposeOutputLabel(conflict), conflict.ReportingFrequency, object.ReportingFrequency), firstPurposeID(object.PurposeIDs), object.Signature)
+			} else if environmentPlotCadence {
+				builder.warn("info", "environment_plot_hourly_added", fmt.Sprintf("%s exists at %s frequency; adding required Hourly environment observations without changing it.", purposeOutputLabel(conflict), conflict.ReportingFrequency), firstPurposeID(object.PurposeIDs), object.Signature)
 			} else {
 				builder.warn("info", "energy_path_"+strings.ToLower(object.ReportingFrequency)+"_added", fmt.Sprintf("%s exists at %s frequency; adding the %s Energy Path series without changing it.", purposeOutputLabel(conflict), conflict.ReportingFrequency, object.ReportingFrequency), firstPurposeID(object.PurposeIDs), object.Signature)
 			}

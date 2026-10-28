@@ -14,6 +14,10 @@ The release script infers bump size from these sections:
 
 ## Added
 
+- Energy Path, Heat-Flow Ledger, and Comfort add related-variable comparison
+  plots at the bottom of each view, with line/scatter selection and shared
+  Hourly outdoor temperature, humidity, pressure, solar radiation and wind.
+  Exact source observations remain scoped and preserve gaps and reporting cadence.
 - Simulation HVAC integrates equipment availability and control sequence into
   the default loop view, preserving node charts and controls. A shared bottom
   frame updates schedule/manager stacks, current control values and related
@@ -27,6 +31,8 @@ The release script infers bump size from these sections:
 
 ## Changed
 
+- Simulation removes the standalone Series tab. Source inspection opens the
+  relevant purpose's comparison plot while retaining raw result data and exports.
 - Loop equipment inspection shows On / Off conditions as short AND/OR formulas
   with named manager definitions, source inputs and explicit permission rules.
   Repeated rules are defined once; runtime-dependent manager results are

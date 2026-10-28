@@ -235,6 +235,17 @@ before expansion; bindings are still exact to the expanded executed model.
 Plans retain output signatures, purpose tags, state, estimated series/frame
 counts and weight, SQL/discovery requirements, and wildcard/frequency warnings.
 
+Basic Energy, Zone Heat Flow, and Comfort share eight Environment Hourly
+variables: outdoor dry-bulb/wet-bulb temperature, relative humidity, barometric
+pressure, direct/diffuse solar radiation per area, wind speed, and wind direction.
+Matching existing Hourly requests are reused and purpose IDs are merged; other
+reported frequencies remain intact. These source-owned observations live in the
+existing result `series` collection, with full Hourly weather-run observations
+beyond generic preview column/point caps. They do not add a second SQL scan or
+per-view copies of environmental observations.
+The plan's maximum frame estimate includes these Hourly observations even when
+the selected compatibility tier keeps energy accounting at Monthly frequency.
+
 | Output state | Meaning |
 | --- | --- |
 | `existing` | Present in the source input. |
@@ -338,6 +349,17 @@ thermal/site links, allocation, and frozen v1 compatibility live in
 [Energy Path wire contract](energy-path.md#wire-contract).
 
 ## Current result views
+
+Energy Path, Heat-Flow Ledger, and Comfort place a related-variable comparison
+plot after their existing content. The former standalone Series tab is removed;
+canonical raw `series` data remains available to API/export and source resolution.
+Each comparison has its own trace choices and line/scatter mode. Line plots use
+up to eight properties, no point markers, and at most two unit axes; scatter
+uses exactly two variables with unambiguous matching timestamp and reporting
+cadence. Missing observations, duplicate/ambiguous matches and differing
+intervals are not interpolated or silently paired. Environment variables are
+shared choices in each purpose. Source jumps select the exact source in the
+current purpose's bottom comparison rather than opening a separate result tab.
 
 ### Energy Path
 

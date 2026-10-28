@@ -362,7 +362,7 @@ try{
   };
   const activateNode=(item,label=item.driverCategory||item.endUse||item.carrier||item.serviceKind)=>measure("node "+label,()=>{node(item.id).focus({preventScroll:true});node(item.id).click();},item.id);
   const change=(selector,value)=>{const target=host.querySelector(selector);if(!target)throw new Error("missing real context control "+selector);target.value=value;target.dispatchEvent(new Event("change",{bubbles:true}));};
-  check(host.querySelectorAll("[data-energy-path-layout-node]").length===22,"dense scene lost its22 material nodes after grouping three Internal gains contributors");check(pane.scrollWidth<=pane.clientWidth+1&&pane.scrollHeight<=pane.clientHeight+1,"actual dense initial frame overflows");
+  check(host.querySelectorAll("[data-energy-path-layout-node]").length===22,"dense scene lost its22 material nodes after grouping three Internal gains contributors");window.checkEnergyPathComparisonViewport(host,pane,check,'Dense redraw');
   evidence.push("Actual22-node frame with grouped Internal gains, "+zones.length+" analyzed Office Zones, "+fixture.semanticNavigation.entities.length+" semantic entities, "+paths.length+" actual service paths");
   await sleep(40);
   if(new URLSearchParams(location.search).get("run161")!=="1"){document.body.dataset.epath161Status="manual";}

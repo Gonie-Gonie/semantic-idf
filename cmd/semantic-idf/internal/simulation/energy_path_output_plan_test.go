@@ -227,6 +227,9 @@ func assertBasicEnergyPathOutputFrequencies(t *testing.T, plan PurposeRunPlan) {
 		if !purposeIDsContain(output.PurposeIDs, SimulationPurposeBasicEnergy) {
 			continue
 		}
+		if assertEnvironmentPlotOutput(t, output) {
+			continue
+		}
 		energyPath.OutputObjects = append(energyPath.OutputObjects, output)
 		if !purposeObjectIsSeries(output.ObjectType) {
 			continue
@@ -255,6 +258,27 @@ func assertBasicEnergyPathOutputFrequencies(t *testing.T, plan PurposeRunPlan) {
 	assertEnergyPathMonthlyHourlyRequestPairs(t, energyPath)
 }
 
+// Global comparison observations are Hourly context, not energy-accounting
+// Monthly/Hourly pairs. Keep this exception restricted to the eight declared
+// variables, their native key, unfiltered scope and environment-plot reason.
+func assertEnvironmentPlotOutput(t *testing.T, output PurposeOutputObject) bool {
+	t.Helper()
+	known := false
+	for _, name := range simulationEnvironmentPlotVariables() {
+		known = known || output.VariableName == name
+	}
+	if !known || output.ObjectType != "Output:Variable" || output.ReportingFrequency != "Hourly" {
+		return false
+	}
+	if (output.KeyValue != "Environment" && output.KeyValue != "*") || output.ScopeZoneName != "" || strings.TrimSpace(purposeFieldValue(output.Fields, "Schedule Name")) != "" || (output.Reason != "Simulation environment plots" && output.State != PurposeOutputStateExisting) {
+		t.Fatalf("environment plot output lost exact native source/cadence/role: %#v", output)
+	}
+	if !purposeHasEnvironmentPlots(output.PurposeIDs) {
+		t.Fatalf("environment comparison output lost its purpose tags: %#v", output)
+	}
+	return true
+}
+
 func TestEPATH040BasicEnergyPathMonthlyFourStageOutputContract(t *testing.T) {
 	doc := parsePurposePlanFixture(t, energyPathScopeFixtureIDF)
 	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
@@ -269,6 +293,9 @@ func TestEPATH040BasicEnergyPathMonthlyFourStageOutputContract(t *testing.T) {
 	}
 	for _, object := range plan.OutputObjects {
 		if !purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) {
+			continue
+		}
+		if assertEnvironmentPlotOutput(t, object) {
 			continue
 		}
 		if object.Reason != "Basic Energy Path" {

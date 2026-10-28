@@ -162,7 +162,12 @@ func heatFlowLedgerResult(inputPath string) simulation.SimulationRunResult {
 	add("Pair A", []float64{2, 99, -3, 88, 77, 0})
 	add("Pair A2", []float64{-.5, 99, 1, 88, 77, 0})
 	add("A Outdoors", []float64{-1, -66, 4, -55, -44, 0})
-	bundle := simulation.BuildPurposeResultBundle(&result, simulation.SimulationPurposeRequest{Purposes: []simulation.SimulationPurposeID{simulation.SimulationPurposeZoneHeatFlow}, ZoneHeatFlowDetail: simulation.PurposeZoneHeatFlowDetailSurface})
+	temperature := simulation.SimulationSeries{File: "eplusout.sql", Column: "A:Zone Mean Air Temperature [C]", KeyValue: "A", Name: "Zone Mean Air Temperature", SourceID: "fixture-zone-temperature-a", ReportingFrequency: "Hourly"}
+	for frame, label := range result.HeatFlow.Labels {
+		temperature.Points = append(temperature.Points, simulation.SimulationPoint{X: frame, Label: label, Value: result.HeatFlow.Zones[0].Temperature[frame]})
+	}
+	result.Series = append(result.Series, temperature)
+	bundle := simulation.BuildPurposeResultBundle(&result, simulation.SimulationPurposeRequest{Purposes: []simulation.SimulationPurposeID{simulation.SimulationPurposeZoneHeatFlow, simulation.SimulationPurposeComfort}, ZoneHeatFlowDetail: simulation.PurposeZoneHeatFlowDetailSurface})
 	result.PurposeResults = &bundle
 	return result
 }
@@ -408,8 +413,9 @@ try{
   await setRange(1,3);check(historyPath()!==fixedHistory&&[...host.querySelectorAll('[data-heatflow-chart]')].every(chart=>chart.closest('svg').dataset.heatflowChartStart==='1'&&chart.closest('svg').dataset.heatflowChartEnd==='3'),'native visible-range change reused full-range history geometry');
   slider.value='1';slider.dispatchEvent(new Event('input',{bubbles:true}));await tick();play.click();await tick();
   for(const frame of[2,3,1]){await advance();assertPlaybackFrame(frame);}
-  const seriesTab=document.querySelector('[data-simulation-result-view-button="series"]');check(!seriesTab.disabled,'leave-view playback fixture has no available destination');seriesTab.click();await tick();
-  check(state.simulationActiveResultView==='series'&&!state.simulationHeatFlowPlaying&&playTimers.size===0,'leaving Heat Flow keeps advancing hidden results');
+  const comfortTab=document.querySelector('[data-simulation-result-view-button="comfort"]');check(comfortTab&&!comfortTab.disabled,'leave-view playback fixture has no available Comfort destination');comfortTab.click();await tick();
+  check(state.simulationActiveResultView==='comfort'&&!state.simulationHeatFlowPlaying&&playTimers.size===0,'leaving Heat Flow keeps advancing hidden results');
+  check(document.querySelector('#simulationComfortResults [data-comfort-inspect-chart="temperature"]')&&document.querySelector('#simulationComfortResults [data-simulation-comparison-host="comfort"]'),'playback destination lost its source-backed Comfort observations or bottom comparison');
   document.querySelector('[data-simulation-result-view-button="zone_heat_flow"]').click();await tick();check(!state.simulationHeatFlowPlaying&&playTimers.size===0,'returning to Heat Flow silently resumes playback');
   const aHistory=historyPath();host.querySelector('g[data-heat-zone="B"]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await tick();
   check(historyPath()!==aHistory&&host.querySelector('.heatflow-chart-zone').textContent==='B','zone selection reuses the previous zone history');assertPlaybackFrame(1,playback.zones[1]);

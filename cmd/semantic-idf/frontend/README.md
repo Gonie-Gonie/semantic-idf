@@ -28,6 +28,12 @@
   explicit Boolean operators and named rules for manager priority/overrides.
   Parameter cards retain exact graph memberships, signed references and native
   Action fields; their compact grouping does not invent control equations.
+- `src/js/simulation-comparison-data.js` builds metadata catalogs for related
+  Energy Path, Heat Flow and Comfort variables plus shared environment outputs.
+  `views/simulation-comparison-view.js` places their line/scatter controls at the
+  bottom of each result. Materialize selected traces through the existing result
+  resource owner, preserving source identity, reporting intervals, gaps and zero.
+  The canonical `series` API remains available without a standalone Series tab.
 - `src/js/simulation-progress.js`: measured work, approximate remaining-time
   presentation, HTTP progress polling and response-byte progress. Unknown totals
   remain indeterminate; legacy stage-count percentages are not displayed as time.

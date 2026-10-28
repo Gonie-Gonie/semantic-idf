@@ -1550,7 +1550,7 @@ export function renderEnergyPathInspectorActions(node = {}, actions = {}, option
   const groups = [{
     kind: "series",
     title: t("simulation.energyPathSourceSeries", {}, "Source series"),
-    action: t("simulation.energyPathOpenSeries", {}, "Open Series"),
+    action: t("simulation.energyPathOpenSeries", {}, "Open comparison graph"),
     choose: t("simulation.energyPathChooseSeries", {}, "Choose source series"),
     targets: context.series,
     reason: context.seriesUnavailableReason || t("simulation.energyPathSeriesUnavailable", {}, "No matching source series is available for this selection."),

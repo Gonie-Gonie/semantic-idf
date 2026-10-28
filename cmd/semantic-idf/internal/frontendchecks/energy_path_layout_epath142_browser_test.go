@@ -96,6 +96,24 @@ const epath142LayoutHTML = `<pre id="epath142-result" hidden>pending</pre>
 const failures=[],evidence=[];
 document.body.dataset.epath142Viewport=innerWidth+"x"+innerHeight;
 const check=(condition,message)=>{if(!condition)failures.push(message);};
+window.checkEnergyPathComparisonViewport=(host,pane,check,label)=>{
+ const primary=host.querySelector('.energy-path-view'),comparison=host.querySelector('[data-simulation-comparison-host="energy"]'),previousScroll=pane.scrollTop;
+ check(Boolean(primary&&comparison),label+' is missing its primary graph or comparison');if(!primary||!comparison)return;
+ try{
+  pane.scrollTop=0;
+  const viewport=pane.getBoundingClientRect(),graph=primary.getBoundingClientRect(),below=comparison.getBoundingClientRect();
+  check(comparison===host.lastElementChild&&Boolean(primary.compareDocumentPosition(comparison)&Node.DOCUMENT_POSITION_FOLLOWING)&&below.top>=graph.bottom-1,label+' comparison is not after the complete existing Energy view');
+  check(graph.height>0&&graph.height<=pane.clientHeight+1&&graph.top>=viewport.top-1&&graph.bottom<=viewport.bottom+1,label+' primary Energy graph no longer fits its original first viewport: '+JSON.stringify({graph:graph.toJSON(),viewport:viewport.toJSON()}));
+  check(pane.scrollWidth<=pane.clientWidth+1&&below.width<=pane.clientWidth+1,label+' comparison introduced horizontal overflow');
+  check(['auto','scroll'].includes(getComputedStyle(pane).overflowY),label+' result pane does not allow vertical access to its bottom comparison');
+  pane.scrollTop=pane.scrollHeight-pane.clientHeight;
+  const reached=comparison.getBoundingClientRect();
+  check(reached.height>0&&reached.bottom<=viewport.bottom+1&&reached.bottom>viewport.top&&Math.max(reached.top,viewport.top)<Math.min(reached.bottom,viewport.bottom),label+' bottom comparison cannot be reached through the result pane');
+  if(pane.scrollHeight>pane.clientHeight+1)check(pane.scrollTop>0,label+' result pane refused the required scroll to comparison');
+  const after=primary.getBoundingClientRect();check(host.querySelector('.energy-path-view')===primary&&Math.abs(after.width-graph.width)<1&&Math.abs(after.height-graph.height)<1,label+' reaching comparison changed primary graph geometry');
+ }finally{pane.scrollTop=previousScroll;}
+ check(Math.abs(pane.scrollTop-previousScroll)<1,label+' comparison inspection did not restore the prior scroll position');
+};
 const freeze=value=>{if(value&&typeof value==="object"){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};
 const level={status:"complete",found:12,total:12};
 const quality={drivers:level,loads:level,endUses:level,carriers:level,ratios:level,driverToLoadClosedPct:100,endUseToCarrierClosedPct:100,driverToLoadStatus:"complete",endUseToCarrierStatus:"complete",zoneAllocatedPct:100,unassignedPct:0,zoneAllocationStatus:"complete"};
@@ -186,7 +204,7 @@ try{
  }
  for(const element of[document.documentElement,workspace,analysis,document.getElementById("simulationPane"),host,canvas])check(element.scrollWidth<=element.clientWidth+1,"horizontal overflow in "+(element.id||element.className||element.tagName)+": "+element.scrollWidth+"/"+element.clientWidth);
  const pane=document.querySelector("#simulationPane > .simulation-pane");
- check(pane.scrollHeight<=pane.clientHeight+1,"completed default Energy view still requires vertical scroll: "+pane.scrollHeight+"/"+pane.clientHeight);
+ window.checkEnergyPathComparisonViewport(host,pane,check,'Building layout');
  for(const selector of[".energy-path-view","[data-energy-path-quality-line]",".energy-path-domain-legend"]){const element=host.querySelector(selector),r=element?.getBoundingClientRect();check(r&&r.top>=0&&r.bottom<=innerHeight+1,"default graph / quality / legend clipped outside viewport: "+selector+" bottom="+r?.bottom);}
  const columns=[...host.querySelectorAll("[data-energy-path-stage]")].map(n=>n.getBoundingClientRect());
  check(columns.every((rect,index)=>index===0||rect.left>columns[index-1].left),"four columns lost left-to-right order");
@@ -209,7 +227,7 @@ try{
  const zoneGeometry=geometry();
  check(Object.keys(zoneGeometry).length===22,"Zone dropped equivalent direct categories");
  for(const [id,rect]of Object.entries(buildingGeometry))check(rect&&zoneGeometry[id]&&rect.every((value,index)=>Math.abs(value-zoneGeometry[id][index])<1),"Zone changed category-equivalent geometry: "+id+" "+JSON.stringify([rect,zoneGeometry[id]]));
- check(pane.scrollHeight<=pane.clientHeight+1,"equivalent Zone view requires vertical scroll: "+pane.scrollHeight+"/"+pane.clientHeight);
+ window.checkEnergyPathComparisonViewport(host,pane,check,'Zone layout');
  evidence.push("Zone "+[".energy-path-kpis",".energy-path-controls","[data-energy-path-layout]","[data-energy-path-quality-line]","[data-energy-path-inspector]",".energy-path-domain-legend"].map(selector=>{const r=host.querySelector(selector)?.getBoundingClientRect();return selector+":"+(r?Math.round(r.top)+"+"+Math.round(r.height):"absent");}).join("; "));
  for(const node of graph().nodes){const r=button(node.id)?.getBoundingClientRect();check(r&&r.bottom<=innerHeight+1,"Zone node clipped outside viewport: "+node.id);}
  check(!setup.open,"scope selection reopened completed setup");

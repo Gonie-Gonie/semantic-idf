@@ -10,6 +10,7 @@ import (
 	goruntime "runtime"
 	"strconv"
 	"testing"
+	"time"
 )
 
 // RunSimulation launches this test executable as a no-op engine against a
@@ -145,6 +146,88 @@ func createPurposeSeriesSQLFixture(t *testing.T, path string) {
 }
 
 func TestPurposeSQLSeriesBypassPreviewLimitForSelectedPanels(t *testing.T) {
+	t.Run("environment Hourly full weather axis", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "eplusout.sql")
+		db, err := sql.Open("sqlite", path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		tx, err := db.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+		exec := func(query string, args ...any) {
+			t.Helper()
+			if _, err := tx.Exec(query, args...); err != nil {
+				t.Fatal(err)
+			}
+		}
+		exec(`CREATE TABLE ReportDataDictionary(ReportDataDictionaryIndex INTEGER PRIMARY KEY,KeyValue TEXT,Name TEXT,Units TEXT,ReportingFrequency TEXT,IsMeter INTEGER)`)
+		exec(`CREATE TABLE Time(TimeIndex INTEGER PRIMARY KEY,Month INTEGER,Day INTEGER,Hour INTEGER,Minute INTEGER,EnvironmentPeriodIndex INTEGER,IntervalType INTEGER,WarmupFlag INTEGER)`)
+		exec(`CREATE TABLE ReportData(TimeIndex INTEGER,ReportDataDictionaryIndex INTEGER,Value REAL)`)
+		exec(`CREATE TABLE EnvironmentPeriods(EnvironmentPeriodIndex INTEGER,EnvironmentType INTEGER)`)
+		exec(`INSERT INTO EnvironmentPeriods VALUES(1,1),(2,3)`)
+		exec(`INSERT INTO Time VALUES(1,1,1,1,0,1,1,0),(2,1,1,1,0,2,1,1)`)
+		for index := 1; index <= maxSQLSeriesColumns; index++ {
+			exec(`INSERT INTO ReportDataDictionary VALUES(?,'OTHER',?,'W','Hourly',0)`, index, fmt.Sprintf("Unrelated %d", index))
+			exec(`INSERT INTO ReportData VALUES(1,?,7)`, index)
+		}
+		names := simulationEnvironmentPlotVariables()
+		units := []string{"C", "C", "%", "Pa", "W/m2", "W/m2", "m/s", "deg"}
+		for index, name := range names {
+			id := maxSQLSeriesColumns + index + 1
+			exec(`INSERT INTO ReportDataDictionary VALUES(?,'Environment',?,?,'Hourly',0)`, id, name, units[index])
+			exec(`INSERT INTO ReportData VALUES(1,?,999),(2,?,999)`, id, id)
+		}
+		exec(`INSERT INTO ReportDataDictionary VALUES(?,'OTHER',?,'C','Hourly',0)`, maxSQLSeriesColumns+9, names[0])
+		const frames = maxCSVSeriesPoints + 103
+		for frame := 0; frame < frames; frame++ {
+			stamp := time.Date(2025, 1, 1, 1, 0, 0, 0, time.UTC).Add(time.Duration(frame) * time.Hour)
+			exec(`INSERT INTO Time VALUES(?,?,?,?,0,2,1,0)`, 1000+frame, int(stamp.Month()), stamp.Day(), stamp.Hour())
+			for index := range names {
+				if index == 1 && frame == 250 {
+					continue
+				}
+				var value any = float64(frame)
+				if index == 2 && frame == 251 {
+					value = nil
+				}
+				exec(`INSERT INTO ReportData VALUES(?,?,?)`, 1000+frame, maxSQLSeriesColumns+index+1, value)
+			}
+			exec(`INSERT INTO ReportData VALUES(?,?,999)`, 1000+frame, maxSQLSeriesColumns+9)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		for _, purpose := range []SimulationPurposeID{SimulationPurposeBasicEnergy, SimulationPurposeZoneHeatFlow, SimulationPurposeComfort} {
+			plan := BuildPurposeRunPlan(parsePurposePlanFixture(t, "Version,24.2;\nZone,Office;"), SimulationPurposeRequest{Purposes: []SimulationPurposeID{purpose}})
+			series, err := parseSimulationSQLSeriesForPlan(path, plan)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(series) != maxSQLSeriesColumns+8 {
+				t.Fatal("environment observations were capped or an unrequested source escaped", purpose, len(series))
+			}
+			var base SimulationSeries
+			for index, item := range series[maxSQLSeriesColumns:] {
+				want := frames
+				if index == 1 || index == 2 {
+					want--
+				}
+				if len(item.Points) != want || item.ReportingFrequency != "Hourly" || item.KeyValue != "Environment" || item.Name != names[index] || unitFromSeriesColumn(item.Column) != units[index] || item.SourceID == "" || item.IsMeter == nil || *item.IsMeter || item.Points[0].Value != 0 {
+					t.Fatal("native environment identity, cadence, units or knownzero changed", purpose, index, item.Column, len(item.Points))
+				}
+				if index == 0 {
+					base = item
+				}
+				if index == 1 && (item.Points[250].X != base.Points[251].X || item.Points[250].Label != base.Points[251].Label) {
+					t.Fatal("missing environment observation shifted native coordinates")
+				}
+			}
+		}
+	})
 	path := filepath.Join(t.TempDir(), "eplusout.sql")
 	createPurposeSeriesSQLFixture(t, path)
 	for _, test := range []struct {
@@ -225,6 +308,73 @@ func TestRunSimulationReadsSelectedPanelsBeforeBuildingResults(t *testing.T) {
 }
 
 func TestPurposeCSVFallbackBypassesPreviewLimitForSelectedPanels(t *testing.T) {
+	t.Run("environment Hourly CSV retention", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "environment.csv")
+		file, err := os.Create(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writer := csv.NewWriter(file)
+		header := []string{"Date/Time"}
+		for index := 0; index < maxCSVSeriesColumns; index++ {
+			header = append(header, fmt.Sprintf("OTHER:Other %d [W](Hourly)", index))
+		}
+		names := simulationEnvironmentPlotVariables()
+		units := []string{"C", "C", "%", "Pa", "W/m2", "W/m2", "m/s", "deg"}
+		for index, name := range names {
+			header = append(header, "Environment:"+name+" ["+units[index]+"](Hourly)")
+		}
+		if err := writer.Write(header); err != nil {
+			t.Fatal(err)
+		}
+		const frames = maxCSVSeriesPoints + 103
+		for frame := 0; frame < frames; frame++ {
+			row := []string{time.Date(2025, 1, 1, 1, 0, 0, 0, time.UTC).Add(time.Duration(frame) * time.Hour).Format("01/02 15:04:05")}
+			for index := 0; index < maxCSVSeriesColumns; index++ {
+				row = append(row, "1")
+			}
+			for index := range names {
+				value := strconv.Itoa(frame)
+				if index == 1 && frame == 250 {
+					value = ""
+				}
+				row = append(row, value)
+			}
+			if err := writer.Write(row); err != nil {
+				t.Fatal(err)
+			}
+		}
+		writer.Flush()
+		if err := writer.Error(); err != nil {
+			t.Fatal(err)
+		}
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+		for _, purpose := range []SimulationPurposeID{SimulationPurposeBasicEnergy, SimulationPurposeZoneHeatFlow, SimulationPurposeComfort} {
+			plan := BuildPurposeRunPlan(parsePurposePlanFixture(t, "Version,24.2;\nZone,Office;"), SimulationPurposeRequest{Purposes: []SimulationPurposeID{purpose}})
+			_, series, err := parseSimulationCSVForPlan(path, plan)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(series) != maxCSVSeriesColumns+8 || len(series[0].Points) != maxCSVSeriesPoints {
+				t.Fatal("environment CSV selection removed generic bounds or lost requested columns", purpose)
+			}
+			for index, item := range series[maxCSVSeriesColumns:] {
+				key, name := splitPurposeSeriesColumn(item.Column)
+				want := frames
+				if index == 1 {
+					want--
+				}
+				if key != "Environment" || name != names[index] || purposeSeriesFrequency(item) != "Hourly" || unitFromSeriesColumn(item.Column) != units[index] || len(item.Points) != want || item.Points[0].Value != 0 || item.File != "environment.csv" {
+					t.Fatal("environment CSV source/cadence/units/samples changed", purpose, index, item.Column, len(item.Points))
+				}
+				if index == 1 && (item.Points[250].X != series[maxCSVSeriesColumns].Points[251].X || item.Points[250].Label != series[maxCSVSeriesColumns].Points[251].Label) {
+					t.Fatal("missing CSV environment observation changed row identity")
+				}
+			}
+		}
+	})
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.csv")
 	file, err := os.Create(path)

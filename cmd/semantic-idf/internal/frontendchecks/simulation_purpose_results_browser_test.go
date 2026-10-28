@@ -89,9 +89,17 @@ func TestSimulationRunInspectHVACAndComfortBrowser(t *testing.T) {
 		if len(result.Failures) != 0 {
 			t.Fatalf("Run & Inspect purpose results: %s", strings.Join(result.Failures, "\n"))
 		}
-		if directory := os.Getenv("HVAC_INSPECTION_SCREENSHOT_DIR"); directory != "" {
-			for _, capture := range []string{"topology", "graphs"} {
-				path, err := filepath.Abs(filepath.Join(directory, "hvac-inspection-"+capture+".png"))
+		directory, captures := os.Getenv("HVAC_INSPECTION_SCREENSHOT_DIR"), []string{"topology", "graphs"}
+		if comparisonDirectory := os.Getenv("SIMULATION_COMPARISON_SCREENSHOT_DIR"); comparisonDirectory != "" {
+			directory, captures = comparisonDirectory, []string{"comparison"}
+		}
+		if directory != "" {
+			for _, capture := range captures {
+				filename := "hvac-inspection-" + capture + ".png"
+				if capture == "comparison" {
+					filename = "simulation-comparison-comfort.png"
+				}
+				path, err := filepath.Abs(filepath.Join(directory, filename))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -127,6 +135,24 @@ func simulationPurposeResultsBrowserFixture(runID, inputPath string, request sim
 	result := simulation.SimulationRunResult{
 		RunID: runID, Status: "succeeded", Filename: "purpose-results.idf", InputPath: inputPath,
 		PurposeRunPlan: &simulation.PurposeRunPlan{Purposes: request.Purposes},
+		HeatFlow: simulation.HeatFlowDataset{
+			SourceFile: "eplusout.sql", Unit: "W", TemperatureUnit: "C", FrameCount: 3, OriginalFrameCount: 3,
+			Labels: []string{"01/21 01:00:00", "01/21 02:00:00", "01/21 03:00:00"},
+			Categories: []simulation.HeatFlowCategory{
+				{ID: "internalConvective", Label: "Internal convective gains", Unit: "W"},
+				{ID: "surfaceConvection", Label: "Surface convection", Unit: "W"},
+				{ID: "interzoneAir", Label: "Interzone air transfer", Unit: "W"},
+				{ID: "outdoorAir", Label: "Outdoor air transfer", Unit: "W"},
+				{ID: "systemAir", Label: "HVAC system air transfer", Unit: "W"},
+				{ID: "systemConvective", Label: "HVAC/system convective gains", Unit: "W"},
+				{ID: "airStorage", Label: "Air energy storage", Unit: "W"},
+				{ID: "deviation", Label: "Heat balance deviation", Unit: "W"},
+			},
+			Zones: []simulation.HeatFlowZoneSeries{{Name: "OFFICE", Temperature: []float64{22, 24, 26},
+				Values:   [][]float64{{0, 1000, 2000}, {100, 200, 300}, {0, 0, 0}, {-500, -400, -300}, {0, 0, -500}, {0, 0, 0}, {0, 100, 200}, {0, 0, 0}},
+				Observed: [][]bool{{true, false, true}, {true, true, true}, {true, true, true}, {true, true, true}, {true, true, true}, {true, true, true}, {true, true, true}, {true, true, true}},
+			}},
+		},
 		Series: []simulation.SimulationSeries{
 			series("SUPPLY OUTLET", "System Node Temperature", "C", 14, 16, 18),
 			series("SUPPLY OUTLET", "System Node Mass Flow Rate", "kg/s", 0.5, 1, 1.5),
@@ -144,7 +170,33 @@ func simulationPurposeResultsBrowserFixture(runID, inputPath string, request sim
 			series("OFFICE", "Zone Thermostat Heating Setpoint Temperature", "C", 20, 20, 20),
 			series("OFFICE", "Zone Thermostat Cooling Setpoint Temperature", "C", 25, 25, 25),
 			series("OFFICE", "Zone Air Relative Humidity", "%", 45, 50, 55),
+			series("Environment", "Site Outdoor Air Drybulb Temperature", "C", -5, 0, 8),
+			series("Environment", "Site Outdoor Air Relative Humidity", "%", 30, 45, 60),
 		},
+	}
+	for index := range result.Series {
+		item := &result.Series[index]
+		item.SourceID = fmt.Sprintf("fixture-sql-%d", index)
+		purposes := []simulation.SimulationPurposeID{simulation.SimulationPurposeHVACLoopCheck}
+		if item.KeyValue == "OFFICE" {
+			purposes = []simulation.SimulationPurposeID{simulation.SimulationPurposeComfort, simulation.SimulationPurposeZoneHeatFlow}
+		} else if item.KeyValue == "Environment" {
+			purposes = []simulation.SimulationPurposeID{simulation.SimulationPurposeBasicEnergy, simulation.SimulationPurposeZoneHeatFlow, simulation.SimulationPurposeComfort}
+		}
+		result.PurposeRunPlan.OutputObjects = append(result.PurposeRunPlan.OutputObjects, simulation.PurposeOutputObject{
+			ObjectType: "Output:Variable", PurposeIDs: purposes, KeyValue: item.KeyValue, VariableName: item.Name, ReportingFrequency: item.ReportingFrequency,
+		})
+	}
+	for index, name := range []string{
+		"Zone Air Heat Balance Internal Convective Heat Gain Rate", "Zone Air Heat Balance Surface Convection Rate",
+		"Zone Air Heat Balance Interzone Air Transfer Rate", "Zone Air Heat Balance Outdoor Air Transfer Rate",
+		"Zone Air Heat Balance System Air Transfer Rate", "Zone Air Heat Balance System Convective Heat Gain Rate",
+		"Zone Air Heat Balance Air Energy Storage Rate", "Zone Air Heat Balance Deviation Rate",
+	} {
+		result.HeatFlow.Categories[index].VariableName = name
+		result.PurposeRunPlan.OutputObjects = append(result.PurposeRunPlan.OutputObjects, simulation.PurposeOutputObject{
+			ObjectType: "Output:Variable", PurposeIDs: []simulation.SimulationPurposeID{simulation.SimulationPurposeZoneHeatFlow}, KeyValue: "OFFICE", VariableName: name, ReportingFrequency: "Hourly",
+		})
 	}
 	bundle := simulation.BuildPurposeResultBundle(&result, request)
 	result.PurposeResults = &bundle
@@ -152,6 +204,9 @@ func simulationPurposeResultsBrowserFixture(runID, inputPath string, request sim
 }
 
 const simulationPurposeResultsHVACInput = `Version,25.1;
+GlobalGeometryRules,UpperLeftCorner,Counterclockwise,World;
+Zone,OFFICE;
+BuildingSurface:Detailed,OFFICE FLOOR,Floor,FLOOR CONSTRUCTION,OFFICE,,Ground,,NoSun,NoWind,1,4,0,0,0,10,0,0,10,5,0,0,5,0;
 AirLoopHVAC,SUPPLY LOOP,,,Autosize,SUPPLY BRANCHES,,SUPPLY INLET,SUPPLY RETURN,SUPPLY DEMAND,SUPPLY OUTLET;
 BranchList,SUPPLY BRANCHES,SUPPLY BRANCH;
 Branch,SUPPLY BRANCH,,Fan:ConstantVolume,SUPPLY FAN,SUPPLY INLET,SUPPLY OUTLET;
@@ -318,18 +373,62 @@ try{
  check(comfortChart('humidity')?.querySelectorAll('[data-hvac-chart-series]').length===1&&comfortValue('relativeHumidity')===50,'Comfort RH graph or indicator lost the returned samples');
  check(temperature?.querySelector('[data-hvac-chart-axis="x"]')&&temperature?.querySelector('[data-hvac-chart-axis="left"]')&&temperature?.querySelector('.hvac-chart-grid'),'Comfort graph is missing time/value axes or grid');
  check(!comfort.querySelector('table, dl, [data-semantic-id], [data-semantic-ref], [data-hvac-graph-key]')&&!['Source data','Related model entities','eplusout.sql','Zone Mean Air Temperature'].some(label=>comfort.textContent.includes(label)),'Comfort still exposes tables, raw source descriptions or navigation links');
+ const {prepareSimulationComparison}=await import('/src/js/simulation-comparison-data.js'),{energyPathSeriesID}=await import('/src/js/energy-path-navigation.js');
+ const comparison=view=>document.querySelector('[data-simulation-comparison-host="'+view+'"]');
+ const comparisonChange=(view,selector,value)=>{const input=comparison(view)?.querySelector(selector);if(!input)throw Error('missing comparison control '+view+' '+selector);input.value=value;input.dispatchEvent(new Event('change',{bubbles:true}));};
+ const comparisonEntries=view=>prepareSimulationComparison(state.simulationResult,view,state).entities.flatMap(entity=>entity.properties.map(property=>({entity,property})));
+ const comparisonChoice=(view,row,entry)=>{
+  check(Boolean(entry),'missing source-exact comparison property '+view);if(!entry)return;
+  const entitySelector='[data-simulation-comparison-entity="'+row+'"]',propertySelector='[data-simulation-comparison-property="'+row+'"]',categorySelector='[data-simulation-comparison-category="'+row+'"]';
+  const hasEntity=()=>[...(comparison(view)?.querySelector(entitySelector)?.options||[])].some(option=>option.value===entry.entity.id);
+  if(!hasEntity())for(const category of [...(comparison(view)?.querySelector(categorySelector)?.options||[])].filter(option=>!option.disabled).map(option=>option.value)){comparisonChange(view,categorySelector,category);if(hasEntity())break;}
+  check(hasEntity(),'comparison category lost related entity '+entry.entity.name);comparisonChange(view,entitySelector,entry.entity.id);comparisonChange(view,propertySelector,entry.property.id);
+  check(state.simulationComparisons[view].rows[row]?.entity===entry.entity.id&&state.simulationComparisons[view].rows[row]?.property===entry.property.id,'native comparison selection did not retain exact entity/property '+view);
+ };
+ const nativeEntry=(view,name)=>{const source=state.simulationResult.series.find(series=>series.name===name),id=source&&energyPathSeriesID(source),matches=comparisonEntries(view).filter(entry=>entry.property.seriesId===id||Boolean(source?.sourceId)&&entry.property.seriesId===source.sourceId);check(matches.length===1,'comparison source must resolve exactly once '+view+' '+name);return matches[0];};
+ const drawnComparison=trace=>{const svg=trace.closest('svg[data-hvac-chart-domain-low]'),axis=svg.querySelector('[data-hvac-chart-axis="'+trace.dataset.hvacChartSeriesAxis+'"]'),cursor=svg.querySelector('[data-hvac-chart-frame]'),low=Number(axis.dataset.hvacChartYLow),high=Number(axis.dataset.hvacChartYHigh),top=Number(cursor.getAttribute('y1')),bottom=Number(cursor.getAttribute('y2'));return [...(trace.querySelector('path.hvac-chart-line')?.getAttribute('d')||'').matchAll(/([ML])([^,\s]+),([^\s]+)/g)].map(match=>({command:match[1],value:high-(Number(match[3])-top)/(bottom-top)*(high-low)}));};
+ const valuesEqual=(points,values)=>points.length===values.length&&points.every((point,index)=>Math.abs(point.value-values[index])<1e-7);
+ check(!tab('series')&&!document.querySelector('[data-simulation-result-view="series"]'),'Run & Inspect retained the removed standalone Series view');
+ check(comparison('comfort')===comfort.lastElementChild&&comfort.querySelector('[data-comfort-inspect-chart="temperature"]'),'Comfort comparison did not follow the existing purpose charts');
+ comparisonChoice('comfort',0,nativeEntry('comfort','Zone Mean Air Temperature'));comparisonChoice('comfort',1,nativeEntry('comfort','Site Outdoor Air Drybulb Temperature'));
+ comparisonChange('comfort','[data-simulation-comparison-mode]','scatter');
+ const comfortScatter=comparison('comfort').querySelector('[data-hvac-chart-scatter]');
+ check(comfortScatter?.querySelectorAll('circle').length===3&&[22,24,26].every((value,index)=>comfortScatter.querySelector('[data-hvac-chart-x-value="'+value+'"][data-hvac-chart-y-value="'+[-5,0,8][index]+'"]')),'Comfort scatter did not pair complete exact indoor/outdoor observations, including negative and zero temperature');
+ comparisonChange('comfort','[data-simulation-comparison-mode]','line');
+ const comfortLines=[...comparison('comfort').querySelectorAll('[data-hvac-chart-series]')];
+ check(comfortLines.length===2&&!comparison('comfort').querySelector('circle')&&comfortLines.some(trace=>valuesEqual(drawnComparison(trace),[22,24,26]))&&comfortLines.some(trace=>valuesEqual(drawnComparison(trace),[-5,0,8])),'Comfort line comparison omitted native values or restored point markers');
+ const comparisonLegend=comparison('comfort').querySelector('[data-hvac-chart-legend]');comparisonLegend?.dispatchEvent(new MouseEvent('pointerover',{bubbles:true}));
+ check(comparison('comfort').querySelectorAll('[data-hvac-chart-series].is-highlighted').length===1&&comparison('comfort').querySelectorAll('[data-hvac-chart-series].is-muted').length===1,'comparison legend hover did not highlight only its matching trace');comparisonLegend?.dispatchEvent(new MouseEvent('pointerout',{bubbles:true}));
+ const chooseComfortScope=value=>{const input=comfort.querySelector('[data-comfort-inspect-zone]');input.value=value;input.dispatchEvent(new Event('change',{bubbles:true}));};
+ chooseComfortScope('__building__');
+ check(comparisonEntries('comfort').every(entry=>entry.entity.category==='environment'||entry.entity.name==='Building'),'Building comparison fabricated a facility result from another zone or exposed an unrelated zone target');
+ check(state.simulationComparisons.comfort.rows.every(row=>!row.entity||prepareSimulationComparison(state.simulationResult,'comfort',state).entities.some(entity=>entity.id===row.entity)),'Building comparison retained an unavailable previous zone target');
+ chooseComfortScope('OFFICE');comparisonChoice('comfort',0,nativeEntry('comfort','Zone Mean Air Temperature'));comparisonChoice('comfort',1,nativeEntry('comfort','Site Outdoor Air Drybulb Temperature'));
+ const comfortComparisonRows=JSON.stringify(state.simulationComparisons.comfort.rows);
+ tab('zone_heat_flow').click();await tick();const heatFlow=document.getElementById('simulationHeatFlow');
+ check(comparison('zone_heat_flow')===heatFlow.lastElementChild,'Heat Flow comparison did not follow the existing ledger and history');
+ const gains=comparisonEntries('zone_heat_flow').filter(entry=>entry.property.label==='Internal convective gains');check(gains.length===1,'Heat Flow comparison duplicated or omitted the selected zone heat-gain variable');
+ comparisonChoice('zone_heat_flow',0,gains[0]);comparisonChoice('zone_heat_flow',1,nativeEntry('zone_heat_flow','Site Outdoor Air Drybulb Temperature'));
+ const heatFlowLines=[...comparison('zone_heat_flow').querySelectorAll('[data-hvac-chart-series]')],gainsLine=heatFlowLines.find(trace=>valuesEqual(drawnComparison(trace),[0,2]));
+ check(heatFlowLines.length===2&&gainsLine&&drawnComparison(gainsLine).filter(point=>point.command==='M').length===2&&heatFlowLines.some(trace=>valuesEqual(drawnComparison(trace),[-5,0,8]))&&!comparison('zone_heat_flow').querySelector('circle'),'Heat Flow comparison lost W-to-kW scaling, known zero, observed-mask gap or exact environmental values');
+ const heatRows=state.simulationComparisons.zone_heat_flow.rows.length;comparison('zone_heat_flow').querySelector('[data-simulation-comparison-add]')?.click();
+ check(state.simulationComparisons.zone_heat_flow.rows.length===heatRows+1,'one native Add click did not add exactly one comparison row');comparison('zone_heat_flow').querySelector('[data-simulation-comparison-remove="'+heatRows+'"]')?.click();check(state.simulationComparisons.zone_heat_flow.rows.length===heatRows,'native Remove did not remove exactly its comparison row');
+ const heatSVG=comparison('zone_heat_flow').querySelector('svg'),heatCursor=heatSVG?.querySelector('[data-hvac-chart-frame]'),heatFrame=document.getElementById('simulationHeatFlowSlider');heatFrame.value='2';heatFrame.dispatchEvent(new Event('input',{bubbles:true}));
+ check(comparison('zone_heat_flow').querySelector('svg')===heatSVG&&heatCursor&&Math.abs(Number(heatCursor.getAttribute('x1'))-(Number(heatSVG.dataset.hvacChartPlotLeft)+Number(heatSVG.dataset.hvacChartPlotWidth)))<1e-7,'Heat Flow frame did not move the current-time cursor without rebuilding its comparison chart');
+ tab('comfort').click();await tick();check(JSON.stringify(state.simulationComparisons.comfort.rows)===comfortComparisonRows&&comparison('comfort').querySelectorAll('[data-hvac-chart-series]').length===2,'switching purpose tabs lost Comfort comparison choices or mixed Heat Flow selections');
  check(JSON.stringify(state.simulationResult)===installedJSON,'Comfort zone/line rendering mutated exact returned metric metadata or observations');
  check(JSON.stringify(original)===originalJSON,"Run or purpose tabs mutated previous result");
  const capture=new URLSearchParams(location.search).get('capture');
  if(capture){
-  tab('hvac_loops').click();chooseLoop('SUPPLY LOOP');
+  if(capture==='comparison'){tab('comfort').click();comparison('comfort').scrollIntoView({block:'center'});}
+  else {tab('hvac_loops').click();chooseLoop('SUPPLY LOOP');
   if(capture==='graphs'){
    change('[data-hvac-inspect-mode]','line');chooseEntity(0,'SUPPLY FAN');chooseProperty(0,'Electric power');chooseEntity(1,'SUPPLY OUTLET');chooseProperty(1,'Temperature');
    hvac.querySelector('[data-hvac-inspect-custom-chart]').scrollIntoView({block:'end'});
-  }else hvac.querySelector('[data-simulation-hvac-loop]').scrollIntoView({block:'start'});
+  }else hvac.querySelector('[data-simulation-hvac-loop]').scrollIntoView({block:'start'});}
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
  }
- evidence.push("Native purpose checkboxes preserve all four purposes in one SQL-first Run & Inspect request. Production Go builder returns two executed loop topologies with exact membership. Native loop/frame/node/custom property controls render clean topology, exact inline temperature/setpoint comparisons, status and three node graphs; frame changes retain slider and trace SVG; yyaxes and exactly-two-property scatter use observed values. The timestamp is shared across loops while graph type, node selections/toggles and custom properties remain loop-local. Comfort zone controls show reported T/Tset/RH graphs and indicators without tables or source links.");
+ evidence.push("Native purpose checkboxes preserve all four purposes in one SQL-first Run & Inspect request. Production Go builder returns two executed loop topologies with exact membership. Native loop/frame/node/custom property controls render clean topology, exact inline temperature/setpoint comparisons, status and three node graphs; frame changes retain slider and trace SVG; yyaxes and exactly-two-property scatter use observed values. The timestamp is shared across loops while graph type, node selections/toggles and custom properties remain loop-local. Comfort retains its T/Tset/RH charts and adds exact indoor/outdoor line/scatter comparison at the bottom. Heat Flow comparison preserves its observed mask, kW scaling, known zero, separate purpose choices and shared-frame cursor without rebuilding the SVG.");
 }catch(error){failures.push(error.stack||String(error));}
 document.body.dataset.purposeResultsStatus=failures.length?"failed":"passed";
 document.getElementById("purpose-results-evidence").textContent=JSON.stringify({failures,evidence});

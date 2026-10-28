@@ -347,6 +347,9 @@ func assertEnergyPathMonthlyHourlyRequestPairs(t *testing.T, plan PurposeRunPlan
 	directional := map[string]PurposeOutputObject{}
 	nativeFanPools := map[string]bool{}
 	for _, output := range plan.OutputObjects {
+		if assertEnvironmentPlotOutput(t, output) {
+			continue
+		}
 		if !purposeObjectIsSeries(output.ObjectType) {
 			continue
 		}

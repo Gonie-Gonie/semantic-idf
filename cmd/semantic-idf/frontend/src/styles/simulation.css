@@ -632,14 +632,6 @@
   display: none;
 }
 
-.simulation-pane.preview #simulationSeriesSelect {
-  display: none;
-}
-
-.simulation-pane:not(.preview) #simulationSeriesStats {
-  display: none;
-}
-
 .simulation-progress-card.running {
   border-color: color-mix(in srgb, var(--teal) 42%, var(--line));
   background: color-mix(in srgb, var(--teal) 6%, var(--surface));
@@ -4281,201 +4273,37 @@
   background: linear-gradient(90deg, var(--teal), var(--green));
 }
 
-.simulation-chart {
-  min-height: 280px;
-  overflow-x: auto;
-}
+.simulation-output-message:empty { display: none; }
 
-.simulation-series-workspace {
-  display: grid;
-  gap: 12px;
-  overflow: visible;
-}
+[data-simulation-comparison-host] { min-width: 0; }
 
-.simulation-series-panel {
+.simulation-comparison {
   min-width: 0;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  container-type: inline-size;
 }
 
-.simulation-series-panel-actions,
-.simulation-series-variable-list,
-.simulation-series-variable-row,
-.simulation-series-legend {
-  display: flex;
-  align-items: center;
-  gap: 7px;
+.simulation-comparison h4 { margin: 0; font-size: 15px; }
+
+.simulation-comparison .hvac-inspection-custom-row {
+  grid-template-columns: 24px minmax(100px, .7fr) minmax(130px, 1fr) minmax(170px, 1.4fr) 32px;
 }
 
-.simulation-series-panel-actions .viewport-icon-button,
-.simulation-series-variable-row .viewport-icon-button {
-  flex: 0 0 26px;
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
-  min-height: 26px;
-  padding: 0;
-  border-radius: 5px;
-  background: var(--control);
-  background-image: none;
-  font-size: 14px;
-  line-height: 1;
-}
+.simulation-comparison [data-simulation-comparison-chart] { margin-top: 14px; }
 
-.simulation-series-variable-row select {
-  min-height: 28px;
-  padding-block: 2px;
-  background-image: none;
-}
-
-.simulation-series-variable-list {
-  align-items: stretch;
-  flex-direction: column;
-  margin-bottom: 8px;
-}
-
-.simulation-series-variable-row select {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.simulation-series-legend {
-  flex-wrap: wrap;
-  min-height: 26px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.simulation-series-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.simulation-series-legend i {
-  width: 16px;
-  height: 3px;
-  border-radius: 999px;
+@container (max-width: 700px) {
+  .simulation-comparison .hvac-inspection-custom-row { grid-template-columns: 24px minmax(120px, 1fr) 32px; }
+  .simulation-comparison .hvac-inspection-custom-row label { grid-column: 2; }
+  .simulation-comparison .hvac-inspection-custom-row > span { grid-column: 1; grid-row: 1; }
+  .simulation-comparison .hvac-inspection-custom-row > button { grid-column: 3; grid-row: 1; }
 }
 
 .simulation-axis-title {
   fill: var(--muted);
   font-size: var(--graph-font-size, 12px);
   font-weight: 600;
-}
-
-#simulationSeriesSelect {
-  max-width: min(520px, 48vw);
-}
-
-.simulation-series-controls {
-  display: grid;
-  grid-template-columns: auto minmax(240px, 1fr) minmax(180px, auto);
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.simulation-series-controls button {
-  min-height: 30px;
-  padding-inline: 10px;
-  font-size: 12px;
-}
-
-.simulation-series-range {
-  --series-range-start: 0%;
-  --series-range-end: 100%;
-  position: relative;
-  min-width: 0;
-  height: 30px;
-}
-
-.simulation-series-range::before,
-.simulation-series-range::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  height: 6px;
-  border-radius: 999px;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.simulation-series-range::before {
-  inset-inline: 0;
-  background: var(--control);
-  border: 1px solid var(--line);
-}
-
-.simulation-series-range::after {
-  left: var(--series-range-start);
-  right: calc(100% - var(--series-range-end));
-  background: var(--teal);
-}
-
-.simulation-series-range input[type="range"] {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 30px;
-  margin: 0;
-  padding: 0;
-  background: transparent;
-  pointer-events: none;
-  appearance: none;
-}
-
-.simulation-series-range input[type="range"]::-webkit-slider-runnable-track {
-  height: 6px;
-  background: transparent;
-}
-
-.simulation-series-range input[type="range"]::-webkit-slider-thumb {
-  width: 16px;
-  height: 16px;
-  margin-top: -5px;
-  border: 2px solid var(--surface);
-  border-radius: 50%;
-  background: var(--focus);
-  box-shadow: 0 0 0 1px var(--line);
-  pointer-events: auto;
-  appearance: none;
-  cursor: ew-resize;
-}
-
-.simulation-series-range input[type="range"]::-moz-range-track {
-  height: 6px;
-  background: transparent;
-}
-
-.simulation-series-range input[type="range"]::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--surface);
-  border-radius: 50%;
-  background: var(--focus);
-  box-shadow: 0 0 0 1px var(--line);
-  pointer-events: auto;
-  cursor: ew-resize;
-}
-
-.simulation-series-controls input[type="range"] {
-  min-width: 96px;
-}
-
-.simulation-series-controls output {
-  overflow: hidden;
-  min-height: 30px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface-2);
-  color: var(--text);
-  padding: 6px 8px;
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .simulation-svg {
@@ -5000,11 +4828,6 @@
   cursor: crosshair;
 }
 
-.simulation-chart-hit {
-  fill: transparent;
-  cursor: ew-resize;
-}
-
 .heatflow-tooltip {
   position: absolute;
   z-index: 6;
@@ -5049,11 +4872,7 @@
   }
 
   .simulation-heatflow-controls,
-  .simulation-series-controls {
-    grid-template-columns: 1fr;
-  }
-
-  .heatflow-inspector {
+.heatflow-inspector {
     position: static;
     border-left: 0;
     border-top: 1px solid var(--line);

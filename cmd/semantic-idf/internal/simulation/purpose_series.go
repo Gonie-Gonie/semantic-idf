@@ -10,9 +10,42 @@ import (
 // when EnergyPlus registers it after the preview columns.
 type purposeSeriesSelection map[string]map[string]bool
 
+func simulationEnvironmentPlotVariables() []string {
+	return []string{
+		"Site Outdoor Air Drybulb Temperature",
+		"Site Outdoor Air Wetbulb Temperature",
+		"Site Outdoor Air Relative Humidity",
+		"Site Outdoor Air Barometric Pressure",
+		"Site Direct Solar Radiation Rate per Area",
+		"Site Diffuse Solar Radiation Rate per Area",
+		"Site Wind Speed",
+		"Site Wind Direction",
+	}
+}
+
+func environmentPlotPurpose(purpose SimulationPurposeID) bool {
+	return purpose == SimulationPurposeBasicEnergy || purpose == SimulationPurposeZoneHeatFlow || purpose == SimulationPurposeComfort
+}
+
+func purposeHasEnvironmentPlots(purposes []SimulationPurposeID) bool {
+	for _, purpose := range purposes {
+		if environmentPlotPurpose(purpose) {
+			return true
+		}
+	}
+	return false
+}
+
 func newPurposeSeriesSelection(plan PurposeRunPlan) purposeSeriesSelection {
 	selection := purposeSeriesSelection{}
 	variables := []string{}
+	environmentVariables := map[string]bool{}
+	if purposeHasEnvironmentPlots(plan.Purposes) {
+		for _, variable := range simulationEnvironmentPlotVariables() {
+			variables = append(variables, variable)
+			environmentVariables[normalizePurposeToken(variable)] = true
+		}
+	}
 	if purposeIDsContain(plan.Purposes, SimulationPurposeHVACLoopCheck) {
 		variables = append(variables, hvacLoopCheckNodeVariables()...)
 		variables = append(variables, hvacLoopCheckComponentVariableNames()...)
@@ -51,6 +84,9 @@ func newPurposeSeriesSelection(plan PurposeRunPlan) purposeSeriesSelection {
 					}
 				}
 			}
+			if environmentVariables[name] {
+				keys[normalizePurposeToken("Environment")] = true
+			}
 			if len(keys) == 0 {
 				keys["*"] = true
 			}
@@ -66,7 +102,7 @@ func (selection purposeSeriesSelection) matches(keyValue, variableName string) b
 }
 
 func newPurposePlotSeriesSelection(plan PurposeRunPlan) purposeSeriesSelection {
-	if !purposeIDsContain(plan.Purposes, SimulationPurposeHVACLoopCheck) && !purposeIDsContain(plan.Purposes, SimulationPurposeComfort) {
+	if !purposeIDsContain(plan.Purposes, SimulationPurposeHVACLoopCheck) && !purposeHasEnvironmentPlots(plan.Purposes) {
 		return nil
 	}
 	return newPurposeSeriesSelection(plan)

@@ -50,7 +50,7 @@ func TestEnergyPathDistrictPlanKeepsMonthlyLedgerAndAddsHourlyCharts(t *testing.
 			}
 			assertEnergyPathMonthlyHourlyRequestPairs(t, plan)
 			counts, monthlyCounts, hourlyCounts := map[string]int{}, map[string]int{}, map[string]int{}
-			boundaryCount, diagnosticsCount, directionalCount := 0, 0, 0
+			boundaryCount, diagnosticsCount, directionalCount, environmentCount := 0, 0, 0, 0
 			meters, signatures := map[string]bool{}, map[string]bool{}
 			for _, output := range plan.OutputObjects {
 				if signatures[output.Signature] || output.Signature == "" {
@@ -96,6 +96,11 @@ func TestEnergyPathDistrictPlanKeepsMonthlyLedgerAndAddsHourlyCharts(t *testing.
 				if thermalInput {
 					continue // Native Daily/Monthly context is checked by the shared helper.
 				}
+				if assertEnvironmentPlotOutput(t, output) {
+					environmentCount++
+					counts[output.ObjectType]-- // Compare the original accounting roster separately.
+					continue
+				}
 				switch output.ReportingFrequency {
 				case "Monthly":
 					monthlyCounts[output.ObjectType]++
@@ -139,8 +144,8 @@ func TestEnergyPathDistrictPlanKeepsMonthlyLedgerAndAddsHourlyCharts(t *testing.
 				wantSeries := map[string]int{"Output:Meter": 15, "Output:Variable": 952}
 				wantCounts := map[string]int{"Output:Meter": 30, "Output:Variable": 1904, "Output:SQLite": 1, "Output:VariableDictionary": 1}
 				if !reflect.DeepEqual(monthlyCounts, wantSeries) || !reflect.DeepEqual(hourlyCounts, wantSeries) ||
-					len(plan.OutputObjects) != 1936+boundaryCount+diagnosticsCount+directionalCount || !reflect.DeepEqual(counts, wantCounts) || boundaryCount == 0 || diagnosticsCount != 1 || directionalCount == 0 {
-					t.Fatalf("District must keep 967 Monthly/Hourly pairs plus native boundary/directional context: total=%d / %v; Monthly=%v Hourly=%v; boundary=%d diagnostics=%d directional=%d", len(plan.OutputObjects), counts, monthlyCounts, hourlyCounts, boundaryCount, diagnosticsCount, directionalCount)
+					len(plan.OutputObjects) != 1936+boundaryCount+diagnosticsCount+directionalCount+environmentCount || !reflect.DeepEqual(counts, wantCounts) || boundaryCount == 0 || diagnosticsCount != 1 || directionalCount == 0 || environmentCount != len(simulationEnvironmentPlotVariables()) {
+					t.Fatalf("District must keep 967 Monthly/Hourly pairs plus native boundary/directional context and shared environment: total=%d / %v; Monthly=%v Hourly=%v; boundary=%d diagnostics=%d directional=%d environment=%d", len(plan.OutputObjects), counts, monthlyCounts, hourlyCounts, boundaryCount, diagnosticsCount, directionalCount, environmentCount)
 				}
 			}
 			for _, name := range []string{"Zone Air System Sensible Cooling Energy", "Zone Air System Sensible Heating Energy"} {

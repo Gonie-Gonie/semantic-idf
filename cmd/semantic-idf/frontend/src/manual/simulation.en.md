@@ -97,6 +97,12 @@ The energy plan keeps Monthly accounting observations and requests native
 Hourly observations for component charts. A purpose can reuse a matching
 request from another purpose. Existing requests retain their frequency.
 
+Basic Energy, Zone Heat Flow, and Comfort share Hourly environmental outputs:
+outdoor dry-bulb and wet-bulb temperature, relative humidity, barometric pressure,
+direct and diffuse solar radiation per area, wind speed, and wind direction.
+These observations are available in each view's comparison plot. Their output
+requests are shared between purposes rather than repeated for each view.
+
 Monthly energy is an interval total, not a value for the last hour of a month.
 A Run Period total remains a run total even if its SQL row is attached to the
 final month's time record.
@@ -118,7 +124,7 @@ The reading preference is SQL, then CSV, then ESO.
 | ERR | Engine warnings, Severe/Fatal issues, and completion evidence. | Messages explain the run; they are not energy measurements. |
 
 Sections can have different available sources. A failed or absent Heat Flow
-section does not erase successfully read Series, and conversely. Inspect the
+section does not erase successfully read time-series observations, and conversely. Inspect the
 source and completeness of the section you are using.
 
 A fallback can restore an unavailable section, but it does not authorize
@@ -141,10 +147,10 @@ Some aggregate SQL rows have a NULL warmup flag. NULL alone does not make a
 valid Monthly or Run Period observation a warmup row. Interpretation also
 depends on reporting frequency and environment metadata.
 
-Generic Series are a preview: SQL is limited to 256 columns, CSV to 16, and
-long previews can be sampled. Requested HVAC/Comfort observations and Energy
-Path source traces are read separately beyond those preview limits.
-A small preview does not prove the original run has few observations.
+Requested HVAC/Comfort observations and Energy Path source traces retain their
+reported observations beyond generic source-preview limits. A graph can reduce
+its drawing geometry for a long run while preserving source extrema and gaps;
+this does not change the stored observations or create a finer reporting cadence.
 
 Heat Flow preserves every source frame from SQL, CSV or ESO, including a
 timestamp whose selected values are all unavailable. Missing timestamps are
@@ -453,6 +459,26 @@ evidence, not operating states.
 
 Required output gaps and invalid definitions are explicit diagnostic errors,
 with source evidence available on the error indicator.
+
+## Compare variables {#comparison-plots}
+
+Energy Path, Heat-Flow Ledger, and Comfort each place a variable-comparison
+plot at the bottom of the result view. Use the selected view's related variables
+and reported environmental inputs, such as outdoor temperature, to compare the
+same run without opening a separate Series tab. The existing diagrams and
+purpose-specific charts remain above the comparison plot.
+
+Energy Path follows the current Scope and Period. Heat-Flow Ledger follows its
+zone and visible time range, with the current frame shown on the plot. Comfort
+follows the selected zone or Building. Environmental observations describe the
+shared run conditions rather than a fabricated per-zone weather series.
+
+Choose a target and property for each trace. Line plots use up to eight
+ordinary lines without point markers and support up to two units on separate axes.
+Scatter plots use exactly two properties as X and Y. Only matching observation
+times can form a pair; values are not interpolated, carried forward, or replaced
+with zero to fill a gap. A shared timestamp does not make an hourly average and
+a timestep value the same reporting interval.
 
 ## HVAC time-series and scatter {#hvac-charts}
 

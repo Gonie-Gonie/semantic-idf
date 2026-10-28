@@ -36,6 +36,8 @@ import { renderHVACInspection, handleHVACInspectionEvent, connectHVACInspection,
 import { handleHVACChartLegendEvent } from "../hvac-inspection-charts.js";
 import { handleHVACAvailabilityLegendEvent } from "./hvac-runtime-view.js";
 import { renderComfortInspection, handleComfortInspectionEvent, renderComfortInspectionReport } from "./comfort-inspection-view.js";
+import { prepareSimulationComparison, selectedSimulationComparisonSeriesIDs } from "../simulation-comparison-data.js";
+import { renderSimulationComparison, handleSimulationComparisonEvent, updateSimulationComparisonFrame } from "./simulation-comparison-view.js";
 import { decodeSimulationResultTransfer, simulationResultTransferMediaType } from "../simulation-result-transport.js";
 import { loadSimulationResultParts, simulationResultStore, simulationResultPartsMediaType, isPendingSimulationResource } from "../simulation-result-parts.js";
 import { createSimulationProgress, readSimulationJSONResponse } from "../simulation-progress.js";
@@ -56,7 +58,7 @@ const simulationProgressUI = createSimulationProgress({
   getCompletionLabel: () => simulationDoneMessage(state.simulationResult), getStatusLabel: statusText,
   onProgress: () => {
     updateSimulationControls();
-    const mini = elements.simulationChart?.querySelector(".simulation-running-empty .simulation-mini-progress");
+    const mini = elements.simulationOutputMessage?.querySelector(".simulation-running-empty .simulation-mini-progress");
     if (mini) mini.outerHTML = renderMiniProgressSVG();
   },
 });
@@ -68,9 +70,6 @@ let simulationEnvironmentRequest = null;
 let simulationNavigationCleanup = null;
 let simulationNavigationGeneration = 0;
 let simulationNavigationRevealTarget = null;
-let simulationSeriesPanels = [];
-let simulationSeriesPanelSequence = 1;
-let simulationSeriesPan = null;
 let heatFlowBrushStartFrame = null;
 let heatFlowSpatialObserver = null;
 let heatFlowSpatialObservedGrid = null;
@@ -96,14 +95,16 @@ function simulationResourceContext() {
   const scene = simulationEnergySceneSlot.peek();
   const graph = scene?.result === state.simulationResult && scene.resourcePrimary?.every((value, index) => value === state[simulationEnergyPrimaryKeys[index]]) ? scene.path.graph : null;
   const item = [...(graph?.nodes || []), ...(graph?.links || [])].find(candidate => candidate.id === state.simulationEnergySelection);
-  return { ...state, energySourceIDs: item?.sourceIds || [], seriesIDs: simulationSeriesPanels.flatMap(panel => panel.seriesIDs || []) };
+  const view = state.simulationActiveResultView || "energy";
+  return { ...state, energySourceIDs: item?.sourceIds || [], seriesIDs: ["energy", "zone_heat_flow", "comfort"].includes(view)
+    ? selectedSimulationComparisonSeriesIDs(state.simulationResult || {}, view, state.simulationComparisons?.[view] || {}, state) : [] };
 }
 
 function simulationResourceSelectionKey() {
   return JSON.stringify([state.simulationActiveResultView, ...simulationEnergyPrimaryKeys.map(key => state[key]),
     state.simulationEnergySelection, state.simulationEnergyChartFrequency, state.simulationEnergyDetailsOpen, simulationEnergyDrawer,
-    state.simulationHVACInspection?.selectedLoop, state.simulationComfortZone, state.simulationSelectedSeries,
-    simulationSeriesPanels, state.simulationHeatFlowSelectedZone, state.simulationHeatFlowStory,
+    state.simulationHVACInspection?.selectedLoop, state.simulationComfortZone, state.simulationComparisons,
+    state.simulationHeatFlowSelectedZone, state.simulationHeatFlowStory,
     state.simulationHeatFlowFrameIndex, state.simulationHeatFlowRangeStart, state.simulationHeatFlowRangeEnd]);
 }
 
@@ -166,13 +167,14 @@ function withSimulationResources(render, result = state.simulationResult, view =
       simulationEnergySceneSlot.clear();
       const focused = document.activeElement;
       const focusID = focused?.id;
-      const focusAttribute = focused && [...focused.attributes].find(attribute => /^(data-energy-path-chart-frequency|data-simulation-energy-|data-simulation-hvac-loop)/.test(attribute.name));
+      const focusComparisonView = focused?.closest?.("[data-simulation-comparison-host]")?.dataset.simulationComparisonHost;
+      const focusAttribute = focused && [...focused.attributes].find(attribute => /^(data-energy-path-chart-frequency|data-simulation-energy-|data-simulation-hvac-loop|data-simulation-comparison-(mode|category|entity|property))/.test(attribute.name));
       let output;
       try { output = invoke(); }
       finally { selection = simulationResourceSelectionKey(); }
       if (focused && !focused.isConnected) {
         const replacement = focusID ? document.getElementById(focusID) : focusAttribute
-          ? document.querySelector(`[${focusAttribute.name}="${CSS.escape(focusAttribute.value)}"]`) : null;
+          ? (focusComparisonView ? simulationComparisonHost(focusComparisonView) : document)?.querySelector(`[${focusAttribute.name}="${CSS.escape(focusAttribute.value)}"]`) : null;
         replacement?.focus({ preventScroll: true });
       }
       if (simulationResourceFocusRequest?.selection === selection) focusSimulationEnergyDetails(simulationResourceFocusRequest.options);
@@ -184,6 +186,50 @@ function withSimulationResources(render, result = state.simulationResult, view =
   simulationResourceRenderPending = task;
   task.catch(error => { if (current()) simulationResourceFailure(error); }).finally(() => { if (simulationResourceRenderPending === task) simulationResourceRenderPending = null; });
   return task;
+}
+
+function simulationComparisonUI(view) {
+  state.simulationComparisons ||= {};
+  return state.simulationComparisons[view] ||= {};
+}
+
+function simulationComparisonHost(view) {
+  return { energy: elements.simulationEnergyDashboard, zone_heat_flow: elements.simulationHeatFlow, comfort: elements.simulationComfortResults }[view];
+}
+
+function simulationComparisonMarkup(result, view) {
+  return `<div data-simulation-comparison-host="${view}">${renderSimulationComparison(result, view, simulationComparisonUI(view), state)}</div>`;
+}
+
+function renderSimulationComparisonHost(view) {
+  return withSimulationResources(() => {
+    const host = simulationComparisonHost(view)?.querySelector(`[data-simulation-comparison-host="${view}"]`);
+    if (host) host.innerHTML = renderSimulationComparison(state.simulationResult || {}, view, simulationComparisonUI(view), state);
+  }, state.simulationResult, view);
+}
+
+function handleSimulationComparisonInput(event, view) {
+  const control = event.target?.closest?.("[data-simulation-comparison-mode], [data-simulation-comparison-category], [data-simulation-comparison-entity], [data-simulation-comparison-property], [data-simulation-comparison-add], [data-simulation-comparison-remove]");
+  if (!control || !state.simulationResult) return;
+  const click = control.matches("[data-simulation-comparison-add], [data-simulation-comparison-remove]");
+  if (click ? event.type !== "click" : !["input", "change"].includes(event.type)) return;
+  const host = simulationComparisonHost(view);
+  if (!host?.contains(control)) return;
+  const focusAttribute = [...control.attributes].find(attribute => /^data-simulation-comparison-(mode|category|entity|property)$/.test(attribute.name));
+  simulationResourceIntentGeneration++;
+  try {
+    handleSimulationComparisonEvent(event, host, state.simulationResult, view, simulationComparisonUI(view), state);
+  } catch (error) {
+    if (!isPendingSimulationResource(error)) throw error;
+    // The UI intent was committed before drawing suspended. Redraw that state
+    // when its values arrive, rather than replaying an Add/Remove action.
+    error.ready.catch(() => {});
+    const result = state.simulationResult, intent = simulationResourceIntentGeneration;
+    Promise.resolve(renderSimulationComparisonHost(view)).then(() => {
+      if (state.simulationResult !== result || intent !== simulationResourceIntentGeneration || !focusAttribute) return;
+      simulationComparisonHost(view)?.querySelector(`[${focusAttribute.name}="${CSS.escape(focusAttribute.value)}"]`)?.focus({ preventScroll: true });
+    }).catch(simulationResourceFailure);
+  }
 }
 
 export function captureSimulationEnergyWorkspaceContext() {
@@ -228,7 +274,6 @@ const simulationHeatFlowDisclosureCache = new WeakMap();
 const simulationWeatherOptionsCache = new WeakMap();
 const simulationRunSetupContext = new WeakMap();
 const simulationEnergyPeriodIndexCache = new WeakMap();
-const simulationChartInteractionHosts = new WeakSet();
 const simulationHeatFlowInteractionHosts = new WeakSet();
 const EMPTY_SIMULATION_ITEMS = Object.freeze([]);
 const EMPTY_SIMULATION_SERIES_LOOKUP = Object.freeze({
@@ -717,12 +762,17 @@ export function initializeSimulationControls() {
   });
   elements.simulationComfortResults?.addEventListener("click", handleSimulationSeriesInspectClick);
   elements.simulationComfortResults?.addEventListener("change", handleSimulationComfortResultsChange);
-  bindSimulationChartInteractions();
+  for (const view of ["energy", "zone_heat_flow", "comfort"]) {
+    const host = simulationComparisonHost(view);
+    for (const type of ["click", "input", "change"]) host?.addEventListener(type, (event) => handleSimulationComparisonInput(event, view));
+    if (host && !hvacLegendHosts.has(host)) {
+      for (const type of ["pointerover", "pointerout", "focusin", "focusout"]) host.addEventListener(type, (event) => handleHVACChartLegendEvent(event, host));
+      hvacLegendHosts.add(host);
+    }
+  }
   bindHeatFlowInteractions();
   elements.simulationRunButton?.addEventListener("click", () => runCurrentSimulation({ silent: false }));
   elements.simulationWeatherSelect?.addEventListener("change", () => renderSimulation());
-  elements.simulationChart?.closest("[data-simulation-result-view='series']")?.addEventListener("click", handleSimulationSeriesWorkspaceClick);
-  elements.simulationChart?.addEventListener("change", handleSimulationSeriesWorkspaceChange);
   elements.simulationHeatFlowSlider?.addEventListener("input", () => {
     state.simulationHeatFlowFrameIndex = Number(elements.simulationHeatFlowSlider.value) || 0;
     normalizeHeatFlowFrameRange();
@@ -913,9 +963,12 @@ function simulationNavigationDestination(selection = {}, context = {}) {
     }
     const series = simulationSeriesForSelection(selection);
     if (series) {
+      const views = [...new Set([state.simulationActiveResultView, "energy", "zone_heat_flow", "comfort"])];
+      const view = views.find(candidate => ["energy", "zone_heat_flow", "comfort"].includes(candidate) && simulationComparisonSeriesMatch(series, candidate));
+      if (!view) return null;
       return {
-        resultView: "series",
-        selectedSeries: seriesID(series),
+        resultView: view,
+        comparisonSeriesId: seriesID(series),
         panelTargetID: `simulation:series:${seriesID(series)}`,
       };
     }
@@ -1054,8 +1107,9 @@ function applySimulationNavigationDestination(destination = {}) {
   if (destination.comfortZone) {
     state.simulationComfortZone = destination.comfortZone;
   }
-  if (destination.selectedSeries) {
-    state.simulationSelectedSeries = destination.selectedSeries;
+  if (destination.comparisonSeriesId) {
+    const source = findSimulationSeriesByID(destination.comparisonSeriesId);
+    if (source) setSimulationComparisonSeries(source, destination.resultView);
   }
   return renderSimulation();
 }
@@ -1065,6 +1119,7 @@ function findSimulationNavigationTarget(selection = {}, context = {}, destinatio
   if (!root) {
     return null;
   }
+  if (destination?.comparisonSeriesId) return simulationComparisonHost(destination.resultView)?.querySelector("[data-simulation-comparison-property]") || null;
   const items = [...root.querySelectorAll("[data-simulation-semantic-binding-id]")];
   const panelTargetID = String(destination?.panelTargetID || "");
   const panelTargetPrefix = String(destination?.panelTargetPrefix || "");
@@ -1179,11 +1234,7 @@ export function captureSimulationNavigationContext(context) {
     heatFlowRangeStart: Number(state.simulationHeatFlowRangeStart) || 0,
     heatFlowRangeEnd: Number.isFinite(Number(state.simulationHeatFlowRangeEnd)) ? Number(state.simulationHeatFlowRangeEnd) : -1,
     heatFlowInspectorCollapsed: Boolean(state.simulationHeatFlowInspectorCollapsed),
-    seriesGroup: state.simulationSeriesGroup || "all",
-    selectedSeries: state.simulationSelectedSeries || "",
-    seriesRangeStart: Number(state.simulationSeriesRangeStart) || 0,
-    seriesRangeEnd: Number.isFinite(Number(state.simulationSeriesRangeEnd)) ? Number(state.simulationSeriesRangeEnd) : -1,
-    seriesPanels: simulationSeriesPanels.map((panel) => ({ ...panel, seriesIDs: [...panel.seriesIDs] })),
+    comparisons: structuredClone(state.simulationComparisons || {}),
     energyScrollTop: Number(elements.simulationEnergyDashboard?.scrollTop) || 0,
     heatFlowScrollTop: Number(elements.simulationHeatFlow?.scrollTop) || 0,
     hvacScrollTop: Number(elements.simulationHVACLoopResults?.scrollTop) || 0,
@@ -1210,10 +1261,7 @@ export async function restoreSimulationNavigationContext(snapshot = {}, context)
     simulationHeatFlowRangeStart: snapshot.heatFlowRangeStart,
     simulationHeatFlowRangeEnd: snapshot.heatFlowRangeEnd,
     simulationHeatFlowInspectorCollapsed: snapshot.heatFlowInspectorCollapsed,
-    simulationSeriesGroup: snapshot.seriesGroup,
-    simulationSelectedSeries: snapshot.selectedSeries,
-    simulationSeriesRangeStart: snapshot.seriesRangeStart,
-    simulationSeriesRangeEnd: snapshot.seriesRangeEnd,
+    simulationComparisons: snapshot.comparisons ? structuredClone(snapshot.comparisons) : undefined,
   };
   for (const [key, value] of Object.entries(assignments)) {
     if (value !== undefined) {
@@ -1235,12 +1283,6 @@ export async function restoreSimulationNavigationContext(snapshot = {}, context)
   if (resourceStore) { if (await resourceStore.read(normalize) === false) return false; }
   else normalize();
   if (state.simulationResult !== result || generation !== simulationNavigationGeneration) return false;
-  if (Array.isArray(snapshot.seriesPanels)) {
-    simulationSeriesPanels = snapshot.seriesPanels.map((panel) => ({ ...panel, seriesIDs: [...(panel.seriesIDs || [])] }));
-    simulationSeriesPanelSequence = Math.max(simulationSeriesPanelSequence, ...simulationSeriesPanels.map((panel) => (Number(panel.id) || 0) + 1));
-  } else if (snapshot.selectedSeries) {
-    simulationSeriesPanels = [{ id: simulationSeriesPanelSequence++, seriesIDs: [snapshot.selectedSeries], start: Number(snapshot.seriesRangeStart) || 0, end: snapshot.seriesRangeEnd ?? -1 }];
-  }
   simulationNavigationRevealTarget = snapshot.navigationRevealTarget ? { ...snapshot.navigationRevealTarget } : null;
   if (await renderSimulation() === false || state.simulationResult !== result || generation !== simulationNavigationGeneration) return false;
   await context.genericRestoreContext(snapshot);
@@ -1294,8 +1336,6 @@ function simulationPreferredOccurrenceContexts() {
       return ["loop_occurrence", "component_occurrence", "system_definition"];
     case "comfort":
       return ["zone_profile", "zone_output", "definition"];
-    case "series":
-      return ["output_request", "zone_output"];
     case "energy":
       return state.simulationEnergyDetailsOpen
         ? ["output_request", "zone_output"]
@@ -1364,6 +1404,7 @@ function renderSimulationReady() {
     return;
   }
   const result = state.simulationResult;
+  if (elements.simulationOutputMessage) elements.simulationOutputMessage.innerHTML = "";
   const availability = simulationResultViewAvailability(result);
   ensureActiveSimulationResultView(result, availability);
   renderSimulationResultTabs(result, availability);
@@ -1421,10 +1462,6 @@ function renderActiveSimulationResultView(result) {
     case "comfort":
       renderSimulationComfort(result);
       break;
-    case "series":
-      renderSimulationSeriesSelect(result);
-      renderSimulationChart();
-      break;
     default:
       renderSimulationEnergyDashboard(result);
   }
@@ -1440,15 +1477,13 @@ function renderSimulationEmpty({ controlsReady = false, blockingIssue: preparedB
     updateSimulationControls(blockingIssue);
   }
   setSimulationPreviewMode(!state.simulationRunning);
-  renderSimulationSeriesRangeControls(null);
   const installCount = state.simulationEnvironment?.installations?.length || 0;
   const hasText = Boolean(getDocumentText().trim());
   if (state.simulationRunning) {
     setSimulationPreviewMode(false);
     renderSimulationResultTabs(null);
     renderSimulationHeatFlowEmpty(t("simulation.heatFlowAfterRun", {}, "The heat-flow ledger will appear when Zone Heat Flow SQL/CSV output is available."));
-    setSimulationSeriesGroupUnavailable();
-    elements.simulationChart.innerHTML = `<div class="simulation-running-empty">${renderMiniProgressSVG()}<span>${escapeHTML(t("simulation.graphAfterRun", {}, "Variables will appear when the run finishes."))}</span></div>`;
+    elements.simulationOutputMessage.innerHTML = `<div class="simulation-running-empty">${renderMiniProgressSVG()}<span>${escapeHTML(t("simulation.graphAfterRun", {}, "Variables will appear when the run finishes."))}</span></div>`;
     renderSimulationEnergyEmpty(t("simulation.outputPending", {}, "Results will appear after simulation and result processing finish."));
     renderSimulationHVACLoopEmpty(t("simulation.outputPending", {}, "Results will appear after simulation and result processing finish."));
     renderSimulationComfortEmpty(t("simulation.outputPending", {}, "Results will appear after simulation and result processing finish."));
@@ -1463,8 +1498,7 @@ function renderSimulationEmpty({ controlsReady = false, blockingIssue: preparedB
     elements.simulationPercent.textContent = "0%";
     elements.simulationProgressBar.style.width = "0%";
     renderSimulationHeatFlowEmpty(t("simulation.blockedGraph", {}, "Graph output is unavailable until the run can start."));
-    setSimulationSeriesGroupUnavailable();
-    elements.simulationChart.innerHTML = `<div class="simulation-blocked-empty">${escapeHTML(t("simulation.blockedGraph", {}, "Graph output is unavailable until the run can start."))}</div>`;
+    elements.simulationOutputMessage.innerHTML = `<div class="simulation-blocked-empty">${escapeHTML(t("simulation.blockedGraph", {}, "Graph output is unavailable until the run can start."))}</div>`;
     renderSimulationEnergyEmpty(t("simulation.outputBlocked", {}, "Run requirements must be fixed before outputs are available."));
     renderSimulationHVACLoopEmpty(t("simulation.outputBlocked", {}, "Run requirements must be fixed before outputs are available."));
     renderSimulationComfortEmpty(t("simulation.outputBlocked", {}, "Run requirements must be fixed before outputs are available."));
@@ -1485,8 +1519,7 @@ function renderSimulationEmpty({ controlsReady = false, blockingIssue: preparedB
   renderSimulationHVACLoopEmpty(t("simulation.noHVACLoopResult", {}, "Run HVAC Loop Check to inspect node state series."));
   renderSimulationComfortEmpty(t("simulation.noComfortResult", {}, "Run Comfort Check to inspect zone temperature and setpoint series."));
   renderSimulationHeatFlowEmpty(t("simulation.noHeatFlow", {}, "Select Zone Heat Flow to inspect the zone heat-flow ledger."));
-  setSimulationSeriesGroupUnavailable();
-  elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "Variables will appear after a run with numeric output.")}</div>`;
+  elements.simulationOutputMessage.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "Variables will appear after a run with numeric output.")}</div>`;
   toggleSimulationResultSections();
   updateSimulationOutputAvailability(null, false);
 }
@@ -1506,12 +1539,12 @@ function ensureActiveSimulationResultView(result, availability = simulationResul
   if (availability[state.simulationActiveResultView]) {
     return;
   }
-  state.simulationActiveResultView = ["energy", "zone_heat_flow", "hvac_loops", "comfort", "series"].find((view) => availability[view]) || "energy";
+  state.simulationActiveResultView = ["energy", "zone_heat_flow", "hvac_loops", "comfort"].find((view) => availability[view]) || "energy";
 }
 
 function simulationResultViewAvailability(result) {
   if (!result) {
-    return { energy: true, zone_heat_flow: true, hvac_loops: true, comfort: true, series: true };
+    return { energy: true, zone_heat_flow: true, hvac_loops: true, comfort: true };
   }
   const energy = result.purposeResults?.energy || {};
   const energyExplanation = result.purposeResults?.energyExplanation || {};
@@ -1528,7 +1561,6 @@ function simulationResultViewAvailability(result) {
     zone_heat_flow: Boolean((heatFlow.zones || []).length),
     hvac_loops: Boolean(hvacLoops.some((loop) => (loop.series || []).length || hvacComponentSeriesCount(loop.components || []) || loop.operatingProfiles?.length)),
     comfort: Boolean((comfort.zones || []).length || (comfort.series || []).length),
-    series: Boolean((result.series || []).length),
   };
 }
 
@@ -1660,12 +1692,13 @@ function renderSimulationEnergyDashboardReady(result) {
   if (useEnergyPathV2) validateSimulationEnergyResultContext(explanation, explanationGraph);
   if (!facility.length && !endUse.length && !zones.length && !explanationNodes.length && !(useEnergyPathV2 && energyPathHasPayload(explanation))) {
     renderSimulationEnergyEmpty(t("simulation.noEnergyResult", {}, "Run Basic Energy to inspect monthly energy results."));
+    elements.simulationEnergyDashboard?.insertAdjacentHTML("beforeend", simulationComparisonMarkup(result, "energy"));
     return;
   }
   // Source counts belong to Data details, not the primary Energy reading path.
   if (elements.simulationEnergyStats) elements.simulationEnergyStats.textContent = "";
   if (useEnergyPathV2) {
-    elements.simulationEnergyDashboard.innerHTML = renderEnergyPathView(explanation, state, simulationEnergySceneOptions(scene));
+    elements.simulationEnergyDashboard.innerHTML = renderEnergyPathView(explanation, state, simulationEnergySceneOptions(scene)) + simulationComparisonMarkup(result, "energy");
     scene.inspectorContext = simulationEnergyInspectorContext(scene);
     pruneSimulationSemanticBindings();
     return;
@@ -1675,8 +1708,8 @@ function renderSimulationEnergyDashboardReady(result) {
   simulationEnergySceneSlot.clear();
   elements.simulationEnergyDashboard.innerHTML = `<div class="empty">${escapeHTML(t(
     "simulation.energyPathUpgradeUnavailable", {},
-    "Energy Path is unavailable for this result. Run Basic Energy to create it; available variables remain in Series.",
-  ))}</div>`;
+    "Energy Path is unavailable for this result. Available variables can be compared below.",
+  ))}</div>${simulationComparisonMarkup(result, "energy")}`;
   pruneSimulationSemanticBindings();
 }
 
@@ -1710,10 +1743,10 @@ export function simulationEnergyInspectorActions(node = {}, sourceDetails = [], 
     series, hvacPaths,
     seriesUnavailableReason: candidates.some((candidate) => candidate.status === "exact")
       ? period !== "annual"
-        ? t("simulation.energyPathSeriesPeriodUnavailable", {}, "No reliable reported Series data is available for the selected month.")
+        ? t("simulation.energyPathSeriesPeriodUnavailable", {}, "No reliable reported observations are available for the selected month.")
         : t("simulation.energyPathSeriesDataUnavailable", {}, "The matching series has no usable reported values for this period.")
       : candidates.length
-        ? t("simulation.energyPathSeriesAmbiguous", {}, "More than one reported series has this identity; choose a variable in Series.")
+        ? t("simulation.energyPathSeriesAmbiguous", {}, "More than one reported series has this identity; choose a variable in the comparison graph.")
         : t("simulation.energyPathSeriesUnavailable", {}, "No reported series can be matched exactly to these sources."),
     hvacUnavailableReason: t("simulation.energyPathHVACUnavailable", {}, "No explicit related HVAC service path is available for this item."),
   };
@@ -4165,6 +4198,7 @@ function renderSimulationComfortReady(result) {
   if (elements.simulationComfortStats) elements.simulationComfortStats.textContent = "";
   elements.simulationComfortResults.innerHTML = renderComfortInspection(result?.purposeResults?.comfort || {}, ui);
   state.simulationComfortZone = ui.selectedZone || "";
+  elements.simulationComfortResults.insertAdjacentHTML("beforeend", simulationComparisonMarkup(result, "comfort"));
 }
 
 function renderPurposeCompletenessRow(items) {
@@ -4540,39 +4574,6 @@ function simulationSeriesDisplayColumn(series = {}) {
   return series.displayColumn || series.column || "";
 }
 
-function simulationSeriesDisplayUnit(series = {}) {
-  series = safeSimulationSeries(series);
-  return series.displayUnit || seriesColumnUnit(simulationSeriesDisplayColumn(series));
-}
-
-function simulationSeriesPoints(series = {}) {
-  series = safeSimulationSeries(series);
-  return Array.isArray(series.displayPoints) && series.displayPoints.length === (series.points || []).length
-    ? series.displayPoints
-    : (series.points || []);
-}
-
-function simulationSeriesPointCount(series = {}) {
-  return simulationSeriesPoints(series).length;
-}
-
-function simulationSeriesPointAt(series = {}, frameIndex = 0) {
-  const points = simulationSeriesPoints(series);
-  if (!points.length) {
-    return null;
-  }
-  return points[Math.min(frameIndex, Math.max(0, points.length - 1))] || null;
-}
-
-function formatSeriesStat(series = {}, key = "average") {
-  series = safeSimulationSeries(series);
-  const displayKey = `display${key.slice(0, 1).toUpperCase()}${key.slice(1)}`;
-  const displayValue = Number(series[displayKey]);
-  const rawValue = Number(series[key]);
-  const value = Number.isFinite(displayValue) ? displayValue : rawValue;
-  return Number.isFinite(value) ? formatValueWithUnit(value, simulationSeriesDisplayUnit(series)) : "";
-}
-
 function sourceOutputForSeriesColumn(column) {
   return sourceOutputForVariable(seriesNodeKey(column), seriesVariableName(column));
 }
@@ -4797,13 +4798,13 @@ function renderSourceInspectorCell(object, seriesRef = {}) {
 }
 
 function renderSeriesInspectButton(seriesRef = {}) {
-  const series = seriesRef.series
-    || (seriesRef.meterName ? findSimulationSeriesForMeter(seriesRef.meterName) : null)
-    || findSimulationSeriesForMetric(seriesRef.keyValue, seriesRef.variableName);
+  const series = Object.hasOwn(seriesRef, "series") ? seriesRef.series
+    : (seriesRef.meterName ? findSimulationSeriesForMeter(seriesRef.meterName) : null)
+      || findSimulationSeriesForMetric(seriesRef.keyValue, seriesRef.variableName);
   const id = series ? seriesID(series) : "";
   const label = t("simulation.inspectSeriesAction", {}, "Chart");
   const title = series
-    ? t("simulation.inspectSeries", {}, "Inspect this output in the common Series chart")
+    ? t("simulation.inspectSeries", {}, "Inspect this output in the comparison graph below")
     : t("simulation.inspectSeriesUnavailable", {}, "No matching variable is available for this row");
   const sourceObject = seriesRef.sourceObject
     || (seriesRef.meterName ? findPurposeOutputObject("Output:Meter", seriesRef.meterName, "") : null)
@@ -4828,16 +4829,17 @@ function renderEnergySourceSeriesInspectButton(source = {}) {
 }
 
 function energySourceSeriesRef(source = {}) {
-  if (source.missing) {
-    return {};
-  }
+  const sources = state.simulationResult?.purposeResults?.energyExplanation?.sources || [];
+  const exact = !source.missing && source.id ? resolveEnergyPathSeriesCandidates({ sourceIds: [source.id] }, sources, state.simulationResult?.series || [])
+    .filter(candidate => candidate.status === "exact") : [];
+  const series = exact.length === 1 ? exact[0].series : null;
   if (source.isMeter) {
     const meterName = source.keyValue || source.name || "";
-    return { meterName, series: findSimulationSeriesForMeter(meterName) };
+    return { meterName, series };
   }
   const keyValue = source.keyValue || "";
   const variableName = source.name || "";
-  return { keyValue, variableName, series: findSimulationSeriesForMetric(keyValue, variableName) };
+  return { keyValue, variableName, series };
 }
 
 function simulationEnergyRestoredOutputOpener(dashboard) {
@@ -5015,7 +5017,7 @@ export function handleSimulationSeriesInspectClick(event) {
       setStatus(localizedMessage("simulation.energyPathSeriesUnavailable", {}, "No reported series can be matched exactly to these sources."), "warn");
       return;
     }
-    selectSimulationSeries(series, range);
+    selectSimulationComparisonSeries(series);
     return;
   }
 
@@ -5085,14 +5087,15 @@ export function handleSimulationSeriesInspectClick(event) {
   if (!button || button.disabled) {
     return;
   }
-  const series = findSimulationSeriesByID(button.dataset.simulationSeriesId || "")
-    || findSimulationSeriesForMetric(button.dataset.simulationSeriesKey || "", button.dataset.simulationSeriesMetric || "")
-    || findSimulationSeriesForMeter(button.dataset.simulationSeriesMeter || "");
+  const requestedID = button.dataset.simulationSeriesId || "";
+  const series = requestedID ? findSimulationSeriesByID(requestedID)
+    : findSimulationSeriesForMetric(button.dataset.simulationSeriesKey || "", button.dataset.simulationSeriesMetric || "")
+      || findSimulationSeriesForMeter(button.dataset.simulationSeriesMeter || "");
   if (!series) {
     setStatus(localizedMessage("simulation.inspectSeriesUnavailable", {}, "No matching variable is available for this row"), "warn");
     return;
   }
-  selectSimulationSeries(series);
+  selectSimulationComparisonSeries(series);
 }
 
 export async function openSimulationEnergyDriverDestination(element) {
@@ -5393,31 +5396,43 @@ function handleSimulationComfortResultsChange(event) {
   if (handleComfortInspectionEvent(event, elements.simulationComfortResults, state.simulationResult?.purposeResults?.comfort || {}, ui)) {
     simulationResourceIntentGeneration++;
     state.simulationComfortZone = ui.selectedZone || "";
+    renderSimulationComparisonHost("comfort");
   }
 }
 
-function selectSimulationSeries(series, range = { start: 0, end: -1 }) {
-  simulationResourceIntentGeneration++;
-  state.simulationSelectedSeries = seriesID(series);
-  if (simulationSeriesPanels[0]) {
-    // Different variables can have different timestamp grids. A contextual
-    // jump owns this panel; retained overlays must not distort its month range.
-    simulationSeriesPanels[0].seriesIDs = [state.simulationSelectedSeries];
-    simulationSeriesPanels[0].start = range.start;
-    simulationSeriesPanels[0].end = range.end;
-  } else {
-    simulationSeriesPanels = [{ id: simulationSeriesPanelSequence++, seriesIDs: [state.simulationSelectedSeries], ...range }];
+function simulationComparisonSeriesMatch(series, view) {
+  const model = prepareSimulationComparison(state.simulationResult || {}, view, state);
+  const canonical = seriesID(series);
+  const candidates = model.entities.flatMap(entity => entity.properties.map(property => ({ entity, property })));
+  let matches = candidates.filter(item => item.property.seriesId === canonical);
+  if (!matches.length && series.sourceId) matches = candidates.filter(item => item.property.seriesId === series.sourceId);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function setSimulationComparisonSeries(series, view) {
+  const match = simulationComparisonSeriesMatch(series, view);
+  if (!match) return false;
+  const { entity, property } = match;
+  Object.assign(simulationComparisonUI(view), { mode: "line", rows: [{ entity: entity.id, property: property.id }, { entity: "", property: "" }] });
+  return true;
+}
+
+function selectSimulationComparisonSeries(series) {
+  const view = ["energy", "zone_heat_flow", "comfort"].includes(state.simulationActiveResultView) ? state.simulationActiveResultView : "energy";
+  if (!setSimulationComparisonSeries(series, view)) {
+    setStatus(localizedMessage("simulation.inspectSeriesUnavailable", {}, "No matching variable is available for this row"), "warn");
+    return;
   }
-  state.simulationSeriesRangeStart = range.start;
-  state.simulationSeriesRangeEnd = range.end;
-  state.simulationActiveResultView = "series";
-  renderSimulationResultTabs(state.simulationResult);
-  toggleSimulationResultSections();
-  renderSimulationSeriesSelect(state.simulationResult || {});
-  renderSimulationChart();
-  setStatus(localizedMessage("simulation.inspectSeriesOpened", {}, "Series chart opened"), "ok");
-  elements.simulationChart?.querySelector("select[data-series-panel-id]")?.focus({ preventScroll: true });
-  elements.simulationChart?.scrollIntoView({ block: "nearest" });
+  simulationResourceIntentGeneration++;
+  state.simulationActiveResultView = view;
+  const result = state.simulationResult;
+  const intent = simulationResourceIntentGeneration;
+  Promise.resolve(renderSimulation()).then(() => {
+    if (state.simulationResult !== result || intent !== simulationResourceIntentGeneration) return;
+    const host = simulationComparisonHost(view)?.querySelector("[data-simulation-comparison]");
+    host?.querySelector("[data-simulation-comparison-property]")?.focus({ preventScroll: true });
+    host?.scrollIntoView({ block: "nearest" });
+  }).catch(simulationResourceFailure);
 }
 
 function findSimulationSeriesByID(id) {
@@ -5533,7 +5548,6 @@ function setSimulationPreviewMode(preview) {
 function updateSimulationOutputAvailability(blockingIssue, running) {
   const purposes = selectedSimulationPurposes();
   const heatFlowOn = purposes.includes("zone_heat_flow");
-  const seriesOn = purposes.length > 0;
   const blocked = Boolean(blockingIssue);
   if (elements.simulationHeatFlowStats) {
     elements.simulationHeatFlowStats.textContent = blocked
@@ -5542,13 +5556,7 @@ function updateSimulationOutputAvailability(blockingIssue, running) {
         ? t("simulation.heatFlowAvailable", {}, "Zone Heat Flow selected: SQL heat-flow ledger will be available after this run.")
         : t("simulation.heatFlowUnavailableStandardOff", {}, "Zone Heat Flow is not selected for this run.");
   }
-  if (elements.simulationSeriesStats) {
-    elements.simulationSeriesStats.textContent = blocked
-      ? t("simulation.outputBlockedShort", {}, "Unavailable until run is possible")
-      : seriesOn
-        ? t("simulation.seriesAvailable", {}, "Purpose outputs selected: the variable graph will be available after this run.")
-        : t("simulation.seriesMaybeUnavailableStandardOff", {}, "No purpose outputs are selected; graph depends on existing output requests.");
-  }
+
 }
 
 function renderSimulationEnvironment() {
@@ -5635,7 +5643,7 @@ function renderSimulationProgress() {
 function updateSimulationProgressUI() {
   renderSimulationProgress();
   updateSimulationControls();
-  const mini = elements.simulationChart?.querySelector(".simulation-running-empty .simulation-mini-progress");
+  const mini = elements.simulationOutputMessage?.querySelector(".simulation-running-empty .simulation-mini-progress");
   if (mini) mini.outerHTML = renderMiniProgressSVG();
 }
 
@@ -5888,388 +5896,6 @@ function outputObjectIsMeter(objectType) {
   return normalizeOutputMatchToken(objectType).startsWith("output:meter");
 }
 
-function renderSimulationSeriesSelect(result) {
-  return withSimulationResources(() => renderSimulationSeriesSelectReady(result), result, "series");
-}
-
-function renderSimulationSeriesSelectReady(result) {
-  const series = safeSimulationSeriesList(result?.series);
-  state.simulationSeriesGroup = "all";
-  if (!series.length) {
-    state.simulationSelectedSeries = "";
-    simulationSeriesPanels = [];
-    if (elements.simulationSeriesStats) {
-      elements.simulationSeriesStats.textContent = t("simulation.noSeries", {}, "No variables");
-    }
-    return;
-  }
-  if (!state.simulationSelectedSeries || !series.some((item) => seriesID(item) === state.simulationSelectedSeries)) {
-    const migrated = findSimulationSeriesByID(state.simulationSelectedSeries);
-    if (migrated) state.simulationSelectedSeries = seriesID(migrated);
-    else if (!state.simulationSelectedSeries) state.simulationSelectedSeries = seriesID(preferredSimulationSeries(series) || series[0]);
-  }
-  if (!simulationSeriesPanels.length) {
-    simulationSeriesPanels = [{ id: simulationSeriesPanelSequence++, seriesIDs: [state.simulationSelectedSeries], start: 0, end: -1 }];
-  }
-  if (!findSimulationSeriesByID(state.simulationSelectedSeries)) {
-    simulationSeriesPanels[0].seriesIDs = [state.simulationSelectedSeries];
-    simulationSeriesPanels[0].start = 0;
-    simulationSeriesPanels[0].end = -1;
-  }
-  const validIDs = new Set(series.map(seriesID));
-  simulationSeriesPanels.forEach((panel) => {
-    panel.seriesIDs = panel.seriesIDs.map((id) => validIDs.has(id) ? id : energyPathSeriesID(findSimulationSeriesByID(id) || {}))
-      .filter((id) => validIDs.has(id));
-    if (!panel.seriesIDs.length) panel.seriesIDs = [state.simulationSelectedSeries];
-  });
-  if (elements.simulationSeriesStats) {
-    elements.simulationSeriesStats.textContent = t("simulation.variableCount", { count: series.length }, "{count} variables");
-  }
-}
-
-function setSimulationSeriesGroupUnavailable() {
-  state.simulationSeriesGroup = "all";
-}
-
-function simulationSeriesGroupOptions(series) {
-  const options = simulationSeriesGroupDefinitions();
-  const groups = new Set((series || []).map(simulationSeriesGroupID));
-  return options.filter((option) => option.value === "all" || groups.has(option.value));
-}
-
-function simulationSeriesGroupDefinitions() {
-  return [
-    { value: "all", label: t("simulation.seriesAllGroups", {}, "All groups") },
-    { value: "temperature", label: t("simulation.seriesGroupTemperature", {}, "Temperature") },
-    { value: "mass_flow", label: t("simulation.seriesGroupMassFlow", {}, "Mass flow") },
-    { value: "setpoint", label: t("simulation.seriesGroupSetpoint", {}, "Setpoint") },
-    { value: "psychrometric", label: t("simulation.seriesGroupPsychrometric", {}, "Humidity / enthalpy") },
-    { value: "rate_load", label: t("simulation.seriesGroupRateLoad", {}, "Rate / load") },
-    { value: "power_energy", label: t("simulation.seriesGroupPowerEnergy", {}, "Power / energy") },
-    { value: "other", label: t("simulation.seriesGroupOther", {}, "Other") },
-  ];
-}
-
-function simulationSeriesGroupID(series) {
-  return simulationVariableGroupID(seriesVariableName(series?.column || ""));
-}
-
-function simulationVariableGroupID(variableName) {
-  const name = normalizeOutputMatchToken(variableName);
-  if (name.includes("setpoint")) {
-    return "setpoint";
-  }
-  if (name.includes("temperature") || name.includes("drybulb")) {
-    return "temperature";
-  }
-  if (name.includes("mass flow") || name.includes("flow rate") || name.includes("flowrate")) {
-    return "mass_flow";
-  }
-  if (name.includes("humidity") || name.includes("enthalpy")) {
-    return "psychrometric";
-  }
-  if (name.includes("rate") || name.includes("load") || name.includes("runtime fraction")) {
-    return "rate_load";
-  }
-  if (name.includes("power") || name.includes("energy") || name.includes("electricity") || name.includes(":")) {
-    return "power_energy";
-  }
-  return "other";
-}
-
-function simulationSeriesGroupLabel(groupID) {
-  return simulationSeriesGroupDefinitions().find((option) => option.value === groupID)?.label || groupID;
-}
-
-function renderSimulationChart() {
-  return withSimulationResources(renderSimulationChartReady, state.simulationResult, "series");
-}
-
-function renderSimulationChartReady() {
-  if (!elements.simulationChart) return;
-  const series = safeSimulationSeriesList(state.simulationResult?.series);
-  if (!series.length || !simulationSeriesPanels.length) {
-    elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "Variables will appear after a run with numeric output.")}</div>`;
-    return;
-  }
-  elements.simulationChart.innerHTML = simulationSeriesPanels.map((panel) => renderSimulationSeriesPanel(panel, series)).join("");
-}
-
-function renderSimulationSeriesPanel(panel, allSeries) {
-  const selected = panel.seriesIDs.map((id) => findSimulationSeriesByID(id)).filter(Boolean);
-  const maxPoints = Math.max(0, ...selected.map(simulationSeriesPointCount));
-  const maxIndex = Math.max(0, maxPoints - 1);
-  if (panel.end < 0 || panel.end > maxIndex) panel.end = maxIndex;
-  panel.start = Math.min(Math.max(0, panel.start || 0), panel.end);
-  const options = simulationSeriesPickerOptions(allSeries);
-  const rows = panel.seriesIDs.map((id, index) => `<div class="simulation-series-variable-row"><button type="button" class="viewport-icon-button" data-series-variable-action="${index ? "remove" : "add"}" data-series-panel-id="${panel.id}" data-series-variable-index="${index}" aria-label="${escapeHTML(index ? t("simulation.removeVariable", {}, "Remove variable") : t("simulation.addVariable", {}, "Add variable"))}" title="${escapeHTML(index ? t("simulation.removeVariable", {}, "Remove variable") : t("simulation.addVariable", {}, "Add variable"))}">${index ? "−" : "+"}</button><select data-series-panel-id="${panel.id}" data-series-variable-index="${index}" aria-label="${escapeHTML(t("simulation.variableByCategory", {}, "Variable by category"))}">${options(id)}</select></div>`).join("");
-  return `<section class="simulation-series-panel" data-series-panel-id="${panel.id}"><div class="simulation-series-variable-list">${rows}</div><div class="simulation-series-viewport-meta"><button type="button" class="viewport-icon-button" data-series-range-all="${panel.id}" aria-label="${escapeHTML(t("simulation.fitFullRange", {}, "Fit full range"))}" title="${escapeHTML(t("simulation.fitFullRange", {}, "Fit full range"))}">↔</button><span>${maxPoints ? `${panel.start + 1}-${panel.end + 1} / ${maxPoints}` : ""}</span></div>${renderSimulationMultiSeriesSVG(selected, panel)}</section>`;
-}
-
-function simulationSeriesPickerOptions(allSeries) {
-  return (selectedID) => `${findSimulationSeriesByID(selectedID) ? "" : `<option value="" disabled selected>${escapeHTML(t("simulation.energyPathChooseSeries", {}, "Choose source series"))}</option>`}` + simulationSeriesGroupOptions(allSeries).filter((group) => group.value !== "all").map((group) => {
-    const items = allSeries.filter((item) => simulationSeriesGroupID(item) === group.value);
-    return items.length ? `<optgroup label="${escapeHTML(group.label)}">${items.map((item) => `<option value="${escapeHTML(seriesID(item))}" ${seriesID(item) === selectedID ? "selected" : ""}>${escapeHTML([item.column, item.reportingFrequency].filter(Boolean).join(" · "))}</option>`).join("")}</optgroup>` : "";
-  }).join("");
-}
-
-function renderSimulationMultiSeriesSVG(seriesList, panel) {
-  if (!seriesList.length) return `<div class="empty">${escapeHTML(t("simulation.energyPathSeriesAmbiguous", {}, "The saved series identity cannot be resolved. Choose a variable in Series."))}</div>`;
-  const width = 900, height = 300;
-  const unitKey = (series) => String(simulationSeriesDisplayUnit(series) || "value").trim().toLowerCase();
-  const unitLabel = (series) => String(simulationSeriesDisplayUnit(series) || "value").trim();
-  const units = [...new Set(seriesList.map(unitKey))];
-  const leftAxisCount = Math.ceil(units.length / 2), rightAxisCount = Math.floor(units.length / 2);
-  const pad = { left: 62 + Math.max(0, leftAxisCount - 1) * 54, right: 62 + Math.max(0, rightAxisCount - 1) * 54, top: 18, bottom: 54 };
-  const colors = ["#62c7d5", "#f0b44d", "#85d17a", "#c394f5", "#ef7f8d", "#72a7ff"];
-  const plotWidth = width - pad.left - pad.right, plotHeight = height - pad.top - pad.bottom;
-  const unitRanges = new Map(units.map((unit) => {
-    const values = seriesList.filter((s) => unitKey(s) === unit).flatMap((s) => simulationSeriesPoints(s).slice(panel.start, panel.end + 1).map((p) => Number(p.value))).filter(Number.isFinite);
-    let min = values.length ? Math.min(...values) : 0, max = values.length ? Math.max(...values) : 1;
-    if (min === max) {
-      const padding = Math.max(Math.abs(min) * 0.05, 0.5);
-      min -= padding;
-      max += padding;
-    }
-    return [unit, { min, max, span: max - min }];
-  }));
-  const lines = seriesList.map((series, index) => {
-    const points = simulationSeriesPoints(series).slice(panel.start, panel.end + 1), scale = unitRanges.get(unitKey(series));
-    if (points.length === 1 && Number.isFinite(Number(points[0].value))) {
-      const x = pad.left + plotWidth / 2;
-      const y = pad.top + plotHeight * (1 - (Number(points[0].value) - scale.min) / scale.span);
-      const label = `${Number(points[0].value).toLocaleString(undefined, { maximumFractionDigits: 3 })} ${unitLabel(series)}`;
-      return `<circle data-simulation-series-single-point="${escapeHTML(seriesID(series))}" cx="${x}" cy="${y}" r="4.5" fill="${colors[index % colors.length]}"><title>${escapeHTML(`${points[0].label}: ${label}`)}</title></circle><text x="${x + 9}" y="${y - 8}" class="simulation-axis">${escapeHTML(label)}</text>`;
-    }
-    const xStep = points.length > 1 ? plotWidth / (points.length - 1) : plotWidth;
-    const coords = points.map((point, i) => `${pad.left + i * xStep},${pad.top + plotHeight * (1 - (Number(point.value) - scale.min) / scale.span)}`).join(" ");
-    const dash = ["", "8 4", "3 3", "10 3 2 3"][index % 4];
-    return `<polyline points="${coords}" fill="none" stroke="${colors[index % colors.length]}" stroke-width="2.2" ${dash ? `stroke-dasharray="${dash}"` : ""} />`;
-  }).join("");
-  const axes = units.map((unit, index) => {
-    const displayUnit = unitLabel(seriesList.find((series) => unitKey(series) === unit));
-    const scale = unitRanges.get(unit), left = index % 2 === 0, offset = Math.floor(index / 2) * 54, x = left ? pad.left - offset : width - pad.right + offset;
-    const ticks = Array.from({ length: 5 }, (_, tick) => {
-      const ratio = tick / 4, value = scale.max - scale.span * ratio, y = pad.top + plotHeight * ratio;
-      const grid = index === 0 ? `<line x1="${pad.left}" x2="${width - pad.right}" y1="${y}" y2="${y}" class="simulation-grid"/>` : "";
-      return `${grid}<line x1="${x - 3}" x2="${x + 3}" y1="${y}" y2="${y}" class="simulation-axis-line"/><text x="${x + (left ? -7 : 7)}" y="${y + 4}" text-anchor="${left ? "end" : "start"}" class="simulation-axis">${escapeHTML(Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 }))}</text>`;
-    }).join("");
-    return `<g><line x1="${x}" x2="${x}" y1="${pad.top}" y2="${height - pad.bottom}" class="simulation-axis-line"/>${ticks}<text x="${x}" y="${pad.top - 6}" text-anchor="middle" class="simulation-axis-title">${escapeHTML(displayUnit)}</text></g>`;
-  }).join("");
-  const referencePoints = simulationSeriesPoints(seriesList[0]).slice(panel.start, panel.end + 1);
-  const xTickIndexes = [...new Set(Array.from({ length: Math.min(6, referencePoints.length) }, (_, index) => Math.round(index * Math.max(0, referencePoints.length - 1) / Math.max(1, Math.min(6, referencePoints.length) - 1))))];
-  const xTicks = xTickIndexes.map((pointIndex) => {
-    const x = pad.left + (referencePoints.length > 1 ? pointIndex * plotWidth / (referencePoints.length - 1) : plotWidth / 2);
-    return `<line x1="${x}" x2="${x}" y1="${pad.top}" y2="${height - pad.bottom}" class="simulation-grid"/><line x1="${x}" x2="${x}" y1="${height - pad.bottom}" y2="${height - pad.bottom + 4}" class="simulation-axis-line"/><text x="${x}" y="${height - pad.bottom + 18}" text-anchor="middle" class="simulation-axis">${escapeHTML(referencePoints[pointIndex]?.label || String(panel.start + pointIndex + 1))}</text>`;
-  }).join("");
-  const legend = seriesList.map((series, index) => `<span><i style="background:${colors[index % colors.length]}"></i>${escapeHTML(simulationSeriesDisplayColumn(series))}</span>`).join("");
-  return `<div class="simulation-series-legend">${legend}</div><svg class="simulation-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(t("simulation.variablesAria", {}, "Variables"))}">${axes}${xTicks}<line x1="${pad.left}" x2="${width - pad.right}" y1="${height - pad.bottom}" y2="${height - pad.bottom}" class="simulation-axis-line"/>${lines}<rect class="simulation-chart-hit" x="${pad.left}" y="${pad.top}" width="${plotWidth}" height="${plotHeight}" data-simulation-chart-hit="1" data-series-panel-id="${panel.id}"></rect><text x="${pad.left + plotWidth / 2}" y="${height - 8}" text-anchor="middle" class="simulation-axis-title">${escapeHTML(t("common.time", {}, "Time"))}</text></svg>`;
-}
-
-function currentSimulationSeries() {
-  return simulationSeriesLookup().byID.get(state.simulationSelectedSeries) || null;
-}
-
-function handleSimulationSeriesWorkspaceClick(event) {
-  const panelAction = event.target.closest("[data-series-panel-action]");
-  if (panelAction) {
-    if (panelAction.dataset.seriesPanelAction === "add") {
-      simulationSeriesPanels.push({ id: simulationSeriesPanelSequence++, seriesIDs: [state.simulationSelectedSeries], start: 0, end: -1 });
-    } else if (simulationSeriesPanels.length > 1) {
-      simulationSeriesPanels.pop();
-    }
-    renderSimulationChart();
-    return;
-  }
-  const variableAction = event.target.closest("[data-series-variable-action]");
-  if (variableAction) {
-    const panel = simulationSeriesPanels.find((item) => String(item.id) === variableAction.dataset.seriesPanelId);
-    if (!panel) return;
-    const index = Number(variableAction.dataset.seriesVariableIndex) || 0;
-    if (variableAction.dataset.seriesVariableAction === "add") {
-      const fallback = safeSimulationSeriesList(state.simulationResult?.series).find((item) => !panel.seriesIDs.includes(seriesID(item)));
-      if (fallback) panel.seriesIDs.splice(index + 1, 0, seriesID(fallback));
-    } else if (panel.seriesIDs.length > 1) {
-      panel.seriesIDs.splice(index, 1);
-    }
-    renderSimulationChart();
-    return;
-  }
-  const all = event.target.closest("[data-series-range-all]");
-  if (all) {
-    const panel = simulationSeriesPanels.find((item) => String(item.id) === all.dataset.seriesRangeAll);
-    if (panel) { panel.start = 0; panel.end = -1; renderSimulationChart(); }
-  }
-}
-
-function handleSimulationSeriesWorkspaceChange(event) {
-  const select = event.target.closest("select[data-series-panel-id]");
-  if (!select) return;
-  const panel = simulationSeriesPanels.find((item) => String(item.id) === select.dataset.seriesPanelId);
-  if (!panel) return;
-  simulationResourceIntentGeneration++;
-  panel.seriesIDs[Number(select.dataset.seriesVariableIndex) || 0] = select.value;
-  state.simulationSelectedSeries = select.value;
-  renderSimulationChart();
-}
-
-function renderSimulationSeriesRangeControls(series, visibleRange = null) {
-  if (!elements.simulationSeriesRangeStart || !elements.simulationSeriesRangeEnd || !elements.simulationSeriesRangeLabel) {
-    return;
-  }
-  const pointCount = simulationSeriesPointCount(series);
-  const disabled = pointCount <= 1;
-  const maxIndex = Math.max(0, pointCount - 1);
-  const range = pointCount > 0 ? (visibleRange || normalizeSimulationSeriesRange(pointCount)) : { start: 0, end: 0 };
-  for (const input of [elements.simulationSeriesRangeStart, elements.simulationSeriesRangeEnd]) {
-    input.min = "0";
-    input.max = String(maxIndex);
-    input.disabled = disabled;
-  }
-  elements.simulationSeriesRangeStart.value = String(range.start);
-  elements.simulationSeriesRangeEnd.value = String(range.end);
-  if (elements.simulationSeriesRange) {
-    const denominator = Math.max(1, maxIndex);
-    elements.simulationSeriesRange.style.setProperty("--series-range-start", `${(range.start / denominator) * 100}%`);
-    elements.simulationSeriesRange.style.setProperty("--series-range-end", `${(range.end / denominator) * 100}%`);
-  }
-  if (elements.simulationSeriesRangeAll) {
-    elements.simulationSeriesRangeAll.disabled = pointCount <= 0 || (range.start === 0 && range.end === maxIndex);
-  }
-  elements.simulationSeriesRangeLabel.value = pointCount > 0
-    ? seriesRangeLabel(series, range)
-    : t("simulation.seriesRangeEmpty", {}, "No range");
-}
-
-function seriesRangeLabel(series, range) {
-  const points = simulationSeriesPoints(series);
-  const pointCount = points.length;
-  if (!pointCount) {
-    return t("simulation.seriesRangeEmpty", {}, "No range");
-  }
-  const startPoint = points[range.start] || {};
-  const endPoint = points[range.end] || {};
-  const labels = [startPoint.label, endPoint.label].filter(Boolean);
-  const indexLabel = `${range.start + 1}-${range.end + 1} / ${pointCount}`;
-  return labels.length === 2 ? `${indexLabel} (${labels[0]} - ${labels[1]})` : indexLabel;
-}
-
-function updateSimulationSeriesRangeFromControls(changed) {
-  const series = currentSimulationSeries();
-  if (!simulationSeriesPointCount(series)) {
-    renderSimulationSeriesRangeControls(null);
-    return;
-  }
-  state.simulationSeriesRangeStart = Number(elements.simulationSeriesRangeStart?.value) || 0;
-  state.simulationSeriesRangeEnd = Number(elements.simulationSeriesRangeEnd?.value) || 0;
-  normalizeSimulationSeriesRange(simulationSeriesPointCount(series), changed);
-  renderSimulationChart();
-}
-
-function normalizeSimulationSeriesRange(pointCount = 0, changed = "") {
-  const maxIndex = Math.max(0, Number(pointCount) - 1);
-  let start = Math.round(clampNumber(state.simulationSeriesRangeStart, 0, maxIndex));
-  let end = Number(state.simulationSeriesRangeEnd);
-  if (!Number.isFinite(end) || end < 0 || end > maxIndex) {
-    end = maxIndex;
-  }
-  end = Math.round(clampNumber(end, 0, maxIndex));
-  if (start > end) {
-    if (changed === "start") {
-      end = start;
-    } else {
-      start = end;
-    }
-  }
-  state.simulationSeriesRangeStart = start;
-  state.simulationSeriesRangeEnd = end;
-  return { start, end };
-}
-
-function bindSimulationChartInteractions() {
-  const host = elements.simulationChart;
-  if (!host || simulationChartInteractionHosts.has(host)) {
-    return;
-  }
-  simulationChartInteractionHosts.add(host);
-  host.addEventListener(
-    "wheel",
-    (event) => {
-      const hitTarget = event.target instanceof Element ? event.target.closest("[data-simulation-chart-hit]") : null;
-      if (!hitTarget) return;
-      const panel = simulationSeriesPanels.find((item) => String(item.id) === hitTarget.dataset.seriesPanelId);
-      const series = panel?.seriesIDs.map((id) => simulationSeriesLookup().byID.get(id)).find(Boolean);
-      if (!panel || !series) return;
-      event.preventDefault();
-      zoomSimulationSeriesPanel(event, panel, series, hitTarget);
-    },
-    { passive: false },
-  );
-  host.addEventListener("dblclick", (event) => {
-    const hit = event.target instanceof Element ? event.target.closest("[data-simulation-chart-hit]") : null;
-    const panel = hit && simulationSeriesPanels.find((item) => String(item.id) === hit.dataset.seriesPanelId);
-    if (!panel) return;
-    panel.start = 0; panel.end = -1;
-    renderSimulationChart();
-  });
-  host.addEventListener("pointerdown", (event) => {
-    const hit = event.target instanceof Element ? event.target.closest("[data-simulation-chart-hit]") : null;
-    const panel = hit && simulationSeriesPanels.find((item) => String(item.id) === hit.dataset.seriesPanelId);
-    if (!panel || event.button !== 0) return;
-    simulationSeriesPan = { pointerId: event.pointerId, panel, startX: event.clientX, start: panel.start, end: panel.end, width: hit.getBoundingClientRect().width };
-    hit.setPointerCapture(event.pointerId);
-  });
-  host.addEventListener("pointermove", (event) => {
-    if (!simulationSeriesPan || simulationSeriesPan.pointerId !== event.pointerId) return;
-    const { panel, startX, start, end, width } = simulationSeriesPan;
-    const size = end - start + 1;
-    const shift = Math.round((startX - event.clientX) / Math.max(width, 1) * size);
-    const first = simulationSeriesLookup().byID.get(panel.seriesIDs[0]);
-    const max = Math.max(0, simulationSeriesPointCount(first) - 1);
-    panel.start = Math.max(0, Math.min(max - size + 1, start + shift));
-    panel.end = Math.min(max, panel.start + size - 1);
-  });
-  const stopPan = (event) => {
-    if (simulationSeriesPan?.pointerId !== event.pointerId) return;
-    simulationSeriesPan = null;
-    renderSimulationChart();
-  };
-  host.addEventListener("pointerup", stopPan);
-  host.addEventListener("pointercancel", stopPan);
-}
-
-function zoomSimulationSeriesPanel(event, panel, series, hitTarget = event.currentTarget) {
-  const pointCount = simulationSeriesPointCount(series);
-  if (pointCount <= 2) return;
-  const start = panel.start || 0, end = panel.end < 0 ? pointCount - 1 : panel.end;
-  const currentSize = end - start + 1;
-  const nextSize = event.deltaY < 0
-    ? Math.max(6, Math.ceil(currentSize * 0.72))
-    : Math.min(pointCount, Math.ceil(currentSize / 0.72));
-  if (nextSize >= pointCount) {
-    panel.start = 0; panel.end = pointCount - 1;
-    renderSimulationChart();
-    return;
-  }
-  const rect = hitTarget.getBoundingClientRect();
-  const ratio = clampNumber((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1);
-  const center = Math.round(start + ratio * Math.max(currentSize - 1, 0));
-  let nextStart = Math.round(center - nextSize * ratio);
-  let nextEnd = nextStart + nextSize - 1;
-  if (nextStart < 0) {
-    nextEnd -= nextStart;
-    nextStart = 0;
-  }
-  if (nextEnd > pointCount - 1) {
-    const overflow = nextEnd - (pointCount - 1);
-    nextStart = Math.max(0, nextStart - overflow);
-    nextEnd = pointCount - 1;
-  }
-  panel.start = nextStart;
-  panel.end = nextEnd;
-  renderSimulationChart();
-}
-
 function renderSimulationHeatFlow({ frameOnly = false } = {}) {
   return withSimulationResources(() => renderSimulationHeatFlowReady({ frameOnly }), state.simulationResult, "zone_heat_flow");
 }
@@ -6287,6 +5913,7 @@ function renderSimulationHeatFlowReady({ frameOnly = false } = {}) {
   const geometry = state.simulationResult?.purposeResults?.thermalTopology?.planGeometry || state.report?.geometry;
   if (!geometry?.zones?.length || !geometry?.stories?.length) {
     renderSimulationHeatFlowEmpty(t("simulation.noHeatFlowGeometry", {}, "Heat-flow data was parsed, but floor-plan geometry is not available yet."));
+    elements.simulationHeatFlow.insertAdjacentHTML("beforeend", simulationComparisonMarkup(state.simulationResult, "zone_heat_flow"));
     return;
   }
 
@@ -6342,6 +5969,7 @@ function renderSimulationHeatFlowReady({ frameOnly = false } = {}) {
 
   if (incremental) {
     updateHeatFlowFrame(dataset, zoneMap, selectedSeries, selectedZone, frameIndex, disclosures.surface);
+    updateSimulationComparisonFrame(elements.simulationHeatFlow, state.simulationResult, "zone_heat_flow", simulationComparisonUI("zone_heat_flow"), state);
     return;
   }
 
@@ -6359,7 +5987,8 @@ function renderSimulationHeatFlowReady({ frameOnly = false } = {}) {
       </aside>
     </div>
     ${renderHeatFlowStackChart(dataset, selectedSeries, frameIndex, visibleRange)}
-    <div class="heatflow-tooltip hidden" role="tooltip"></div>`;
+    <div class="heatflow-tooltip hidden" role="tooltip"></div>
+    ${simulationComparisonMarkup(state.simulationResult, "zone_heat_flow")}`;
   const surfaceDetails = elements.simulationHeatFlow.querySelector(".heatflow-surface-details");
   if (surfaceDetails) surfaceDetails.open = disclosures.surface;
   heatFlowRenderedContext = context;
@@ -8222,8 +7851,7 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
   simulationEnergyDrawer = { tab: "data", stage: "", outputSource: "" };
   simulationEnergyDetailsReturnSelector = "";
   state.simulationRunning = false;
-  state.simulationSeriesRangeStart = 0;
-  state.simulationSeriesRangeEnd = -1;
+  state.simulationComparisons = {};
   state.simulationHeatFlowRangeStart = 0;
   state.simulationHeatFlowRangeEnd = -1;
   state.simulationHeatFlowFrameIndex = 0;
@@ -8380,20 +8008,6 @@ function waitForProgressRuntime() {
 
 function seriesID(series) {
   return energyPathSeriesID(safeSimulationSeries(series));
-}
-
-function preferredSimulationSeries(series = []) {
-  const items = Array.isArray(series) ? series.filter(Boolean) : [];
-  const preferred = [
-    "Electricity:Facility",
-    "NaturalGas:Facility",
-    "DistrictCooling:Facility",
-    "DistrictHeating:Facility",
-    "Water:Facility",
-  ];
-  return preferred
-    .map((name) => items.find((item) => String(item.column || "").includes(name)))
-    .find(Boolean) || null;
 }
 
 function seriesNodeKey(column) {

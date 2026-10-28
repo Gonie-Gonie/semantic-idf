@@ -159,6 +159,9 @@ func TestEnergyPathHourlyRequestsRetainEveryMonthlyInputAndExistingOutputs(t *te
 		if !purposeIDsContain(output.PurposeIDs, SimulationPurposeBasicEnergy) || !purposeObjectIsSeries(output.ObjectType) {
 			continue
 		}
+		if assertEnvironmentPlotOutput(t, output) {
+			continue
+		}
 		if _, thermalInput := energyPathExpectedThermalInputFrequency(output.VariableName); thermalInput {
 			continue // Exact native boundary frequencies are checked above.
 		}

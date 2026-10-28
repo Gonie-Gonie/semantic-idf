@@ -262,6 +262,10 @@ export function openSimulationResultParts(manifest, { fetcher = (...args) => fet
     return [...ids].map(id => parts.get(id));
   }
   function contextMatcher(view, context = {}, nearby = false) {
+    const selected = new Set(context.seriesIDs || []);
+    const series = result.series || [];
+    const indices = new Set(series.flatMap((item, index) => selected.has(item.sourceId) || selected.has(energyPathSeriesID(item)) || selected.has(`${item.file || ""}::${item.column || ""}`) ? [index] : []));
+    const comparisonSeries = path => path[0] === "series" && indices.has(path[1]);
     if (view === "energy") {
       const explanation = result.purposeResults?.energyExplanation || {};
       const zone = (explanation.zoneResults || []).findIndex(item => String(item.scope?.zoneName || "").toLowerCase() === String(context.simulationEnergyZoneName || "").toLowerCase());
@@ -272,10 +276,12 @@ export function openSimulationResultParts(manifest, { fetcher = (...args) => fet
       };
       for (const id of [...sourceIDs]) visit(id);
       return path => {
+        if (comparisonSeries(path)) return true;
         if (path[0] !== "purposeResults") return false;
         if (["energy", "energyExplanationSummary"].includes(path[1])) return true;
         if (path[1] !== "energyExplanation") return false;
         if (path.some(key => typeof key === "string" && /hourly/i.test(key))) {
+          if (path[2] === "sources" && selected.has(sources[path[3]]?.id)) return true;
           if (!context.simulationEnergySelection || !nearby && context.simulationEnergyChartFrequency !== "hourly") return false;
           return path[2] !== "sources" || sourceIDs.has(sources[path[3]]?.id);
         }
@@ -291,12 +297,13 @@ export function openSimulationResultParts(manifest, { fetcher = (...args) => fet
       };
     }
     if (view === "zone_heat_flow") return path => {
+      if (comparisonSeries(path)) return true;
       if (path[0] === "heatFlow" || prefixOf(["purposeResults", "zoneHeatFlow"], path)) return true;
       if (!prefixOf(["purposeResults", "thermalTopology"], path)) return false;
       if (path[2] === "planGeometry") return true;
       return path[2] === "periods" && result.purposeResults.thermalTopology.periods?.[path[3]]?.id === "hourly" && ["labels", "boundaryFlows"].includes(path[4]);
     };
-    if (view === "comfort") return path => prefixOf(["purposeResults", "comfort"], path);
+    if (view === "comfort") return path => comparisonSeries(path) || prefixOf(["purposeResults", "comfort"], path);
     if (view === "hvac_loops") {
       const loops = result.purposeResults?.hvacLoops || [];
       const selected = context.simulationHVACInspection?.selectedLoop;
@@ -304,16 +311,14 @@ export function openSimulationResultParts(manifest, { fetcher = (...args) => fet
       const index = Math.max(0, loops.findIndex(loop => `${normalize(loop.loopType || loop.topology?.type)}|${normalize(loop.name)}` === selected));
       return path => prefixOf(["purposeResults", "hvacLoops", index], path);
     }
-    const series = result.series || [], selected = new Set(context.seriesIDs || [context.simulationSelectedSeries]);
-    const indices = new Set(series.flatMap((item, index) => selected.has(energyPathSeriesID(item)) || selected.has(`${item.file || ""}::${item.column || ""}`) ? [index] : []));
-    if (!indices.size && series.length) indices.add(0);
-    return path => path[0] === "series" && indices.has(path[1]);
+    return comparisonSeries;
   }
   const contextResources = new Map();
   function viewResources(view, context = {}, nearby = false) {
     const key = JSON.stringify([view, nearby, context.simulationEnergyScopeKind, context.simulationEnergyZoneName,
       context.simulationEnergyPeriod, context.simulationEnergySelection, context.simulationEnergyChartFrequency,
-      context.energySourceIDs, context.simulationHVACInspection?.selectedLoop, context.simulationSelectedSeries, context.seriesIDs]);
+      context.energySourceIDs, context.simulationHVACInspection?.selectedLoop, context.simulationComfortZone,
+      context.simulationHeatFlowSelectedZone, context.seriesIDs]);
     if (contextResources.has(key)) return contextResources.get(key);
     const resources = resourcesFor(contextMatcher(view, context, nearby));
     contextResources.set(key, resources);
@@ -363,7 +368,7 @@ export function openSimulationResultParts(manifest, { fetcher = (...args) => fet
       for (const part of viewResources(view, context, true)) admit(part, 1);
       // All next tabs have the same priority. Round-robin admission in UI order
       // prevents a large tab from occupying the entire next-view queue.
-      const nextViews = ["energy", "zone_heat_flow", "hvac_loops", "comfort", "series"]
+      const nextViews = ["energy", "zone_heat_flow", "hvac_loops", "comfort"]
         .filter(item => item !== view).map(item => viewResources(item, context));
       const longest = Math.max(0, ...nextViews.map(resources => resources.length));
       for (let index = 0; index < longest; index++) {

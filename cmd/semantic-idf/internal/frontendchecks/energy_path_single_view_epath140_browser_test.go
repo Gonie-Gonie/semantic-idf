@@ -48,9 +48,8 @@ const epath140SingleViewHTML = `<!doctype html><html lang="en"><head><meta chars
 <link rel="stylesheet" href="/src/styles/base.css"><link rel="stylesheet" href="/src/styles/simulation.css"><style>body{margin:0;overflow:auto}#simulationPane{max-width:1100px}button{font:inherit}</style>
 <script>window.go={main:{App:{GetSimulationEnvironment:async()=>({installations:[],weatherFolders:[]})}}};window.runtime={EventsOn(){}};</script></head>
 <body data-epath140-status="pending"><div id="runtimeStatus"></div><div id="semanticEditor" hidden></div><div id="simulationPane" class="result-pane active">
-<div id="simulationResultTabs"><button data-simulation-result-view-button="energy">Energy</button><button data-simulation-result-view-button="series">Series</button></div>
+<div id="simulationResultTabs"><button data-simulation-result-view-button="energy">Energy</button></div><div id="simulationOutputMessage"></div>
 <section data-simulation-result-view="energy"><div id="simulationEnergyStats"></div><div id="simulationEnergyDashboard"></div></section>
-<section data-simulation-result-view="series" hidden><div id="simulationSeriesStats"></div><div id="simulationChart"></div></section>
 </div><div id="hvacPane" class="result-pane"><div id="hvacSummary"></div><div id="hvacGraph"></div></div><pre id="result">pending</pre><script type="module">
 const failures=[];
 const check=(condition,message)=>{if(!condition)failures.push(message);};
@@ -92,7 +91,7 @@ const series=[
  {file:"eplusout.sql",column:"Office:Zone Air System Sensible Cooling Energy [J]",sourceId:"sql-rdd-12",name:sources[1].name,keyValue:"Office",isMeter:false,reportingFrequency:"Hourly",points:[{x:0,value:900,label:"01-01 01:00"},{x:1,value:901,label:"02-01 01:00"}]},
  {file:"eplusout.sql",column:"Office:Zone Air System Sensible Cooling Energy [J]",sourceId:"sql-rdd-11",name:sources[0].name,keyValue:"Office",isMeter:false,reportingFrequency:"Monthly",points:[{x:12,value:100,label:"01-31 24:00"},{x:1,value:200,label:"02-28 24:00"},{x:0,value:300,label:"03-31 24:00"}]},
 ];
-const result=freeze({status:"succeeded",purposeResults:{energyExplanation:explanation,energyExplanationSummary:building.summary},purposeRunPlan:{outputObjects:[{objectType:"Output:Variable",keyValue:"Office",variableName:sources[0].name,reportingFrequency:"Monthly"}]},series});
+const result=freeze({status:"succeeded",purposeResults:{energyExplanation:explanation,energyExplanationSummary:building.summary},purposeRunPlan:{outputObjects:[{objectType:"Output:Variable",keyValue:"Office",variableName:sources[0].name,reportingFrequency:"Monthly",purposeIds:['basic_energy']},{objectType:"Output:Variable",keyValue:"Office",variableName:sources[1].name,reportingFrequency:"Hourly",purposeIds:['basic_energy']}]},series});
 const originalJSON=JSON.stringify(result);
 const report={hvac:{loops:[],serviceModel:{zoneServices:[{zoneName:"Office",paths:[
  {id:"path.office.cooling",serviceKind:"cooling",zoneName:"Office",servedSubject:{kind:"zone",zoneName:"Office",name:"Office"}},
@@ -163,21 +162,27 @@ try{
  check(!host.querySelector("[data-energy-path-inspector-actions],[data-energy-path-service-destination],[data-energy-path-series-actions]"),"removed component detail actions remain visible");
  select("load.heating.office");
  check(host.querySelector('[data-energy-path-inspector="load.heating.office"] [data-energy-path-chart-frequency]'),"heating component selection lost its chart frequency control");
- const oldSeriesID=series[1].file+"::"+series[1].column;
- state.simulationResult=freeze({...result,series:[series[1]]});state.simulationSelectedSeries=oldSeriesID;
- document.querySelector('[data-simulation-result-view-button="series"]')?.click();
- check(state.simulationSelectedSeries===monthlyID&&document.getElementById("simulationChart").querySelector("select[data-series-variable-index='0']")?.value===monthlyID,"unique historical file::column Series selection did not migrate to exact provenance identity");
- state.simulationResult=result;state.simulationSelectedSeries=oldSeriesID;
- document.querySelector('[data-simulation-result-view-button="series"]')?.click();
- const unresolvedPicker=document.getElementById("simulationChart").querySelector("select[data-series-variable-index='0']");
- check(state.simulationSelectedSeries===oldSeriesID&&unresolvedPicker?.value===""&&unresolvedPicker?.selectedOptions[0]?.disabled,"ambiguous historical Series alias silently chose the first frequency");
- check(unresolvedPicker?.selectedOptions[0]?.textContent.includes("Choose source series"),"ambiguous historical Series selection lacks an explicit unresolved picker prompt");
- check(!document.getElementById("simulationChart").querySelector("polyline,[data-simulation-series-single-point]"),"ambiguous historical Series alias plotted a guessed first observation");
+ const {prepareSimulationComparison}=await import('/src/js/simulation-comparison-data.js');
+ const comparisonHost=()=>host.querySelector('[data-simulation-comparison-host="energy"]');
+ const selectedProperty=()=>{const model=prepareSimulationComparison(state.simulationResult,'energy',state),row=state.simulationComparisons?.energy?.rows?.[0];return model.entities.find(entity=>entity.id===row?.entity)?.properties.find(property=>property.id===row?.property);};
+ const inspect=async id=>{const button=document.createElement('button');button.dataset.simulationInspectSeries='1';button.dataset.simulationSeriesId=id;host.append(button);simulation.handleSimulationSeriesInspectClick({target:button,preventDefault(){},stopPropagation(){}});await new Promise(resolve=>setTimeout(resolve,0));};
+ check(comparisonHost()===host.lastElementChild&&comparisonHost()?.querySelector('[data-simulation-comparison]'),'Energy comparison is not mounted after the existing diagram and inspector');
+ await inspect(monthlyID);
+ check(state.simulationActiveResultView==='energy'&&[monthlyID,sources[0].id].includes(selectedProperty()?.seriesId),'source inspection left Energy or selected another reporting frequency');
+ check(comparisonHost()?.querySelector('[data-simulation-comparison-property]')?.value===state.simulationComparisons.energy.rows[0].property,'exact source jump did not select the bottom comparison property control');
+ const comparisonSnapshot=simulation.captureSimulationNavigationContext(historyAdapter),monthlyRows=JSON.stringify(state.simulationComparisons.energy.rows);
+ const hourlyID=navigation.energyPathSeriesID(series[0]);await inspect(hourlyID);
+ check([hourlyID,sources[1].id].includes(selectedProperty()?.seriesId)&&JSON.stringify(state.simulationComparisons.energy.rows)!==monthlyRows,'same file/key/name Hourly source was collapsed into Monthly data');
+ await simulation.restoreSimulationNavigationContext(comparisonSnapshot,historyAdapter);
+ check(JSON.stringify(state.simulationComparisons.energy.rows)===monthlyRows&&[monthlyID,sources[0].id].includes(selectedProperty()?.seriesId),'navigation history did not restore the exact purpose-local comparison source');
+ const beforeAmbiguous=JSON.stringify(state.simulationComparisons.energy.rows);await inspect(series[1].file+'::'+series[1].column);
+ check(JSON.stringify(state.simulationComparisons.energy.rows)===beforeAmbiguous,'ambiguous file/column source jump silently chose the first reporting frequency');
+ check(!document.querySelector('[data-simulation-result-view-button="series"],[data-simulation-result-view="series"]'),'source inspection restored the removed standalone Series view');
  const legacyPayload=freeze({schema:"semantic-idf.energy-explanation/v1",nodes:[{id:"heat.people.office",level:"heat",value:12,unit:"kWh",sourceIds:["legacy.source"]}],sources:[{id:"legacy.source",name:"Legacy people energy"}]});
  const legacyJSON=JSON.stringify(legacyPayload);
  state.simulationResult=freeze({...result,purposeResults:{energyExplanation:legacyPayload}});
  simulation.renderSimulationEnergyDashboard(state.simulationResult);
- check(!host.querySelector(".simulation-energy-subnav,[data-simulation-energy-view]")&&host.textContent.includes("Series")&&host.textContent.toLowerCase().includes("unavailable"),"unupgraded legacy payload resurrected old subnav or omitted honest availability guidance");
+ check(!host.querySelector(".simulation-energy-subnav,[data-simulation-energy-view]")&&comparisonHost()===host.lastElementChild&&host.textContent.toLowerCase().includes("unavailable"),"unupgraded legacy payload resurrected old subnav or lost its bottom comparison and availability guidance");
  check(JSON.stringify(legacyPayload)===legacyJSON,"legacy compatibility guidance rewrote stored V1 data");
  check(JSON.stringify(result)===originalJSON,"Energy controls, inspectors or navigation changed raw result/export inputs");
  if(failures.length)throw new Error(failures.join(" | "));

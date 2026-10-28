@@ -107,8 +107,8 @@ Output:SQLite,
 			t.Fatalf("missing detailed heat-driver output %q in %#v", variable, plan.OutputObjects)
 		}
 	}
-	if plan.EstimatedFrames != 12 {
-		t.Fatalf("estimated frames = %d, want 12 for monthly energy", plan.EstimatedFrames)
+	if plan.EstimatedFrames != 8760 {
+		t.Fatalf("estimated frames = %d, want Hourly environment plots alongside monthly energy", plan.EstimatedFrames)
 	}
 }
 
@@ -132,6 +132,9 @@ func TestBuildPurposeRunPlanBasicEnergyDefaultsToEnergyPath(t *testing.T) {
 		t.Fatalf("Energy Path default should include every zone's heat-driver reconciliation output: %#v", plan.OutputObjects)
 	}
 	for _, object := range plan.OutputObjects {
+		if assertEnvironmentPlotOutput(t, object) {
+			continue
+		}
 		if purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) && object.Reason != "Basic Energy Path" {
 			t.Fatalf("Energy Path output reason = %q for %+v", object.Reason, object)
 		}
@@ -582,6 +585,72 @@ RunPeriod,
 }
 
 func TestBuildPurposeRunPlanMergesDuplicateOutputsAcrossPurposes(t *testing.T) {
+	for _, existing := range []struct{ key, frequency string }{{"Environment", "Hourly"}, {"*", "Hourly"}, {"Environment", "Timestep"}} {
+		for _, policy := range []string{PurposeFrequencyPolicyDefault, PurposeFrequencyPolicyPreserve, PurposeFrequencyPolicyHighestResolution} {
+			t.Run("environment "+existing.key+" "+existing.frequency+" "+policy, func(t *testing.T) {
+				const variable = "Site Outdoor Air Drybulb Temperature"
+				doc := parsePurposePlanFixture(t, purposePlanFixtureIDF+"\nOutput:Variable,"+existing.key+","+variable+","+existing.frequency+";\n")
+				before := doc.String()
+				purposes := []SimulationPurposeID{SimulationPurposeBasicEnergy, SimulationPurposeZoneHeatFlow, SimulationPurposeComfort}
+				plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{Purposes: purposes, FrequencyPolicy: policy})
+				count := 0
+				for _, output := range plan.OutputObjects {
+					if output.ObjectType != "Output:Variable" || output.ReportingFrequency != "Hourly" {
+						continue
+					}
+					known := false
+					for _, name := range simulationEnvironmentPlotVariables() {
+						known = known || output.VariableName == name
+					}
+					if !known {
+						continue
+					}
+					count++
+					if len(output.PurposeIDs) != len(purposes) {
+						t.Fatal("environment request was duplicated by purpose", output)
+					}
+					for _, purpose := range purposes {
+						if !purposeIDsContain(output.PurposeIDs, purpose) {
+							t.Fatal("environment request lost purpose ownership", output)
+						}
+					}
+					if output.VariableName == variable && existing.frequency == "Hourly" {
+						if output.KeyValue != existing.key || output.State != PurposeOutputStateExisting || output.ObjectIndex == nil {
+							t.Fatal("existing exact/wildcard Hourly coverage was not reused", output)
+						}
+					} else if output.KeyValue != "Environment" || output.State != PurposeOutputStateTemporary || output.ObjectIndex != nil {
+						t.Fatal("required Hourly environment request conflicted with an existing cadence", output)
+					}
+				}
+				if count != 8 {
+					t.Fatalf("environment Hourly request count=%d, want8", count)
+				}
+				apply := PurposeRunPlanApplyRequest(plan)
+				if len(apply.Updates) != 0 || len(apply.RemoveObjectIndexes) != 0 {
+					t.Fatal("environment companion changed original outputs", apply)
+				}
+				updated, preview := idf.ApplyOutput(doc, apply)
+				if !preview.CanApply || doc.String() != before {
+					t.Fatal("environment plot preparation mutated its source", preview)
+				}
+				original, hourly := 0, 0
+				for _, object := range updated.Objects {
+					if object.Type != "Output:Variable" || len(object.Fields) < 3 || object.Fields[1].Value != variable {
+						continue
+					}
+					if object.Fields[0].Value == existing.key && object.Fields[2].Value == existing.frequency {
+						original++
+					}
+					if object.Fields[2].Value == "Hourly" {
+						hourly++
+					}
+				}
+				if original != 1 || hourly != 1 {
+					t.Fatal("environment plan duplicated or replaced source requests", original, hourly)
+				}
+			})
+		}
+	}
 	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
 
 	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
@@ -670,7 +739,7 @@ Fan:ConstantVolume,
 				Purposes:          []SimulationPurposeID{SimulationPurposeBasicEnergy},
 				BasicEnergyDetail: PurposeBasicEnergyDetailHeatDrivers,
 			},
-			want: `requires_sql=true requires_discovery=false weight=Light frames=12
+			want: `requires_sql=true requires_discovery=false weight=Medium frames=8760
 output|Output:SQLite||||temporary|basic_energy
 output|Output:Meter|Electricity:Facility||Monthly|temporary|basic_energy
 output|Output:Meter|Electricity:InteriorEquipment||Monthly|temporary|basic_energy
@@ -899,6 +968,14 @@ output|Output:Variable|*|Zone Windows Total Heat Loss Energy|Monthly|temporary|b
 output|Output:Variable|*|Zone Windows Total Heat Loss Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Windows Total Transmitted Solar Radiation Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Windows Total Transmitted Solar Radiation Rate|Monthly|temporary|basic_energy
+output|Output:Variable|Environment|Site Diffuse Solar Radiation Rate per Area|Hourly|temporary|basic_energy
+output|Output:Variable|Environment|Site Direct Solar Radiation Rate per Area|Hourly|temporary|basic_energy
+output|Output:Variable|Environment|Site Outdoor Air Barometric Pressure|Hourly|temporary|basic_energy
+output|Output:Variable|Environment|Site Outdoor Air Drybulb Temperature|Hourly|temporary|basic_energy
+output|Output:Variable|Environment|Site Outdoor Air Relative Humidity|Hourly|temporary|basic_energy
+output|Output:Variable|Environment|Site Outdoor Air Wetbulb Temperature|Hourly|temporary|basic_energy
+output|Output:Variable|Environment|Site Wind Direction|Hourly|temporary|basic_energy
+output|Output:Variable|Environment|Site Wind Speed|Hourly|temporary|basic_energy
 `,
 		},
 		{
@@ -914,6 +991,14 @@ output|Output:Variable|*|Zone Windows Total Transmitted Solar Radiation Rate|Mon
 			want: `requires_sql=true requires_discovery=false weight=Medium frames=8760
 warning|info|zone_scope_selected|zone_heat_flow
 output|Output:SQLite||||temporary|zone_heat_flow
+output|Output:Variable|Environment|Site Diffuse Solar Radiation Rate per Area|Hourly|temporary|zone_heat_flow
+output|Output:Variable|Environment|Site Direct Solar Radiation Rate per Area|Hourly|temporary|zone_heat_flow
+output|Output:Variable|Environment|Site Outdoor Air Barometric Pressure|Hourly|temporary|zone_heat_flow
+output|Output:Variable|Environment|Site Outdoor Air Drybulb Temperature|Hourly|temporary|zone_heat_flow
+output|Output:Variable|Environment|Site Outdoor Air Relative Humidity|Hourly|temporary|zone_heat_flow
+output|Output:Variable|Environment|Site Outdoor Air Wetbulb Temperature|Hourly|temporary|zone_heat_flow
+output|Output:Variable|Environment|Site Wind Direction|Hourly|temporary|zone_heat_flow
+output|Output:Variable|Environment|Site Wind Speed|Hourly|temporary|zone_heat_flow
 output|Output:Variable|Office|Zone Air Heat Balance Air Energy Storage Rate|Hourly|temporary|zone_heat_flow
 output|Output:Variable|Office|Zone Air Heat Balance Deviation Rate|Hourly|temporary|zone_heat_flow
 output|Output:Variable|Office|Zone Air Heat Balance Internal Convective Heat Gain Rate|Hourly|temporary|zone_heat_flow

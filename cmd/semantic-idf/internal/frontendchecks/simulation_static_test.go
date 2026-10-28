@@ -261,38 +261,33 @@ func TestFrontendSimulationOmitsOutputFilesView(t *testing.T) {
 	}
 }
 
-func TestFrontendSimulationSeriesUsesGroupedVariablePickerAndDualRange(t *testing.T) {
+func TestFrontendSimulationRelatedPlotsReplaceSeriesTab(t *testing.T) {
 	index := readTestFile(t, "frontend/src/index.html")
-	state := readTestFile(t, "frontend/src/js/state.js")
 	view := readTestFile(t, "frontend/src/js/views/simulation-views.js")
-	styles := readTestFile(t, "frontend/src/styles/simulation.css")
-	series := sliceBetween(index, `data-simulation-result-view="series"`, `</section>`)
-	for _, forbidden := range []string{`id="simulationSeriesGroup"`, `<span>Start</span>`, `<span>End</span>`} {
-		if strings.Contains(series, forbidden) {
-			t.Fatalf("Simulation Series still exposes the old split control %q", forbidden)
+	comparison := readTestFile(t, "frontend/src/js/views/simulation-comparison-view.js")
+	for _, forbidden := range []string{`data-simulation-result-view-button="series"`, `data-simulation-result-view="series"`, `id="simulationSeriesSelect"`, `id="simulationSeriesRange"`} {
+		if strings.Contains(index, forbidden) {
+			t.Fatalf("Simulation still exposes removed standalone Series UI %q", forbidden)
 		}
 	}
 	for _, required := range []string{
-		`data-series-panel-action="add"`,
-		`data-series-panel-action="remove"`,
-		`data-series-variable-action=`,
-		`data-simulation-chart-hit="1"`,
-		`<optgroup label="${escapeHTML(group.label)}">`,
-		`${escapeHTML([item.column, item.reportingFrequency].filter(Boolean).join(" · "))}</option>`,
-		`zoomSimulationSeriesPanel`,
-		`host.addEventListener("pointerdown"`,
-		`host.addEventListener("pointermove"`,
-		`renderSimulationMultiSeriesSVG`,
-		`const units = [...new Set(`,
-		`index % 2 === 0`,
-		`simulation-series-legend`,
+		`data-simulation-comparison-host`,
+		`renderSimulationComparison`,
+		`handleSimulationComparisonEvent`,
+		`data-simulation-comparison-mode`,
+		`data-simulation-comparison-entity`,
+		`data-simulation-comparison-property`,
+		`data-simulation-comparison-add`,
+		`data-simulation-comparison-remove`,
 	} {
-		if !strings.Contains(index+state+view+styles, required) {
-			t.Fatalf("Simulation Series grouped picker or dual range is missing %q", required)
+		if !strings.Contains(view+comparison, required) {
+			t.Fatalf("Purpose-local variable comparison is missing %q", required)
 		}
 	}
-	if strings.Contains(view, `${escapeHTML(item.file)} - ${escapeHTML(item.column)}`) {
-		t.Fatal("Simulation Series picker must group by category and label options by variable name, not source file")
+	for _, resultView := range []string{"energy", "zone_heat_flow", "hvac_loops", "comfort"} {
+		if !strings.Contains(index, `data-simulation-result-view-button="`+resultView+`"`) {
+			t.Fatalf("Simulation lost the existing %s result view", resultView)
+		}
 	}
 }
 
@@ -325,11 +320,13 @@ func TestFrontendSimulationRendersOnlyTheActiveResultView(t *testing.T) {
 		`case "zone_heat_flow":`,
 		`case "hvac_loops":`,
 		`case "comfort":`,
-		`case "series":`,
 	} {
 		if !strings.Contains(render, required) {
 			t.Fatalf("Simulation completion must lazily render only the active result view: missing %q", required)
 		}
+	}
+	if strings.Contains(render, `case "series":`) {
+		t.Fatal("Simulation must not render the removed standalone Series view")
 	}
 	completion := sliceBetween(render, "const result = state.simulationResult", "function renderActiveSimulationResultView")
 	for _, forbidden := range []string{"renderSimulationHVACLoops(result)", "renderSimulationComfort(result)", "renderSimulationHeatFlow()", "renderSimulationChart()"} {
@@ -693,11 +690,7 @@ func TestFrontendSimulationAutomaticEnergyPlusVersionEdges(t *testing.T) {
 
 func TestFrontendSimulationRenderReusesIndexesAndDelegatesDynamicInteractions(t *testing.T) {
 	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
-	chartRender := sliceBetween(simulation, "function renderSimulationChart", "function currentSimulationSeries")
 	heatFlowRender := sliceBetween(simulation, "function renderSimulationHeatFlow", "function activeHeatFlowDataset")
-	if strings.Contains(chartRender, "bindSimulationChartInteractions") {
-		t.Fatal("Simulation chart render must not recreate chart listeners")
-	}
 	if strings.Contains(heatFlowRender, "bindHeatFlowInteractions") {
 		t.Fatal("Simulation heat-flow render must not recreate shape listeners")
 	}
@@ -719,7 +712,7 @@ func TestFrontendSimulationRenderReusesIndexesAndDelegatesDynamicInteractions(t 
 		"simulationHVACServicePathIndex().byID",
 		"simulationSeriesLookup().byID",
 		"simulationPurposeOutputLookup().byIndex",
-		"bindSimulationChartInteractions();",
+		"handleSimulationComparisonEvent",
 		"bindHeatFlowInteractions();",
 		`host.addEventListener("pointermove"`,
 		`"wheel",`,

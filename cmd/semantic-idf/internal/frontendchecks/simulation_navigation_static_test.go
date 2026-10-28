@@ -95,8 +95,9 @@ func TestSimulationPanelAdapterRevealsWithoutAnalysisAndRestoresFilters(t *testi
 		"simulationComfortZone",
 		"simulationHeatFlowSelectedZone",
 		"simulationHeatFlowStory",
-		"simulationSeriesGroup",
-		"simulationSelectedSeries",
+		"simulationComparisons",
+		"comparisons: structuredClone(state.simulationComparisons || {})",
+		"simulationComparisons: snapshot.comparisons ? structuredClone(snapshot.comparisons) : undefined",
 		"captureSimulationNavigationContext",
 		"restoreSimulationNavigationContext",
 	} {
@@ -110,7 +111,7 @@ func TestSimulationPanelAdapterRevealsWithoutAnalysisAndRestoresFilters(t *testi
 			t.Fatalf("simulation navigation reveal must not trigger analysis or a run: %q", forbidden)
 		}
 	}
-	for _, forbidden := range []string{"state.simulationEnergyFocusMode =", "state.simulationEnergyServicePathFocus =", "state.simulationSeriesGroup =", "state.simulationHeatFlowStory ="} {
+	for _, forbidden := range []string{"state.simulationEnergyFocusMode =", "state.simulationEnergyServicePathFocus =", "state.simulationHeatFlowStory ="} {
 		if strings.Contains(reveal, forbidden) {
 			t.Fatalf("simulation reveal must preserve the active result filter: %q", forbidden)
 		}
