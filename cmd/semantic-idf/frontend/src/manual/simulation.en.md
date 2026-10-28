@@ -536,6 +536,9 @@ the input comfort model, activity, clothing, schedules, and environmental
 conditions. The app does not infer an unreported People-group comfort result.
 
 Indicators use available observation averages/ranges or reported unmet hours.
+Summary cards use full temperature names and two aligned rows, ordered by
+temperature, RH and unmet time. Cooling/heating setpoints and unmet hours
+share columns; all-hour and occupied-hour observations remain separate.
 A time-series average is an average of available observations, not necessarily
 an occupancy-weighted exposure measure.
 

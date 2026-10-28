@@ -12,8 +12,8 @@ const titles = () => ({ temperature: copy("Temperature", "Temperature & setpoint
 
 function scopeName(scope) { return scope.id === COMFORT_BUILDING_SCOPE ? copy("Building", "Building") : scope.name; }
 
-function metricLabel(metric, metrics, scope) {
-  const label = metric.category === "unmet" ? hoursLabel(metric) : metric.label;
+function metricLabel(metric, metrics, scope, summaryLabel) {
+  const label = summaryLabel ?? (metric.category === "unmet" ? hoursLabel(metric) : metric.label);
   const matching = metrics.filter((item) => item.kind === metric.kind);
   const group = metric.keyValue && metric.keyValue.toLowerCase() !== scope.name.toLowerCase() ? metric.keyValue : "";
   if (group && matching.length > 1) {
@@ -30,17 +30,26 @@ function metricLabel(metric, metrics, scope) {
 
 function hoursLabel(metric) {
   const occupied = metric.kind.endsWith("Occupied");
-  const base = metric.kind.startsWith("unmetHeating") ? copy("BelowSetpoint", "Below Tset,h")
-    : metric.kind.startsWith("unmetCooling") ? copy("AboveSetpoint", "Above Tset,c")
+  const base = metric.kind.startsWith("unmetHeating") ? copy("BelowSetpoint", "Below heating setpoint")
+    : metric.kind.startsWith("unmetCooling") ? copy("AboveSetpoint", "Above cooling setpoint")
       : metric.label === "ASHRAE 55" ? copy("ASHRAEDiscomfort", "Discomfort · ASHRAE 55") : copy("Discomfort", "Discomfort");
   return occupied ? `${base} · ${copy("Occupied", "occupied")}` : base;
 }
 
 function indicator(metric, scope) {
   const hours = metric.category === "unmet";
-  const value = hours ? metric.summary.total : metric.summary.average;
+  const value = hours ? (finite(metric.value) ? metric.value : metric.summary?.total) : metric.summary.average;
   if (!finite(value)) return "";
-  const label = hours ? hoursLabel(metric) : metricLabel(metric, scope.metrics, scope);
+  const temperatureNames = {
+    temperature: ["AirTemperature", "Air temperature"],
+    radiantTemperature: ["MeanRadiantTemperature", "Mean radiant temperature"],
+    operativeTemperature: ["OperativeTemperature", "Operative temperature"],
+    coolingSetpoint: ["CoolingSetpointTemperature", "Cooling setpoint temperature"],
+    heatingSetpoint: ["HeatingSetpointTemperature", "Heating setpoint temperature"],
+    setpoint: ["SetpointTemperature", "Setpoint temperature"],
+  };
+  const name = temperatureNames[metric.kind];
+  const label = hours ? hoursLabel(metric) : metricLabel(metric, scope.metrics, scope, name ? copy(...name) : undefined);
   const range = !hours && finite(metric.summary.min) && finite(metric.summary.max)
     ? `${copy("Range", "Range")} ${number(metric.summary.min)}–${number(metric.summary.max)} ${unit(metric.unit)}` : "";
   return `<article class="comfort-inspection-indicator" data-comfort-inspect-metric="${metric.kind}"${hours ? ` data-comfort-inspect-hours="${value}"` : ""}>
@@ -51,13 +60,38 @@ function indicator(metric, scope) {
 }
 
 function renderIndicators(scope) {
-  const cards = scope.metrics.filter((metric) => metric.category !== "unmet" || !scope.hours.some((hour) => hour.kind === metric.kind)).map((metric) => indicator(metric, scope)).join("");
-  const hours = scope.hours.map((metric) => `<article class="comfort-inspection-indicator" data-comfort-inspect-metric="${metric.kind}" data-comfort-inspect-hours="${metric.value}">
-    <div class="comfort-inspection-indicator-label">${escapeHTML(hoursLabel(metric))}</div>
-    <div class="comfort-inspection-indicator-value"><strong data-comfort-inspect-value="${metric.value}">${escapeHTML(number(metric.value))}</strong><span>${escapeHTML(unit(metric.unit))}</span></div>
-    <div class="comfort-inspection-indicator-note">${escapeHTML(copy("Total", "Total"))}</div>
-  </article>`).join("");
-  return cards || hours ? `<div class="comfort-inspection-indicators">${cards}${hours}</div>` : "";
+  const metrics = [...scope.metrics.filter((metric) => metric.category !== "unmet" || !scope.hours.some((hour) => hour.kind === metric.kind)), ...scope.hours];
+  const cards = metrics.map((metric) => ({ metric, html: indicator(metric, scope) })).filter((card) => card.html);
+  const columns = [], used = new Set();
+  const addPair = (topKind, bottomKind) => {
+    const groups = new Map();
+    for (const card of cards) {
+      if (![topKind, bottomKind].includes(card.metric.kind) || used.has(card)) continue;
+      const key = JSON.stringify([String(card.metric.keyValue || scope.id).trim().toLowerCase(), /\b(Fanger|Pierce|KSU)\b/i.exec(card.metric.name || "")?.[1]?.toLowerCase() || ""]);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(card);
+    }
+    for (const group of groups.values()) {
+      const top = group.filter((card) => card.metric.kind === topKind);
+      const bottom = group.filter((card) => card.metric.kind === bottomKind);
+      // Duplicate observations have no proved one-to-one correspondence.
+      // Keep every card in its own column rather than pair by array position.
+      if (top.length <= 1 && bottom.length <= 1) columns.push([top[0], bottom[0]]);
+      else columns.push(...top.map((card) => [card, null]), ...bottom.map((card) => [null, card]));
+      group.forEach((card) => used.add(card));
+    }
+  };
+  addPair("temperature", "radiantTemperature");
+  addPair("operativeTemperature", null);
+  addPair("coolingSetpoint", "heatingSetpoint");
+  addPair("setpoint", null);
+  addPair("relativeHumidity", "humidity");
+  addPair("pmv", "ppd");
+  addPair("unmetCooling", "unmetHeating");
+  addPair("unmetCoolingOccupied", "unmetHeatingOccupied");
+  columns.push(...cards.filter((card) => !used.has(card)).map((card) => [card, null]));
+  const empty = '<div class="comfort-inspection-indicator-empty" aria-hidden="true"></div>';
+  return columns.length ? `<div class="comfort-inspection-indicators">${columns.map((column) => column.map((card) => card?.html || empty).join("")).join("")}</div>` : "";
 }
 
 function renderScope(scope) {
