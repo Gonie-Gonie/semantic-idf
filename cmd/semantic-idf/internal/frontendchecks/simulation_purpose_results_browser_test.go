@@ -162,6 +162,8 @@ func simulationPurposeResultsBrowserFixture(runID, inputPath string, request sim
 			series("SUPPLY INLET", "System Node Mass Flow Rate", "kg/s", 0.5, 1, 1.5),
 			series("SUPPLY INLET", "System Node Relative Humidity", "%", 50, 55, 60),
 			series("SUPPLY FAN", "Fan Electricity Rate", "W", 0, 400, 500),
+			series("SUPPLY FAN", "Fan Electricity Energy", "J", 0, 1440000, 1800000),
+			series("SUPPLY FAN", "Fan Air Mass Flow Rate", "kg/s", 0, 1, 2),
 			series("RETURN OUTLET", "System Node Temperature", "C", 21, 22, 23),
 			series("RETURN OUTLET", "System Node Mass Flow Rate", "kg/s", 2, 3, 4),
 			series("RETURN OUTLET", "System Node Relative Humidity", "%", 60, 65, 70),
@@ -310,7 +312,17 @@ try{
  for(const kind of ['flow','temperature','humidity'])check(basic(kind)?.querySelectorAll('[data-hvac-chart-series]').length===1&&!basic(kind)?.textContent.includes('SUPPLY OUTLET'),'node checkbox did not remove corresponding trace: '+kind);
  check(vertex('SUPPLY OUTLET')&&custom().querySelector('svg')===customSVG,'node graph visibility removed topology or unrelated custom graph');
  chooseEntity(0,'SUPPLY FAN');
- check(hvac.querySelector('[data-hvac-inspect-property="0"]').value===''&&hvac.querySelector('[data-hvac-inspect-property="0"]').options.length===2,'equipment choice did not reset to its own property choices');
+ check(hvac.querySelector('[data-hvac-inspect-property="0"]').value===''&&hvac.querySelector('[data-hvac-inspect-property="0"]').options.length===4,'equipment choice did not reset to its own core power/flow/energy properties');
+ const fanChoices=[...hvac.querySelector('[data-hvac-inspect-property="0"]').options].filter(option=>option.value);
+ check(fanChoices.map(option=>option.textContent.split(' (')[0]).join('|')==='Electric power|Mass flow|Electric energy'&&fanChoices.every(option=>option.textContent.includes('Hourly')&&/^Fan /.test(option.title)),'equipment Custom properties lost concise priority, reporting cadence or native variable tooltip');
+ chooseProperty(0,'Electric energy');chooseEntity(1,'SUPPLY FAN');chooseProperty(1,'Mass flow');
+ check(hvac.querySelector('[data-hvac-inspect-property="0"]').title==='Fan Electricity Energy'&&custom().querySelector('[data-hvac-chart-axis="left"]').dataset.hvacChartUnit==='kWh'&&custom().querySelector('[data-hvac-chart-axis="right"]').dataset.hvacChartUnit==='kg/s','native fan operating energy/flow were unavailable to the Custom line graph');
+ change('[data-hvac-inspect-mode]','scatter');
+ const fanPairs=[...custom().querySelectorAll('[data-hvac-chart-scatter] circle')];
+ check(fanPairs.length===3&&[0,.4,.5].every((value,index)=>fanPairs.some(point=>Math.abs(Number(point.dataset.hvacChartXValue)-value)<1e-12&&Number(point.dataset.hvacChartYValue)===index)),'native fan energy/flow Custom scatter lost paired values or known zero');
+ change('[data-hvac-inspect-mode]','histogram');
+ check(custom().querySelectorAll('[data-hvac-chart-histogram-axis]').length===2&&[...custom().querySelectorAll('[data-hvac-chart-series]')].every(group=>Number(group.dataset.hvacChartObservations)===3),'native fan energy/flow Custom histogram omitted complete distributions');
+ change('[data-hvac-inspect-mode]','line');
  chooseProperty(0,'Electric power');chooseEntity(1,'SUPPLY OUTLET');chooseProperty(1,'Temperature');
  check(custom().querySelector('[data-hvac-chart-axis="left"]').dataset.hvacChartUnit==='kW'&&custom().querySelector('[data-hvac-chart-axis="right"]').dataset.hvacChartUnit==='°C','native custom property selection failed independent power/temperature Y axes');
  hvac.querySelector('[data-hvac-inspect-add]').click();chooseEntity(2,'SUPPLY INLET');

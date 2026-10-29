@@ -3705,8 +3705,11 @@ func hvacLoopCheckComponentOutputs() []hvacComponentOutputCatalogItem {
 	return []hvacComponentOutputCatalogItem{
 		{VariableName: "Fan Electricity Rate", Category: "fan", Description: "Hourly fan electric power for loop operation review.", MatchTokens: []string{"fan"}},
 		{VariableName: "Fan Electricity Energy", Category: "fan", Description: "Hourly fan electric energy for loop operation review.", MatchTokens: []string{"fan"}},
+		{VariableName: "Fan Air Mass Flow Rate", Category: "fan", Description: "Reported fan air mass flow for operating-point review.", MatchTokens: []string{"fan"}},
 		{VariableName: "Pump Electricity Rate", Category: "pump", Description: "Hourly pump electric power for loop operation review.", MatchTokens: []string{"pump", "headeredpumps"}},
 		{VariableName: "Pump Electricity Energy", Category: "pump", Description: "Hourly pump electric energy for loop operation review.", MatchTokens: []string{"pump", "headeredpumps"}},
+		{VariableName: "Pump Mass Flow Rate", Category: "pump", Description: "Reported pump mass flow for operating-point review.", MatchTokens: []string{"pump", "headeredpumps"}},
+		{VariableName: "Pump Shaft Power", Category: "pump", Description: "Reported shaft power, distinct from electricity use and hydraulic power.", MatchTokens: []string{"pump", "headeredpumps"}},
 		{VariableName: "Cooling Coil Total Cooling Rate", Category: "cooling coil", Description: "Hourly cooling coil load for loop operation review.", MatchTokens: []string{"coil:cooling", "coolingcoil", "cooling coil"}},
 		{VariableName: "Cooling Coil Total Cooling Energy", Category: "cooling coil", Description: "Hourly cooling coil energy for loop operation review.", MatchTokens: []string{"coil:cooling", "coolingcoil", "cooling coil"}},
 		{VariableName: "Cooling Coil Electricity Rate", Category: "cooling coil", Description: "Reported hourly cooling coil electric power.", MatchTokens: []string{"coil:cooling:dx", "coil:cooling:watertoairheatpump"}},
@@ -3726,6 +3729,7 @@ func hvacLoopCheckComponentOutputs() []hvacComponentOutputCatalogItem {
 		{VariableName: "Boiler Heating Energy", Category: "boiler", Description: "Hourly boiler heating energy for plant-loop review.", MatchTokens: []string{"boiler"}},
 		{VariableName: "Boiler Ancillary Electricity Rate", Category: "boiler", Description: "Reported hourly boiler ancillary electric power.", MatchTokens: []string{"boiler"}},
 		{VariableName: "Boiler Part Load Ratio", Category: "boiler", Description: "Reported hourly boiler part load ratio.", MatchTokens: []string{"boiler"}},
+		{VariableName: "Boiler Efficiency", Category: "boiler", Description: "Reported hot-water boiler efficiency.", MatchTokens: []string{"boiler:hotwater"}},
 		{VariableName: "Cooling Tower Heat Transfer Rate", Category: "cooling tower", Description: "Hourly cooling tower heat rejection rate for condenser-loop review.", MatchTokens: []string{"coolingtower", "cooling tower"}},
 		{VariableName: "Cooling Tower Heat Transfer Energy", Category: "cooling tower", Description: "Hourly cooling tower heat rejection energy for condenser-loop review.", MatchTokens: []string{"coolingtower", "cooling tower"}},
 		{VariableName: "Cooling Tower Fan Electricity Rate", Category: "cooling tower", Description: "Reported hourly cooling tower fan electric power.", MatchTokens: []string{"coolingtower", "cooling tower"}},
@@ -3759,10 +3763,22 @@ func hvacLoopCheckComponentVariableNames() []string {
 		seen[key] = true
 		out = append(out, item.VariableName)
 	}
+	// Fuel requests are resolved from the executed boiler rather than requested
+	// for every resource. Their names still need complete SQL/CSV retention.
+	out = append(out, "Fan Runtime Fraction")
+	for _, fuel := range hvacOperatingBoilerFuels {
+		out = append(out, "Boiler "+fuel+" Rate", "Boiler "+fuel+" Energy")
+	}
 	return out
 }
 
 func hvacComponentOperationCategory(variableName string) string {
+	if strings.EqualFold(strings.TrimSpace(variableName), "Fan Runtime Fraction") {
+		return "fan"
+	}
+	if hvacOperatingBoilerFuelVariable(variableName) {
+		return "boiler"
+	}
 	wanted := normalizePurposeToken(variableName)
 	for _, item := range hvacLoopCheckComponentOutputs() {
 		if normalizePurposeToken(item.VariableName) == wanted {

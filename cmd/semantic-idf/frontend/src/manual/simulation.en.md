@@ -535,6 +535,43 @@ Humidity uses reported relative humidity where available; otherwise it can
 use humidity ratio in g/kg. These units are different quantities. A shared
 visual range does not convert one into the other.
 
+### Equipment operation {#hvac-equipment-operation}
+
+In HVAC Loops, select equipment in the Custom graph to compare its main
+operating quantities. The choices depend on the equipment's actual output support.
+
+| Equipment | Main operating quantities |
+| --- | --- |
+| Fan | Electric power and energy, air mass flow, and Runtime fraction for supported fan types. |
+| Pump | Electric power and energy, mass flow, and mechanical shaft power. |
+| Hot-water boiler | PLR, thermal efficiency, heating output and energy, actual fuel input and energy, and ancillary electric power. |
+| Chiller | Supported PLR, Cycling ratio, reported COP, cooling output and energy, and electric power and energy. |
+
+PLR, Cycling ratio, and Runtime fraction retain their distinct reported meanings.
+General fan and pump models do not report a universal operating PLR or total
+efficiency. Their flow and power measurements help examine part-load operation;
+flow fraction or power fraction is not relabeled as native PLR. Pump shaft
+power is mechanical input to the pump, not its useful hydraulic power or efficiency.
+
+Power uses kW and energy uses kWh **per reporting interval**, not a cumulative
+counter. Boiler heating energy is thermal output; fuel energy is consumption.
+Efficiency is a fraction: 0.9 means 90%. Reported boiler efficiency can be zero
+while off, so an average that includes off intervals is not a period's useful
+heat divided by consumed fuel. For period performance, use total heating energy
+divided by total fuel energy. COP uses the equipment model's reported energy
+basis; an absorption chiller's thermal-input COP differs from electric-input COP.
+
+Custom graphs prefer an exact, source-matched Timestep series where collected,
+retaining its full native samples. The reporting cadence appears with each choice
+and legend. Hourly observations remain Hourly; they are not repeated into finer
+intervals. Scatter pairs require matching source, time, and reporting interval.
+The basic node charts, schematic, and shared Frame control retain their existing
+cadence and behavior.
+
+Useful Scatter comparisons include PLR versus COP or boiler efficiency, and
+mass flow versus electric power. A PLR Histogram shows how often the equipment
+operates in each load range, including reported off-state zeros.
+
 ## Thermal Comfort interpretation {#comfort}
 
 Thermal Comfort is an observation view, not an energy-accounting view.

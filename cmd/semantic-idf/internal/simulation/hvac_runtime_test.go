@@ -218,6 +218,50 @@ func TestHVACRuntimeExecutedProfilesAndCoverage(t *testing.T) {
 			t.Fatal("legacy observations without executed profiles acquired a new control completeness marker")
 		}
 	}
+	t.Run("elective equipment channels do not change control coverage", func(t *testing.T) {
+		loop := report.Loops[0]
+		profiles := hvacRuntimeProfiles(report, loop, request.Scope)
+		required := map[string]bool{}
+		for _, profile := range profiles {
+			for _, signal := range hvacRuntimeSignals(profile, loop, &doc) {
+				required[signal.KeyValue+"/"+signal.VariableName+"/"+signal.ReportingFrequency] = true
+			}
+		}
+		var observations []SimulationSeries
+		for _, item := range series {
+			if required[item.KeyValue+"/"+item.Name+"/"+item.ReportingFrequency] {
+				observations = append(observations, item)
+			}
+		}
+		baseline := HVACLoopRunResult{}
+		attachHVACRuntimeControls(&baseline, profiles, loop, &doc, observations)
+		baselineCoverage, _ := json.Marshal(baseline.ControlCoverage)
+		extra := SimulationSeries{File: "another.csv", SourceID: "elective-energy", KeyValue: "First Fan", Name: "Fan Electricity Energy", ReportingFrequency: "Timestep", Column: "First Fan:Fan Electricity Energy [J](Timestep)", Points: []SimulationPoint{{X: 9999, Label: "12-31 24:00", Value: 0}}}
+		for _, duplicate := range []bool{false, true} {
+			changed := append(append([]SimulationSeries{}, observations...), extra)
+			if duplicate {
+				changed = append(changed, extra)
+			}
+			result := HVACLoopRunResult{}
+			attachHVACRuntimeControls(&result, profiles, loop, &doc, changed)
+			coverage, _ := json.Marshal(result.ControlCoverage)
+			if string(coverage) != string(baselineCoverage) || result.ControlCoverage.Status != "complete" {
+				t.Fatalf("elective file/time union changed required controls: %s != %s", coverage, baselineCoverage)
+			}
+			found := 0
+			for _, signal := range result.ControlSignals {
+				if signal.VariableName == extra.Name {
+					found++
+					if signal.Required || signal.Role != "operating" || signal.Graph != "equipment" || signal.SeriesID != extra.SourceID || signal.Status != "collected" {
+						t.Fatalf("elective output lost its source or became a required control: %+v", signal)
+					}
+				}
+			}
+			if !duplicate && found != 1 || duplicate && found != 0 {
+				t.Fatalf("missing/ambiguous elective output acquired a placeholder or arbitrary channel: %d", found)
+			}
+		}
+	})
 }
 
 func TestHVACRuntimeManagerDomainsAndFrequencyPreservation(t *testing.T) {
@@ -836,6 +880,9 @@ func TestHVACRuntimeNativeAcceptance(t *testing.T) {
 	assignments := map[string][3]int{}
 	tankTemperature, tankTarget, tankDuty := false, false, false
 	meaningfulFlow, targetObserved := false, false
+	operating := map[string]SimulationSeries{}
+	operatingKinds := map[string]bool{}
+	boilerEfficiencyZero := false
 	for _, loop := range result.PurposeResults.HVACLoops {
 		if loop.ControlCoverage == nil || loop.ControlCoverage.Status != "complete" {
 			for _, signal := range loop.ControlSignals {
@@ -920,6 +967,22 @@ func TestHVACRuntimeNativeAcceptance(t *testing.T) {
 			}
 		}
 		for _, signal := range loop.ControlSignals {
+			if signal.Role == "operating" {
+				item := bySeries[signal.SeriesID]
+				if signal.Required || signal.Graph != "equipment" || signal.Status != "collected" || signal.KeyValue != signal.Source.ObjectName || !purposeTimestepFrequency(item.ReportingFrequency) || len(item.Points) != 288 {
+					t.Fatalf("native operating channel lost exact source/cadence/full samples: %+v points=%d", signal, len(item.Points))
+				}
+				operating[signal.SeriesID] = item
+				operatingKinds[signal.VariableName] = true
+				if signal.Source.ObjectName == "HeatSys1 Boiler" && hvacOperatingBoilerFuelVariable(signal.VariableName) && !strings.HasPrefix(signal.VariableName, "Boiler NaturalGas ") {
+					t.Fatalf("native hot-water boiler acquired another fuel: %+v", signal)
+				}
+				if signal.VariableName == "Boiler Efficiency" {
+					for _, point := range item.Points {
+						boilerEfficiencyZero = boilerEfficiencyZero || point.Value == 0
+					}
+				}
+			}
 			if signal.Source.ObjectType == "WaterHeater:Mixed" && signal.Source.ObjectName == "SWHSys1 Water Heater" {
 				if signal.Graph == "onOff" && signal.Role == "sensor" && signal.VariableName == "Water Heater Tank Temperature" {
 					tankTemperature = len(bySeries[signal.SeriesID].Points) == 288
@@ -984,6 +1047,15 @@ func TestHVACRuntimeNativeAcceptance(t *testing.T) {
 	if !tankTemperature || !tankTarget || !tankDuty {
 		t.Fatalf("native tank thermostat evidence missing: temperature=%v target=%v fractional duty=%v", tankTemperature, tankTarget, tankDuty)
 	}
+	for _, variable := range []string{"Fan Electricity Rate", "Fan Electricity Energy", "Fan Air Mass Flow Rate", "Pump Electricity Rate", "Pump Electricity Energy", "Pump Shaft Power", "Pump Mass Flow Rate", "Chiller Part Load Ratio", "Chiller COP", "Chiller Electricity Energy", "Boiler Part Load Ratio", "Boiler Efficiency", "Boiler NaturalGas Rate", "Boiler NaturalGas Energy"} {
+		if !operatingKinds[variable] {
+			t.Fatalf("native result omitted core equipment operating quantity: %s", variable)
+		}
+	}
+	if !boilerEfficiencyZero {
+		t.Fatal("native OFF boiler efficiency zero was dropped or replaced")
+	}
+	t.Logf("native operating quantities: %d unique Timestep channels, %d variable names; 288 observations per channel", len(operating), len(operatingKinds))
 	unchanged, _ := os.ReadFile(path)
 	if string(original) != string(unchanged) {
 		t.Fatal("native acceptance modified original input fixture")

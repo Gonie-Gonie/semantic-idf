@@ -1,18 +1,21 @@
 import { escapeHTML } from "../state.js";
 import { t } from "../i18n.js";
-import { prepareHVACInspection, hvacInspectionSnapshots, hvacInspectionTrace, hvacInspectionBasicProperties } from "../hvac-inspection-data.js";
+import { prepareHVACInspection, hvacInspectionSnapshots, hvacInspectionTrace, hvacInspectionCustomTrace, hvacInspectionCustomFrequency, hvacInspectionBasicProperties } from "../hvac-inspection-data.js";
 import { renderHVACInspectionChart, updateHVACInspectionChartFrame, hvacInspectionChartYRanges } from "../hvac-inspection-charts.js";
 import { renderHVACInspectionTopology, updateHVACInspectionTopology } from "./hvac-inspection-topology.js";
 import { renderHVACRuntimeInspection, handleHVACRuntimeEvent, connectHVACRuntimeInspection, disconnectHVACRuntimeInspection, updateHVACRuntimeInspection } from "./hvac-runtime-view.js";
 import { prepareHVACRuntimeInspection } from "../hvac-runtime-data.js";
 
 const copy = (key, fallback) => t(`simulation.hvacInspect${key}`, {}, fallback);
-const option = (value, label, selected, disabled = false) => `<option value="${escapeHTML(value)}"${selected ? " selected" : ""}${disabled ? " disabled" : ""}>${escapeHTML(label)}</option>`;
+const option = (value, label, selected, disabled = false, title = "") => `<option value="${escapeHTML(value)}"${selected ? " selected" : ""}${disabled ? " disabled" : ""}${title ? ` title="${escapeHTML(title)}"` : ""}>${escapeHTML(label)}</option>`;
 const basicChartCache = new WeakMap();
 const pendingBasicPlots = new WeakMap();
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const basicTitle = (kind) => kind === "flow" ? copy("Flow", "Mass flow") : kind === "temperature" ? copy("Temperature", "Temperature") : copy("HumidityTitle", "Humidity");
 const rangeNumber = (value) => value.toLocaleString(undefined, { maximumFractionDigits: 4 });
+const operatingRank = property => property.kind === "status" ? /part load ratio/i.test(property.name) ? 0 : 3
+  : /ancillary electricity/i.test(property.name) ? 5.5
+  : ({ cop: 1, efficiency: 2, power: 4, fuelPower: 5, flow: 6, shaftPower: 7, cooling: 8, heating: 8, heatTransfer: 8, energy: 9, fuelEnergy: 10, coolingEnergy: 11, heatingEnergy: 11, heatTransferEnergy: 11 }[property.kind] ?? 12);
 
 function normalize(model, ui) {
   ui.frameIndex = Math.max(0, Math.min(model.frames.length - 1, Math.round(Number(ui.frameIndex) || 0)));
@@ -135,14 +138,16 @@ function updateBasicYControl(group, range, selected) {
 function renderCustomChart(model, ui) {
   return renderHVACInspectionChart({ markers: false, mode: ui.mode, frameKey: model.frames[ui.frameIndex]?.x,
     series: selectedProperties(model, ui).map((property) => {
-      const trace = hvacInspectionTrace(model, property);
-      return { ...trace, axisLabel: property.label, ...(ui.mode === "histogram" ? { legendLabel: `${trace.label} (${trace.unit}${model.reportingFrequency ? ` · ${model.reportingFrequency}` : ""})` } : {}) };
+      const trace = hvacInspectionCustomTrace(model, property);
+      return { ...trace, axisLabel: property.label, legendLabel: `${trace.label} (${trace.unit} · ${trace.reportingFrequency})` };
     }) });
 }
 
 function renderCustomControls(model, ui) {
   const rows = ui.rows.map((row, index) => {
     const entity = model.entities.find((item) => item.id === row.entity);
+    const current = entity?.properties.find((property) => property.id === row.property);
+    const properties = entity?.kind === "component" ? [...entity.properties].sort((left, right) => operatingRank(left) - operatingRank(right)) : entity?.properties || [];
     const otherProperties = selectedProperties(model, { ...ui, rows: ui.rows.filter((_, other) => other !== index) });
     const otherUnits = new Set(otherProperties.map((property) => property.unit));
     return `<div class="hvac-inspection-custom-row">
@@ -151,10 +156,10 @@ function renderCustomControls(model, ui) {
         ${option("", copy("ChooseEntity", "Choose equipment / node"), !entity)}
         ${["component", "node"].map((kind) => `<optgroup label="${escapeHTML(copy(kind === "node" ? "Nodes" : "Equipment", kind === "node" ? "Nodes" : "Equipment"))}">${model.entities.filter((item) => item.kind === kind).map((item) => option(item.id, item.name, item.id === row.entity)).join("")}</optgroup>`).join("")}
       </select></label>
-      <label><span>${escapeHTML(copy("Property", "Property"))}</span><select data-hvac-inspect-property="${index}"${entity ? "" : " disabled"}>
+      <label><span>${escapeHTML(copy("Property", "Property"))}</span><select data-hvac-inspect-property="${index}"${current?.name ? ` title="${escapeHTML(current.name)}"` : ""}${entity ? "" : " disabled"}>
         ${option("", copy("ChooseProperty", "Choose a property"), !row.property)}
-        ${(entity?.properties || []).map((property) => option(property.id, `${property.label} (${property.unit})`, property.id === row.property,
-          otherProperties.some((other) => other.id === property.id) || ui.mode === "line" && otherUnits.size >= 2 && !otherUnits.has(property.unit))).join("")}
+        ${properties.map((property) => option(property.id, `${property.label} (${property.unit} · ${hvacInspectionCustomFrequency(model, property)})`, property.id === row.property,
+          otherProperties.some((other) => other.id === property.id) || ui.mode === "line" && otherUnits.size >= 2 && !otherUnits.has(property.unit), property.name)).join("")}
       </select></label>
       ${ui.mode !== "scatter" && ui.rows.length > 2 ? `<button type="button" data-hvac-inspect-remove="${index}" aria-label="${escapeHTML(copy("Remove", "Remove series"))}">×</button>` : ""}
     </div>`;

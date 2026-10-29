@@ -161,7 +161,9 @@ export function prepareHVACRuntimeInspection(loop = {}) {
     }
     nativeMetadataCache.set(item, intervals); return intervals;
   };
-  const signals = (loop.controlSignals || []).map((binding) => {
+  // Elective operating traces belong to Custom graphs. They must not select
+  // another primary file or extend availability/control frame boundaries.
+  const signals = (loop.controlSignals || []).filter(binding => !(binding.graph === "equipment" && binding.role === "operating" && binding.required === false)).map((binding) => {
     const matching = binding.seriesId ? byID.get(binding.seriesId) || [] : bySignature.get(signature(binding)) || [];
     const exact = matching.filter((item) => seriesSignature(item) === signature(binding));
     const item = exact.length === 1 ? exact[0] : null;

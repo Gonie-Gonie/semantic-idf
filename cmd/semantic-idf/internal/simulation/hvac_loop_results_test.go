@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -103,6 +104,44 @@ func TestHVACDefaultSampleAllLoopScopeIncludesWaterLoops(t *testing.T) {
 	}
 	request := SimulationPurposeRequest{Purposes: []SimulationPurposeID{SimulationPurposeHVACLoopCheck}, Scope: SimulationPurposeScope{LoopMode: "all"}}
 	plan := BuildPurposeRunPlan(doc, request)
+	operating, required := map[string]bool{}, map[string]bool{}
+	loopByID := map[string]idf.HVACLoop{}
+	for _, loop := range report.Loops {
+		loopByID[loop.ID] = loop
+	}
+	for _, profile := range report.OperatingProfiles {
+		for _, binding := range hvacRuntimeSignals(profile, loopByID[profile.LoopID], &doc) {
+			if binding.ReportingFrequency == "Timestep" {
+				required[binding.KeyValue+"/"+binding.VariableName] = true
+			}
+		}
+		for _, binding := range hvacOperatingSignals(profile, &doc) {
+			operating[binding.KeyValue+"/"+binding.VariableName] = true
+			for _, frequency := range []string{"Hourly", "Timestep"} {
+				count := 0
+				for _, output := range plan.OutputObjects {
+					if output.KeyValue == binding.KeyValue && output.VariableName == binding.VariableName && output.ReportingFrequency == frequency {
+						count++
+					}
+				}
+				if count != 1 {
+					t.Fatalf("operating channel omitted or duplicated: %s %s %s count=%d", binding.KeyValue, binding.VariableName, frequency, count)
+				}
+			}
+		}
+	}
+	additional := 0
+	for identity := range operating {
+		if !required[identity] {
+			additional++
+		}
+	}
+	for _, output := range plan.OutputObjects {
+		if output.ReportingFrequency == "Timestep" && output.VariableName == "Cooling Coil Total Cooling Energy" {
+			t.Fatal("elective operating diagnostics broadened coil energy acquisition")
+		}
+	}
+	t.Logf("default sample operating acquisition: %d core channels, %d additional Timestep channels after required-control reuse", len(operating), additional)
 	for _, variable := range []string{"System Node Temperature", "Pump Electricity Rate", "Chiller COP", "Boiler Heating Rate", "Cooling Tower Fan Electricity Rate"} {
 		if findPurposeOutput(plan, "Output:Variable", "*", variable) == nil {
 			t.Fatalf("all-loop plan omitted air/water loop observations: %s", variable)
@@ -186,7 +225,7 @@ func TestHVACNestedMeasurementsKeepTypedOwnershipAndActualPorts(t *testing.T) {
 		owners[normalizePurposeToken(component.ObjectName)] = append(owners[normalizePurposeToken(component.ObjectName)], component)
 	}
 	series := []SimulationSeries{hvacResultTestSeries("Inner Fan", "Fan Electricity Rate", "W"), hvacResultTestSeries("Inner Coil", "Cooling Coil Total Cooling Rate", "W")}
-	summaries := hvacTypedComponentSummaries(series, owners)
+	summaries := hvacTypedComponentSummaries(series, owners, nil)
 	if len(summaries) != 2 {
 		t.Fatalf("measured children not exposed: %+v", summaries)
 	}
@@ -209,6 +248,41 @@ func TestHVACOperationOutputsAreScopedToReportingEquipmentTypes(t *testing.T) {
 	if hvacComponentTypeReportsVariable("Coil:Cooling:Water", "Cooling Coil Electricity Rate") || hvacComponentTypeReportsVariable("Fan:ConstantVolume", "Chiller COP") {
 		t.Fatal("equipment plan invented unavailable electric power/COP")
 	}
+	t.Run("source-exact boiler fuel and native family channels", testHVACOperatingSourceChannels)
+}
+
+func testHVACOperatingSourceChannels(t *testing.T) {
+	doc := parsePurposePlanFixture(t, "Version,24.2;\nBoiler:HotWater,Gas Boiler,NaturalGas;\nBoiler:HotWater,Electric Boiler,Electricity;\n")
+	gas := idf.HVACComponent{ObjectName: "Gas Boiler", ObjectType: "Boiler:HotWater", ObjectIndex: doc.Objects[1].Index}
+	for _, variable := range []string{"Boiler NaturalGas Rate", "Boiler NaturalGas Energy", "Boiler Efficiency"} {
+		if !hvacComponentReportsVariable(gas, variable, &doc) {
+			t.Fatalf("verified source omitted native boiler quantity: %s", variable)
+		}
+	}
+	if hvacComponentReportsVariable(gas, "Boiler Electricity Energy", &doc) || hvacComponentReportsVariable(gas, "Boiler NaturalGas Energy", nil) {
+		t.Fatal("boiler fuel channel was accepted without its executed source fuel")
+	}
+	series := []SimulationSeries{hvacResultTestSeries(gas.ObjectName, "Boiler NaturalGas Energy", "J"), hvacResultTestSeries(gas.ObjectName, "Boiler Electricity Energy", "J")}
+	series[0].Points[0].Value = 0
+	got := hvacTypedComponentSummaries(series, map[string][]idf.HVACComponent{normalizePurposeToken(gas.ObjectName): {gas}}, &doc)
+	if len(got) != 1 || len(got[0].Series) != 1 || got[0].Series[0].Name != "Boiler NaturalGas Energy" || got[0].Series[0].Points[0].Value != 0 {
+		t.Fatalf("source-exact fuel or known zero lost in component summary: %+v", got)
+	}
+	duplicate := doc
+	duplicate.Objects = append(append([]idf.Object{}, doc.Objects...), doc.Objects[1])
+	if hvacComponentReportsVariable(gas, "Boiler NaturalGas Energy", &duplicate) {
+		t.Fatal("duplicate boiler identity was silently accepted")
+	}
+	for _, typ := range []string{"Fan:VariableVolume", "Fan:ConstantVolume", "Fan:SystemModel", "Pump:VariableSpeed", "HeaderedPumps:ConstantSpeed"} {
+		for _, variable := range hvacOperatingVariables(idf.HVACOperatingSource{ObjectType: typ}, nil) {
+			if strings.Contains(variable, "Part Load Ratio") || strings.Contains(variable, "Efficiency") || variable == "Fan Runtime Fraction" {
+				t.Fatalf("unsupported family performance variable: %s %s", typ, variable)
+			}
+		}
+	}
+	if len(hvacOperatingVariables(idf.HVACOperatingSource{ObjectType: "Chiller:Absorption"}, nil)) != 0 || hvacComponentTypeReportsVariable("Boiler:Steam", "Boiler Efficiency") {
+		t.Fatal("electric EIR/hot-water diagnostics broadened to unsupported equipment")
+	}
 }
 
 func TestHVACSQLKeepsFullAlignedWeatherHourlyObservations(t *testing.T) {
@@ -223,7 +297,7 @@ func TestHVACSQLKeepsFullAlignedWeatherHourlyObservations(t *testing.T) {
 		`CREATE TABLE EnvironmentPeriods (EnvironmentPeriodIndex INTEGER, EnvironmentType INTEGER)`,
 		`CREATE TABLE ReportData (TimeIndex INTEGER, ReportDataDictionaryIndex INTEGER, Value REAL)`,
 		`INSERT INTO EnvironmentPeriods VALUES (1,1),(2,3)`,
-		`INSERT INTO ReportDataDictionary VALUES (1,'A','System Node Temperature','C','Hourly',0),(2,'A','System Node Mass Flow Rate','kg/s','Hourly',0),(3,'OTHER','Unrelated','W','Hourly',0)`,
+		`INSERT INTO ReportDataDictionary VALUES (1,'A','System Node Temperature','C','Hourly',0),(2,'A','System Node Mass Flow Rate','kg/s','Hourly',0),(3,'OTHER','Unrelated','W','Hourly',0),(4,'GAS BOILER','Boiler NaturalGas Energy','J','Hourly',0)`,
 		`INSERT INTO "Time" VALUES (1,1,1,1,0,1,1,0),(2,1,1,1,0,2,1,1)`,
 		`INSERT INTO ReportData VALUES (1,1,999),(1,2,999),(2,1,999),(2,2,999)`,
 	} {
@@ -241,7 +315,7 @@ func TestHVACSQLKeepsFullAlignedWeatherHourlyObservations(t *testing.T) {
 		if _, err := tx.Exec(`INSERT INTO "Time" VALUES (?,?,?,?,0,2,1,0)`, index+2, int(date.Month()), date.Day(), date.Hour()+1); err != nil {
 			t.Fatal(err)
 		}
-		for dictionary := 1; dictionary <= 3; dictionary++ {
+		for dictionary := 1; dictionary <= 4; dictionary++ {
 			if index == 650 && dictionary == 2 {
 				continue
 			}
@@ -260,7 +334,7 @@ func TestHVACSQLKeepsFullAlignedWeatherHourlyObservations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(series) != 3 || len(series[0].Points) != frames || len(series[1].Points) != frames-1 || len(series[2].Points) != maxCSVSeriesPoints {
+	if len(series) != 4 || len(series[0].Points) != frames || len(series[1].Points) != frames-1 || len(series[2].Points) != maxCSVSeriesPoints || len(series[3].Points) != frames || series[3].Name != "Boiler NaturalGas Energy" {
 		t.Fatalf("HVAC observations were downsampled, or generic preview unbounded: %v", hvacTestPointCounts(series))
 	}
 	if series[0].Points[0].Value != 1 || series[1].Points[649].Value != 651 || series[1].Points[649].X != series[0].Points[650].X {

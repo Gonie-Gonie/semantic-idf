@@ -50,7 +50,7 @@ func buildHVACLoopRunResultsWithDocument(series []SimulationSeries, request Simu
 				continue
 			}
 			for _, component := range components[normalizePurposeToken(key)] {
-				if hvacComponentTypeReportsVariable(component.ObjectType, variable) {
+				if hvacComponentReportsVariable(component, variable, doc) {
 					matched = append(matched, item)
 					break
 				}
@@ -62,7 +62,7 @@ func buildHVACLoopRunResultsWithDocument(series []SimulationSeries, request Simu
 			result = built[0]
 		}
 		result.Name, result.LoopType, result.Topology = loop.Name, loop.Type, &loop
-		result.Components = hvacTypedComponentSummaries(matched, components)
+		result.Components = hvacTypedComponentSummaries(matched, components, doc)
 		// Derivations depend on the individual loop type, never the wildcard run.
 		result.DerivedMetrics = buildHVACLoopDerivedMetrics(result.NodeSummaries, result.LoopType)
 		result.Status, result.StatusMessage = classifyHVACLoopStatus(result.NodeSummaries, result.DerivedMetrics, result.Alerts)
@@ -234,19 +234,19 @@ func hvacComponentOnLoopCircuit(component idf.HVACComponent, loopType string, ci
 	return component
 }
 
-func hvacTypedComponentSummaries(series []SimulationSeries, components map[string][]idf.HVACComponent) []HVACComponentRunSummary {
+func hvacTypedComponentSummaries(series []SimulationSeries, components map[string][]idf.HVACComponent, doc *idf.Document) []HVACComponentRunSummary {
 	out := []HVACComponentRunSummary{}
 	for key, owners := range components {
 		for _, owner := range owners {
 			matched := []SimulationSeries{}
 			for _, item := range series {
 				itemKey, variable := hvacSeriesIdentity(item)
-				if normalizePurposeToken(itemKey) != key || !hvacSeriesIsHourly(item) || !hvacComponentTypeReportsVariable(owner.ObjectType, variable) {
+				if normalizePurposeToken(itemKey) != key || !hvacSeriesIsHourly(item) || !hvacComponentReportsVariable(owner, variable, doc) {
 					continue
 				}
 				matchingOwners := 0
 				for _, candidate := range owners {
-					if hvacComponentTypeReportsVariable(candidate.ObjectType, variable) {
+					if hvacComponentReportsVariable(candidate, variable, doc) {
 						matchingOwners++
 					}
 				}
@@ -305,6 +305,9 @@ func hvacResultLoopInScope(loop idf.HVACLoop, scope SimulationPurposeScope) bool
 }
 
 func hvacComponentTypeReportsVariable(objectType, variable string) bool {
+	if strings.EqualFold(strings.TrimSpace(variable), "Fan Runtime Fraction") {
+		return strings.EqualFold(strings.TrimSpace(objectType), "Fan:OnOff")
+	}
 	for _, output := range hvacLoopCheckComponentOutputsForType(objectType) {
 		if strings.EqualFold(strings.TrimSpace(variable), output.VariableName) {
 			return true

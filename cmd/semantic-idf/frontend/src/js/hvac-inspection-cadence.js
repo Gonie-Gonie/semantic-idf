@@ -4,6 +4,7 @@ const token = (value) => String(value ?? "").trim().toLowerCase().replace(/\s+/g
 const sourceKey = (source) => source ? [source.objectIndex, token(source.objectType), token(source.objectName)].join("\0") : "";
 const frequency = (series) => token(series.reportingFrequency || /\(([^()]*)\)\s*$/.exec(series.column || "")?.[1]);
 const timestep = (series) => ["timestep", "zone timestep"].includes(frequency(series));
+const timestepIndexes = new WeakMap();
 const identity = (series) => {
   const column = String(series.column || ""), split = column.indexOf(":");
   const key = series.keyValue || (split < 0 ? "" : column.slice(0, split));
@@ -28,12 +29,11 @@ function currentProfiles(loop) {
     });
 }
 
-export function selectHVACInspectionTimestepSeries(loop, properties) {
-  if (!properties.length || !loop.controlSeries?.length) return null;
+function timestepIndex(loop) {
+  if (timestepIndexes.has(loop)) return timestepIndexes.get(loop);
   const profiles = currentProfiles(loop);
-  if (!profiles.length) return null;
   const byIdentity = new Map(), sourceIDs = new Map();
-  for (const series of loop.controlSeries) {
+  for (const series of loop.controlSeries || []) {
     if (series.sourceId) sourceIDs.set(series.sourceId, (sourceIDs.get(series.sourceId) || 0) + 1);
     if (!timestep(series)) continue;
     const key = identity(series), entries = byIdentity.get(key) || [];
@@ -51,6 +51,13 @@ export function selectHVACInspectionTimestepSeries(loop, properties) {
     const key = identity(binding), entries = provenBindings.get(key) || [];
     entries.push({ binding, profile: occurrences[0] }); provenBindings.set(key, entries);
   }
+  const index = { byIdentity, sourceIDs, provenBindings };
+  timestepIndexes.set(loop, index); return index;
+}
+
+export function selectHVACInspectionTimestepSeries(loop, properties) {
+  if (!properties.length || !loop.controlSeries?.length) return null;
+  const { byIdentity, sourceIDs, provenBindings } = timestepIndex(loop);
   const selected = new Map();
   for (const property of properties) {
     const candidates = byIdentity.get(identity(property.series)) || [];

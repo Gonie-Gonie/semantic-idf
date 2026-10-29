@@ -160,6 +160,22 @@ try {
  check(prepare(mixed).frames.length===3,'Monthly observations mixed into frame timeline');
  const fuel={...structuredClone(loop),components:[{componentName:'GAS COIL',componentType:'Coil:Heating:Fuel',series:[series('Heating Coil Electricity Rate','W',[point(0,0)],'GAS COIL'),series('Heating Coil Heating Rate','W',[point(0,10000)],'GAS COIL')]}]};
  check(snapshot(prepare(fuel),0).components[0].status==='on','positive fuel heating output marked Off from zero ancillary electric power');
+ const operating={name:'Equipment operation',series:[temp],components:[
+  {componentName:'FAN',componentType:'Fan:VariableVolume',series:[series('Fan Electricity Rate','W',[point(0,0),point(1,500),point(2,null)],'FAN'),series('Fan Electricity Energy','J',[point(0,0),point(1,3600000),point(2,null)],'FAN'),series('Fan Air Mass Flow Rate','kg/s',[point(0,0),point(1,2),point(2,null)],'FAN')]},
+  {componentName:'PUMP',componentType:'Pump:VariableSpeed',series:[series('Pump Electricity Rate','W',[point(0,0),point(1,500),point(2,null)],'PUMP'),series('Pump Mass Flow Rate','kg/s',[point(0,0),point(1,3),point(2,null)],'PUMP'),series('Pump Shaft Power','W',[point(0,0),point(1,400),point(2,null)],'PUMP')]},
+  {componentName:'BOILER',componentType:'Boiler:HotWater',series:[series('Boiler Part Load Ratio','',[point(0,0),point(1,.5),point(2,null)],'BOILER'),series('Boiler Efficiency','',[point(0,0),point(1,.9),point(2,null)],'BOILER'),series('Boiler NaturalGas Rate','W',[point(0,0),point(1,10000),point(2,null)],'BOILER'),series('Boiler NaturalGas Energy','J',[point(0,0),point(1,3600000),point(2,null)],'BOILER'),series('Boiler Heating Energy','J',[point(0,0),point(1,7200000),point(2,null)],'BOILER')]},
+  {componentName:'CHILLER',componentType:'Chiller:Electric:EIR',series:[series('Chiller Part Load Ratio','',[point(0,0),point(1,.4),point(2,null)],'CHILLER'),series('Chiller Cycling Ratio','',[point(0,0),point(1,.7),point(2,null)],'CHILLER'),series('Chiller COP','W/W',[point(0,0),point(1,4.5),point(2,null)],'CHILLER'),series('Chiller Electricity Energy','J',[point(0,0),point(1,3600000),point(2,null)],'CHILLER'),series('Chiller Evaporator Cooling Energy','J',[point(0,0),point(1,14400000),point(2,null)],'CHILLER')]},
+  {componentName:'EFFICIENCY ONLY',componentType:'Boiler:HotWater',series:[series('Boiler Efficiency','',[point(0,.8),point(1,.9),point(2,null)],'EFFICIENCY ONLY')]},
+  {componentName:'ELECTRIC BOILER',componentType:'Boiler:HotWater',series:[series('Boiler Electricity Rate','W',[point(0,0),point(1,10000),point(2,null)],'ELECTRIC BOILER'),series('Boiler Electricity Energy','J',[point(0,0),point(1,3600000),point(2,null)],'ELECTRIC BOILER'),series('Boiler Ancillary Electricity Rate','W',[point(0,0),point(1,100),point(2,null)],'ELECTRIC BOILER')]},
+ ]};
+ const operatingBefore=JSON.stringify(operating),operatingModel=prepare(operating),equipment=name=>operatingModel.entities.find(entity=>entity.name===name),operatingProperty=(owner,name)=>equipment(owner).properties.find(property=>property.name===name);
+ for(const [owner,name,kind,label,unit,value]of [['FAN','Fan Electricity Energy','energy','Electric energy','kWh',1],['FAN','Fan Air Mass Flow Rate','flow','Mass flow','kg/s',2],['PUMP','Pump Shaft Power','shaftPower','Shaft power','kW',.4],['PUMP','Pump Mass Flow Rate','flow','Mass flow','kg/s',3],['BOILER','Boiler Efficiency','efficiency','Efficiency','—',.9],['BOILER','Boiler NaturalGas Rate','fuelPower','Fuel input','kW',10],['BOILER','Boiler NaturalGas Energy','fuelEnergy','Fuel energy','kWh',1],['BOILER','Boiler Heating Energy','heatingEnergy','Heating energy','kWh',2],['CHILLER','Chiller Part Load Ratio','status','PLR','—',.4],['CHILLER','Chiller Cycling Ratio','status','Cycling ratio','—',.7],['CHILLER','Chiller COP','cop','COP','—',4.5],['CHILLER','Chiller Evaporator Cooling Energy','coolingEnergy','Cooling energy','kWh',4],['ELECTRIC BOILER','Boiler Electricity Rate','fuelPower','Electric input','kW',10],['ELECTRIC BOILER','Boiler Electricity Energy','fuelEnergy','Electric input energy','kWh',1],['ELECTRIC BOILER','Boiler Ancillary Electricity Rate','power','Auxiliary electric power','kW',.1]]){
+  const property=operatingProperty(owner,name),values=property&&trace(operatingModel,property);check(property?.kind===kind&&property.label===label&&values.unit===unit&&values.points[0].value===0&&Math.abs(values.points[1].value-value)<=2*Number.EPSILON*Math.max(1,Math.abs(value))&&values.points[2].value===null,'equipment operation property lost its native identity, concise meaning, units, real zero or missing value: '+owner+' / '+name+' '+JSON.stringify({kind:property?.kind,label:property?.label,unit:values?.unit,values:values?.points.map(point=>point.value)}));
+ }
+ check(['FAN','PUMP'].every(name=>!equipment(name).properties.some(property=>property.kind==='efficiency'||property.label==='PLR')),'fan/pump acquired fabricated PLR or operating efficiency');
+ check(snapshot(operatingModel,1).components.every(component=>!component.metrics.some(metric=>['shaftPower','efficiency','fuelPower','fuelEnergy','energy','heatingEnergy','coolingEnergy'].includes(metric.id))),'additional Custom properties expanded the loop diagram summaries');
+ check(snapshot(operatingModel,1).components.find(component=>component.name==='EFFICIENCY ONLY').status==='unknown','positive efficiency was mistaken for equipment operation');
+ check(JSON.stringify(operating)===operatingBefore,'equipment property preparation mutated returned native results');
  const blank={name:'Empty',series:[],components:[]};check(prepare(blank).frames.length===0,'empty result invented frames');
  const context={},firstUI={frameIndex:2},secondUI={frameIndex:0};rememberFrame(loop,context,firstUI);
  const shorter={name:'Second',series:[series('System Node Temperature','C',[point(0,8),point(2,9)])]};
@@ -418,6 +434,22 @@ try {
  runtimeModel=prepareRuntime(coilLoop);const coilProfile=selectedRuntimeProfile(runtimeModel,coilFixture);observed=runtimeSnapshot(runtimeModel,coilProfile.id,0);
  check(observed.errors.length===0&&observed.residuals.some(residual=>residual.value===2&&residual.unit==='°C'),'native sensed-minus-setpoint residual lost its actual measurement/target sign');
  check(observed.signals.some(signal=>signal.role==='actuator_request'&&signal.value===.8)&&observed.signals.some(signal=>signal.role==='actuator'&&signal.value===.3),'requested and actual actuator flows were conflated');
+ const coilRuntimeBaseline=JSON.stringify(observed),operatingOnly=structuredClone(coilLoop),optionalBinding={...operatingOnly.controlSignals[0],id:'optional-operating',graph:'equipment',role:'operating',required:false,status:'collected',seriesId:'optional-operating-series',variableName:'Boiler Efficiency',keyValue:'Extra equipment'};
+ const optionalSeries={sourceId:optionalBinding.seriesId,file:'other-extra.csv',name:optionalBinding.variableName,keyValue:optionalBinding.keyValue,column:'Extra equipment:Boiler Efficiency [] (Timestep)',reportingFrequency:'Timestep',rowCount:12000};
+ Object.defineProperty(optionalSeries,'points',{enumerable:true,get(){throw Error('optional equipment observations were eagerly read by the runtime model');}});
+ operatingOnly.controlSignals.push(optionalBinding);operatingOnly.controlSeries.push(optionalSeries);
+ const operatingOnlyRuntime=prepareRuntime(operatingOnly);
+ check(operatingOnlyRuntime.primary===runtimeModel.primary&&JSON.stringify(operatingOnlyRuntime.frames)===JSON.stringify(runtimeModel.frames)&&JSON.stringify(runtimeSnapshot(operatingOnlyRuntime,coilProfile.id,0))===coilRuntimeBaseline,'optional equipment output changed runtime primary, control frames or the existing availability/control snapshot');
+ const optionalAxis=structuredClone(coilLoop),axisTarget=optionalAxis.controlSeries.find(series=>series.reportingFrequency==='Timestep'),axisSource=coilLoop.controlSeries.find(series=>series.sourceId===axisTarget.sourceId),axisOwner={...structuredClone(axisTarget),sourceId:'optional-axis-owner',name:'Shared native axis',column:'Shared native axis [] (Timestep)',nativeIntervals:structuredClone(runtimeModel.nativeIntervalsFor(axisSource))};
+ delete axisOwner.nativeIntervalsSourceId;delete axisOwner.displayPoints;
+ for(const point of axisOwner.points)Object.defineProperty(point,'value',{enumerable:true,get(){throw Error('axis metadata owner values were read for an excluded operating signal');}});
+ for(const series of optionalAxis.controlSeries)if(series.nativeIntervalsSourceId===axisTarget.sourceId)series.nativeIntervalsSourceId=axisOwner.sourceId;
+ axisTarget.nativeIntervalsSourceId=axisOwner.sourceId;delete axisTarget.nativeIntervals;
+ optionalAxis.controlSeries.push(axisOwner);optionalAxis.controlSignals.push({...optionalBinding,id:'optional-axis-binding',seriesId:axisOwner.sourceId,variableName:axisOwner.name,keyValue:axisOwner.keyValue});
+ const optionalAxisRuntime=prepareRuntime(optionalAxis);
+ check(JSON.stringify(optionalAxisRuntime.nativeIntervalsFor(axisTarget))===JSON.stringify(axisOwner.nativeIntervals),'excluding an operating channel lost the native interval metadata it owns for required control observations');
+ const runtimeEvidence=snapshot=>JSON.stringify(snapshot,(key,value)=>key==='series'?undefined:value);
+ check(runtimeEvidence(runtimeSnapshot(optionalAxisRuntime,coilProfile.id,0))===runtimeEvidence(observed),'native metadata ownership alias changed required control values, intervals or decisions');
  const coilDefinition=captured=>captured.operatingProfiles.find(profile=>profile.componentIndex===coilFixture.component.objectIndex&&profile.loopId===coilFixture.profile.loopId),coilGraph=coilDefinition(coilLoop).parameterControl;
  const coilPort=(code,field)=>coilGraph.nodes.find(node=>node.code===code&&sourceIdentity(node.source)===sourceIdentity(coilFixture.component)&&node.parameters?.some(parameter=>parameter.name===field&&parameter.objectIndex===coilFixture.component.objectIndex));
  const coilAirInlet=coilPort('inlet_state','Air Inlet Node Name'),coilAirOutlet=coilPort('outlet_state','Air Outlet Node Name'),coilWaterInlet=coilPort('inlet_state','Water Inlet Node Name');
@@ -542,6 +574,24 @@ try {
  const fallback=structuredClone(promotion);fallback.series.push(series('System Node Relative Humidity','%',[point(1,40,'01-01 01:00')],nativeTemp.keyValue));
  const fallbackModel=prepare(fallback);
  check(fallbackModel.reportingFrequency==='Hourly'&&fallbackModel.frames.length===1&&snapshot(fallbackModel,0).nodes[0].metrics.find(metric=>metric.id==='temperature').value===17,'one missing property did not retain whole-loop Hourly semantics');
+ const {hvacInspectionCustomTrace:customTrace,hvacInspectionCustomFrequency:customFrequency}=await import('/src/js/hvac-inspection-data.js');
+ const customTemperature=fallbackModel.entities.find(entity=>entity.name===nativeTemp.keyValue).properties.find(property=>property.kind==='temperature'),customFlow=fallbackModel.entities.find(entity=>entity.name===nativeTemp.keyValue).properties.find(property=>property.kind==='flow'),customRH=fallbackModel.entities.find(entity=>entity.name===nativeTemp.keyValue).properties.find(property=>property.kind==='relativeHumidity');
+ const nativeTemperatureTrace=customTrace(fallbackModel,customTemperature),nativeFlowTrace=customTrace(fallbackModel,customFlow),hourlyHumidityTrace=customTrace(fallbackModel,customRH);
+ check(customFrequency(fallbackModel,customTemperature)==='Timestep'&&nativeTemperatureTrace.reportingFrequency==='Timestep'&&nativeTemperatureTrace.points.length===4&&nativeTemperatureTrace.points.every((point,index)=>point.value===fallback.controlSeries.find(series=>series.sourceId===nativeTemp.seriesId).points[index].value),'Custom graph discarded native Timestep values because an unrelated Hourly property was unavailable at that cadence');
+ check(trace(fallbackModel,customTemperature).points.length===1&&trace(fallbackModel,customTemperature).points[0].value===17&&customFrequency(fallbackModel,customRH)==='Hourly'&&hourlyHumidityTrace.points.length===1,'Custom cadence changed the existing node graph or fabricated a Timestep humidity observation');
+ check(customTrace(fallbackModel,customTemperature)===nativeTemperatureTrace,'Custom frame/mode changes rebuilt complete native observations');
+ const {renderHVACInspectionChart:renderCustom}=await import('/src/js/hvac-inspection-charts.js'),customMount=document.createElement('div');
+ customMount.innerHTML=renderCustom({mode:'scatter',series:[nativeTemperatureTrace,nativeFlowTrace]});
+ check(customMount.querySelectorAll('[data-hvac-chart-scatter] circle').length===4,'same native file/cadence/interval observations did not form complete Custom scatter pairs');
+ customMount.innerHTML=renderCustom({mode:'scatter',series:[nativeTemperatureTrace,hourlyHumidityTrace]});
+ check(customMount.querySelector('[data-hvac-chart-empty]')&&!customMount.querySelector('circle'),'Custom scatter paired Hourly and Timestep quantities merely because their end timestamp matched');
+ customMount.innerHTML=renderCustom({mode:'histogram',series:[nativeTemperatureTrace,hourlyHumidityTrace]});
+ check([...customMount.querySelectorAll('[data-hvac-chart-series]')].map(group=>Number(group.dataset.hvacChartObservations)).join(',')==='4,1','Custom histogram reduced native distributions to the shared loop frame count');
+ const optionalPerformance=structuredClone(fallback),optionalPerformanceBinding=optionalPerformance.controlSignals.find(signal=>signal.id===nativeActivity.id);
+ Object.assign(optionalPerformanceBinding,{graph:'equipment',role:'operating',required:false});
+ const optionalPerformanceBefore=JSON.stringify(optionalPerformance),optionalPerformanceModel=prepare(optionalPerformance),optionalPerformanceProperty=optionalPerformanceModel.entities.find(entity=>entity.kind==='component').properties.find(property=>property.kind==='power');
+ check(customTrace(optionalPerformanceModel,optionalPerformanceProperty).reportingFrequency==='Timestep'&&customTrace(optionalPerformanceModel,optionalPerformanceProperty).points.length===4&&optionalPerformanceModel.reportingFrequency==='Hourly','collected optional operating channel was unavailable to Custom or forced an incompatible whole-loop cadence');
+ check(JSON.stringify(optionalPerformance)===optionalPerformanceBefore,'Custom optional operating projection modified raw source metadata/observations');
  const originalIDs=fallbackModel.entities.map(entity=>[entity.id,entity.properties.filter(property=>property.kind!=='relativeHumidity').map(property=>property.id)]);
  check(JSON.stringify(promoted.entities.map(entity=>[entity.id,entity.properties.map(property=>property.id)]))===JSON.stringify(originalIDs),'cadence promotion changed stable equipment/node/property IDs');
  for(const variant of ['duplicate','hourly','foreign']){
@@ -550,6 +600,8 @@ try {
   if(variant==='hourly')captured.controlSeries.forEach(series=>series.reportingFrequency='Hourly');
   if(variant==='foreign')captured.controlSignals.forEach(signal=>signal.loopId='another-native-circuit');
   check(prepare(captured).reportingFrequency==='Hourly','cadence promotion borrowed '+variant+' diagnostic observations');
+  const retained=prepare(captured),property=retained.entities.find(entity=>entity.name===nativeTemp.keyValue).properties.find(property=>property.kind==='temperature');
+  check(customTrace(retained,property).reportingFrequency==='Hourly'&&customTrace(retained,property).points.length===1,'Custom graph borrowed '+variant+' source/cadence evidence rejected by the main inspection');
  }
  const completeHours=structuredClone(promotion);
  for(const series of [...completeHours.series,...completeHours.components.flatMap(component=>component.series)])series.points=[1,2,3].map((hour,index)=>({x:hour,label:'01-01 0'+hour+':00',value:17+index}));

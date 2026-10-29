@@ -538,6 +538,41 @@ the bounds and do not intercept text editing, modal dialogs or another view.
 HVAC time-series have no data-point markers; their current-time cursor remains.
 Delegated pointer/focus legend interactions emphasize matching traces within
 one chart. Availability has its own state/action and cursor legend.
+
+Equipment operating outputs stay limited to the main fan, pump, hot-water
+boiler and chiller quantities. Existing power/energy, delivered load and
+supported PLR/COP channels are reused. Added outputs cover fan air mass flow,
+pump mass flow and shaft power, hot-water boiler efficiency and only its
+declared fuel's input rate/energy. Headered pumps use their native Pump output
+names. Unsupported fan runtime fractions or chiller ratios are not
+required channels, and no nominal/rated or observed-peak value is used to invent
+fan/pump PLR or total efficiency.
+
+These scoped outputs have Hourly summary channels and optional source-owned
+Timestep operating bindings. Collected operating bindings share `controlSeries`
+and native-axis pooling; they do not add required control coverage or a missing
+status to the UI. Required control coverage is evaluated independently of these
+optional channels. No second SQL scan or separate equipment-result payload is
+introduced. The basic node/snapshot cadence and promotion rules stay intact.
+The runtime availability/control projection also excludes elective operating
+bindings from its primary-file and frame selection, while retaining the complete
+pool as a source of shared native-axis metadata.
+Custom traces can independently use a source-proven Timestep counterpart with
+all its observations, even when the basic loop remains Hourly. Their cadence
+appears in choices and legends. Scatter joins include file, native time and
+reporting interval, so Hourly and Timestep endpoints are not silently paired.
+
+Power and per-interval energy retain separate kW/kWh labels, with boiler fuel
+input distinct from useful heating output and ancillary electricity. Efficiency
+keeps its native fraction and reported off-state zero. Averaging boiler
+efficiency across off intervals is not the energy-weighted period efficiency.
+Native output support is checked against the EnergyPlus 24.2 registrations in
+[Fans.cc](https://raw.githubusercontent.com/NREL/EnergyPlus/v24.2.0/src/EnergyPlus/Fans.cc),
+[Pumps.cc](https://raw.githubusercontent.com/NREL/EnergyPlus/v24.2.0/src/EnergyPlus/Pumps.cc),
+[Boilers.cc](https://raw.githubusercontent.com/NREL/EnergyPlus/v24.2.0/src/EnergyPlus/Boilers.cc)
+and the electric/absorption chiller modules; keep model-specific COP input bases
+distinct when extending this set.
+
 Each `HVACLoopRunResult` includes:
 
 | Field | Contract |
@@ -559,6 +594,8 @@ not categorical evidence even when it equals an integer status code.
 
 Graph identities distinguish `availabilityDefinitions`, `onOff`,
 `parameterControl` and `loop`; node IDs alone can collide between graphs.
+`equipment`/`operating` identifies collected elective Custom-graph quantities,
+separately from the required availability/control graphs.
 Roles distinguish schedule, manager/loop status, sensor, setpoint, requested
 and actual actuator, demand, dispatch and activity. Schedule values use boolean schedule
 semantics only where the native expression specifies them; parameter-control

@@ -2,9 +2,11 @@ import { getLanguage, t } from "./i18n.js";
 import { hasHVACTemperatureSetpoint } from "./hvac-setpoint.js";
 import { selectHVACInspectionTimestepSeries, matchHVACRuntimeFrame } from "./hvac-inspection-cadence.js";
 import { prepareHVACRuntimeInspection } from "./hvac-runtime-data.js";
+import { simulationSeriesPointColumns } from "./simulation-result-transport.js";
 export { matchHVACRuntimeFrame };
 
 const cache = new WeakMap();
+const customSources = new WeakMap(), customTraces = new WeakMap();
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const token = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 const copy = (key, fallback) => t(`simulation.hvacInspect${key}`, {}, fallback);
@@ -48,6 +50,10 @@ function measurement(name, rawUnit) {
     [/enthalpy/, "enthalpy", "Enthalpy"],
     [/\bcop\b|coefficient of performance/, "cop", "COP"],
     [/cycling ratio|part load ratio|runtime fraction|operating status|on off|on\/off/, "status", "Operating fraction"],
+    [/shaft power/, "shaftPower", "Shaft power"],
+    [/efficiency/, "efficiency", "Efficiency"],
+    [/^boiler electricity rate$/, "fuelPower", "Electric input"],
+    [/^boiler electricity energy$/, "fuelEnergy", "Electric input energy"],
     [/electricity rate|electric power/, "power", "Electric power"],
     [/electricity energy/, "energy", "Electric energy"],
     [/cooling rate/, "cooling", "Cooling rate"],
@@ -56,12 +62,18 @@ function measurement(name, rawUnit) {
     [/cooling energy/, "coolingEnergy", "Cooling energy"],
     [/heating energy/, "heatingEnergy", "Heating energy"],
     [/heat transfer energy/, "heatTransferEnergy", "Heat transfer energy"],
+    [/^boiler (?:natural ?gas|propane(?:gas)?|fuel ?oil(?:no[12]|#[12])|diesel|gasoline|coal|other ?fuel[12]) rate$/, "fuelPower", "Fuel input"],
+    [/^boiler (?:natural ?gas|propane(?:gas)?|fuel ?oil(?:no[12]|#[12])|diesel|gasoline|coal|other ?fuel[12]) energy$/, "fuelEnergy", "Fuel energy"],
   ]) {
     if (pattern.test(value)) { kind = id; label = copy(id[0].toUpperCase() + id.slice(1), title); break; }
   }
-  if (value.includes("part load ratio")) label = copy("PartLoad", "Part load ratio");
+  if (value.includes("part load ratio")) label = copy("PartLoad", "PLR");
   else if (value.includes("cycling ratio")) label = copy("Cycling", "Cycling ratio");
   else if (value.includes("runtime fraction")) label = copy("Runtime", "Runtime fraction");
+  else if (value === "boiler electricity rate") label = copy("ElectricInput", "Electric input");
+  else if (value === "boiler electricity energy") label = copy("ElectricInputEnergy", "Electric input energy");
+  else if (value.includes("ancillary electricity rate")) label = copy("AuxiliaryPower", "Auxiliary electric power");
+  else if (value.includes("ancillary electricity energy")) label = copy("AuxiliaryEnergy", "Auxiliary electric energy");
   let unit = String(rawUnit).trim(), factor = 1;
   if (token(unit) === "w") { unit = "kW"; factor = .001; }
   else if (token(unit) === "j") { unit = "kWh"; factor = 1 / 3600000; }
@@ -194,10 +206,10 @@ function buildInspectionModel(loop, language, waterLoop, candidates, reportingFr
   return model;
 }
 
-function calendarHour(label, leap) {
+function calendarHour(label, leap, defaultYear = leap ? 2000 : 2001) {
   const match = /^(?:(\d{4})[-/])?(\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(label.trim());
   if (!match) return null;
-  const year = Number(match[1]) || (leap ? 2000 : 2001), month = Number(match[2]), day = Number(match[3]), hour = Number(match[4]), minute = Number(match[5]);
+  const year = Number(match[1]) || defaultYear, month = Number(match[2]), day = Number(match[3]), hour = Number(match[4]), minute = Number(match[5]);
   if (month < 1 || month > 12 || day < 1 || day > new Date(Date.UTC(year, month, 0)).getUTCDate() || hour > 24 || minute > 59) return null;
   return Date.UTC(year, month - 1, day, hour, minute) / 3600000;
 }
@@ -228,6 +240,65 @@ export function hvacInspectionTrace(model, property) {
   return { id: property.id, label: `${property.entity.name} · ${property.label}`, unit: property.unit,
     ...(model.calendarValid && finite(model.interval) ? { interval: model.interval } : {}),
     points: model.frames.map((frame) => ({ x: frame.x, label: frame.label, value: values.get(frame.x) ?? null })) };
+}
+
+function customSource(model, property) {
+  if (customSources.has(property)) return customSources.get(property);
+  const counterpart = selectHVACInspectionTimestepSeries(model.loop, [property])?.get(property);
+  const converted = counterpart && measurement(columnParts(counterpart).name, columnParts(counterpart).unit);
+  const series = converted?.kind === property.kind && converted.unit === property.unit ? counterpart : property.series;
+  const raw = token(series.reportingFrequency || /\(([^()]*)\)\s*$/.exec(series.column || "")?.[1] || model.reportingFrequency);
+  const frequency = ["timestep", "zone timestep"].includes(raw) ? "Timestep" : raw === "hourly" ? "Hourly" : series.reportingFrequency || model.reportingFrequency;
+  const result = { series, frequency, native: series === counterpart, converted: series === counterpart ? converted : property };
+  customSources.set(property, result); return result;
+}
+
+export function hvacInspectionCustomFrequency(model, property) { return customSource(model, property).frequency; }
+
+// Custom graphs may use a proven native Timestep channel independently of the
+// loop's all-or-nothing snapshot promotion. The default node charts stay on
+// their existing axis; no native sample is interpolated into that axis.
+export function hvacInspectionCustomTrace(model, property) {
+  let traces = customTraces.get(model);
+  if (!traces) { traces = new Map(); customTraces.set(model, traces); }
+  if (traces.has(property)) {
+    const trace = traces.get(property); traces.delete(property); traces.set(property, trace); return trace;
+  }
+  const { series, frequency, native, converted } = customSource(model, property);
+  const runtime = native ? prepareHVACRuntimeInspection(model.loop) : null;
+  let rows, labels, values;
+  if (native) {
+    const columns = simulationSeriesPointColumns(series);
+    const points = columns ? null : pointList(series);
+    rows = columns?.rows || points.map(point => point.x); labels = columns?.labels || points.map(point => String(point.label ?? point.x));
+    values = columns?.values || points.map(point => point.value);
+  } else {
+    const legacy = hvacInspectionTrace(model, property);
+    rows = model.frames.map(frame => frame.row); labels = legacy.points.map(point => point.label); values = legacy.points.map(point => point.value);
+  }
+  const year = model.calendarValid && model.frames.length ? new Date(model.frames[0].x * 3600000).getUTCFullYear() : undefined;
+  const leap = runtime?.leap || model.frames.some(frame => /02[\/-]29/.test(frame.label));
+  const coordinates = native ? labels.map(label => calendarHour(String(label), leap, year)) : model.frames.map(frame => frame.x);
+  const calendar = !native || model.calendarValid && coordinates.every((value, index) => finite(value) && (!index || value >= coordinates[index - 1]));
+  const intervals = native ? runtime.nativeIntervalsFor(series) : series.nativeIntervals;
+  let interval = frequency === "Hourly" ? 1 : undefined;
+  const points = rows.map((row, index) => {
+    const entry = intervals?.length === rows.length ? intervals[index] : null;
+    const metadata = entry?.timeIndex === row && Number.isInteger(entry.environmentPeriodIndex) && entry.environmentPeriodIndex > 0
+      && Number.isInteger(entry.simulationDays) && entry.simulationDays > 0 && finite(entry.intervalMinutes) && entry.intervalMinutes > 0
+      && (entry.year === undefined || Number.isInteger(entry.year) && entry.year >= 0) ? entry : null;
+    if (metadata) interval = interval === undefined ? metadata.intervalMinutes / 60 : Math.min(interval, metadata.intervalMinutes / 60);
+    const identity = metadata ? [metadata.environmentPeriodIndex, metadata.year || 0, metadata.simulationDays, row, metadata.intervalMinutes]
+      : frequency === "Hourly" ? [row, String(labels[index]), 60] : ["unverified", property.id, row];
+    const value = finite(values[index]) && (property.kind !== "setpoint" || hasHVACTemperatureSetpoint(values[index])) ? values[index] * (native ? converted.factor : 1) : null;
+    return { x: calendar ? coordinates[index] : row, label: String(labels[index]), value: finite(value) ? value : null,
+      key: JSON.stringify([fileKey(series), frequency, identity]) };
+  });
+  const trace = { id: property.id, label: `${property.entity.name} · ${property.label}`, unit: property.unit, reportingFrequency: frequency,
+    ...(calendar && finite(interval) ? { interval } : {}), points };
+  traces.set(property, trace);
+  while (traces.size > 8) traces.delete(traces.keys().next().value);
+  return trace;
 }
 
 export function hvacInspectionSnapshots(model, frameIndex, selection = {}) {

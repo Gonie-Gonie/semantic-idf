@@ -437,6 +437,9 @@ func (builder *purposePlanBuilder) addHVACRuntimeOutputs() {
 		if binding.VariableName == "" || binding.KeyValue == "" {
 			return
 		}
+		if binding.Role == "operating" {
+			builder.addVariableWithReason(SimulationPurposeHVACLoopCheck, binding.KeyValue, binding.VariableName, "Hourly", "heavy", "Native equipment operating quantity for the custom graph.", "HVAC equipment operation")
+		}
 		key := normalizePurposeToken(binding.KeyValue) + "\x00" + normalizePurposeToken(binding.VariableName)
 		if unique[key] {
 			return
@@ -450,13 +453,13 @@ func (builder *purposePlanBuilder) addHVACRuntimeOutputs() {
 			continue
 		}
 		for _, profile := range hvacRuntimeProfiles(report, loop, builder.request.Scope) {
-			for _, binding := range hvacRuntimeSignals(profile, loop, &builder.doc) {
+			for _, binding := range append(hvacRuntimeSignals(profile, loop, &builder.doc), hvacOperatingSignals(profile, &builder.doc)...) {
 				add(binding)
 			}
 		}
 	}
 	for _, profile := range hvacRuntimeLocalProfiles(report, builder.request.Scope) {
-		for _, binding := range hvacRuntimeSignals(profile, idf.HVACLoop{}, &builder.doc) {
+		for _, binding := range append(hvacRuntimeSignals(profile, idf.HVACLoop{}, &builder.doc), hvacOperatingSignals(profile, &builder.doc)...) {
 			add(binding)
 		}
 	}
@@ -472,6 +475,12 @@ func (builder *purposePlanBuilder) addHVACRuntimeOutputs() {
 		}
 		for _, variable := range hvacRuntimeActivityVariableNames() {
 			variables = appendUniquePurposeString(variables, variable)
+		}
+		for _, variable := range hvacOperatingTemplateVariables(builder.doc) {
+			variables = appendUniquePurposeString(variables, variable)
+			if hvacOperatingBoilerFuelVariable(variable) {
+				builder.addVariableWithReason(SimulationPurposeHVACLoopCheck, "*", variable, "Hourly", "heavy", "Native generated-boiler fuel quantity for the custom graph.", "HVAC equipment operation")
+			}
 		}
 		for _, variable := range hvacRuntimeManagerVariables {
 			variables = append(variables, variable)
@@ -562,6 +571,9 @@ func attachHVACRuntimeControls(result *HVACLoopRunResult, profiles []idf.HVACOpe
 		}
 	}
 	validateHVACRuntimeObservations(result, &coverage)
+	// Validate control axes before adding elective performance observations;
+	// another source/cadence may not change required acquisition coverage.
+	attachHVACOperatingObservations(result, profiles, doc, byOutput, byNativeID)
 	deduplicateHVACNativeIntervals(result.ControlSeries)
 	if coverage.Missing > 0 {
 		coverage.Status = "error"
@@ -676,7 +688,7 @@ func hvacRuntimeLocalHourlySeries(profiles []idf.HVACOperatingProfile, doc *idf.
 			continue
 		}
 		for _, typ := range components[normalizePurposeToken(key)] {
-			if hvacComponentTypeReportsVariable(typ, variable) {
+			if hvacComponentReportsVariable(idf.HVACComponent{ObjectIndex: -1, ObjectType: typ, ObjectName: key}, variable, doc) {
 				out = append(out, item)
 				break
 			}
