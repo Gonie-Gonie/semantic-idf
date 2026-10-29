@@ -36,6 +36,37 @@ func TestSettingsInputPreferenceRoundTripPreservesProfileTimeView(t *testing.T) 
 	if defaultAppSettings().Storage.AutoClean {
 		t.Fatal("automatic cleanup must require an explicit setting")
 	}
+	t.Run("retired input view", func(t *testing.T) {
+		for _, legacyKey := range []bool{false, true} {
+			saved := defaultAppSettings()
+			saved.Appearance.DefaultInputView = "semantic"
+			saved.Interaction.Shortcuts["inputText"] = "Ctrl+1"
+			saved.Interaction.Shortcuts["inputJson"] = "Ctrl+2"
+			saved.Interaction.Shortcuts["inputTable"] = "Ctrl+3"
+			if legacyKey {
+				saved.Interaction.Shortcuts["inputSemantic"] = "Ctrl+9"
+			}
+			if _, err := app.SaveSettings(saved); err != nil {
+				t.Fatal(err)
+			}
+			loaded, err := app.GetSettings()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if loaded.Settings.Appearance.DefaultInputView != "text" {
+				t.Fatal("retired input view was restored instead of Text")
+			}
+			shortcuts := loaded.Settings.Interaction.Shortcuts
+			if _, exists := shortcuts["inputSemantic"]; exists {
+				t.Fatal("retired shortcut was retained")
+			}
+			for key, expected := range map[string]string{"inputText": "Ctrl+1", "inputJson": "Ctrl+2", "inputTable": "Ctrl+3"} {
+				if shortcuts[key] != expected {
+					t.Fatalf("visible custom shortcut %s changed: %q", key, shortcuts[key])
+				}
+			}
+		}
+	})
 	t.Run("setpoint preferences", func(t *testing.T) {
 		settings := defaultAppSettings()
 		settings.Profile.EnabledDimensions = []string{" COOLING_SETPOINT ", "heating_setpoint", "cooling_setpoint", "unknown"}

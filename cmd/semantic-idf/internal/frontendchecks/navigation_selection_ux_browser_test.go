@@ -3,6 +3,7 @@ package frontendchecks
 import (
 	"context"
 	"fmt"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -66,8 +67,18 @@ func TestNavigationSelectionUXBrowserHarness(t *testing.T) {
 		t.Fatalf("headless browser navigation UX harness failed: %v\n%s", err, output)
 	}
 	document := string(output)
+	diagnostics := document
+	if start := strings.Index(document, `<pre id="navigationSelectionUXResult">`); start >= 0 {
+		result := document[start+len(`<pre id="navigationSelectionUXResult">`):]
+		if end := strings.Index(result, "</pre>"); end >= 0 {
+			diagnostics = html.UnescapeString(result[:end])
+		}
+	}
+	if len(diagnostics) > 12000 {
+		diagnostics = diagnostics[:12000] + "\n[diagnostics truncated]"
+	}
 	if !strings.Contains(document, `data-navigation-selection-ux-status="passed"`) {
-		t.Fatalf("headless browser navigation UX harness did not pass:\n%s", document)
+		t.Fatalf("headless browser navigation UX harness did not pass:\n%s", diagnostics)
 	}
 	for _, signal := range []string{
 		`"profilePrimary":1`,
@@ -76,12 +87,13 @@ func TestNavigationSelectionUXBrowserHarness(t *testing.T) {
 		`"maxCurrentLocations":1`,
 		`"semanticRequestFallsBack":true`,
 		`"semanticShortcutWithheld":true`,
+		`"customInputShortcutsPreserved":true`,
 		`"altEnterPalette":true`,
 		`"isolatedResultClicks":2`,
 		`"localePresentationPreserved":true`,
 	} {
 		if !strings.Contains(document, signal) {
-			t.Fatalf("headless browser navigation UX result is missing %s:\n%s", signal, document)
+			t.Fatalf("headless browser navigation UX result is missing %s:\n%s", signal, diagnostics)
 		}
 	}
 }
@@ -138,12 +150,13 @@ async function runNavigationSelectionUXHarness() {
 
   await inputViews.switchInputView("semantic", { recordHistory: false, revealSelection: false });
   const semanticRequestFallsBack = state.activeInputView === "text"
-    && document.getElementById("inputSemanticTab").hidden
-    && document.getElementById("semanticInputView").hidden
+    && !document.getElementById("inputSemanticTab")
+    && !document.getElementById("semanticInputView") && !document.getElementById("semanticEditor")
     && !document.getElementById("textInputView").hidden;
   assert(semanticRequestFallsBack, "a direct or restored Semantic view request did not fall back to Text");
 
   await inputViews.switchInputView("json", { recordHistory: false, revealSelection: false });
+  const originalInputShortcuts = { ...state.keyboardShortcuts };
   state.keyboardShortcuts = { ...state.keyboardShortcuts, inputSemantic: "Ctrl+1" };
   const semanticShortcut = new KeyboardEvent("keydown", {
     key: "1",
@@ -154,7 +167,21 @@ async function runNavigationSelectionUXHarness() {
   document.body.dispatchEvent(semanticShortcut);
   await Promise.resolve();
   const semanticShortcutWithheld = state.activeInputView === "json" && !semanticShortcut.defaultPrevented;
-  assert(semanticShortcutWithheld, "the dormant Semantic shortcut still opens or consumes Ctrl+1");
+  assert(semanticShortcutWithheld, "the removed Semantic shortcut still opens or consumes Ctrl+1");
+  const {mergeSettings,defaultAppSettings} = await import("/src/js/settings-client.js");
+  const customShortcuts = {inputText:"Ctrl+1",inputJson:"Alt+J",inputTable:"Ctrl+Shift+T"};
+  const customSettings = mergeSettings({appearance:{defaultInputView:"semantic"},interaction:{shortcuts:customShortcuts}});
+  const normalizedAgain = mergeSettings(customSettings);
+  const customInputShortcutsPreserved = Object.entries(customShortcuts).every(([key,value])=>customSettings.interaction.shortcuts[key]===value&&normalizedAgain.interaction.shortcuts[key]===value)
+    && !Object.hasOwn(customSettings.interaction.shortcuts,"inputSemantic")
+    && !Object.hasOwn(defaultAppSettings.interaction.shortcuts,"inputSemantic")
+    && customSettings.appearance.defaultInputView==="text";
+  assert(customInputShortcutsPreserved,"removing Semantic remapped legitimate visible-source shortcuts or retained its retired setting");
+  state.keyboardShortcuts = customSettings.interaction.shortcuts;
+  const customTextShortcut = new KeyboardEvent("keydown",{key:"1",ctrlKey:true,bubbles:true,cancelable:true});
+  document.body.dispatchEvent(customTextShortcut);await Promise.resolve();
+  assert(customTextShortcut.defaultPrevented&&state.activeInputView==="text","custom Text Ctrl+1 did not open the visible editor after Semantic removal");
+  state.keyboardShortcuts = originalInputShortcuts;
   await inputViews.switchInputView("text", { recordHistory: false, revealSelection: false });
 
   const scheduleDefinitionTarget = { view: "profile", targetKind: "profile-item", targetId: "profile-definition", priority: 100 };
@@ -296,7 +323,7 @@ async function runNavigationSelectionUXHarness() {
   const sourceSelection = {
     entityId: "schedule-entity",
     occurrenceId: "schedule-definition",
-    originView: "input-semantic",
+    originView: "input-text",
     semanticPathHint: "schedules/definitions/Office Schedule",
     relatedEntityIds: [],
   };
@@ -321,7 +348,7 @@ async function runNavigationSelectionUXHarness() {
   await new Promise((resolve) => window.requestAnimationFrame(resolve));
   const palette = document.querySelector(".navigation-command-palette");
   const altEnterPalette = Boolean(altEnter.defaultPrevented && palette?.open && !palette.querySelector('[data-command-id="input-semantic"]'));
-  assert(altEnterPalette, "Alt+Enter exposed the withheld Semantic structure view");
+  assert(altEnterPalette, "Alt+Enter exposed the removed Semantic structure view");
 
   palette.close();
   const [{ openPanelNavigationMenu }, selectionController] = await Promise.all([
@@ -371,7 +398,7 @@ async function runNavigationSelectionUXHarness() {
     assert(!await isolatedController.openSelectionInView("profile", { originView: view }), view + " can still open another model panel");
     assert(!await isolatedController.openSelectionInView(view, { originView: "profile" }), "model panel can still reveal into " + view);
     assert(isolatedController.selectionTargetsForView("profile", { ...sourceSelection, originView: view }).length === 0, view + " still lists related model targets");
-    await isolatedController.selectSemanticEntity(sourceSelection, { originView: "input-semantic" });
+    await isolatedController.selectSemanticEntity(sourceSelection, { originView: "input-text" });
   }
   assert(!semanticReveals && !openedViews && !chosenOccurrences, "standalone result panels still follow semantic links");
 
@@ -415,6 +442,7 @@ async function runNavigationSelectionUXHarness() {
     maxCurrentLocations,
     semanticRequestFallsBack,
     semanticShortcutWithheld,
+    customInputShortcutsPreserved,
     altEnterPalette,
     isolatedResultClicks,
     localePresentationPreserved,

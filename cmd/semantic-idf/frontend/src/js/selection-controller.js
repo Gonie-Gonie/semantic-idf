@@ -2,6 +2,7 @@ import { getPanelNavigationAdapter } from "./panel-navigation-registry.js";
 import { bundledAppInfo } from "./app-info.js";
 import { getSemanticNavigationCache } from "./semantic-navigation-cache.js";
 import { isStandalonePanelLink, isStandaloneResultView } from "./panel-navigation-policy.js";
+import { normalizeInputView } from "./input-view-policy.js";
 
 const emptySelection = () => ({
   entityId: "",
@@ -42,9 +43,6 @@ export function initializeSelectionControllerState(targetState = {}) {
   }
   targetState.globalSelection = normalizeSelection(targetState.globalSelection);
   targetState.globalHover = normalizeHover(targetState.globalHover);
-  if (!("semanticTemporaryReveal" in targetState)) {
-    targetState.semanticTemporaryReveal = null;
-  }
   if (!("semanticPendingNavigation" in targetState)) {
     targetState.semanticPendingNavigation = null;
   }
@@ -99,7 +97,7 @@ export function createSelectionController(dependencies = {}) {
     return {
       ...options,
       action: options.action || action,
-      originView: String(options.originView || ""),
+      originView: normalizeOriginView(options.originView),
       recordHistory: options.recordHistory === undefined ? historyByDefault : options.recordHistory !== false,
       follow: options.follow !== false,
       preserveFilters: options.preserveFilters !== false,
@@ -270,7 +268,7 @@ export function createSelectionController(dependencies = {}) {
     const options = optionsFor("select", rawOptions);
     return inTransaction(options, async () => {
       const previous = controllerState.globalSelection;
-      const selection = enrichSelection(
+      let selection = enrichSelection(
         {
           ...candidate,
           originView: options.originView || candidate?.originView,
@@ -280,6 +278,34 @@ export function createSelectionController(dependencies = {}) {
       );
       if (!selection.entityId) {
         return null;
+      }
+      const chooseOccurrence = (options.chooseOccurrence === true || candidate?.chooseOccurrence === true)
+        && !standaloneNavigationContext(options.originView || selection.originView);
+      if (chooseOccurrence || !selection.occurrenceId) {
+        const occurrences = semanticOccurrenceChoices(selection, options);
+        let occurrence = occurrences[0];
+        if (chooseOccurrence && occurrences.length > 1) {
+          const payload = {
+            kind: "semantic-occurrence",
+            view: options.originView || selection.originView || sourceView(callGetter(dependencies.getActiveInputView)),
+            selection: cloneSelection(selection),
+            occurrences,
+            options,
+          };
+          const chosen = await invokeChooser(dependencies.chooseSemanticOccurrence, payload);
+          const occurrenceId = typeof chosen === "string" ? chosen : chosen?.occurrenceId;
+          occurrence = occurrences.find((entry) => entry.occurrenceId === occurrenceId);
+          if (!occurrence) {
+            await invokeHook(dependencies.onChooserRequested, payload);
+            return null;
+          }
+        }
+        if (occurrence) selection = enrichSelection({
+          ...selection,
+          occurrenceId: occurrence.occurrenceId,
+          sourceAnchor: candidate?.sourceAnchor || occurrence.sourceAnchor || selection.sourceAnchor,
+          semanticPathHint: chooseOccurrence ? occurrence.path : selection.semanticPathHint || occurrence.path,
+        }, navigationCache());
       }
       const entityChanged = selection.entityId !== previous.entityId;
       const occurrenceChanged = selection.occurrenceId !== previous.occurrenceId;
@@ -295,17 +321,10 @@ export function createSelectionController(dependencies = {}) {
       }
       controllerState.globalSelection = selection;
       rememberOccurrenceSelection(selection, options.rememberForOriginView || options.originView);
-      const temporaryReveal = controllerState.semanticTemporaryReveal;
-      const preserveTemporaryReveal = Boolean(
-        temporaryReveal?.entityId === selection.entityId &&
-        (!temporaryReveal.occurrenceId || temporaryReveal.occurrenceId === selection.occurrenceId),
-      );
-      controllerState.semanticTemporaryReveal = preserveTemporaryReveal ? temporaryReveal : null;
       await invokeHook(dependencies.onSelectionChange, {
         selection: cloneSelection(selection),
         previous: cloneSelection(previous),
         options,
-        temporaryRevealCleared: Boolean(temporaryReveal && !preserveTemporaryReveal),
       });
       if (options.follow) {
         await followSelection(selection, options);
@@ -340,9 +359,7 @@ export function createSelectionController(dependencies = {}) {
     const options = optionsFor("clear_selection", { ...rawOptions, recordHistory: false, follow: false });
     return inTransaction(options, async () => {
       const previous = controllerState.globalSelection;
-      const temporaryRevealCleared = Boolean(controllerState.semanticTemporaryReveal);
       controllerState.globalSelection = { ...emptySelection(), transactionId: options.transactionId };
-      controllerState.semanticTemporaryReveal = null;
       controllerState.semanticPendingNavigation = null;
       if (rawOptions.resetMemory) {
         rememberedOccurrences.clear();
@@ -351,14 +368,13 @@ export function createSelectionController(dependencies = {}) {
         selection: currentSemanticSelection(),
         previous: cloneSelection(previous),
         options,
-        temporaryRevealCleared,
       });
       return true;
     });
   }
 
   async function openSelectionInView(view, rawOptions = {}) {
-    const normalizedView = String(view || "").trim().toLowerCase();
+    const normalizedView = normalizeOriginView(view);
     if (!normalizedView) {
       return false;
     }
@@ -419,7 +435,7 @@ export function createSelectionController(dependencies = {}) {
     if (!pending) {
       return false;
     }
-    if (pending.view && pending.view !== "input-semantic" && !(await viewIsReady(pending.view, pending.selection))) {
+    if (pending.view && !(await viewIsReady(pending.view, pending.selection))) {
       return false;
     }
     if (controllerState.semanticPendingNavigation !== pending) {
@@ -435,11 +451,6 @@ export function createSelectionController(dependencies = {}) {
       transactionId: rawOptions.transactionId || nextTransactionId(),
     };
     const transactionOptions = optionsFor(pending.action === "open_view" ? "open" : "reveal", options);
-    if (pending.action === "reveal_semantic") {
-      return inTransaction(transactionOptions, () =>
-        revealSemanticWithinTransaction(pending.selection, transactionOptions),
-      );
-    }
     if (pending.action === "reveal_view") {
       return inTransaction(transactionOptions, () =>
         revealViewWithinTransaction(pending.view, pending.selection, transactionOptions),
@@ -452,10 +463,10 @@ export function createSelectionController(dependencies = {}) {
 
   async function followSelection(selection, options) {
     const originView = String(options.originView || selection.originView || "").toLowerCase();
-    if (!originView || isStandaloneResultView(originView)) {
+    if (!originView || standaloneNavigationContext(originView)) {
       return false;
     }
-    if (originView === "input-semantic") {
+    if (originView.startsWith("input-")) {
       const activePanel = String(callGetter(dependencies.getActivePanelView) || "").toLowerCase();
       if (!activePanel || activePanel.startsWith("input-") || isStandaloneResultView(activePanel)) {
         return false;
@@ -465,60 +476,13 @@ export function createSelectionController(dependencies = {}) {
       }
       return revealViewWithinTransaction(activePanel, selection, { ...options, recordHistory: false });
     }
-    if (!originView.startsWith("input-")) {
-      if (!(await analysisIsCurrent())) {
-        return queuePendingNavigation("reveal_semantic", "input-semantic", selection, options);
-      }
-      const activeInputView = String(callGetter(dependencies.getActiveInputView) || "").toLowerCase();
-      if (activeInputView && activeInputView !== "input-semantic") {
-        const activeInputAdapter = adapterFor(activeInputView);
-        if (activeInputAdapter && await adapterCanReveal(activeInputAdapter, selection)) {
-          await invokeAdapterReveal(activeInputAdapter, selection, {
-            ...options,
-            action: "select",
-            follow: false,
-            recordHistory: false,
-          });
-        }
-      }
-      return revealSemanticWithinTransaction(selection, { ...options, recordHistory: false });
-    }
-    return false;
+    const activeInputView = sourceView(callGetter(dependencies.getActiveInputView));
+    if (!(await analysisIsCurrent())) return queuePendingNavigation("reveal_view", activeInputView, selection, options);
+    return revealViewWithinTransaction(activeInputView, selection, { ...options, action: "select", follow: false, recordHistory: false });
   }
 
-  async function revealSemanticWithinTransaction(selection, options) {
-    if (isStandaloneResultView(options.originView || selection.originView)) return false;
-    if (!(await analysisIsCurrent())) {
-      return queuePendingNavigation("reveal_semantic", "input-semantic", selection, options);
-    }
-    const adapter = adapterFor("input-semantic");
-    if (!adapter) {
-      return false;
-    }
-    const occurrenceId = await resolveSemanticOccurrence(selection, adapter, options);
-    if (occurrenceId === null) {
-      return false;
-    }
-    const revealSelection = enrichSelection({ ...selection, occurrenceId }, navigationCache());
-    if (!(await adapterCanReveal(adapter, revealSelection))) {
-      return false;
-    }
-    controllerState.globalSelection = {
-      ...controllerState.globalSelection,
-      occurrenceId: revealSelection.occurrenceId,
-      semanticPathHint: revealSelection.semanticPathHint,
-      transactionId: options.transactionId,
-    };
-    controllerState.semanticTemporaryReveal = {
-      entityId: revealSelection.entityId,
-      occurrenceId: revealSelection.occurrenceId,
-      transactionId: options.transactionId,
-    };
-    await invokeHook(dependencies.onTemporaryReveal, {
-      reveal: { ...controllerState.semanticTemporaryReveal },
-      options,
-    });
-    return invokeAdapterReveal(adapter, revealSelection, { ...options, recordHistory: false });
+  function standaloneNavigationContext(originView) {
+    return isStandaloneResultView(originView) || isStandaloneResultView(callGetter(dependencies.getActivePanelView));
   }
 
   async function openViewWithinTransaction(view, selection, options) {
@@ -616,47 +580,6 @@ export function createSelectionController(dependencies = {}) {
       targets: targets.map(cloneViewTarget),
       options,
     });
-    return null;
-  }
-
-  async function resolveSemanticOccurrence(selection, adapter, options) {
-    const index = navigationIndex();
-    const cache = navigationCache(index);
-    const occurrenceIds = uniqueStrings(cache.occurrenceIdsByEntityId.get(selection.entityId) || []);
-    if (selection.occurrenceId && occurrenceIds.includes(selection.occurrenceId)) {
-      rememberOccurrenceSelection(selection, options.originView);
-      return selection.occurrenceId;
-    }
-    const preferred = String(await Promise.resolve(adapter.preferredSemanticOccurrence(selection)) || "");
-    if (preferred && occurrenceIds.includes(preferred)) {
-      rememberOccurrenceSelection({ ...selection, occurrenceId: preferred }, options.originView);
-      return preferred;
-    }
-    const occurrences = semanticOccurrenceChoices(selection, options);
-    if (occurrences.length <= 1) {
-      return occurrences[0]?.occurrenceId || "";
-    }
-    if (!options.chooseOccurrence) {
-      const automatic = occurrences[0]?.occurrenceId || "";
-      rememberOccurrenceSelection({ ...selection, occurrenceId: automatic }, options.originView);
-      return automatic;
-    }
-    const payload = {
-      kind: "semantic-occurrence",
-      view: "input-semantic",
-      selection: cloneSelection(selection),
-      occurrences,
-      options,
-    };
-    const chosen = await invokeChooser(dependencies.chooseSemanticOccurrence, payload);
-    if (chosen) {
-      const occurrenceId = typeof chosen === "string" ? chosen : chosen.occurrenceId;
-      if (occurrenceIds.includes(occurrenceId)) {
-        rememberOccurrenceSelection({ ...selection, occurrenceId }, options.originView);
-        return occurrenceId;
-      }
-    }
-    await invokeHook(dependencies.onChooserRequested, payload);
     return null;
   }
 
@@ -781,7 +704,7 @@ function normalizeSelection(selection = {}) {
     entityKind: String(selection?.entityKind || ""),
     occurrenceId: String(selection?.occurrenceId || ""),
     sourceAnchor: cloneAnchor(selection?.sourceAnchor),
-    originView: String(selection?.originView || ""),
+    originView: normalizeOriginView(selection?.originView),
     originTargetId: String(selection?.originTargetId || ""),
     semanticPathHint: String(selection?.semanticPathHint || ""),
     relatedEntityIds: uniqueStrings(selection?.relatedEntityIds || []),
@@ -793,7 +716,7 @@ function normalizeHover(hover = {}) {
   return {
     entityId: String(hover?.entityId || ""),
     occurrenceId: String(hover?.occurrenceId || ""),
-    originView: String(hover?.originView || ""),
+    originView: normalizeOriginView(hover?.originView),
   };
 }
 
@@ -900,7 +823,7 @@ function thermalOccurrenceContextPriority(occurrence) {
 
 function occurrenceMatchesOrigin(occurrence, originView = "") {
   const view = String(originView || "").toLowerCase().replace(/^input-/, "");
-  if (!view || view === "semantic") {
+  if (!view) {
     return false;
   }
   if (String(occurrence?.preferredView || "").toLowerCase() === view) {
@@ -1075,8 +998,12 @@ function uniqueStrings(values) {
 }
 
 function sourceView(candidate) {
-  const normalized = String(candidate || "").toLowerCase();
-  return ["input-text", "input-json", "input-table"].includes(normalized) ? normalized : "input-text";
+  return `input-${normalizeInputView(String(candidate || "").trim().toLowerCase().replace(/^input-/, ""))}`;
+}
+
+function normalizeOriginView(candidate) {
+  const view = String(candidate || "").trim().toLowerCase();
+  return view.startsWith("input-") ? sourceView(view) : view;
 }
 
 async function adapterCanReveal(adapter, selection) {

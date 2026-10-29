@@ -10,6 +10,7 @@ import {
 import { preloadTopologyRenderer, renderTopology } from "./topology-loader.js";
 import { localizedMessage } from "./i18n.js";
 import { clearSemanticHover, clearSemanticSelection } from "./selection-controller.js";
+import { retainSemanticNavigationProjection } from "./semantic-navigation-cache.js";
 import { captureViewSnapshot } from "./view-history.js";
 import { captureWorkspaceLayout } from "./layout.js";
 import { restoreSimulationEnergyWorkspaceContext } from "./views/simulation-views.js";
@@ -284,7 +285,7 @@ function applyOverviewResult(result, text, { complete = false, analysisKey = "" 
   state.report = result.report;
   state.model = result.model || null;
   state.epjsonText = result.epjson || "";
-  state.semanticProjection = result.semantic || null;
+  state.semanticProjection = retainSemanticNavigationProjection(result.semantic);
   state.lastAnalyzedText = text;
   state.analysisKey = result.analysisKey || analysisKey || state.analysisKey;
   state.lastAnalyzedKey = state.analysisKey;
@@ -394,10 +395,9 @@ export function registerLoadedDocument(text, { path = "", filename = "", initial
   state.semanticCurrentOccurrenceId = "";
   state.semanticCurrentPath = "";
   state.semanticPinnedEntityIds?.clear?.();
-  state.semanticEditSelectionRestore = null;
+  state.inputEditSelectionRestore = null;
   state.semanticPendingNavigation = null;
   state.pendingAnalysisPriorityTab = "";
-  state.semanticExpandedSectionIds = new Set(["project"]);
   state.analysisStage = "idle";
   state.geometryReady = false;
   renderEmpty();
@@ -602,11 +602,11 @@ export async function saveWorkspaceSnapshot() {
     savedText: state.savedText || "",
     analysisKey,
     activeResultTab: state.activeResultTab || "metrics",
-    activeInputView: state.activeInputView || "text",
+    activeInputView: viewSnapshot.inputView,
     analysisStage: state.analysisStage || "idle",
     geometryReady: Boolean(state.geometryReady),
     globalSelection: viewSnapshot.globalSelection,
-    semanticOccurrenceId: viewSnapshot.semanticCurrentOccurrenceId || viewSnapshot.globalSelection?.occurrenceId || "",
+    semanticOccurrenceId: viewSnapshot.globalSelection?.occurrenceId || viewSnapshot.semanticCurrentOccurrenceId || "",
     viewSnapshot,
     panelContexts: viewSnapshot.panelContexts || {},
     simulationResultRef: analysisKey && state.simulationResult?.runId
@@ -635,7 +635,7 @@ export function applyCachedAnalysisResult(result, snapshot = {}) {
   state.report = result.report;
   state.model = result.model || null;
   state.epjsonText = result.epjson || "";
-  state.semanticProjection = result.semantic || null;
+  state.semanticProjection = retainSemanticNavigationProjection(result.semantic);
   state.lastAnalyzedText = text;
   state.analysisKey = analysisKey;
   state.lastAnalyzedKey = analysisKey;

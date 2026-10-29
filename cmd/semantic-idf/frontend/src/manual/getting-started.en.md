@@ -96,7 +96,10 @@ These are default shortcuts; Settings can customize them. Shortcuts are context-
 | Topology 3D / Plan / Network | 1 / 2 / 3 within Topology |
 | Topology Fit / Connectivity / Area / UA / QA | F / T / A / U / Q within Topology |
 
-The internal Semantic projection supports identity and navigation; it is not a visible input tab. A configured shortcut for that internal projection does not expose a hidden editor.
+Text, JSON and Table are the three input views. The Semantic editor has been
+removed. Internal model identity and source indexes continue to support selection
+and navigation. An older preference naming that retired view opens Text instead;
+custom shortcuts for the three input views are preserved.
 
 ## Choose the right evidence {#evidence}
 

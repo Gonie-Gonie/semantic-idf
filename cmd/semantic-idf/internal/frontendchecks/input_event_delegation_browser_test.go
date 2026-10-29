@@ -56,12 +56,14 @@ func TestInputViewsKeepConstantEventListenerCountsAcrossRenders(t *testing.T) {
 		t.Fatalf("input event delegation browser harness did not pass:\n%s", document)
 	}
 	for _, signal := range []string{
-		`"semanticListeners":5`,
+		`"semanticSurfaceAbsent":true`,
 		`"jsonListeners":1`,
 		`"textListeners":3`,
 		`"tableListeners":4`,
 		`"rerenderStable":true`,
 		`"dynamicControlsWork":true`,
+		`"selectedSourcesMaterialized":true`,
+		`"tableCapSourceReachable":true`,
 	} {
 		if !strings.Contains(document, signal) {
 			t.Fatalf("input event delegation result is missing %s:\n%s", signal, document)
@@ -73,7 +75,6 @@ const inputEventDelegationHarnessHTML = `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>Input event delegation harness</title></head>
 <body data-input-event-delegation-status="pending">
-  <div id="semanticEditor"></div>
   <div id="textObjectView"></div>
   <div id="jsonStructuredView"></div>
   <div id="fieldTable"></div>
@@ -127,8 +128,8 @@ const inputEventDelegationHarnessHTML = `<!doctype html>
         return second;
       };
 
-      const semanticListeners = countsAfterTwoRenders("semantic", elements.semanticEditor, ["click", "dblclick", "keydown", "pointerover", "pointerout"]);
-      assert(elements.semanticEditor.dataset.semanticMode === "detailed", "Semantic view is not fixed to Detailed mode");
+      const semanticSurfaceAbsent = !document.getElementById("semanticEditor") && !("semanticEditor" in elements);
+      assert(semanticSurfaceAbsent, "removed Semantic renderer remains allocated");
 
       const jsonListeners = countsAfterTwoRenders("json", elements.jsonStructuredView, ["click"]);
       assert([...elements.jsonStructuredView.querySelectorAll("details")].every((detail) => detail.open), "JSON tree is not fully expanded");
@@ -144,15 +145,60 @@ const inputEventDelegationHarnessHTML = `<!doctype html>
       orientation.click();
       assert(state.tableGroupOrientations.get("Version") === nextOrientation, "delegated table orientation control did not update state");
 
+      const selectionController = await import("/src/js/selection-controller.js");
+      const objects = Array.from({length:600},(_,index)=>({index,sourceIndex:index,type:"Zone",name:"Zone "+index,
+        fields:[{key:"name",comment:"Name",value:"Zone "+index}]}));
+      const sourceAnchor = {objectIndex:550,objectType:"Zone",objectName:"Zone 550",fieldIndex:0,fieldName:"name"};
+      const sourceSelection = {entityId:"fixture:zone-550",entityKind:"zone",occurrenceId:"fixture:source-550",sourceAnchor};
+      setDocumentText(objects.map(object=>"Zone,"+object.name+";").join("\n"));
+      state.report = {objects};state.model = {format:"idf",version:{raw:"24.2"},objects};state.reportAnalyzedText=state.documentText;
+      state.semanticProjection = {schema:"eplus-semantic/0.2",navigation:{
+        entities:[{id:sourceSelection.entityId,kind:"zone",label:"Zone 550"}],
+        occurrences:[{occurrenceId:sourceSelection.occurrenceId,entityId:sourceSelection.entityId,path:"zones/550",sourceAnchor}],
+        byEntityId:{[sourceSelection.entityId]:[sourceSelection.occurrenceId]},byObjectIndex:{"550":[sourceSelection.occurrenceId]},byObjectId:{},byViewTarget:{},
+      }};
+      const sourceBefore=JSON.stringify({report:state.report,model:state.model,projection:state.semanticProjection});
+      const controller=selectionController.configureSelectionController({state,getNavigationIndex:()=>state.semanticProjection.navigation,isAnalysisCurrent:()=>true,
+        onSelectionChange:detail=>window.dispatchEvent(new CustomEvent("idfAnalyzer:semanticSelectionChanged",{detail}))});
+      const selectSource=()=>controller.selectSemanticEntity(sourceSelection,{originView:"profile",follow:false,recordHistory:false});
+      const clearSource=()=>controller.clearSemanticSelection({follow:false,recordHistory:false});
+      const inputRoot=view=>({text:elements.textObjectView,json:elements.jsonStructuredView,table:elements.fieldTable})[view];
+      const objectIDs=root=>new Set([...root.querySelectorAll("[data-object-index]")].map(node=>node.dataset.objectIndex));
+      for(const view of["text","json","table"]){
+        state.activeInputView=view;inputViews.setInputFilter("does-not-match-any-source");
+        assert(objectIDs(inputRoot(view)).size===0,view+" unmatched filter unexpectedly showed source objects");
+        await selectSource();const identity=JSON.stringify(controller.currentSemanticSelection());inputViews.renderInputViews();
+        const ids=objectIDs(inputRoot(view));
+        assert(ids.size===1&&ids.has("550")&&state.inputFilterQuery==="does-not-match-any-source"&&JSON.stringify(controller.currentSemanticSelection())===identity,
+          view+" did not materialize only the exact selected source while preserving filter and selection identity");
+        await clearSource();
+        assert(objectIDs(inputRoot(view)).size===0&&state.inputFilterQuery==="does-not-match-any-source",
+          view+" retained a temporary source exception after clearing selection");
+      }
+      const selectedSourcesMaterialized=true;
+      state.activeInputView="table";inputViews.setInputFilter("Zone");
+      const ordinaryIDs=objectIDs(elements.fieldTable);
+      assert(ordinaryIDs.size===500&&!ordinaryIDs.has("550"),"ordinary table render limit did not retain its first 500 sources");
+      await selectSource();const capIdentity=JSON.stringify(controller.currentSemanticSelection());inputViews.renderInputViews();
+      const expandedIDs=objectIDs(elements.fieldTable);
+      const tableCapSourceReachable=expandedIDs.size===501&&expandedIDs.has("550")&&[...ordinaryIDs].every(id=>expandedIDs.has(id))
+        &&state.inputFilterQuery==="Zone"&&JSON.stringify(controller.currentSemanticSelection())===capIdentity;
+      assert(tableCapSourceReachable,"selected source beyond the table cap was omitted, displaced ordinary sources, or changed the filter/selection");
+      await clearSource();
+      assert(objectIDs(elements.fieldTable).size===500&&!objectIDs(elements.fieldTable).has("550")&&state.inputFilterQuery==="Zone",
+        "clearing table selection did not restore the ordinary render cap without changing the filter");
+      assert(JSON.stringify({report:state.report,model:state.model,projection:state.semanticProjection})===sourceBefore,"source materialization mutated the canonical input or navigation data");
+
       const result = {
-        semanticListeners,
+        semanticSurfaceAbsent,
         jsonListeners,
         textListeners,
         tableListeners,
         rerenderStable: true,
         dynamicControlsWork: true,
+        selectedSourcesMaterialized,
+        tableCapSourceReachable,
       };
-      assert(semanticListeners === 5, "unexpected Semantic listener count");
       assert(jsonListeners === 1, "unexpected JSON listener count");
       assert(textListeners === 3, "unexpected Text listener count");
       assert(tableListeners === 4, "unexpected Table listener count");

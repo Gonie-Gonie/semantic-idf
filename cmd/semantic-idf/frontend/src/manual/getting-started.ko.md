@@ -96,7 +96,9 @@ Save는 현재 편집 내용을 열린 파일에 씁니다. 원래 경로가 없
 | Topology 3D / Plan / Network | Topology에서 1 / 2 / 3 |
 | Topology 맞춤 / 연결 / 면적 / UA / QA | Topology에서 F / T / A / U / Q |
 
-내부 Semantic projection은 식별과 탐색을 지원하며, 노출된 입력 탭이 아닙니다. 해당 내부 projection용 단축키 설정이 있어도 숨겨진 편집기를 열지는 않습니다.
+입력 화면은 Text, JSON, Table 세 가지입니다. Semantic 편집기는 제거했으며,
+내부 객체 식별과 원본 위치 인덱스는 선택·탐색에 계속 사용합니다. 이전 설정에서
+제거된 화면을 지정해도 Text로 열리며, 세 입력 화면의 사용자 단축키는 유지합니다.
 
 ## 근거의 종류 {#evidence}
 

@@ -94,7 +94,7 @@ try {
  for(const name of ['AnalyzeInputText','AnalyzeInputDiagnosticsText'])window.go.main.App[name]=async()=>{analyze++;throw Error('unexpected '+name);};
  for(const name of ['RunSimulation','RunSimulationText','RunPurposeSimulationText'])window.go.main.App[name]=async()=>{run++;throw Error('unexpected '+name);};
  adapters.initializeResultPanelNavigationAdapters();
- controller.configureSelectionController({state,getNavigationIndex:()=>state.semanticProjection.navigation,getCurrentText:store.getDocumentText,getReportAnalysisKey:()=>state.reportAnalysisKey,isAnalysisCurrent:()=>state.reportAnalyzedText===store.getDocumentText(),getActiveInputView:()=>"input-"+(state.activeInputView||"semantic"),getActivePanelView:()=>state.activeResultTab,
+ controller.configureSelectionController({state,getNavigationIndex:()=>state.semanticProjection.navigation,getCurrentText:store.getDocumentText,getReportAnalysisKey:()=>state.reportAnalysisKey,isAnalysisCurrent:()=>state.reportAnalyzedText===store.getDocumentText(),getActiveInputView:()=>"input-"+(state.activeInputView||"text"),getActivePanelView:()=>state.activeResultTab,
   recordHistory:payload=>{const snapshot=history.captureViewSnapshot();if(payload.previous)snapshot.globalSelection=payload.previous;history.recordViewHistory(snapshot);},
   openView:async(view,options)=>{opened++;return navigation.switchResultTab(view,{...options,recordHistory:false});},queueAnalysisTarget:()=>{queued++;},
   onSelectionChange:detail=>window.dispatchEvent(new CustomEvent('idfAnalyzer:semanticSelectionChanged',{detail}))});

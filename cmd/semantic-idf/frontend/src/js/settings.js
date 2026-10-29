@@ -6,7 +6,6 @@ import {
   saveAppSettings,
 } from "./settings-client.js";
 import { formatAppVersion, loadAppInfo, renderAppInfo } from "./app-info.js";
-import { SHOW_SEMANTIC_STRUCTURE } from "./ui-features.js";
 import {
   analysisTabLabel,
   getLanguage,
@@ -45,7 +44,6 @@ const shortcutControls = [
   ["primaryOpen", "shortcut.primaryOpen"],
   ["availableViews", "shortcut.availableViews"],
   ["clearSelection", "shortcut.clearSelection"],
-  ...(SHOW_SEMANTIC_STRUCTURE ? [["inputSemantic", "shortcut.inputSemantic"]] : []),
   ["inputText", "shortcut.inputText"],
   ["inputJson", "shortcut.inputJson"],
   ["inputTable", "shortcut.inputTable"],
@@ -309,7 +307,6 @@ function renderSettings(result) {
         <span>${escapeHTML(t("settings.defaultInputView", {}, "Default input view"))}</span>
         <select id="defaultInputView">
           ${optionHTML("text", "Text", activeSettings.appearance.defaultInputView)}
-          ${SHOW_SEMANTIC_STRUCTURE ? optionHTML("semantic", t("input.semantic"), activeSettings.appearance.defaultInputView) : ""}
           ${optionHTML("json", "JSON", activeSettings.appearance.defaultInputView)}
           ${optionHTML("table", "Table", activeSettings.appearance.defaultInputView)}
         </select>

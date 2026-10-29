@@ -47,7 +47,7 @@ func TestEPATH140ActualEnergyDashboardSingleViewAndNavigation(t *testing.T) {
 const epath140SingleViewHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>EPATH140 actual Energy dashboard</title>
 <link rel="stylesheet" href="/src/styles/base.css"><link rel="stylesheet" href="/src/styles/simulation.css"><style>body{margin:0;overflow:auto}#simulationPane{max-width:1100px}button{font:inherit}</style>
 <script>window.go={main:{App:{GetSimulationEnvironment:async()=>({installations:[],weatherFolders:[]})}}};window.runtime={EventsOn(){}};</script></head>
-<body data-epath140-status="pending"><div id="runtimeStatus"></div><div id="semanticEditor" hidden></div><div id="simulationPane" class="result-pane active">
+<body data-epath140-status="pending"><div id="runtimeStatus"></div><div id="simulationPane" class="result-pane active">
 <div id="simulationResultTabs"><button data-simulation-result-view-button="energy">Energy</button></div><div id="simulationOutputMessage"></div>
 <section data-simulation-result-view="energy"><div id="simulationEnergyStats"></div><div id="simulationEnergyDashboard"></div></section>
 </div><div id="hvacPane" class="result-pane"><div id="hvacSummary"></div><div id="hvacGraph"></div></div><pre id="result">pending</pre><script type="module">

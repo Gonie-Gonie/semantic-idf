@@ -378,10 +378,13 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
       selectionController.configureSelectionController({
         state,
         getNavigationIndex: () => state.semanticProjection?.navigation || {},
-        getActiveInputView: () => "input-semantic",
+        getActiveInputView: () => "input-text",
         getActivePanelView: () => "profile",
+        getPanelNavigationAdapter: (view) => view === "input-text" ? {
+          canReveal: () => true,
+          reveal: (selection) => { semanticFollowAttempts.push(selection); return true; },
+        } : panelRegistry.getPanelNavigationAdapter(view),
         onSelectionChange: ({ selection, options }) => semanticEvents.push({ selection, options }),
-        onTemporaryReveal: (detail) => semanticFollowAttempts.push(detail),
         queueAnalysisTarget: (detail) => semanticFollowAttempts.push(detail),
         openView: (view) => semanticFollowAttempts.push(view),
       });

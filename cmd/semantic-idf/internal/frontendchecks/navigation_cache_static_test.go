@@ -112,7 +112,7 @@ func TestSelectionSyncAvoidsFullRenderAndBackendCalls(t *testing.T) {
 	for _, bounds := range [][2]string{
 		{"export function handleAnalysisActivation", "export function handleInputSelectionActivation"},
 		{"export function handleInputSelectionActivation", "export function refreshInputSelectionStyles"},
-		{"export function refreshInputSelectionStyles", "let legacyInputAdaptersInitialized"},
+		{"export function refreshInputSelectionStyles", "let inputAdaptersInitialized"},
 	} {
 		body := sliceBetween(navigation, bounds[0], bounds[1])
 		if body == "" {
@@ -138,7 +138,7 @@ func TestSelectionSyncAvoidsFullRenderAndBackendCalls(t *testing.T) {
 
 func TestHistoryRestoreRevealsSelectionWithoutRenderOrAnalysis(t *testing.T) {
 	navigation := readTestFile(t, "frontend/src/js/navigation.js")
-	restore := sliceBetween(navigation, "export async function restoreViewSnapshot", "function restoreSemanticSnapshotState")
+	restore := sliceBetween(navigation, "export async function restoreViewSnapshot", "async function restoreRegisteredPanelContext")
 	if !strings.Contains(restore, "await revealRestoredSelection(scope)") {
 		t.Fatal("history/workspace restore must resynchronize the selected entity after panel contexts")
 	}
@@ -242,6 +242,7 @@ const navigationCacheRuntimePage = `<!doctype html>
 <body data-test-status="running">running
 <script type="module">
 import {
+  retainSemanticNavigationProjection,
   getSemanticNavigationCache,
   getSemanticNavigationCacheStats,
   resetSemanticNavigationCacheForTests,
@@ -293,6 +294,24 @@ const metadata = { textHash: "large-model-hash", analyzerVersion: bundledAppInfo
 const buildStart = performance.now();
 const cache = getSemanticNavigationCache(projection, metadata);
 const buildElapsedMs = performance.now() - buildStart;
+const fullProjection = { ...projection, textHash: metadata.textHash, analyzerVersion: metadata.analyzerVersion,
+  text: "semantic_energyplus_model:\n  zones: Zone 123", lines: [{text:"Zone 123",objectIndex:123}],
+  model: {objects:[{type:"Zone",name:"Zone 123"}]}, sourceMap: {"Zone 123":123} };
+const originalProjectionJSON = JSON.stringify(fullProjection);
+const retained = retainSemanticNavigationProjection(fullProjection);
+const legacyProjection = {Navigation:navigation,schemaVersion:projection.schema,analysisKey:metadata.textHash,analyzerVersion:metadata.analyzerVersion,text:"legacy YAML"};
+const retainedLegacy = retainSemanticNavigationProjection(legacyProjection);
+const navigationRetention = retained !== fullProjection && retained.navigation === navigation
+  && retained.navigation.entities === navigation.entities && retained.navigation.occurrences === navigation.occurrences
+  && retained.schema === projection.schema && retained.textHash === metadata.textHash && retained.analyzerVersion === metadata.analyzerVersion
+  && ["text","lines","model","sourceMap"].every(key=>!Object.hasOwn(retained,key))
+  && JSON.stringify(fullProjection) === originalProjectionJSON
+  && getSemanticNavigationCache(retained) === cache
+  && Object.isFrozen(retained) && retainSemanticNavigationProjection(fullProjection) === retained && retainSemanticNavigationProjection(retained) === retained
+  && retainedLegacy.navigation === navigation && retainedLegacy.schemaVersion === projection.schema && retainedLegacy.analysisKey === metadata.textHash
+  && !Object.hasOwn(retainedLegacy,"text") && getSemanticNavigationCache(retainedLegacy) === cache
+  && retainSemanticNavigationProjection(null) === null && retainSemanticNavigationProjection({text:"no navigation"}) === null
+  && retainSemanticNavigationProjection({navigation:[]}) === null;
 for (let repeat = 0; repeat < 1000; repeat += 1) {
   getSemanticNavigationCache(projection, metadata);
 }
@@ -344,6 +363,7 @@ for (let index = 0; index < 10; index += 1) {
 }
 const boundedStats = getSemanticNavigationCacheStats();
 const passed = Boolean(
+  navigationRetention &&
   cache === getSemanticNavigationCache(projection, metadata) &&
   cache === equivalentCache &&
   stableStats.builds === 1 &&
@@ -362,6 +382,7 @@ const passed = Boolean(
 document.body.dataset.testStatus = passed ? "pass" : "fail";
 document.body.textContent = JSON.stringify({
   passed,
+  navigationRetention,
   buildElapsedMs: Number(buildElapsedMs.toFixed(2)),
   lookupElapsedMs: Number(lookupElapsedMs.toFixed(2)),
   stableStats,

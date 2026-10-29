@@ -13,7 +13,7 @@ import (
 
 func TestSettingsDefaultInputViewPreservesWorkspaceBrowser(t *testing.T) {
 	_ = readTranslationSource(t)
-	for _, path := range []string{"frontend/src/js/main.js", "frontend/src/js/actions.js", "frontend/src/js/state.js", "frontend/src/js/views/input-views.js", "frontend/src/js/settings-client.js", "frontend/src/js/ui-features.js"} {
+	for _, path := range []string{"frontend/src/js/main.js", "frontend/src/js/actions.js", "frontend/src/js/state.js", "frontend/src/js/views/input-views.js", "frontend/src/js/settings-client.js", "frontend/src/js/input-view-policy.js"} {
 		readTestFile(t, path)
 	}
 	if testing.Short() {
@@ -89,7 +89,8 @@ async function openWorkspace(restored=false) {
 }
 async function resolvePreference(workspace, view) {
   workspace.win.__resolveInputViewSettings({settings:{appearance:{defaultInputView:view,language:"en",theme:"light"}}});
-  await waitFor(() => workspace.settings.getCurrentAppSettings().appearance.defaultInputView === view, "settings response was not applied");
+  const expectedView = ["text","json","table"].includes(view) ? view : "text";
+  await waitFor(() => workspace.settings.getCurrentAppSettings().appearance.defaultInputView === expectedView, "settings response was not applied");
   await new Promise(resolve => setTimeout(resolve,50));
   assert(!workspace.win.__inputViewErrors.length, workspace.win.__inputViewErrors.join("\n"));
 }

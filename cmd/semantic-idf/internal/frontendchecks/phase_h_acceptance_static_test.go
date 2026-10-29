@@ -16,7 +16,8 @@ type phaseHScenarioProbe struct {
 func TestPhaseHEndToEndScenarioContracts(t *testing.T) {
 	scenarios := map[string][]phaseHScenarioProbe{
 		"A zone geometry and Back": {
-			{path: "frontend/src/js/views/input-views.js", terms: []string{"async function openSemanticLine", "openSelectionInView("}},
+			{path: "frontend/src/js/navigation.js", terms: []string{"export function handleInputSelectionActivation", "selectSemanticEntity("}},
+			{path: "frontend/src/js/selection-controller.js", terms: []string{"openSelectionInView", "sourceAnchor"}},
 			{path: "frontend/src/js/topology-loader.js", terms: []string{`configureResultPanelNavigationHooks("topology"`, "restoreTopologyNavigationContext"}},
 			{path: "frontend/src/js/views/topology-view.js", terms: []string{"topologySelectionForTarget", "preferredTopologySemanticOccurrence", "export async function restoreTopologyNavigationContext"}},
 			{path: "frontend/src/js/navigation.js", terms: []string{"snapshot.globalSelection", "restoreRegisteredPanelContext"}},
@@ -24,7 +25,8 @@ func TestPhaseHEndToEndScenarioContracts(t *testing.T) {
 		"B profile schedule and source": {
 			{path: "frontend/src/js/views/profile-views.js", terms: []string{"function handleProfileOverviewActivation", "data-profile-row-key", "profileSelectionAnchorKey", "function profileSeriesSemanticTargets", "function applyProfileNavigationTarget", "function selectProfileItemForNavigation", "function selectProfileZoneDimensionForNavigation", "captureProfileNavigationContext", "restoreProfileNavigationContext"}},
 			{path: "frontend/src/js/selection-controller.js", terms: []string{"chooseSemanticOccurrence", "semanticOccurrenceChoices"}},
-			{path: "frontend/src/js/views/input-views.js", terms: []string{"revealSelectionSource", "sourceAnchor"}},
+			{path: "frontend/src/js/views/input-views.js", terms: []string{"captureInputEditSelection", "sourceAnchor"}},
+			{path: "frontend/src/js/selection-controller.js", terms: []string{"revealSelectionSource", "sourceAnchor"}},
 		},
 		"C HVAC service and loop": {
 			{path: "frontend/src/js/views/hvac-views.js", terms: []string{"async function revealHVACSelection", "navigateHVAC(navigationTarget, { pushHistory: false", "captureHVACNavigationContext", "restoreHVACNavigationContext", `"loop_occurrence"`}},
@@ -32,7 +34,7 @@ func TestPhaseHEndToEndScenarioContracts(t *testing.T) {
 		},
 		"D simulation source identity and local selection": {
 			{path: "frontend/src/js/views/simulation-views.js", terms: []string{"simulationEnergySemanticAttributes", "simulationHVACPathSemanticCandidate", "simulationOutputSourceSemanticCandidate", `view: "input-text"`, `targetKind: "source"`, "selectSimulationEnergyGraphItem", "handleHVACInspectionEvent"}},
-			{path: "frontend/src/js/views/input-views.js", terms: []string{"revealSelectionSource"}},
+			{path: "frontend/src/js/navigation.js", terms: []string{"function revealInputSourceTarget"}},
 			{path: "frontend/src/js/panel-navigation-policy.js", terms: []string{"isStandaloneResultView", `["hvac", "simulation"]`, "isStandalonePanelLink"}},
 			{path: "frontend/src/js/selection-controller.js", terms: []string{"isStandalonePanelLink(options.originView || selection.originView, normalizedView)", "isStandaloneResultView(options.originView || selection.originView)"}},
 		},
@@ -66,8 +68,9 @@ func TestPhaseHEndToEndScenarioContracts(t *testing.T) {
 func TestPhaseHLargeModelFilterHiddenRevealContracts(t *testing.T) {
 	files := map[string][]string{
 		"frontend/src/js/views/input-views.js": {
-			"semanticLinesWithTemporaryReveal",
-			"semanticTemporaryReveal",
+			"filterInputObjects",
+			"materializedInputSource",
+			"selectedInputObjectIndex",
 		},
 		"frontend/src/js/views/profile-views.js": {
 			"profileNavigationRevealDimension",

@@ -1,5 +1,4 @@
 import { state } from "./state.js";
-import { SHOW_SEMANTIC_STRUCTURE } from "./ui-features.js";
 
 export function initializeKeyboardShortcuts(actions) {
   window.addEventListener("keydown", (event) => handleShortcutKeydown(event, actions));
@@ -66,7 +65,6 @@ function shortcutAction(id, actions) {
     primaryOpen: actions.primaryOpen,
     availableViews: actions.availableViews,
     clearSelection: actions.clearSelection,
-    inputSemantic: SHOW_SEMANTIC_STRUCTURE ? () => actions.switchInputView?.("semantic") : null,
     inputText: () => actions.switchInputView?.("text"),
     inputJson: () => actions.switchInputView?.("json"),
     inputTable: () => actions.switchInputView?.("table"),

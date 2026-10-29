@@ -8,12 +8,31 @@ const EMPTY_NAVIGATION = Object.freeze({
 });
 const EMPTY_LIST = Object.freeze([]);
 const MAX_SHARED_CACHE_ENTRIES = 6;
+const retainedProjections = new WeakMap();
+const retainedMetadataKeys = ["schema", "schemaVersion", "textHash", "analysisKey", "analyzerVersion"];
 
 let cacheBucketsByNavigation = new WeakMap();
 const sharedCachesByKey = new Map();
 let cacheBuildCount = 0;
 let identityHitCount = 0;
 let sharedHitCount = 0;
+
+/** Keep only canonical navigation and identity metadata in desktop state. The
+ * public backend projection remains unchanged; its YAML/tree presentation can
+ * be released once the input response has been consumed. */
+export function retainSemanticNavigationProjection(source) {
+  if (!source || typeof source !== "object") return null;
+  const cached = retainedProjections.get(source);
+  if (cached) return cached;
+  const navigation = source.navigation || source.Navigation;
+  if (!navigation || typeof navigation !== "object" || Array.isArray(navigation)) return null;
+  const retained = { navigation };
+  for (const key of retainedMetadataKeys) if (Object.hasOwn(source, key)) retained[key] = source[key];
+  Object.freeze(retained);
+  retainedProjections.set(source, retained);
+  retainedProjections.set(retained, retained);
+  return retained;
+}
 
 /**
  * Returns the immutable lookup cache for a semantic projection/navigation

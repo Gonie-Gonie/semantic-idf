@@ -150,7 +150,7 @@ func TestThermalTopologyHistoryCapturesContextWithoutGraphOrLayoutCache(t *testi
 		t.Fatal("view history does not retain the analysis cache key")
 	}
 	navigation := readTestFile(t, "frontend/src/js/navigation.js")
-	restoreSnapshot := sliceBetween(navigation, "export async function restoreViewSnapshot", "function restoreSemanticSnapshotState")
+	restoreSnapshot := sliceBetween(navigation, "export async function restoreViewSnapshot", "async function restoreRegisteredPanelContext")
 	for _, required := range []string{"analysisCacheHit", "remapSemanticSelection", "restoreRegisteredPanelContext"} {
 		if !strings.Contains(restoreSnapshot, required) {
 			t.Fatalf("history restore is missing cache-aware selection remap %q", required)

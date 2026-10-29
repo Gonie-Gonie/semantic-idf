@@ -82,7 +82,8 @@ available to automation even though the former Output tab is hidden.
 
 Metrics, Profile and Topology participate in the shared source-selection model.
 HVAC and Simulation keep standalone selections. The internal Semantic projection
-supports identity and indexing; it is not an exposed input tab. Follow the
+supports identity and indexing; its former input renderer and view state are
+removed. Text, JSON and Table are the only input views. Follow the
 [navigation contract](semantic-navigation.md) when adding another participant.
 
 Profile's `cooling_setpoint` and `heating_setpoint` dimensions carry configured

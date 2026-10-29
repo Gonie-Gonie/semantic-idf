@@ -8,7 +8,6 @@ import (
 func TestDynamicInputViewsUseFixedDelegatedEventBindings(t *testing.T) {
 	views := readTestFile(t, "frontend/src/js/views/input-views.js")
 	for _, stateFlag := range []string{
-		"semanticControlsBound",
 		"jsonEditorControlsBound",
 		"formattedTextControlsBound",
 		"fieldTableControlsBound",
@@ -80,20 +79,6 @@ func TestDynamicInputViewsUseFixedDelegatedEventBindings(t *testing.T) {
 	} {
 		if strings.Contains(tableRender, forbidden) {
 			t.Fatalf("field table must not allocate a listener per rendered row/cell: %q", forbidden)
-		}
-	}
-}
-
-func TestSemanticViewUsesFixedDetailedAllPresentation(t *testing.T) {
-	views := readTestFile(t, "frontend/src/js/views/input-views.js")
-	for _, required := range []string{"function semanticProjectionMode() {\n  return \"detailed\";", "function semanticProjectionFacet() {\n  return \"all\";"} {
-		if !strings.Contains(views, required) {
-			t.Fatalf("fixed Semantic presentation is missing %q", required)
-		}
-	}
-	for _, removed := range []string{"semantic-mode-tabs", "semantic-filter-tabs", "semanticFocusObjectButton", "semanticFixDuplicatesButton", "semantic-toolbar", "json-meta", "Editable fields"} {
-		if strings.Contains(views, removed) {
-			t.Fatalf("removed Semantic control remains: %q", removed)
 		}
 	}
 }

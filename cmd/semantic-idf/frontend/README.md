@@ -4,6 +4,10 @@
 
 - `src/app.js`: tiny browser entrypoint.
 - `src/js`: feature modules for state, actions, views, navigation, settings, and analysis.
+- `src/js/input-view-policy.js` defines the three input views: Text, JSON and
+  Table. Retired or unknown stored view names resolve to Text. Semantic model
+  identity and occurrence/source indexes remain internal navigation data; no
+  Semantic editor, rollback flag, hidden adapter or renderer is retained.
 - `src/js/hvac-operation.js` resolves exact calendar/day-type schedule traces
   for the selected equipment occurrence. `views/hvac-operation-view.js` renders
   Availability timelines. `hvac-control-expressions.js` projects the authored

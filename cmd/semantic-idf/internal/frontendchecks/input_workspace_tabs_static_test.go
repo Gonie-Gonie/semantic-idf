@@ -20,7 +20,6 @@ func TestInputWorkspaceUsesTheResultTabVisualAndAccessibilityContract(t *testing
 		active bool
 		hidden bool
 	}{
-		{name: "semantic", tabID: "inputSemanticTab", hidden: true},
 		{name: "text", tabID: "inputTextTab", active: true},
 		{name: "json", tabID: "inputJSONTab"},
 		{name: "table", tabID: "inputTableTab"},
@@ -64,6 +63,11 @@ func TestInputWorkspaceUsesTheResultTabVisualAndAccessibilityContract(t *testing
 		}
 	}
 
+	for _, removed := range []string{`data-input-view="semantic"`, `id="inputSemanticTab"`, `id="semanticInputView"`, `id="semanticEditor"`} {
+		if strings.Contains(editor, removed) {
+			t.Fatalf("removed Semantic surface remains in the input DOM: %q", removed)
+		}
+	}
 	resultTabs := regexp.MustCompile(`(?s)<nav[^>]*class="[^"]*\btabs\b[^"]*"[^>]*aria-label="Result tabs"[^>]*>`).FindString(index)
 	if resultTabs == "" {
 		t.Fatal("result tabs lost the shared labeled navigation contract")
@@ -71,7 +75,7 @@ func TestInputWorkspaceUsesTheResultTabVisualAndAccessibilityContract(t *testing
 
 	stateSource := readTestFile(t, "frontend/src/js/state.js")
 	if !strings.Contains(stateSource, `activeInputView: "text"`) {
-		t.Fatal("Text must remain the initial runtime input view while Semantic is withheld")
+		t.Fatal("Text must remain the initial runtime input view")
 	}
 	if !strings.Contains(stateSource, `document.querySelectorAll(".tab[data-input-view]")`) {
 		t.Fatal("input tab discovery must be scoped to shared .tab input-view buttons")
@@ -81,14 +85,13 @@ func TestInputWorkspaceUsesTheResultTabVisualAndAccessibilityContract(t *testing
 	}
 	inputViews := readTestFile(t, "frontend/src/js/views/input-views.js")
 	switchView := sliceBetween(inputViews, "export async function switchInputView", "export function setTableOrientation")
-	for _, required := range []string{`viewName = exposedInputView(viewName)`, `setAttribute("aria-selected"`, "button.tabIndex", "view.hidden"} {
+	for _, required := range []string{`viewName = normalizeInputView(viewName)`, `setAttribute("aria-selected"`, "button.tabIndex", "view.hidden"} {
 		if !strings.Contains(switchView, required) {
 			t.Fatalf("input tab switching must update accessibility state, missing %q", required)
 		}
 	}
 	mainSource := readTestFile(t, "frontend/src/js/main.js")
 	for _, required := range []string{
-		`!SHOW_SEMANTIC_STRUCTURE && viewID === "input-semantic"`,
 		`button.addEventListener("keydown"`,
 		`"ArrowLeft"`,
 		`"ArrowRight"`,
@@ -100,22 +103,24 @@ func TestInputWorkspaceUsesTheResultTabVisualAndAccessibilityContract(t *testing
 			t.Fatalf("roving input tabs must remain keyboard reachable, missing %q", required)
 		}
 	}
-	features := readTestFile(t, "frontend/src/js/ui-features.js")
+	policy := readTestFile(t, "frontend/src/js/input-view-policy.js")
 	for _, required := range []string{
-		`export const SHOW_SEMANTIC_STRUCTURE = false`,
-		`viewName === "semantic" ? "text" : viewName`,
+		`new Set(["text", "json", "table"])`,
+		`export function normalizeInputView(viewName)`,
+		`INPUT_VIEWS.has(view) ? view : "text"`,
 	} {
-		if !strings.Contains(features, required) {
-			t.Fatalf("Semantic structure hide/rollback gate is missing %q", required)
+		if !strings.Contains(policy, required) {
+			t.Fatalf("visible input view policy is missing %q", required)
 		}
 	}
 	shortcuts := readTestFile(t, "frontend/src/js/shortcuts.js")
-	if !strings.Contains(shortcuts, `inputSemantic: SHOW_SEMANTIC_STRUCTURE ?`) {
-		t.Fatal("the dormant Semantic shortcut is not gated by the rollback switch")
-	}
 	settings := readSettingsSource(t)
-	if !strings.Contains(settings, `...(SHOW_SEMANTIC_STRUCTURE ? [["inputSemantic", "shortcut.inputSemantic"]] : [])`) {
-		t.Fatal("Settings still exposes the dormant Semantic shortcut without the rollback switch")
+	for name, content := range map[string]string{"main": mainSource, "input runtime": inputViews, "policy": policy, "shortcuts": shortcuts, "settings": settings} {
+		for _, removed := range []string{"SHOW_SEMANTIC_STRUCTURE", "renderSemanticView", "inputSemantic:", `"shortcut.inputSemantic"`} {
+			if strings.Contains(content, removed) {
+				t.Fatalf("%s retains a removed Semantic view route or control: %q", name, removed)
+			}
+		}
 	}
 }
 

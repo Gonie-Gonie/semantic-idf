@@ -1,5 +1,6 @@
 import { elements, state } from "./state.js";
 import { getPanelNavigationAdapter, PANEL_NAVIGATION_VIEW_IDS } from "./panel-navigation-registry.js";
+import { normalizeInputView } from "./input-view-policy.js";
 
 const MAX_HISTORY = 80;
 const MAX_CONTEXT_ARRAY_LENGTH = 96;
@@ -8,7 +9,8 @@ const MAX_CONTEXT_DEPTH = 7;
 export function captureViewSnapshot() {
   return {
     analysisKey: state.reportAnalysisKey || state.analysisKey || "",
-    inputView: state.activeInputView,
+    inputView: normalizeInputView(state.activeInputView),
+    inputFilterQuery: state.inputFilterQuery || "",
     resultTab: state.activeResultTab,
     jsonSelectedObjectIndex: state.jsonSelectedObjectIndex,
     textScrollTop: elements.textObjectView?.scrollTop ?? 0,
@@ -18,17 +20,8 @@ export function captureViewSnapshot() {
     activeFieldIndex: activeElementDataset("fieldIndex"),
     activeFieldIndexKind: activeElementDataset("fieldIndexKind"),
     globalSelection: cloneHistorySelection(state.globalSelection),
-    semanticTemporaryReveal: state.semanticTemporaryReveal ? { ...state.semanticTemporaryReveal } : null,
-    semanticCurrentOccurrenceId: state.semanticCurrentOccurrenceId || "",
-    semanticCurrentPath: state.semanticCurrentPath || "",
-    semantic: {
-      mode: state.semanticProjectionMode || "basic",
-      facet: state.semanticProjectionFacet || "all",
-      filter: state.inputFilterQuery || "",
-      temporaryReveal: compactClone(state.semanticTemporaryReveal),
-      scrollTop: Number(elements.semanticEditor?.scrollTop) || 0,
-      expandedSectionIds: [...(state.semanticExpandedSectionIds || [])].map(String),
-    },
+    semanticCurrentOccurrenceId: state.globalSelection?.occurrenceId || state.semanticCurrentOccurrenceId || "",
+    semanticCurrentPath: state.globalSelection?.semanticPathHint || state.semanticCurrentPath || "",
     panelContexts: capturePanelContexts(),
   };
 }
@@ -85,12 +78,13 @@ function snapshotsEqual(a, b) {
 }
 
 function cloneHistorySelection(selection = {}) {
+  const origin = String(selection.originView || "");
   return {
     entityId: String(selection.entityId || ""),
     entityKind: String(selection.entityKind || ""),
     occurrenceId: String(selection.occurrenceId || ""),
     sourceAnchor: selection.sourceAnchor ? { ...selection.sourceAnchor } : null,
-    originView: String(selection.originView || ""),
+    originView: origin.startsWith("input-") ? `input-${normalizeInputView(origin.slice("input-".length))}` : origin,
     originTargetId: String(selection.originTargetId || ""),
     semanticPathHint: String(selection.semanticPathHint || ""),
     relatedEntityIds: [...(selection.relatedEntityIds || [])],

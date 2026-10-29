@@ -127,7 +127,6 @@ func defaultAppSettings() AppSettings {
 				"primaryOpen":          "Enter",
 				"availableViews":       "Alt+Enter",
 				"clearSelection":       "Escape",
-				"inputSemantic":        "Ctrl+1",
 				"inputText":            "Ctrl+2",
 				"inputJson":            "Ctrl+3",
 				"inputTable":           "Ctrl+4",
@@ -164,7 +163,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	}
 	settings.Appearance.Language = normalizeAppLanguage(settings.Appearance.Language, defaults.Appearance.Language)
 	switch strings.ToLower(strings.TrimSpace(settings.Appearance.DefaultInputView)) {
-	case "text", "semantic", "json", "table":
+	case "text", "json", "table":
 		settings.Appearance.DefaultInputView = strings.ToLower(strings.TrimSpace(settings.Appearance.DefaultInputView))
 	default:
 		settings.Appearance.DefaultInputView = defaults.Appearance.DefaultInputView
@@ -188,9 +187,6 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 
 func normalizeShortcutSettings(values map[string]string, defaults map[string]string) map[string]string {
 	out := make(map[string]string, len(defaults))
-	if _, hasSemantic := values["inputSemantic"]; !hasSemantic {
-		values = migrateInputViewShortcutDefaults(values)
-	}
 	values = migrateTopologyShortcutNames(values)
 	for key, fallback := range defaults {
 		value := strings.TrimSpace(values[key])
@@ -219,28 +215,6 @@ func migrateTopologyShortcutNames(values map[string]string) map[string]string {
 		delete(migrated, legacy)
 	}
 	return migrated
-}
-
-func migrateInputViewShortcutDefaults(values map[string]string) map[string]string {
-	migrated := make(map[string]string, len(values)+1)
-	for key, value := range values {
-		migrated[key] = value
-	}
-	if isBlankOrShortcut(migrated["inputText"], "Ctrl+1") {
-		migrated["inputText"] = "Ctrl+2"
-	}
-	if isBlankOrShortcut(migrated["inputJson"], "Ctrl+2") {
-		migrated["inputJson"] = "Ctrl+3"
-	}
-	if isBlankOrShortcut(migrated["inputTable"], "Ctrl+3") {
-		migrated["inputTable"] = "Ctrl+4"
-	}
-	return migrated
-}
-
-func isBlankOrShortcut(value string, expected string) bool {
-	value = strings.TrimSpace(value)
-	return value == "" || strings.EqualFold(value, expected)
 }
 
 func normalizeAppLanguage(value string, fallback string) string {

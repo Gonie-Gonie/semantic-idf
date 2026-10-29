@@ -250,8 +250,8 @@ async function runPhaseHHarness() {
     getReportAnalysisKey: () => "phase-h-large-index",
     isAnalysisCurrent: () => true,
     getActivePanelView: () => "profile",
-    getActiveInputView: () => "input-semantic",
-    getPanelNavigationAdapter: (view) => view === "input-semantic" ? semanticAdapter : view === "profile" ? profileAdapter : null,
+    getActiveInputView: () => "input-text",
+    getPanelNavigationAdapter: (view) => view === "input-text" ? semanticAdapter : view === "profile" ? profileAdapter : null,
     recordHistory: () => { recordHistoryCalls += 1; },
     onSelectionChange: () => { selectionChanges += 1; },
     openView: () => { openedViews += 1; },
@@ -269,7 +269,7 @@ async function runPhaseHHarness() {
     assert(selected?.entityId === "entity-" + index, "cross-pane selection failed at " + index);
   }
   assert(selectionChanges === 100, "100 selections must produce 100 state changes");
-  assert(semanticReveals === 100, "100 linked result selections must reveal Semantic exactly 100 times");
+  assert(semanticReveals === 100, "100 linked result selections must reveal Text exactly 100 times");
   assert(recordHistoryCalls === 100, "100 committed selections must record one history item each");
   assert(queueAnalysisCalls === 0, "current-report navigation queued analysis");
   assert(backendCalls === 0, "current-report navigation called a backend binding");
@@ -302,7 +302,7 @@ async function runPhaseHHarness() {
   assert(selectionChanges === changesBeforeRepeatedTransaction + 1, "replayed transaction changed global state twice");
 
   await controller.selectSemanticEntity({ entityId: "entity-105", occurrenceId: "occurrence-105" }, {
-    originView: "input-semantic",
+    originView: "input-text",
     transactionId: "compatible-panel-reveal",
   });
   assert(profileReveals === 1, "compatible current panel was not revealed");
@@ -323,7 +323,7 @@ async function runPhaseHHarness() {
     getNavigationIndex: () => navigation,
     getReportAnalysisKey: () => "phase-h-large-index",
     isAnalysisCurrent: () => reportCurrent,
-    getPanelNavigationAdapter: (view) => view === "input-semantic" ? pendingAdapter : null,
+    getPanelNavigationAdapter: (view) => view === "input-text" ? pendingAdapter : null,
     recordHistory: () => { pendingHistoryCalls += 1; },
     queueAnalysisTarget: () => { pendingQueueCalls += 1; },
   });

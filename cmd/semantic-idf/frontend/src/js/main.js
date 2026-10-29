@@ -48,7 +48,7 @@ import {
   handleAnalysisActivation,
   handleInputSelectionActivation,
   handleInputJumpActivation,
-  initializeLegacyInputNavigationAdapters,
+  initializeInputNavigationAdapters,
   jumpInputDefinition,
   jumpInputReferences,
   redoViewNavigation,
@@ -89,8 +89,7 @@ import {
 } from "./views/simulation-views.js";
 import { localizedMessage, normalizeAnalyzeTabOrder, t, translatePage } from "./i18n.js";
 import { initializeKeyboardShortcuts } from "./shortcuts.js";
-import { getSemanticNavigationCache } from "./semantic-navigation-cache.js";
-import { SHOW_SEMANTIC_STRUCTURE } from "./ui-features.js";
+import { getSemanticNavigationCache, retainSemanticNavigationProjection } from "./semantic-navigation-cache.js";
 import { initializeAuxiliaryPanel } from "./auxiliary-panel.js";
 
 initializeAuxiliaryPanel({
@@ -114,11 +113,6 @@ initializeAuxiliaryPanel({
   },
 });
 
-const semanticInputTab = document.querySelector('[data-input-view="semantic"]');
-if (semanticInputTab) {
-  semanticInputTab.hidden = !SHOW_SEMANTIC_STRUCTURE;
-}
-
 loadAndApplyAppSettings().then((result) => {
   applyRuntimeSettings(result.settings, { preserveCurrentView: Boolean(result.stale) });
   applyInitialInputView(result.settings?.appearance?.defaultInputView);
@@ -140,7 +134,7 @@ window.addEventListener("pageshow", (event) => {
 });
 
 configureInputViews({ analyze, renderReport });
-initializeLegacyInputNavigationAdapters();
+initializeInputNavigationAdapters();
 initializeResultPanelNavigationAdapters();
 initializePanelNavigationActions({
   jumpDefinition: jumpInputDefinition,
@@ -157,8 +151,8 @@ configureSelectionController({
   getActiveInputView: () => `input-${state.activeInputView || "text"}`,
   getActivePanelView: () => state.activeResultTab || "metrics",
   getCurrentSemanticContext: () => ({
-    occurrenceId: state.semanticCurrentOccurrenceId || "",
-    path: state.semanticCurrentPath || "",
+    occurrenceId: state.globalSelection?.occurrenceId || state.semanticCurrentOccurrenceId || "",
+    path: state.globalSelection?.semanticPathHint || state.semanticCurrentPath || "",
   }),
   chooseSemanticOccurrence,
   chooseViewTarget,
@@ -184,17 +178,14 @@ configureSelectionController({
   onAnalysisPending: () => {
     setStatus(localizedMessage("status.navigationAnalysisPending", {}, "Analysis pending; navigation target will be restored when ready."), "muted");
   },
-  onSelectionChange: ({ selection, options, temporaryRevealCleared }) => {
+  onSelectionChange: ({ selection, options }) => {
     const objectIndex = selection.sourceAnchor?.objectIndex;
     state.semanticSelectedObjectIndex = objectIndex === undefined || objectIndex === null ? "" : String(objectIndex);
-    window.dispatchEvent(new CustomEvent("idfAnalyzer:semanticSelectionChanged", { detail: { selection, options, temporaryRevealCleared } }));
+    window.dispatchEvent(new CustomEvent("idfAnalyzer:semanticSelectionChanged", { detail: { selection, options } }));
     refreshInputSelectionStyles(selection);
   },
   onHoverChange: ({ hover, options }) => {
     window.dispatchEvent(new CustomEvent("idfAnalyzer:semanticHoverChanged", { detail: { hover, options } }));
-  },
-  onTemporaryReveal: ({ reveal, options }) => {
-    window.dispatchEvent(new CustomEvent("idfAnalyzer:semanticTemporaryReveal", { detail: { reveal, options } }));
   },
   onChooserRequested: (detail) => {
     window.dispatchEvent(new CustomEvent("idfAnalyzer:semanticChooserRequested", { detail }));
@@ -230,7 +221,7 @@ const resumePendingNavigationAfterRender = (event) => {
     ) {
       return;
     }
-    const editRestore = state.semanticEditSelectionRestore;
+    const editRestore = state.inputEditSelectionRestore;
     await remapSemanticSelection({
       recordHistory: false,
       allowRenamedSourceIndex: Boolean(
@@ -433,7 +424,7 @@ window.addEventListener("idfAnalyzer:profileApplied", (event) => {
   state.report = result.report;
   state.model = result.model || null;
   state.epjsonText = result.epjson || "";
-  state.semanticProjection = result.semantic || null;
+  state.semanticProjection = retainSemanticNavigationProjection(result.semantic);
   state.lastAnalyzedText = result.text;
   state.analysisKey = result.analysisKey || "";
   state.lastAnalyzedKey = state.analysisKey;
@@ -457,7 +448,7 @@ window.addEventListener("idfAnalyzer:hvacApplied", (event) => {
   state.report = result.report;
   state.model = result.model || null;
   state.epjsonText = result.epjson || "";
-  state.semanticProjection = result.semantic || null;
+  state.semanticProjection = retainSemanticNavigationProjection(result.semantic);
   state.lastAnalyzedText = result.text;
   state.analysisKey = result.analysisKey || "";
   state.lastAnalyzedKey = state.analysisKey;
@@ -678,23 +669,20 @@ async function openAvailableViewsForSelection() {
   const items = [];
   const originView = state.activeResultTab || selection.originView;
   for (const viewID of PANEL_NAVIGATION_VIEW_IDS) {
-    if (!SHOW_SEMANTIC_STRUCTURE && viewID === "input-semantic") {
-      continue;
-    }
-    if (viewID !== "input-semantic" && viewID.startsWith("input-")) {
+    if (viewID.startsWith("input-")) {
       continue;
     }
     if (isProfileTopologyLink(originView, viewID) || isStandalonePanelLink(originView, viewID)) {
       continue;
     }
     const targets = selectionTargetsForView(viewID, { ...selection, originView });
-    if (viewID !== "input-semantic" && !targets.length) {
+    if (!targets.length) {
       continue;
     }
     items.push({
       id: viewID,
       label: navigationViewLabel(viewID),
-      labelKey: viewID === "input-semantic" ? "input.semantic" : `tab.${viewID}`,
+      labelKey: `tab.${viewID}`,
       meta: targets.length > 1 ? t("semantic.occurrences", { count: targets.length }, `${targets.length} targets`) : "",
       metaKey: targets.length > 1 ? "semantic.occurrences" : "",
       metaParams: { count: targets.length },
@@ -724,11 +712,6 @@ async function clearSelectionOrTransientUI() {
   if (closeCommandPalette()) {
     return true;
   }
-  const occurrenceChooser = document.querySelector("[data-semantic-occurrence-chooser]:not([hidden])");
-  if (occurrenceChooser) {
-    occurrenceChooser.hidden = true;
-    return true;
-  }
   if (!state.globalSelection?.entityId) {
     return false;
   }
@@ -737,9 +720,6 @@ async function clearSelectionOrTransientUI() {
 }
 
 function navigationViewLabel(viewID) {
-  if (viewID === "input-semantic") {
-    return t("input.semantic", {}, "Semantic");
-  }
   return t(`tab.${viewID}`, {}, viewID[0].toUpperCase() + viewID.slice(1));
 }
 

@@ -225,7 +225,6 @@ export const state = {
     occurrenceId: "",
     originView: "",
   },
-  semanticTemporaryReveal: null,
   semanticPendingNavigation: null,
   pendingWorkspaceRestore: null,
   pendingAnalysisPriorityTab: "",
@@ -237,13 +236,10 @@ export const state = {
   inputFilterQuery: "",
   // Source-location fallback for legacy views; semantic identity lives in globalSelection.
   semanticSelectedObjectIndex: "",
-  semanticProjectionMode: "detailed",
-  semanticProjectionFacet: "all",
-  semanticExpandedSectionIds: new Set(["project"]),
   semanticCurrentOccurrenceId: "",
   semanticCurrentPath: "",
   semanticPinnedEntityIds: new Set(),
-  semanticEditSelectionRestore: null,
+  inputEditSelectionRestore: null,
   jsonSelectedObjectIndex: "",
 };
 
@@ -267,7 +263,6 @@ export const elements = {
   settingsButton: document.querySelector("#settingsButton"),
   inputFilter: document.querySelector("#inputFilter"),
   inputToolbarScroll: document.querySelector("#inputToolbarScroll"),
-  semanticEditor: document.querySelector("#semanticEditor"),
   textObjectView: document.querySelector("#textObjectView"),
   jsonStructuredView: document.querySelector("#jsonStructuredView"),
   fieldTable: document.querySelector("#fieldTable"),

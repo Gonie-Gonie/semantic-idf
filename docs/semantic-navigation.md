@@ -4,10 +4,17 @@ Metrics, Profile, and Topology share model identity and selection with visible
 Text, JSON, and Table input views. Use this contract when adding selection,
 source reveal, panel adapters, or view history.
 
-The Semantic structure view is feature-gated by `SHOW_SEMANTIC_STRUCTURE = false`.
-It is not an input tab, shortcut, setting, or restored saved view. Its internal
-projection and occurrence index still provide navigation identity. User-visible
-source reveal resolves through Text, JSON, or Table.
+The Semantic structure view has been removed, including its renderer, DOM,
+styles, shortcuts, adapter and view-only history. Internal entity, occurrence
+and source indexes still provide navigation identity and remain compatible with
+the analysis/export APIs. Source reveal resolves directly through Text, JSON,
+or Table. `input-view-policy.js` restricts entry points to these three views;
+retired or unknown saved view names fall back to Text. Existing visible-view
+shortcuts are preserved; obsolete shortcut keys are discarded.
+Frontend state retains only the navigation object and identity metadata from
+the projection, sharing existing arrays without cloning or mutating the backend
+response. YAML text, rendered lines, duplicate model and source-map payloads are
+not held by the input workspace. The backend analysis/export wire remains intact.
 
 HVAC and Simulation have local selection. They do not reveal input objects,
 follow global selection, or appear in semantic destination menus. Simulation
@@ -102,7 +109,9 @@ Topology's local projection and emphasis are defined in
 Selection preserves mode, facet, search/panel filters, graph scope, and active
 tabs. A hidden target is temporarily materialized within its section and
 exempted from filtering; clearing temporary reveal restores the unchanged
-user filters.
+user filters. Visible input views retain the selected source object even when
+it is excluded by the filter or the Table rendering limit; clearing selection
+removes that temporary exception without altering the filter text.
 
 When text hash matches the report analysis key, navigation uses cached reports
 and indexes with zero analyzer calls. Stale navigation queues a pending target
@@ -120,7 +129,8 @@ selection restoration do not create entries.
 
 One `open` creates one snapshot even when it changes selection, tab, and both
 panes. Back/Forward restore global selection, occurrence/filter context,
-active result tab, and compact panel context. Snapshots must not contain
+active result tab, input filter, and compact panel context. Retired view-only
+mode, facet, expansion and scroll state are no longer captured. Snapshots must not contain
 reports, graphs, caches, rendered HTML, or other large derived values.
 
 ## Implementation and regression references
@@ -134,8 +144,7 @@ reports, graphs, caches, rendered HTML, or other large derived values.
 Use `dev.bat test -Area navigation`; see [testing.md](testing.md) for plan/full
 commands. Focused invariants include `TestSemanticNavigationDoesNotTriggerAnalysis`,
 `TestTextJSONAndTableClicksCommitTheSameSemanticSelection`,
-`TestSemanticLineClickAndPrimaryOpenHaveSingleHistoryBoundary`,
-`TestSemanticTemporaryRevealPreservesUserFiltersAndMode`,
+`TestResultSelectionPreservesTheCurrentInputViewWithoutASeparateSemanticRevealAction`,
 `TestSemanticEditReanalysisRestoresIdentityOccurrenceAndPanelContext`, and
 `TestNavigationSelectionUXBrowserHarness`.
 

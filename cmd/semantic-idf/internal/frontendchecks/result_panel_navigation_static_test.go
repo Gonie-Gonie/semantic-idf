@@ -90,7 +90,7 @@ func TestResultPanelSelectionUsesStandardMarkupAndBackendReverseIndex(t *testing
 
 func TestAmbiguousPanelSelectionRequestsAnOccurrenceChoice(t *testing.T) {
 	navigation := readTestFile(t, "frontend/src/js/navigation.js")
-	activation := sliceBetween(navigation, "export function handleAnalysisActivation", "let legacyInputAdaptersInitialized")
+	activation := sliceBetween(navigation, "export function handleAnalysisActivation", "let inputAdaptersInitialized")
 	if !strings.Contains(activation, "chooseOccurrence:") || !strings.Contains(activation, "data-choose-semantic-occurrence") {
 		t.Fatal("ambiguous result-panel items must carry their occurrence-choice request into the controller")
 	}

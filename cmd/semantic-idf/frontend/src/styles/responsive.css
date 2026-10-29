@@ -155,14 +155,6 @@
   .cleanup-candidates {
     max-height: 420px;
   }
-
-  .semantic-context-bar {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .semantic-context-bar__actions {
-    justify-content: flex-start;
-  }
 }
 
 @media (max-width: 560px) {
@@ -240,30 +232,6 @@
 
   .profile-dialog-actions button {
     width: 100%;
-  }
-
-  .semantic-context-bar {
-    align-items: stretch;
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .semantic-context-bar button,
-  .semantic-context-bar [role="button"],
-  .semantic-target-chips button,
-  .semantic-target-chips [role="button"] {
-    flex: 0 0 auto;
-  }
-
-  .semantic-target-chips {
-    float: none;
-    justify-content: flex-start;
-    max-width: 100%;
-    margin: 3px 0 1px;
-  }
-
-  .semantic-occurrence-chooser__option,
-  .semantic-occurrence-chooser [role="option"] {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 

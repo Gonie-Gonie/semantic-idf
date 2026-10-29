@@ -28,21 +28,20 @@ func TestSemanticSelectionStateContract(t *testing.T) {
 		}
 	}
 
-	hover := sliceBetween(content, "globalHover: {", "semanticTemporaryReveal:")
+	hover := sliceBetween(content, "globalHover: {", "semanticPendingNavigation:")
 	for _, field := range []string{"entityId", "occurrenceId", "originView"} {
 		if !regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(field) + `\s*:`).MatchString(hover) {
 			t.Fatalf("globalHover is missing %s", field)
 		}
 	}
 	for _, required := range []string{
-		"semanticTemporaryReveal: null",
 		"semanticSelectedObjectIndex:",
 	} {
 		if !strings.Contains(content, required) {
 			t.Fatalf("selection state contract missing %q", required)
 		}
 	}
-	for _, removed := range []string{"semanticLinkMode", "semanticFollowSelection"} {
+	for _, removed := range []string{"semanticLinkMode", "semanticFollowSelection", "semanticTemporaryReveal", "semanticExpandedSectionIds", "semanticProjectionMode", "semanticProjectionFacet"} {
 		if strings.Contains(content, removed) {
 			t.Fatalf("selection state retains removed user mode %q", removed)
 		}
@@ -113,7 +112,7 @@ func TestProfileTopologyCrossPanelIsolationContract(t *testing.T) {
 	for _, required := range []string{
 		"isProfileTopologyLink(originView, viewID)",
 		"selectionTargetsForView(viewID, { ...selection, originView })",
-		`viewID !== "input-semantic" && !targets.length`,
+		`if (!targets.length)`,
 	} {
 		if !strings.Contains(availableViews, required) {
 			t.Fatalf("Available Views must rely on the centrally filtered targets: missing %q", required)
@@ -133,7 +132,6 @@ func TestPanelNavigationRegistryContract(t *testing.T) {
 		"hvac",
 		"simulation",
 		"topology",
-		"input-semantic",
 		"input-text",
 		"input-json",
 		"input-table",
@@ -142,7 +140,7 @@ func TestPanelNavigationRegistryContract(t *testing.T) {
 			t.Fatalf("panel navigation registry is missing view %q", viewID)
 		}
 	}
-	for _, removedView := range []string{"diagnose", "output"} {
+	for _, removedView := range []string{"diagnose", "output", "input-semantic"} {
 		if strings.Contains(viewIDs, `"`+removedView+`"`) {
 			t.Fatalf("removed %s tab must not remain in the panel navigation registry", removedView)
 		}

@@ -20,11 +20,9 @@ func TestRawTextSurfaceStateHistoryLayoutAndSettingsAreRemoved(t *testing.T) {
 		}
 	}
 	for _, retained := range []string{
-		`data-input-view="semantic"`,
 		`data-input-view="text"`,
 		`data-input-view="json"`,
 		`data-input-view="table"`,
-		`id="semanticEditor"`,
 		`id="textObjectView"`,
 		`id="jsonStructuredView"`,
 		`id="fieldTable"`,
@@ -153,9 +151,8 @@ func TestCanonicalDocumentTextDrivesEditingAnalysisAndPersistence(t *testing.T) 
 		start string
 		end   string
 	}{
-		{name: "Semantic duplicate repair", start: "async function applySemanticDuplicateFixes", end: "function semanticDisplayScalar"},
 		{name: "JSON edit", start: "async function commitJSONValueEdit", end: "function renderFormattedObject"},
-		{name: "Semantic/Text/Table field edit", start: "async function applyFieldValue", end: "export async function switchInputView"},
+		{name: "Text/Table field edit", start: "async function applyFieldValue", end: "export async function switchInputView"},
 	} {
 		body := sliceBetween(inputViews, contract.start, contract.end)
 		if !strings.Contains(body, "getDocumentText()") || !strings.Contains(body, "setDocumentText(") {
