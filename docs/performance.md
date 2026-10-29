@@ -14,6 +14,7 @@ remaining time. See [progress and estimates](simulation-runner.md#progress-and-e
 | Thermal geometry | Source-ordered ownership indexes for surfaces, spaces and boundaries | Unicode `EqualFold` matching, significant whitespace, accumulation/output order |
 | IDF serialization | Pre-sized builder rather than per-field formatting | Original field and comment formatting |
 | SQL reading | Cached dictionary/Time metadata and compact observation streams; reused scan receivers; streamed native Heat Flow counts; at most two independent initial readers | Read-only SQL, row order, NULL/zero sources, source priority, filters and unusual-schema JOIN/count fallback |
+| Purpose results | Bounded independent purpose builders; native boundary-input pre-read; per-loop HVAC jobs sharing one runtime-series index | Original accumulation and merge order, read-only source arrays, caller-only progress, all workers joined before publication |
 | Alias lookup | Bounded indexes for fixed catalogs | First-match precedence, normalization, dynamic meter fallback and independently owned slices |
 | Energy drivers | Unit/rate conversion, directional eligibility/sign and surface membership prepared per dictionary; one scan for all selected fan pools | Original SQL ordering, arithmetic, rounding and full observation arrays |
 | Energy Path quality | Run-level evidence prepared once per Building/Zone scope and shared by annual/monthly periods | Period-local closure/ratios, source IDs, scope completeness and fresh evidence on refresh |
@@ -229,6 +230,42 @@ compared without ordering, retaining duplicates. Exact transport restoration
 also checked 127,687,712 bound point samples and 71,788,832 typed-column samples.
 Both payloads were 554,703,071 bytes, with 2,587 series and nine loops. The
 original capture's files, hashes, sizes and timestamps remained unchanged.
+
+### Bounded result-analysis parallelism
+
+On 2026-10-29, a fresh reference from `69b6e7d` and the bounded parallel builders
+read the same 1,633,181,696-byte annual Large Office / EnergyPlus 24.2 / Chicago
+SQL capture described above. Both requested Energy Path, surface Heat Flow,
+HVAC and Comfort, using Go 1.24.5, Ryzen 3900X and GOMAXPROCS 24, without CPU
+profiling. These are single sequential, warm-cache measurements; capture hashing
+warms the file cache before each replay. Engine execution is excluded.
+
+| Result stage | Reference | Parallel builders |
+| --- | ---: | ---: |
+| Initial reading | 127.391 s | 127.939 s |
+| Purpose construction | 223.621 s | 176.509 s |
+| Combined | 351.012 s | 304.448 s |
+
+Purpose construction decreased by 21.1%; combined reading and construction by
+13.3%. The initial readers were unchanged. Compact preparation, validation,
+serialization and test-only capture hashing/comparison are outside these totals.
+The full replay (including those checks) passed in 375.72 s and 323.54 s,
+respectively; these test durations are not application latency measurements.
+
+Both compact payloads contained 555,486,157 bytes, 2,587 source series and nine
+loop groups. Comparison preserved every numeric token, timestamp, observation
+order, missing value and metadata field; only existing unordered source-ID lists
+were normalized, retaining duplicates. Exact reconstruction also checked
+132,786,032 bound point samples and 71,788,832 typed-column samples. All original
+capture contents, timestamps and directory entries stayed unchanged.
+
+The same executor budget covers purpose work, the independent native
+boundary-input read and HVAC loops. Runtime observation indexes are shared
+read-only instead of rebuilt per loop. At most three background workers are
+admitted across builds; saturated work stays on its caller. Large intermediate
+arrays can overlap in memory, so this bound is a concurrency limit rather than
+a dataset-memory bound. These results do not establish linear scaling with CPU
+count or a fixed reduction for other models.
 
 ### Progress calibration across saved models
 

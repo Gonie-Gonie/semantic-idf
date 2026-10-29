@@ -505,37 +505,54 @@ func (builder *purposePlanBuilder) addHVACRuntimeOutputs() {
 	}
 }
 
-func attachHVACRuntimeControls(result *HVACLoopRunResult, profiles []idf.HVACOperatingProfile, loop idf.HVACLoop, doc *idf.Document, series []SimulationSeries) {
-	result.OperatingProfiles = profiles
-	coverage := HVACControlCoverage{Status: "complete"}
-	pooled := map[string]bool{}
-	outputKey := func(key, name, frequency string) string {
-		return normalizePurposeToken(key) + "\x00" + normalizePurposeToken(name) + "\x00" + purposeControlFrequency(frequency)
+// The source pools are immutable after preparation. A loop copies each selected
+// series header before rebasing its native axis; point and interval arrays are
+// read-only and may be shared across independent loop results.
+type hvacRuntimeSeriesIndex struct {
+	byOutput   map[string][]SimulationSeries
+	byNativeID map[string]SimulationSeries
+}
+
+func hvacRuntimeOutputKey(key, name, frequency string) string {
+	return normalizePurposeToken(key) + "\x00" + normalizePurposeToken(name) + "\x00" + purposeControlFrequency(frequency)
+}
+
+func newHVACRuntimeSeriesIndex(series []SimulationSeries) hvacRuntimeSeriesIndex {
+	index := hvacRuntimeSeriesIndex{
+		byOutput:   make(map[string][]SimulationSeries),
+		byNativeID: make(map[string]SimulationSeries, len(series)),
 	}
-	byOutput := map[string][]SimulationSeries{}
-	byNativeID := map[string]SimulationSeries{}
 	for _, item := range series {
-		byNativeID[normalizePurposeToken(item.File)+"\x00"+item.SourceID] = item
-	}
-	for _, item := range series {
+		index.byNativeID[normalizePurposeToken(item.File)+"\x00"+item.SourceID] = item
 		frequency := purposeSeriesFrequency(item)
 		if !purposeTimestepFrequency(frequency) && !purposeDetailedFrequency(frequency) || item.IsMeter != nil && *item.IsMeter || len(item.Points) == 0 {
 			continue
 		}
 		key, name := hvacSeriesIdentity(item)
-		identity := outputKey(key, name, frequency)
-		byOutput[identity] = append(byOutput[identity], item)
+		identity := hvacRuntimeOutputKey(key, name, frequency)
+		index.byOutput[identity] = append(index.byOutput[identity], item)
 	}
+	return index
+}
+
+func attachHVACRuntimeControls(result *HVACLoopRunResult, profiles []idf.HVACOperatingProfile, loop idf.HVACLoop, doc *idf.Document, series []SimulationSeries) {
+	attachHVACRuntimeControlsWithIndex(result, profiles, loop, doc, newHVACRuntimeSeriesIndex(series))
+}
+
+func attachHVACRuntimeControlsWithIndex(result *HVACLoopRunResult, profiles []idf.HVACOperatingProfile, loop idf.HVACLoop, doc *idf.Document, index hvacRuntimeSeriesIndex) {
+	result.OperatingProfiles = profiles
+	coverage := HVACControlCoverage{Status: "complete"}
+	pooled := map[string]bool{}
 	poolIdentities := map[string]string{}
 	for _, profile := range profiles {
 		for _, binding := range hvacRuntimeSignals(profile, loop, doc) {
 			coverage.Required++
-			identity := outputKey(binding.KeyValue, binding.VariableName, binding.ReportingFrequency)
-			matched := byOutput[identity]
+			identity := hvacRuntimeOutputKey(binding.KeyValue, binding.VariableName, binding.ReportingFrequency)
+			matched := index.byOutput[identity]
 			if len(matched) == 1 {
 				item := matched[0]
 				if item.NativeIntervalsSourceID != "" {
-					owner, exists := byNativeID[normalizePurposeToken(item.File)+"\x00"+item.NativeIntervalsSourceID]
+					owner, exists := index.byNativeID[normalizePurposeToken(item.File)+"\x00"+item.NativeIntervalsSourceID]
 					if exists && simulationPointAxisEqual(item.Points, owner.Points) {
 						item.NativeIntervals = owner.NativeIntervals
 					}
@@ -573,7 +590,7 @@ func attachHVACRuntimeControls(result *HVACLoopRunResult, profiles []idf.HVACOpe
 	validateHVACRuntimeObservations(result, &coverage)
 	// Validate control axes before adding elective performance observations;
 	// another source/cadence may not change required acquisition coverage.
-	attachHVACOperatingObservations(result, profiles, doc, byOutput, byNativeID)
+	attachHVACOperatingObservations(result, profiles, doc, index.byOutput, index.byNativeID)
 	deduplicateHVACNativeIntervals(result.ControlSeries)
 	if coverage.Missing > 0 {
 		coverage.Status = "error"

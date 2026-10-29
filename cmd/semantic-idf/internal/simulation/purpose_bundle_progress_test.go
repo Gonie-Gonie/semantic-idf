@@ -111,6 +111,23 @@ func TestPurposeBundleProgressCombinedParityAndImmutableInputs(t *testing.T) {
 	basic, basicPhases := purposeBundleProgressCapture(t, result, basicRequest)
 	combined, phases := purposeBundleProgressCapture(t, result, request)
 	public := BuildPurposeResultBundle(result, request)
+	t.Run("parallel purposes preserve ordered results and progress", func(t *testing.T) {
+		all := request
+		all.Purposes = []SimulationPurposeID{SimulationPurposeBasicEnergy, SimulationPurposeZoneHeatFlow, SimulationPurposeHVACLoopCheck, SimulationPurposeIntegrity, SimulationPurposeComfort}
+		var sequentialPhases []string
+		sequential := buildPurposeResultBundleWithExecutor(result, all, func(phase, _ string) {
+			sequentialPhases = append(sequentialPhases, phase)
+		}, nil)
+		for range 3 {
+			var parallelPhases []string
+			parallel := buildPurposeResultBundleWithExecutor(result, all, func(phase, _ string) {
+				parallelPhases = append(parallelPhases, phase)
+			}, newResultBuildExecutor(4))
+			if !reflect.DeepEqual(sequential, parallel) || !reflect.DeepEqual(sequentialPhases, parallelPhases) {
+				t.Fatalf("parallel results/progress changed: sequential phases=%v parallel=%v", sequentialPhases, parallelPhases)
+			}
+		}
+	})
 	for name, pair := range map[string][2]any{"energy": {basic.Energy, combined.Energy}, "explanation": {basic.EnergyExplanation, combined.EnergyExplanation}, "summary": {basic.EnergyExplanationSummary, combined.EnergyExplanationSummary}, "public wrapper": {combined, public}} {
 		if !reflect.DeepEqual(pair[0], pair[1]) {
 			t.Errorf("progress/combined-purpose processing changed %s", name)

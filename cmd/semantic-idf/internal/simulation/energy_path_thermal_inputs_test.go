@@ -168,6 +168,7 @@ func thermalInputAssertValue(t *testing.T, values []energyPathThermalInputValue,
 
 func TestEnergyPathThermalInputsNativePeriodsMultipliersAndContext(t *testing.T) {
 	t.Run("deterministic source and month accumulation", assertThermalInputAccumulationDeterministic)
+	t.Run("prepared fallback and delayed graph application", assertThermalInputPreparedFallback)
 	f := newThermalInputFixture(t)
 	beforeGeometry, _ := json.Marshal(f.geometry)
 	values, sources, months := f.read(t)
@@ -302,6 +303,74 @@ func TestEnergyPathThermalInputsNativePeriodsMultipliersAndContext(t *testing.T)
 			t.Fatalf("boundary normalization changed signed input: %+v", node)
 		}
 	}
+}
+
+func assertThermalInputPreparedFallback(t *testing.T) {
+	t.Helper()
+	f := newThermalInputFixture(t)
+	f.geometry.Surfaces = append(f.geometry.Surfaces, idf.GeometrySurface{ID: "kiva", Name: "Kiva", ZoneName: "Office", SurfaceType: "Floor", OutsideBoundary: "Foundation"})
+	beforeGeometry, _ := json.Marshal(f.geometry)
+	beforeDocument, _ := json.Marshal(f.doc)
+	values, sources, months := f.read(t)
+	missing := filepath.Join(t.TempDir(), "missing.sql")
+	files := []SimulationFileInfo{
+		{Kind: "csv", Name: "ignored.csv", Path: missing},
+		{Kind: "sqlite", Name: "first.sql", Path: missing},
+		{Kind: "csv", Name: "fallback.SQL", Path: f.path},
+		{Kind: "sqlite", Name: "later.sql", Path: missing},
+	}
+	prepared := prepareEnergyPathThermalInputs(files, nil, f.context, &f.geometry)
+	if !prepared.ready || !reflect.DeepEqual(prepared.values, values) || !reflect.DeepEqual(prepared.sources, sources) || !reflect.DeepEqual(prepared.months, months) {
+		t.Fatal("preparation changed native values, sources or month order")
+	}
+	if len(prepared.warnings) != 2 || prepared.warnings[0].Code != "energy_path_ground_conduction_unsupported" || prepared.warnings[1].Code != "energy_path_thermal_inputs_unavailable" {
+		t.Fatalf("file fallback or warning order changed: %+v", prepared.warnings)
+	}
+	result := EnergyExplanationResult{Schema: energyExplanationSchema, Scope: EnergyExplanationScope{Kind: "building"},
+		Nodes:   []EnergyExplanationNode{{ID: "driver-wall", Level: "driver", DriverCategory: energyDriverCategoryExteriorWalls, Value: 77, Unit: "kWh", SourceIDs: []string{"existing"}}},
+		Sources: []EnergyDataSource{{ID: "existing"}}, Warnings: []EnergyWarning{{Code: "existing"}, prepared.warnings[0]}}
+	applyEnergyPathThermalInputs(&result, prepared)
+	if len(result.Sources) != len(sources)+1 || result.Sources[0].ID != "existing" || !reflect.DeepEqual(result.Sources[1:], sources) || result.Nodes[0].Value != 77 {
+		t.Fatal("delayed application replaced existing graph data or reordered native sources")
+	}
+	var warningCodes []string
+	for _, warning := range result.Warnings {
+		warningCodes = append(warningCodes, warning.Code)
+	}
+	wantCodes := []string{"existing", "energy_path_ground_conduction_unsupported", "energy_path_thermal_inputs_unavailable", "energy_path_thermal_inputs_incomplete", "energy_path_thermal_inputs_net_only"}
+	if !reflect.DeepEqual(warningCodes, wantCodes) {
+		t.Fatalf("delayed warnings = %v; want %v", warningCodes, wantCodes)
+	}
+	if len(result.Links) == 0 || len(result.Nodes) <= 1 {
+		t.Fatal("prepared boundary observations were not attached to the completed graph")
+	}
+	afterGeometry, _ := json.Marshal(f.geometry)
+	afterDocument, _ := json.Marshal(f.doc)
+	if string(beforeGeometry) != string(afterGeometry) || string(beforeDocument) != string(afterDocument) {
+		t.Fatal("thermal preparation or application mutated shared input geometry/document")
+	}
+	t.Run("first successful empty read ends fallback", func(t *testing.T) {
+		empty := prepareEnergyPathThermalInputs([]SimulationFileInfo{{Kind: "sqlite", Path: f.path}, {Kind: "sqlite", Path: missing}}, nil, energyDriverBuildContext{}, nil)
+		if !empty.ready || len(empty.values)+len(empty.sources)+len(empty.warnings) != 0 || !reflect.DeepEqual(empty.months, months) {
+			t.Fatalf("successful empty result tried another file or invented data: %+v", empty)
+		}
+		result := EnergyExplanationResult{Schema: energyExplanationSchema}
+		applyEnergyPathThermalInputs(&result, empty)
+		if len(result.Warnings) != 1 || result.Warnings[0].Code != "energy_path_thermal_inputs_incomplete" {
+			t.Fatalf("empty successful read lost its incomplete warning: %+v", result.Warnings)
+		}
+	})
+	t.Run("failed reads retain the completed graph", func(t *testing.T) {
+		failed := prepareEnergyPathThermalInputs(files[:2], nil, f.context, &f.geometry)
+		if failed.ready || len(failed.values)+len(failed.sources)+len(failed.months) != 0 {
+			t.Fatalf("failed read acquired observed data: %+v", failed)
+		}
+		result := EnergyExplanationResult{Schema: energyExplanationSchema, Nodes: []EnergyExplanationNode{{ID: "existing", Value: 2}}, Sources: []EnergyDataSource{{ID: "existing"}}}
+		applyEnergyPathThermalInputs(&result, failed)
+		if len(result.Nodes) != 1 || result.Nodes[0].Value != 2 || len(result.Sources) != 1 || result.Sources[0].ID != "existing" || len(result.Warnings) != 2 {
+			t.Fatalf("failed preparation changed graph data or discarded warnings: %+v", result)
+		}
+	})
 }
 
 func assertThermalInputAccumulationDeterministic(t *testing.T) {

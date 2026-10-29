@@ -331,10 +331,26 @@ type energyPathThermalInputValue struct {
 	observed                    bool
 }
 
+// Preparation owns its SQL observations and does not inspect or mutate a graph.
+// Keep file fallback and warnings in source order so it can overlap independent
+// Energy work and be applied once on the result-owning goroutine.
+type energyPathPreparedThermalInputs struct {
+	warnings []EnergyWarning
+	values   []energyPathThermalInputValue
+	sources  []EnergyDataSource
+	months   []int
+	ready    bool
+}
+
 func attachEnergyPathThermalInputs(result *EnergyExplanationResult, files []SimulationFileInfo, plan *PurposeRunPlan, context energyDriverBuildContext, geometry *idf.GeometryReport, document *idf.Document) {
 	if result == nil || result.Schema != energyExplanationSchema {
 		return
 	}
+	applyEnergyPathThermalInputs(result, prepareEnergyPathThermalInputs(files, plan, context, geometry))
+}
+
+func prepareEnergyPathThermalInputs(files []SimulationFileInfo, plan *PurposeRunPlan, context energyDriverBuildContext, geometry *idf.GeometryReport) energyPathPreparedThermalInputs {
+	prepared := energyPathPreparedThermalInputs{}
 	selected := map[string]bool{}
 	if plan != nil {
 		selected, _ = purposeSelectedZoneSet(SimulationPurposeScope{ZoneMode: plan.ZoneMode, ZoneNames: plan.ZoneNames})
@@ -342,7 +358,7 @@ func attachEnergyPathThermalInputs(result *EnergyExplanationResult, files []Simu
 	if geometry != nil {
 		for _, surface := range geometry.Surfaces {
 			if strings.EqualFold(strings.TrimSpace(surface.OutsideBoundary), "Foundation") && (len(selected) == 0 || selected[normalizePurposeToken(surface.ZoneName)]) {
-				result.Warnings = appendEnergyDriverWarning(result.Warnings, EnergyWarning{Severity: "info", Code: "energy_path_ground_conduction_unsupported", Message: "Ground boundary conduction is unavailable for Foundation/Kiva surfaces: EnergyPlus does not report the required native outside-face conduction variable. Inside-face heat transfer is not substituted, and missing boundary exchange is not reported as zero."})
+				prepared.warnings = append(prepared.warnings, EnergyWarning{Severity: "info", Code: "energy_path_ground_conduction_unsupported", Message: "Ground boundary conduction is unavailable for Foundation/Kiva surfaces: EnergyPlus does not report the required native outside-face conduction variable. Inside-face heat transfer is not substituted, and missing boundary exchange is not reported as zero."})
 				break
 			}
 		}
@@ -353,24 +369,39 @@ func attachEnergyPathThermalInputs(result *EnergyExplanationResult, files []Simu
 		}
 		values, sources, months, err := readEnergyPathThermalInputs(file.Path, plan, context, geometry)
 		if err != nil {
-			result.Warnings = appendEnergyDriverWarning(result.Warnings, EnergyWarning{Severity: "warning", Code: "energy_path_thermal_inputs_unavailable", Message: "Measured thermal input context is unavailable: " + err.Error()})
+			prepared.warnings = append(prepared.warnings, EnergyWarning{Severity: "warning", Code: "energy_path_thermal_inputs_unavailable", Message: "Measured thermal input context is unavailable: " + err.Error()})
 			continue
 		}
-		result.Sources = append(result.Sources, sources...)
-		appendEnergyPathThermalInputGraphs(result, values, months)
-		missing := false
-		netOnly := false
-		for _, value := range values {
-			missing = missing || !value.observed
-			netOnly = netOnly || value.observed && value.directionBasis == "net_only" && !energyPathThermalInputIsResponseContext(value.kind)
-		}
-		if missing || len(values) == 0 {
-			result.Warnings = appendEnergyDriverWarning(result.Warnings, EnergyWarning{Severity: "warning", Code: "energy_path_thermal_inputs_incomplete", Message: "Some measured thermal input context is unavailable. Missing native observations, unverified surface ownership/area, or incomplete periods are not replaced with estimates or zero; a new run may be required."})
-		}
-		if netOnly {
-			result.Warnings = appendEnergyDriverWarning(result.Warnings, EnergyWarning{Severity: "info", Code: "energy_path_thermal_inputs_net_only", Message: "Some reversible boundary observations contain only Monthly net energy. Their within-month heat gains and losses cannot be reconstructed; rerun Basic Energy Path for separate native-interval directions."})
-		}
+		prepared.values, prepared.sources, prepared.months = values, sources, months
+		prepared.ready = true
+		return prepared
+	}
+	return prepared
+}
+
+func applyEnergyPathThermalInputs(result *EnergyExplanationResult, prepared energyPathPreparedThermalInputs) {
+	if result == nil || result.Schema != energyExplanationSchema {
 		return
+	}
+	for _, warning := range prepared.warnings {
+		result.Warnings = appendEnergyDriverWarning(result.Warnings, warning)
+	}
+	if !prepared.ready {
+		return
+	}
+	result.Sources = append(result.Sources, prepared.sources...)
+	appendEnergyPathThermalInputGraphs(result, prepared.values, prepared.months)
+	missing := false
+	netOnly := false
+	for _, value := range prepared.values {
+		missing = missing || !value.observed
+		netOnly = netOnly || value.observed && value.directionBasis == "net_only" && !energyPathThermalInputIsResponseContext(value.kind)
+	}
+	if missing || len(prepared.values) == 0 {
+		result.Warnings = appendEnergyDriverWarning(result.Warnings, EnergyWarning{Severity: "warning", Code: "energy_path_thermal_inputs_incomplete", Message: "Some measured thermal input context is unavailable. Missing native observations, unverified surface ownership/area, or incomplete periods are not replaced with estimates or zero; a new run may be required."})
+	}
+	if netOnly {
+		result.Warnings = appendEnergyDriverWarning(result.Warnings, EnergyWarning{Severity: "info", Code: "energy_path_thermal_inputs_net_only", Message: "Some reversible boundary observations contain only Monthly net energy. Their within-month heat gains and losses cannot be reconstructed; rerun Basic Energy Path for separate native-interval directions."})
 	}
 }
 

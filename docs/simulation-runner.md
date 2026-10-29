@@ -314,6 +314,27 @@ and result assignment remain on the caller, with one pending Heat Flow progress
 event. Both readers finish before returning, including error or panic paths.
 Already-filled sections and single-core runs retain sequential reading.
 
+Purpose construction prepares the executed document and required geometry once,
+then overlaps independent Energy, Zone Heat Flow, HVAC, Integrity and Comfort
+builders. Energy's native boundary-input read also overlaps its dashboard,
+driver and graph work; application to the graph still follows the original
+calculation order. HVAC loops share one immutable runtime-series index and build
+separate output slots, including the final local-equipment group.
+
+`result_build_executor.go` limits a build to four concurrent tasks (including
+its caller), further bounded by GOMAXPROCS. Nested work shares that build's
+permits; at most three extra workers exist across concurrent builds. Admission
+never waits: a saturated or single-core build executes remaining work inline,
+so nested builders cannot deadlock waiting for a worker. All workers join on
+normal, panic and callback-failure paths. Numeric accumulation remains local
+and ordered; inputs and observation arrays remain read-only.
+
+Completeness, loops, warnings and graph/source records merge in their original
+order. Progress callbacks run only on the caller in the original purpose/stage
+order, using bounded pending stage records. Stage durations therefore measure
+the caller's visible preparation/wait path, not additive CPU time for overlapping
+workers. No result is published before its required workers have joined.
+
 `parseSimulationSQL` is a combined context-aware entrypoint for series, energy,
 heat flow, integrity, and comfort unmet hours. It retains partial data, checks
 cancellation between phases, and has an elapsed-time cutoff. The runner's

@@ -45,7 +45,7 @@
         {"files":["simulation_test.go"],"tests":["Test*HVAC*"],"areas":["energy-hvac"]},
         {"files":["batch*_test.go","simulation_external_test.go"],"areas":["simulation-run"],"tier":"fast"},
         {"files":["purpose*_test.go","batch_purpose_test.go","output_discovery_test.go"],"areas":["simulation-plan"],"tier":"fast"},
-        {"files":["purpose_series_test.go","purpose_bundle_progress_test.go","purpose_saved_bundle_replay_test.go","result_transport*_test.go","sql*_test.go","comfort_graph_results_test.go","hvac*_test.go"],"areas":["simulation-results"],"tier":"fast"},
+        {"files":["purpose_series_test.go","purpose_bundle_progress_test.go","purpose_saved_bundle_replay_test.go","result_build_executor_test.go","result_transport*_test.go","sql*_test.go","comfort_graph_results_test.go","hvac*_test.go"],"areas":["simulation-results"],"tier":"fast"},
         {"files":["purpose_series_test.go"],"tests":["TestRunSimulation*"],"areas":["simulation-run"]},
         {"files":["thermal_topology*_test.go"],"areas":["simulation-topology"],"tier":"fast"},
         {"files":["hvac*_test.go","energy_path_*hvac*_test.go","energy_path_*baseboard*_test.go","energy_path_*radiant*_test.go","energy_path_*vrf*_test.go","energy_path_*window_ac*_test.go","energy_path_*central*_test.go","energy_path_*heat_only*_test.go","energy_path_*no_heating*_test.go","energy_path_*simple_ventilation*_test.go","energy_path_hot_water_equipment_test.go","energy_path_district_purpose_test.go"],"areas":["energy-hvac"]},

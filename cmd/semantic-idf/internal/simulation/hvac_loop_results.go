@@ -10,6 +10,10 @@ import (
 // A run's loop membership comes from the input that was actually executed. The
 // current editor may already contain a different model when the run is viewed.
 func buildHVACLoopRunResultsWithDocument(series []SimulationSeries, request SimulationPurposeRequest, doc *idf.Document) []HVACLoopRunResult {
+	return buildHVACLoopRunResultsWithDocumentWithExecutor(series, request, doc, nil)
+}
+
+func buildHVACLoopRunResultsWithDocumentWithExecutor(series []SimulationSeries, request SimulationPurposeRequest, doc *idf.Document, executor *resultBuildExecutor) []HVACLoopRunResult {
 	if doc == nil {
 		return buildHVACLoopRunResults(series, request)
 	}
@@ -17,67 +21,116 @@ func buildHVACLoopRunResultsWithDocument(series []SimulationSeries, request Simu
 	if len(report.Loops) == 0 && len(report.OperatingProfiles) == 0 {
 		return buildHVACLoopRunResults(series, request)
 	}
-	selectedComponents := purposeComponentIDSet(request.Scope.ComponentIDs)
-	results := []HVACLoopRunResult{}
+	loops := make([]idf.HVACLoop, 0, len(report.Loops))
 	for _, loop := range report.Loops {
-		if !hvacResultLoopInScope(loop, request.Scope) {
-			continue
+		if hvacResultLoopInScope(loop, request.Scope) {
+			loops = append(loops, loop)
 		}
-		nodes := map[string]bool{}
-		components := map[string][]idf.HVACComponent{}
-		if len(selectedComponents) == 0 {
-			for _, node := range purposeHVACLoopNodes(loop) {
-				nodes[normalizePurposeToken(node)] = true
-			}
-		}
-		for _, component := range hvacLoopScopedMeasurementComponents(loop, report, selectedComponents) {
-			components[normalizePurposeToken(component.ObjectName)] = append(components[normalizePurposeToken(component.ObjectName)], component)
-			for _, node := range purposeHVACComponentNodes(component) {
-				nodes[normalizePurposeToken(node)] = true
-			}
-		}
-		if len(selectedComponents) > 0 && len(components) == 0 {
-			continue
-		}
-		matched := []SimulationSeries{}
-		for _, item := range series {
-			key, variable := hvacSeriesIdentity(item)
-			if purposeSeriesMatchesVariables(item.Column, hvacLoopCheckNodeVariables()) && nodes[normalizePurposeToken(key)] {
-				if hvacWaterLoop(loop.Type) && hvacHumidityVariable(variable) {
-					continue
-				}
-				matched = append(matched, item)
-				continue
-			}
-			for _, component := range components[normalizePurposeToken(key)] {
-				if hvacComponentReportsVariable(component, variable, doc) {
-					matched = append(matched, item)
-					break
-				}
-			}
-		}
-		built := buildHVACLoopRunResults(matched, request)
-		result := HVACLoopRunResult{}
-		if len(built) > 0 {
-			result = built[0]
-		}
-		result.Name, result.LoopType, result.Topology = loop.Name, loop.Type, &loop
-		result.Components = hvacTypedComponentSummaries(matched, components, doc)
-		// Derivations depend on the individual loop type, never the wildcard run.
-		result.DerivedMetrics = buildHVACLoopDerivedMetrics(result.NodeSummaries, result.LoopType)
-		result.Status, result.StatusMessage = classifyHVACLoopStatus(result.NodeSummaries, result.DerivedMetrics, result.Alerts)
-		attachHVACRuntimeControls(&result, hvacRuntimeProfiles(report, loop, request.Scope), loop, doc, series)
-		results = append(results, result)
 	}
-	if local := hvacRuntimeLocalProfiles(report, request.Scope); len(local) > 0 {
-		result := HVACLoopRunResult{Name: "Zone / local equipment", LoopType: "ZoneHVAC", Status: "info", StatusMessage: "Local equipment controls from the executed input; no physical loop is implied."}
-		if legacy := buildHVACLoopRunResults(hvacRuntimeLocalHourlySeries(local, doc, series), request); len(legacy) > 0 {
-			result.Series, result.Components, result.NodeSummaries = legacy[0].Series, legacy[0].Components, legacy[0].NodeSummaries
+	local := hvacRuntimeLocalProfiles(report, request.Scope)
+	count := len(loops)
+	if len(local) > 0 {
+		count++
+	}
+	if count == 0 {
+		return []HVACLoopRunResult{}
+	}
+	context := hvacLoopResultBuildContext{
+		series: series, request: request, doc: doc, report: report,
+		selectedComponents: purposeComponentIDSet(request.Scope.ComponentIDs),
+		runtime:            newHVACRuntimeSeriesIndex(series),
+	}
+	// Each job owns one result slot. Merge in executed-input loop order after
+	// all jobs finish, retaining the local-equipment group at the end.
+	slots, included := make([]HVACLoopRunResult, count), make([]bool, count)
+	build := func(index int) {
+		if index == len(loops) {
+			slots[index], included[index] = context.buildLocal(local), true
+			return
 		}
-		attachHVACRuntimeControls(&result, local, idf.HVACLoop{}, doc, series)
-		results = append(results, result)
+		slots[index], included[index] = context.buildLoop(loops[index])
+	}
+	if executor == nil {
+		for index := range slots {
+			build(index)
+		}
+	} else {
+		executor.forEach(count, build)
+	}
+	results := make([]HVACLoopRunResult, 0, count)
+	for index, result := range slots {
+		if included[index] {
+			results = append(results, result)
+		}
 	}
 	return results
+}
+
+// Prepared once and read-only while individual loops build their owned output.
+type hvacLoopResultBuildContext struct {
+	series             []SimulationSeries
+	request            SimulationPurposeRequest
+	doc                *idf.Document
+	report             idf.HVACReport
+	selectedComponents map[string]bool
+	runtime            hvacRuntimeSeriesIndex
+}
+
+func (context *hvacLoopResultBuildContext) buildLoop(loop idf.HVACLoop) (HVACLoopRunResult, bool) {
+	nodes := map[string]bool{}
+	components := map[string][]idf.HVACComponent{}
+	if len(context.selectedComponents) == 0 {
+		for _, node := range purposeHVACLoopNodes(loop) {
+			nodes[normalizePurposeToken(node)] = true
+		}
+	}
+	for _, component := range hvacLoopScopedMeasurementComponents(loop, context.report, context.selectedComponents) {
+		components[normalizePurposeToken(component.ObjectName)] = append(components[normalizePurposeToken(component.ObjectName)], component)
+		for _, node := range purposeHVACComponentNodes(component) {
+			nodes[normalizePurposeToken(node)] = true
+		}
+	}
+	if len(context.selectedComponents) > 0 && len(components) == 0 {
+		return HVACLoopRunResult{}, false
+	}
+	matched := []SimulationSeries{}
+	for _, item := range context.series {
+		key, variable := hvacSeriesIdentity(item)
+		if purposeSeriesMatchesVariables(item.Column, hvacLoopCheckNodeVariables()) && nodes[normalizePurposeToken(key)] {
+			if hvacWaterLoop(loop.Type) && hvacHumidityVariable(variable) {
+				continue
+			}
+			matched = append(matched, item)
+			continue
+		}
+		for _, component := range components[normalizePurposeToken(key)] {
+			if hvacComponentReportsVariable(component, variable, context.doc) {
+				matched = append(matched, item)
+				break
+			}
+		}
+	}
+	built := buildHVACLoopRunResults(matched, context.request)
+	result := HVACLoopRunResult{}
+	if len(built) > 0 {
+		result = built[0]
+	}
+	result.Name, result.LoopType, result.Topology = loop.Name, loop.Type, &loop
+	result.Components = hvacTypedComponentSummaries(matched, components, context.doc)
+	// Derivations depend on the individual loop type, never the wildcard run.
+	result.DerivedMetrics = buildHVACLoopDerivedMetrics(result.NodeSummaries, result.LoopType)
+	result.Status, result.StatusMessage = classifyHVACLoopStatus(result.NodeSummaries, result.DerivedMetrics, result.Alerts)
+	attachHVACRuntimeControlsWithIndex(&result, hvacRuntimeProfiles(context.report, loop, context.request.Scope), loop, context.doc, context.runtime)
+	return result, true
+}
+
+func (context *hvacLoopResultBuildContext) buildLocal(profiles []idf.HVACOperatingProfile) HVACLoopRunResult {
+	result := HVACLoopRunResult{Name: "Zone / local equipment", LoopType: "ZoneHVAC", Status: "info", StatusMessage: "Local equipment controls from the executed input; no physical loop is implied."}
+	if legacy := buildHVACLoopRunResults(hvacRuntimeLocalHourlySeries(profiles, context.doc, context.series), context.request); len(legacy) > 0 {
+		result.Series, result.Components, result.NodeSummaries = legacy[0].Series, legacy[0].Components, legacy[0].NodeSummaries
+	}
+	attachHVACRuntimeControlsWithIndex(&result, profiles, idf.HVACLoop{}, context.doc, context.runtime)
+	return result
 }
 
 // Follow only the analyzer's typed, resolved HVAC component references. This

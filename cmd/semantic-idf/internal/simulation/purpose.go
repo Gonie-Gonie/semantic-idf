@@ -698,6 +698,12 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 // Report real post-processing stages. Per-run telemetry can use measurements
 // of these stages; the public/saved-result builder remains side-effect-free.
 func buildPurposeResultBundleWithProgress(result *SimulationRunResult, request SimulationPurposeRequest, progress func(string, string)) PurposeResultBundle {
+	return buildPurposeResultBundleWithExecutor(result, request, progress, newResultBuildExecutor(4))
+}
+
+// Builders own their output slots. Shared input, geometry and observation arrays
+// are read-only; merge and caller callbacks retain the original purpose order.
+func buildPurposeResultBundleWithExecutor(result *SimulationRunResult, request SimulationPurposeRequest, progress func(string, string), executor *resultBuildExecutor) PurposeResultBundle {
 	report := func(phase, message string) {
 		if progress != nil {
 			progress(phase, message)
@@ -710,138 +716,204 @@ func buildPurposeResultBundleWithProgress(result *SimulationRunResult, request S
 	var sharedGeometryErr error
 	needsGeometry := purposeIDsContain(request.Purposes, SimulationPurposeBasicEnergy) ||
 		(purposeIDsContain(request.Purposes, SimulationPurposeZoneHeatFlow) && request.ZoneHeatFlowDetail == PurposeZoneHeatFlowDetailSurface)
-	if needsGeometry {
-		report("energy_geometry", "Mapping result geometry")
+	needsDocument := needsGeometry || purposeIDsContain(request.Purposes, SimulationPurposeHVACLoopCheck) || purposeIDsContain(request.Purposes, SimulationPurposeComfort)
+	if needsDocument {
+		if needsGeometry {
+			report("energy_geometry", "Mapping result geometry")
+		}
 		doc, err := simulationDocumentFromInput(result.InputPath)
 		sharedGeometryErr = err
 		if err == nil {
 			sharedDocument = &doc
-			report := idf.AnalyzeGeometry(doc)
-			sharedGeometry = &report
+			if needsGeometry {
+				geometry := idf.AnalyzeGeometry(doc)
+				sharedGeometry = &geometry
+			}
 		}
 	}
-	for _, purposeID := range request.Purposes {
-		switch purposeID {
-		case SimulationPurposeBasicEnergy:
-			report("energy_dashboard", "Reading monthly energy totals")
-			plan := purposeRunPlanWithRequestScope(result.PurposeRunPlan, request)
-			bundle.Energy = buildEnergyDashboardResultFromFiles(result.Files)
-			if len(bundle.Energy.FacilityMonthly)+len(bundle.Energy.EndUseMonthly)+len(bundle.Energy.ZoneMonthly) == 0 {
-				bundle.Energy = buildEnergyDashboardResult(result.Series)
+	driverContext := energyDriverBuildContext{Enabled: true}
+	var thermalInputs energyPathPreparedThermalInputs
+	var thermalTask *resultBuildTask
+	if purposeIDsContain(request.Purposes, SimulationPurposeBasicEnergy) {
+		if sharedGeometry != nil {
+			driverContext = newEnergyDriverBuildContext(*sharedGeometry, *sharedDocument)
+		} else if sharedGeometryErr != nil {
+			driverContext.GeometryWarning = &EnergyWarning{
+				Severity: "warning", Code: "energy_driver_geometry_unavailable",
+				Message: "Energy driver surface context could not load GeometryReport: " + sharedGeometryErr.Error(),
 			}
-			bundle.Energy.Completeness = energyDashboardCompleteness(bundle.Energy, result.PurposeRunPlan, result.Series)
-			driverContext := energyDriverBuildContext{Enabled: true}
-			if sharedGeometry != nil {
-				if sharedDocument != nil {
-					driverContext = newEnergyDriverBuildContext(*sharedGeometry, *sharedDocument)
-				} else {
-					driverContext = newEnergyDriverBuildContext(*sharedGeometry)
-				}
-			} else if sharedGeometryErr != nil {
-				driverContext.GeometryWarning = &EnergyWarning{
-					Severity: "warning",
-					Code:     "energy_driver_geometry_unavailable",
-					Message:  "Energy driver surface context could not load GeometryReport: " + sharedGeometryErr.Error(),
-				}
-			}
-			report("energy_drivers", "Reading energy drivers and building load contributions")
-			legacyExplanation := buildEnergyExplanationResultFromFilesWithDriverContext(result.Files, bundle.Energy, plan, driverContext)
-			report("energy_service_paths", "Mapping HVAC service paths and zone allocation")
-			legacyExplanation = enrichEnergyExplanationWithServicePaths(legacyExplanation, result.InputPath)
-			legacyExplanation = applyEnergyExplanationV1ServicePathLoadShareAllocation(legacyExplanation)
-			if result.PurposeRunPlan == nil {
-				markEnergyPathOutputPlanUnknown(&legacyExplanation)
-			}
-			report("energy_path", "Building Energy Path results")
-			bundle.EnergyExplanation = UpgradeEnergyExplanationV1(legacyExplanation)
-			applyEnergyFloorAreas(&bundle.EnergyExplanation, energyFloorAreasForRun(result, sharedDocument))
-			attachEnergyPathThermalInputs(&bundle.EnergyExplanation, result.Files, plan, driverContext, sharedGeometry, sharedDocument)
-			bundle.EnergyExplanationSummary = buildEnergyExplanationSummary(bundle.EnergyExplanation)
-			bundle.Completeness = append(bundle.Completeness, bundle.Energy.Completeness...)
-		case SimulationPurposeZoneHeatFlow:
-			report("zone_heat_flow", "Preparing zone heat-flow results")
-			bundle.ZoneHeatFlow = result.HeatFlow
-			bundle.ZoneHeatFlow.Completeness = zoneHeatFlowCompleteness(result.HeatFlow)
-			bundle.Completeness = append(bundle.Completeness, bundle.ZoneHeatFlow.Completeness...)
-			if request.ZoneHeatFlowDetail == PurposeZoneHeatFlowDetailSurface {
-				report("thermal_topology", "Building surface heat-flow results")
-			}
-			bundle.ThermalTopology = buildThermalTopologySimulationResultWithGeometry(result, request, sharedGeometry, sharedGeometryErr)
-			if request.ZoneHeatFlowDetail == PurposeZoneHeatFlowDetailSurface {
-				bundle.Completeness = append(bundle.Completeness, bundle.ThermalTopology.Completeness...)
-			}
-		case SimulationPurposeHVACLoopCheck:
-			report("hvac_loops", "Building HVAC loop and component results")
-			if sharedDocument == nil {
-				if doc, err := simulationDocumentFromInput(result.InputPath); err == nil {
-					sharedDocument = &doc
-				}
-			}
-			bundle.HVACLoops = buildHVACLoopRunResultsWithDocument(result.Series, request, sharedDocument)
-			hasNodeSeries, hasComponentSeries := false, false
-			for _, loop := range bundle.HVACLoops {
-				hasNodeSeries = hasNodeSeries || len(loop.Series) > 0
-				hasComponentSeries = hasComponentSeries || hvacComponentSeriesCount(loop.Components) > 0
-			}
-			bundle.Completeness = append(bundle.Completeness, purposeCompleteness(
-				SimulationPurposeHVACLoopCheck,
-				"HVAC node state series",
-				hasNodeSeries,
-				hvacLoopResultSource(bundle.HVACLoops),
-			))
-			bundle.Completeness = append(bundle.Completeness, purposeCompleteness(
-				SimulationPurposeHVACLoopCheck,
-				"HVAC component operation series",
-				hasComponentSeries,
-				hvacLoopResultSource(bundle.HVACLoops),
-			))
-			if controls := hvacRuntimeControlCompleteness(bundle.HVACLoops); controls != nil {
-				bundle.Completeness = append(bundle.Completeness, *controls)
-			}
-		case SimulationPurposeComfort:
-			report("comfort", "Building comfort and unmet-hours results")
-			if sharedDocument == nil {
-				if doc, err := simulationDocumentFromInput(result.InputPath); err == nil {
-					sharedDocument = &doc
-				}
-			}
-			bundle.Comfort = buildComfortResult(result.Series, request.Scope, sharedDocument)
-			if _, _, scoped := comfortPeriodScopeDays(request.Scope); !scoped {
-				bundle.Comfort.UnmetHours = scopeComfortUnmetSummaries(buildComfortUnmetSummariesFromFiles(result.Files), sharedDocument, request.Scope)
-			}
-			bundle.Completeness = append(bundle.Completeness, bundle.Comfort.Completeness...)
-		case SimulationPurposeIntegrity:
-			report("integrity", "Checking simulation diagnostics and tabular results")
-			sqlIntegrity := buildIntegritySQLResultFromFiles(result.Files)
-			bundle.Integrity = IntegrityResult{
-				Status:            result.Status,
-				ERR:               result.ERR,
-				Files:             append([]SimulationFileInfo(nil), result.Files...),
-				Completed:         result.ERR.Completed,
-				StaticDiagnostics: buildIntegrityStaticDiagnostics(result.InputPath),
-				CrossChecks:       buildIntegrityCrossChecks(result.InputPath, sqlIntegrity.TabularReports),
-				SQLIssues:         sqlIntegrity.Issues,
-				TabularReports:    sqlIntegrity.TabularReports,
-			}
-			bundle.Completeness = append(bundle.Completeness, purposeCompleteness(
-				SimulationPurposeIntegrity,
-				"ERR summary",
-				result.ERR.Path != "",
-				"err",
-			))
-			bundle.Completeness = append(bundle.Completeness, purposeCompleteness(
-				SimulationPurposeIntegrity,
-				"SQL error table",
-				sqlIntegrity.HasErrorsTable,
-				sqlIntegritySource(sqlIntegrity, "missing"),
-			))
-			bundle.Completeness = append(bundle.Completeness, purposeCompleteness(
-				SimulationPurposeIntegrity,
-				"SQL tabular reports",
-				sqlIntegrity.HasTabularData,
-				sqlIntegritySource(sqlIntegrity, "missing"),
-			))
 		}
+		// This native boundary read has no dependency on the Energy graph. Give
+		// it a slot before launching sibling purposes along the critical path.
+		thermalTask = executor.start(func() {
+			thermalInputs = prepareEnergyPathThermalInputs(result.Files, purposeRunPlanWithRequestScope(result.PurposeRunPlan, request), driverContext, sharedGeometry)
+		})
+	}
+	defer func() {
+		if thermalTask != nil {
+			<-thermalTask.done
+		}
+	}()
+	applyThermalInputs := func(explanation *EnergyExplanationResult) {
+		if thermalTask == nil {
+			thermalInputs = prepareEnergyPathThermalInputs(result.Files, purposeRunPlanWithRequestScope(result.PurposeRunPlan, request), driverContext, sharedGeometry)
+		} else {
+			thermalTask.wait()
+		}
+		applyEnergyPathThermalInputs(explanation, thermalInputs)
+	}
+	type stage struct{ phase, message string }
+	type job struct {
+		part   PurposeResultBundle
+		events chan stage
+		task   *resultBuildTask
+	}
+	jobs := make([]job, len(request.Purposes))
+	defer func() {
+		// A callback may panic on the caller. All workers must finish before
+		// unwinding, without replacing that panic with a background panic.
+		for i := range jobs {
+			if jobs[i].task != nil {
+				<-jobs[i].task.done
+			}
+		}
+	}()
+	for i := 1; i < len(jobs); i++ {
+		// Every purpose emits at most five stages. This fixed buffer permits
+		// progress to be delivered in order without blocking sibling work.
+		jobs[i].events = make(chan stage, 8)
+		jobs[i].task = executor.start(func() {
+			defer close(jobs[i].events)
+			jobs[i].part = buildSinglePurposeResult(result, request, request.Purposes[i], sharedDocument, sharedGeometry, sharedGeometryErr, driverContext, applyThermalInputs, executor, func(phase, message string) {
+				jobs[i].events <- stage{phase, message}
+			})
+		})
+	}
+	for i := range jobs {
+		if jobs[i].task == nil {
+			jobs[i].part = buildSinglePurposeResult(result, request, request.Purposes[i], sharedDocument, sharedGeometry, sharedGeometryErr, driverContext, applyThermalInputs, executor, report)
+		} else {
+			for event := range jobs[i].events {
+				report(event.phase, event.message)
+			}
+			jobs[i].task.wait()
+		}
+		part := jobs[i].part
+		switch request.Purposes[i] {
+		case SimulationPurposeBasicEnergy:
+			bundle.Energy, bundle.EnergyExplanation, bundle.EnergyExplanationSummary = part.Energy, part.EnergyExplanation, part.EnergyExplanationSummary
+		case SimulationPurposeZoneHeatFlow:
+			bundle.ZoneHeatFlow, bundle.ThermalTopology = part.ZoneHeatFlow, part.ThermalTopology
+		case SimulationPurposeHVACLoopCheck:
+			bundle.HVACLoops = part.HVACLoops
+		case SimulationPurposeComfort:
+			bundle.Comfort = part.Comfort
+		case SimulationPurposeIntegrity:
+			bundle.Integrity = part.Integrity
+		}
+		bundle.Completeness = append(bundle.Completeness, part.Completeness...)
+	}
+	return bundle
+}
+
+func buildSinglePurposeResult(result *SimulationRunResult, request SimulationPurposeRequest, purposeID SimulationPurposeID, sharedDocument *idf.Document, sharedGeometry *idf.GeometryReport, sharedGeometryErr error, driverContext energyDriverBuildContext, applyThermalInputs func(*EnergyExplanationResult), executor *resultBuildExecutor, report func(string, string)) PurposeResultBundle {
+	bundle := PurposeResultBundle{}
+	switch purposeID {
+	case SimulationPurposeBasicEnergy:
+		report("energy_dashboard", "Reading monthly energy totals")
+		plan := purposeRunPlanWithRequestScope(result.PurposeRunPlan, request)
+		bundle.Energy = buildEnergyDashboardResultFromFiles(result.Files)
+		if len(bundle.Energy.FacilityMonthly)+len(bundle.Energy.EndUseMonthly)+len(bundle.Energy.ZoneMonthly) == 0 {
+			bundle.Energy = buildEnergyDashboardResult(result.Series)
+		}
+		bundle.Energy.Completeness = energyDashboardCompleteness(bundle.Energy, result.PurposeRunPlan, result.Series)
+		report("energy_drivers", "Reading energy drivers and building load contributions")
+		legacyExplanation := buildEnergyExplanationResultFromFilesWithDriverContext(result.Files, bundle.Energy, plan, driverContext)
+		report("energy_service_paths", "Mapping HVAC service paths and zone allocation")
+		legacyExplanation = enrichEnergyExplanationWithServicePaths(legacyExplanation, result.InputPath)
+		legacyExplanation = applyEnergyExplanationV1ServicePathLoadShareAllocation(legacyExplanation)
+		if result.PurposeRunPlan == nil {
+			markEnergyPathOutputPlanUnknown(&legacyExplanation)
+		}
+		report("energy_path", "Building Energy Path results")
+		bundle.EnergyExplanation = UpgradeEnergyExplanationV1(legacyExplanation)
+		applyEnergyFloorAreas(&bundle.EnergyExplanation, energyFloorAreasForRun(result, sharedDocument))
+		applyThermalInputs(&bundle.EnergyExplanation)
+		bundle.EnergyExplanationSummary = buildEnergyExplanationSummary(bundle.EnergyExplanation)
+		bundle.Completeness = append(bundle.Completeness, bundle.Energy.Completeness...)
+	case SimulationPurposeZoneHeatFlow:
+		report("zone_heat_flow", "Preparing zone heat-flow results")
+		bundle.ZoneHeatFlow = result.HeatFlow
+		bundle.ZoneHeatFlow.Completeness = zoneHeatFlowCompleteness(result.HeatFlow)
+		bundle.Completeness = append(bundle.Completeness, bundle.ZoneHeatFlow.Completeness...)
+		if request.ZoneHeatFlowDetail == PurposeZoneHeatFlowDetailSurface {
+			report("thermal_topology", "Building surface heat-flow results")
+		}
+		bundle.ThermalTopology = buildThermalTopologySimulationResultWithGeometry(result, request, sharedGeometry, sharedGeometryErr)
+		if request.ZoneHeatFlowDetail == PurposeZoneHeatFlowDetailSurface {
+			bundle.Completeness = append(bundle.Completeness, bundle.ThermalTopology.Completeness...)
+		}
+	case SimulationPurposeHVACLoopCheck:
+		report("hvac_loops", "Building HVAC loop and component results")
+		bundle.HVACLoops = buildHVACLoopRunResultsWithDocumentWithExecutor(result.Series, request, sharedDocument, executor)
+		hasNodeSeries, hasComponentSeries := false, false
+		for _, loop := range bundle.HVACLoops {
+			hasNodeSeries = hasNodeSeries || len(loop.Series) > 0
+			hasComponentSeries = hasComponentSeries || hvacComponentSeriesCount(loop.Components) > 0
+		}
+		bundle.Completeness = append(bundle.Completeness, purposeCompleteness(
+			SimulationPurposeHVACLoopCheck,
+			"HVAC node state series",
+			hasNodeSeries,
+			hvacLoopResultSource(bundle.HVACLoops),
+		))
+		bundle.Completeness = append(bundle.Completeness, purposeCompleteness(
+			SimulationPurposeHVACLoopCheck,
+			"HVAC component operation series",
+			hasComponentSeries,
+			hvacLoopResultSource(bundle.HVACLoops),
+		))
+		if controls := hvacRuntimeControlCompleteness(bundle.HVACLoops); controls != nil {
+			bundle.Completeness = append(bundle.Completeness, *controls)
+		}
+	case SimulationPurposeComfort:
+		report("comfort", "Building comfort and unmet-hours results")
+		bundle.Comfort = buildComfortResult(result.Series, request.Scope, sharedDocument)
+		if _, _, scoped := comfortPeriodScopeDays(request.Scope); !scoped {
+			bundle.Comfort.UnmetHours = scopeComfortUnmetSummaries(buildComfortUnmetSummariesFromFiles(result.Files), sharedDocument, request.Scope)
+		}
+		bundle.Completeness = append(bundle.Completeness, bundle.Comfort.Completeness...)
+	case SimulationPurposeIntegrity:
+		report("integrity", "Checking simulation diagnostics and tabular results")
+		sqlIntegrity := buildIntegritySQLResultFromFiles(result.Files)
+		bundle.Integrity = IntegrityResult{
+			Status:            result.Status,
+			ERR:               result.ERR,
+			Files:             append([]SimulationFileInfo(nil), result.Files...),
+			Completed:         result.ERR.Completed,
+			StaticDiagnostics: buildIntegrityStaticDiagnostics(result.InputPath),
+			CrossChecks:       buildIntegrityCrossChecks(result.InputPath, sqlIntegrity.TabularReports),
+			SQLIssues:         sqlIntegrity.Issues,
+			TabularReports:    sqlIntegrity.TabularReports,
+		}
+		bundle.Completeness = append(bundle.Completeness, purposeCompleteness(
+			SimulationPurposeIntegrity,
+			"ERR summary",
+			result.ERR.Path != "",
+			"err",
+		))
+		bundle.Completeness = append(bundle.Completeness, purposeCompleteness(
+			SimulationPurposeIntegrity,
+			"SQL error table",
+			sqlIntegrity.HasErrorsTable,
+			sqlIntegritySource(sqlIntegrity, "missing"),
+		))
+		bundle.Completeness = append(bundle.Completeness, purposeCompleteness(
+			SimulationPurposeIntegrity,
+			"SQL tabular reports",
+			sqlIntegrity.HasTabularData,
+			sqlIntegritySource(sqlIntegrity, "missing"),
+		))
 	}
 	return bundle
 }

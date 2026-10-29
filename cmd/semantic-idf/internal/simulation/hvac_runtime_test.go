@@ -32,10 +32,20 @@ func TestHVACRuntimeExecutedProfilesAndCoverage(t *testing.T) {
 	if len(series) == 0 {
 		t.Fatal("no source-specific runtime outputs planned")
 	}
+	sharedIndex := newHVACRuntimeSeriesIndex(series)
+	seriesBefore, _ := json.Marshal(series)
+	indexBefore, _ := json.Marshal([]any{sharedIndex.byOutput, sharedIndex.byNativeID})
 	for _, loop := range report.Loops {
 		profiles := hvacRuntimeProfiles(report, loop, request.Scope)
 		result := HVACLoopRunResult{}
 		attachHVACRuntimeControls(&result, profiles, loop, &doc, series)
+		indexed := HVACLoopRunResult{}
+		attachHVACRuntimeControlsWithIndex(&indexed, profiles, loop, &doc, sharedIndex)
+		freshJSON, _ := json.Marshal(result)
+		sharedJSON, _ := json.Marshal(indexed)
+		if string(freshJSON) != string(sharedJSON) {
+			t.Fatal("sharing immutable native source indexes changed loop controls")
+		}
 		if len(profiles) == 0 || result.ControlCoverage == nil || result.ControlCoverage.Status != "complete" || result.ControlCoverage.Missing != 0 {
 			t.Fatalf("complete native observations must bind: %+v", result.ControlCoverage)
 		}
@@ -76,6 +86,18 @@ func TestHVACRuntimeExecutedProfilesAndCoverage(t *testing.T) {
 				t.Fatal("ambiguous native observations were arbitrarily selected")
 			}
 		}
+	}
+	sequential := buildHVACLoopRunResultsWithDocument(series, request, &doc)
+	parallel := buildHVACLoopRunResultsWithDocumentWithExecutor(series, request, &doc, newResultBuildExecutor(4))
+	sequentialJSON, _ := json.Marshal(sequential)
+	parallelJSON, _ := json.Marshal(parallel)
+	if string(sequentialJSON) != string(parallelJSON) {
+		t.Fatal("parallel native controls changed loop order, coverage, observations or interval references")
+	}
+	seriesAfter, _ := json.Marshal(series)
+	indexAfter, _ := json.Marshal([]any{sharedIndex.byOutput, sharedIndex.byNativeID})
+	if string(seriesBefore) != string(seriesAfter) || string(indexBefore) != string(indexAfter) {
+		t.Fatal("loop-local native reference rebasing mutated source arrays or shared indexes")
 	}
 	for _, regression := range []struct {
 		name string

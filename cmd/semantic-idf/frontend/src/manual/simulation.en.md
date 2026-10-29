@@ -116,6 +116,11 @@ aliases; their existence does not establish measured values.
 
 The reading preference is SQL, then CSV, then ESO.
 
+Independent result sections and HVAC loops can be prepared in parallel. This
+reduces waiting on multicore systems; the requested observations, reporting
+intervals and numerical calculations stay the same. Progress follows the section
+order, and results become available after all required preparation finishes.
+
 | Source | Useful information | Boundary |
 | --- | --- | --- |
 | SQL | Dictionary keys, units, frequencies, time metadata, tabular reports. | A dictionary entry without valid observations proves no value. |

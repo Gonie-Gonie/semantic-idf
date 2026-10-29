@@ -155,6 +155,23 @@ func TestHVACDefaultSampleAllLoopScopeIncludesWaterLoops(t *testing.T) {
 		series = append(series, hvacResultTestSeries(loop.SupplySide.InletNode, "System Node Temperature", "C"))
 	}
 	bundle := BuildPurposeResultBundle(&SimulationRunResult{InputPath: inputPath, PurposeRunPlan: &plan, Series: series}, request)
+	seriesBefore, _ := json.Marshal(series)
+	docBefore, _ := json.Marshal(doc)
+	sequential := buildHVACLoopRunResultsWithDocument(series, request, &doc)
+	parallel := buildHVACLoopRunResultsWithDocumentWithExecutor(series, request, &doc, newResultBuildExecutor(4))
+	sequentialJSON, _ := json.Marshal(sequential)
+	parallelJSON, _ := json.Marshal(parallel)
+	if string(sequentialJSON) != string(parallelJSON) {
+		t.Fatal("parallel HVAC groups changed topology, result ordering, controls or measurements")
+	}
+	seriesAfter, _ := json.Marshal(series)
+	docAfter, _ := json.Marshal(doc)
+	if string(seriesBefore) != string(seriesAfter) || string(docBefore) != string(docAfter) {
+		t.Fatal("parallel HVAC results mutated source series or executed input")
+	}
+	if len(parallel) == 0 || parallel[len(parallel)-1].LoopType != "ZoneHVAC" {
+		t.Fatal("parallel output did not retain the local equipment group after physical loops")
+	}
 	localSources := map[int]bool{}
 	for _, profile := range report.OperatingProfiles {
 		if profile.LoopID == "" {
