@@ -9,7 +9,7 @@ const token = value => String(value ?? "").trim().toLowerCase().replace(/\s+/g, 
 const text = value => String(value ?? "").trim();
 const list = value => Array.isArray(value) ? value : [];
 const unique = values => values.length === 1 ? values[0] : null;
-const models = new WeakMap(), loaders = new WeakMap(), observations = new WeakMap(), axes = new WeakMap(), selections = new WeakMap(), frameTimes = new WeakMap(), headers = new WeakMap(), uiScopes = new WeakMap();
+const models = new WeakMap(), metadataByResult = new WeakMap(), loaders = new WeakMap(), observations = new WeakMap(), axes = new WeakMap(), selections = new WeakMap(), frameTimes = new WeakMap(), uiScopes = new WeakMap();
 let axisNumber = 0;
 const axisID = object => { if (!axes.has(object)) axes.set(object, ++axisNumber); return axes.get(object); };
 const copy = (key, fallback) => t(`simulation.comparison${key}`, {}, fallback);
@@ -27,13 +27,13 @@ const weather = new Map([
 const frequency = value => ({ "zone timestep": "timestep", "hvac system timestep": "detailed", "system timestep": "detailed" }[token(value)] || token(value));
 const file = value => token(value).replace(/\\/g, "/");
 const basename = value => file(value).split("/").at(-1);
-const sourceName = source => headers.get(source)?.name ?? (text(source.name || source.variableName) || text(source.column).replace(/^[^:]*:/, "").replace(/\s*\[[^\]]*\].*$/, ""));
-const sourceFrequency = source => headers.get(source)?.frequency ?? text(source.reportingFrequency || /\(([^()]*)\)\s*$/.exec(source.column || "")?.[1]);
-const sourceKey = source => headers.get(source)?.key ?? (text(source.keyValue) || text(source.column).split(":")[0]);
-const sourceIsMeter = source => headers.get(source)?.meter ?? Boolean(source.isMeter);
+const sourceName = (source, metadata) => metadata.headers.get(source)?.name ?? (text(source.name || source.variableName) || text(source.column).replace(/^[^:]*:/, "").replace(/\s*\[[^\]]*\].*$/, ""));
+const sourceFrequency = (source, metadata) => metadata.headers.get(source)?.frequency ?? text(source.reportingFrequency || /\(([^()]*)\)\s*$/.exec(source.column || "")?.[1]);
+const sourceKey = (source, metadata) => metadata.headers.get(source)?.key ?? (text(source.keyValue) || text(source.column).split(":")[0]);
+const sourceIsMeter = (source, metadata) => metadata.headers.get(source)?.meter ?? Boolean(source.isMeter);
 const sourceFile = source => text(source.file || source.sourceFile || source.source);
 const seriesID = source => source?.sourceId || (source ? energyPathSeriesID(source) : "");
-const sourceSignature = source => JSON.stringify([file(sourceFile(source)), token(sourceKey(source)), token(sourceName(source)), frequency(sourceFrequency(source)), Boolean(source.isMeter)]);
+const sourceSignature = (source, metadata) => JSON.stringify([file(sourceFile(source)), token(sourceKey(source, metadata)), token(sourceName(source, metadata)), frequency(sourceFrequency(source, metadata)), Boolean(source.isMeter)]);
 
 function displayUnit(raw) {
   const value = text(raw), normalized = token(value);
@@ -59,11 +59,66 @@ function requestMetadata(request) {
     key: request.keyValue || (meter ? "" : fields[0]?.value), frequency: request.reportingFrequency || fields[meter ? 1 : 2]?.value };
 }
 
-function resolveHeader(source, requests) {
+function appendIndex(index, key, value) {
+  if (!index.has(key)) index.set(key, []);
+  index.get(key).push(value);
+}
+
+const requestSignature = (cadence, meter, name) => JSON.stringify([frequency(cadence), meter, token(name)]);
+const sourceMatchKey = (name, key) => JSON.stringify([token(name), token(key)]);
+
+// The run catalogs are immutable. Resolve metadata once per result rather than
+// rescanning a multi-thousand-entry output plan for every source, view and Zone.
+// This index never reads points, native intervals, or any deferred data column.
+function prepareComparisonMetadata(result) {
+  let metadata = metadataByResult.get(result);
+  if (metadata) return metadata;
+  metadata = { sources: list(result.series), headers: new Map(), requests: new Map(), matches: new Map(), native: new Map(), files: new Map(), counts: new Map(), byPurpose: new Map() };
+  list(result.purposeRunPlan?.outputObjects).forEach((request, position) => {
+    const wanted = requestMetadata(request), entry = { wanted, position, purposes: new Set(list(request.purposeIds)), scopeZoneName: token(request.scopeZoneName) };
+    const signature = requestSignature(wanted.frequency, wanted.meter, wanted.name);
+    let bucket = metadata.requests.get(signature);
+    if (!bucket) { bucket = { all: [], any: [], keys: new Map() }; metadata.requests.set(signature, bucket); }
+    bucket.all.push(entry);
+    if (wanted.meter || !wanted.key || wanted.key === "*") bucket.any.push(entry);
+    else appendIndex(bucket.keys, token(wanted.key), entry);
+    for (const id of entry.purposes) appendIndex(metadata.byPurpose, id, entry);
+  });
+  for (const source of metadata.sources) {
+    resolveHeader(source, metadata);
+    const name = basename(sourceFile(source)), entries = metadata.files.get(name) || new Set(); entries.add(file(sourceFile(source))); metadata.files.set(name, entries);
+    if (source.sourceId) metadata.counts.set(source.sourceId, (metadata.counts.get(source.sourceId) || 0) + 1);
+    appendIndex(metadata.native, sourceMatchKey(sourceName(source, metadata), sourceKey(source, metadata)), source);
+  }
+  metadataByResult.set(result, metadata);
+  return metadata;
+}
+
+function requestCandidates(metadata, cadence, meter, name, key) {
+  const bucket = metadata.requests.get(requestSignature(cadence, meter, name));
+  if (!bucket) return [];
+  if (key === undefined || meter) return bucket.all;
+  return [...bucket.any, ...(bucket.keys.get(token(key)) || [])].sort((a, b) => a.position - b.position);
+}
+
+function resolveHeader(source, metadata) {
   const cadence = text(source.reportingFrequency || /\(([^()]*)\)\s*$/.exec(source.column || "")?.[1]);
   const bare = text(source.column).replace(/\s*\([^()]*\)\s*$/, "").replace(/\s*\[[^\]]*\]\s*$/, "").trim(), candidates = new Map();
-  for (const request of requests) {
-    const wanted = requestMetadata(request), name = text(wanted.name);
+  const name = text(source.name || source.variableName), entries = [];
+  if (source.isMeter !== false) entries.push(...requestCandidates(metadata, cadence, true, name || bare));
+  if (source.isMeter !== true) {
+    if (name) entries.push(...requestCandidates(metadata, cadence, false, name, text(source.keyValue) || undefined));
+    else {
+      // Legacy columns may contain colons within both the key and variable
+      // name. Retain every possible suffix and the original ambiguity rules.
+      const suffixes = new Set();
+      for (let offset = bare.indexOf(":"); offset >= 0; offset = bare.indexOf(":", offset + 1)) suffixes.add(bare.slice(offset + 1));
+      for (const suffix of suffixes) entries.push(...requestCandidates(metadata, cadence, false, suffix, text(source.keyValue) || undefined));
+    }
+  }
+  entries.sort((a, b) => a.position - b.position);
+  for (const { wanted } of entries) {
+    const name = text(wanted.name);
     if (!name || frequency(wanted.frequency) !== frequency(cadence) || typeof source.isMeter === "boolean" && source.isMeter !== wanted.meter) continue;
     let key = text(source.keyValue);
     if (wanted.meter) {
@@ -77,23 +132,23 @@ function resolveHeader(source, requests) {
     const found = { name: text(source.name || source.variableName) || name, key, frequency: cadence, meter: wanted.meter };
     candidates.set(JSON.stringify(found), found);
   }
-  if (candidates.size === 1) headers.set(source, [...candidates.values()][0]);
-  else if (candidates.size > 1) headers.set(source, { name: "", key: "", frequency: cadence, meter: false, ambiguous: true });
+  if (candidates.size === 1) metadata.headers.set(source, [...candidates.values()][0]);
+  else if (candidates.size > 1) metadata.headers.set(source, { name: "", key: "", frequency: cadence, meter: false, ambiguous: true });
 }
 
-function matchingRequests(result, view, source) {
-  return list(result.purposeRunPlan?.outputObjects).filter(request => {
-    if (!list(request.purposeIds).includes(purpose[view])) return false;
-    const metadata = requestMetadata(request);
-    return token(metadata.name) === token(sourceName(source)) && frequency(metadata.frequency) === frequency(sourceFrequency(source))
-      && (metadata.meter || !metadata.key || metadata.key === "*" || token(metadata.key) === token(sourceKey(source)))
-      && metadata.meter === sourceIsMeter(source);
-  });
+function matchingRequests(metadata, view, source) {
+  let byView = metadata.matches.get(source);
+  if (!byView) { byView = new Map(); metadata.matches.set(source, byView); }
+  if (!byView.has(view)) {
+    const entries = requestCandidates(metadata, sourceFrequency(source, metadata), sourceIsMeter(source, metadata), sourceName(source, metadata), sourceKey(source, metadata));
+    byView.set(view, entries.filter(entry => entry.purposes.has(purpose[view])));
+  }
+  return byView.get(view);
 }
 
 function matchingSource(model, name, key, source, cadence = "") {
-  return unique(model.sources.filter(item => token(sourceName(item)) === token(name) && token(sourceKey(item)) === token(key)
-    && (!source || model.fileKey(sourceFile(item)) === model.fileKey(source)) && (!cadence || frequency(sourceFrequency(item)) === frequency(cadence))));
+  return unique((model.metadata.native.get(sourceMatchKey(name, key)) || []).filter(item =>
+    (!source || model.fileKey(sourceFile(item)) === model.fileKey(source)) && (!cadence || frequency(sourceFrequency(item, model.metadata)) === frequency(cadence))));
 }
 
 function sourceMetadata(model, series, rows) {
@@ -107,7 +162,7 @@ function sourceMetadata(model, series, rows) {
 
 function rawObservations(model, source, factor) {
   const columns = rawColumns(source), metadata = sourceMetadata(model, source, columns.rows);
-  const unset = /setpoint.*temperature|temperature.*setpoint/i.test(sourceName(source));
+  const unset = /setpoint.*temperature|temperature.*setpoint/i.test(sourceName(source, model.metadata));
   return columns.rows.map((row, index) => ({ rawX: row, label: String(columns.labels[index] ?? ""),
     value: finite(columns.values[index]) && (!unset || hasHVACTemperatureSetpoint(columns.values[index])) ? columns.values[index] * factor : null,
     metadata: metadata[index]?.timeIndex === row ? metadata[index] : undefined, index }));
@@ -115,34 +170,35 @@ function rawObservations(model, source, factor) {
 
 function add(model, category, owner, identity, metadata, load) {
   const entityID = JSON.stringify([category, owner]), id = JSON.stringify([category, owner, identity]);
-  if (model.properties.some(property => property.id === id)) return;
+  if (model.propertyIDs.has(id)) return;
+  model.propertyIDs.add(id);
   let entity = model.entities.find(item => item.id === entityID);
   if (!entity) { entity = { id: entityID, kind: category, category, name: owner, properties: [] }; model.entities.push(entity); }
   const property = { id, entityId: entityID, category, seriesId: "", sourceIds: [], ...metadata };
   loaders.set(property, load); entity.properties.push(property); model.properties.push(property);
+  model.seriesIDs.add(property.seriesId);
 }
 
 function addRaw(model) {
-  const counts = new Map();
-  for (const source of model.sources) if (source.sourceId) counts.set(source.sourceId, (counts.get(source.sourceId) || 0) + 1);
+  const { metadata } = model, counts = metadata.counts;
   const zone = model.view === "energy" && model.context.simulationEnergyScopeKind === "zone" ? token(model.context.simulationEnergyZoneName) : "";
   for (const source of model.sources) {
-    if (headers.get(source)?.ambiguous) continue;
+    if (metadata.headers.get(source)?.ambiguous) continue;
     if (source.sourceId && counts.get(source.sourceId) !== 1) continue;
-    const name = sourceName(source), key = sourceKey(source), requests = matchingRequests(model.result, model.view, source);
-    const environment = token(key) === "environment" && weather.has(token(name)) && frequency(sourceFrequency(source)) === "hourly";
+    const name = sourceName(source, metadata), key = sourceKey(source, metadata), requests = matchingRequests(metadata, model.view, source);
+    const environment = token(key) === "environment" && weather.has(token(name)) && frequency(sourceFrequency(source, metadata)) === "hourly";
     if (!requests.length) continue;
-    if (model.properties.some(property => property.seriesId === seriesID(source))) continue;
-    if (zone && !environment && token(key) !== zone && !requests.some(request => token(request.scopeZoneName) === zone)) continue;
-    if (!environment && model.view === "zone_heat_flow" && token(key) !== token(model.scopeZone) && !requests.some(request => token(request.scopeZoneName) === token(model.scopeZone))) continue;
+    if (model.seriesIDs.has(seriesID(source))) continue;
+    if (zone && !environment && token(key) !== zone && !requests.some(request => request.scopeZoneName === zone)) continue;
+    if (!environment && model.view === "zone_heat_flow" && token(key) !== token(model.scopeZone) && !requests.some(request => request.scopeZoneName === token(model.scopeZone))) continue;
     if (!environment && model.view === "comfort") {
       const comfort = model.result.purposeResults?.comfort || {}, scope = model.scopeZone === "__building__" ? { metrics: comfort.buildingMetrics } : list(comfort.zones).find(item => token(item.zoneName) === token(model.scopeZone));
       const membership = list(scope?.metrics).some(metric => token(metric.keyValue || model.scopeZone) === token(key));
       if (!membership && (model.scopeZone === "__building__" || token(key) !== token(model.scopeZone))) continue;
     }
     const units = displayUnit(source.displayUnit || /\[([^\]]*)\]/.exec(source.displayColumn || source.column || "")?.[1] || source.unit);
-    add(model, environment ? "environment" : "reported", key || "Building", source.sourceId || sourceSignature(source), {
-      name, label: environment ? copy(...weather.get(token(name))) : name, kind: "reported", unit: units.unit, frequency: sourceFrequency(source), seriesId: seriesID(source),
+    add(model, environment ? "environment" : "reported", key || "Building", source.sourceId || sourceSignature(source, metadata), {
+      name, label: environment ? copy(...weather.get(token(name))) : name, kind: "reported", unit: units.unit, frequency: sourceFrequency(source, metadata), seriesId: seriesID(source),
       sourceIds: [seriesID(source)], file: model.fileKey(sourceFile(source)), axis: `source:${seriesID(source)}`,
     }, () => rawObservations(model, source, units.factor));
   }
@@ -171,7 +227,7 @@ function addComfort(model) {
     const labels = { pmv: "PMV", ppd: "PPD", temperature: "T", heatingSetpoint: "Tset,h", coolingSetpoint: "Tset,c", relativeHumidity: "RH", humidity: "w" };
     add(model, "comfort", scope.zoneName, [name, key, metric.source, metric.reportingFrequency], {
       name, kind, label: (labels[kind] || name) + (metric.keyValue && token(metric.keyValue) !== token(scope.zoneName) ? ` · ${metric.keyValue}` : ""),
-      unit: units.unit, frequency: metric.reportingFrequency || (native && sourceFrequency(native)) || "",
+      unit: units.unit, frequency: metric.reportingFrequency || (native && sourceFrequency(native, model.metadata)) || "",
       seriesId: seriesID(native), sourceIds: native ? [seriesID(native)] : [], file: model.fileKey(metric.source), axis: `comfort:${scope.zoneName}`,
     }, () => {
       const points = list(metric.points), metadata = native ? sourceMetadata(model, native, points.map(point => point.x)) : [];
@@ -183,15 +239,16 @@ function addComfort(model) {
 
 function addHeatFlow(model) {
   const dataset = model.dataset; if (!dataset) return;
-  const requested = list(model.result.purposeRunPlan?.outputObjects).filter(request => list(request.purposeIds).includes("zone_heat_flow"));
-  const declared = new Set(requested.filter(request => list(dataset.categories).some(category => token(category.variableName) === token(requestMetadata(request).name))).map(request => frequency(requestMetadata(request).frequency)).filter(Boolean));
+  const requested = model.metadata.byPurpose.get("zone_heat_flow") || [];
+  const names = new Set(list(dataset.categories).map(category => token(category.variableName)));
+  const declared = new Set(requested.filter(entry => names.has(token(entry.wanted.name))).map(entry => frequency(entry.wanted.frequency)).filter(Boolean));
   const cadence = declared.size === 1 ? [...declared][0] : "";
   for (const zone of list(dataset.zones)) {
     if (token(zone.name) !== token(model.scopeZone)) continue;
     for (const [index, category] of list(dataset.categories).entries()) {
       const native = matchingSource(model, category.variableName, zone.name, dataset.sourceFile, cadence);
       const units = displayUnit(dataset.unit || category.unit || "W");
-      add(model, "heat_flow", zone.name, category.id, { name: category.variableName, kind: category.id, label: heatFlowCategoryLabel(category), unit: units.unit, frequency: cadence || (native && sourceFrequency(native)) || "",
+      add(model, "heat_flow", zone.name, category.id, { name: category.variableName, kind: category.id, label: heatFlowCategoryLabel(category), unit: units.unit, frequency: cadence || (native && sourceFrequency(native, model.metadata)) || "",
         seriesId: seriesID(native), sourceIds: native ? [seriesID(native)] : [], file: model.fileKey(dataset.sourceFile), axis: `heat-flow:${axisID(dataset)}` }, () => {
         const labels = list(dataset.labels), values = zone.values?.[index] || [], observed = zone.observed?.[index];
         return labels.map((label, frame) => ({ label: String(label), rawX: frame, index: frame,
@@ -230,10 +287,8 @@ export function prepareSimulationComparison(result = {}, view = "energy", contex
   const scopeZone = normalized === "comfort" ? context.simulationComfortZone || result.purposeResults?.comfort?.zones?.[0]?.zoneName || "__building__" : normalized === "zone_heat_flow" ? context.simulationHeatFlowSelectedZone || dataset?.zones?.[0]?.name || "" : context.simulationEnergyScopeKind === "zone" ? context.simulationEnergyZoneName || "" : "";
   const key = JSON.stringify([getLanguage(), normalized, normalized === "energy" ? context.simulationEnergyScopeKind : "", scopeZone]);
   if (cached.has(key)) { const model = cached.get(key); model.context = { ...context }; return model; }
-  const sources = list(result.series), files = new Map();
-  for (const source of sources) resolveHeader(source, list(result.purposeRunPlan?.outputObjects));
-  for (const source of sources) { const name = basename(sourceFile(source)), entries = files.get(name) || new Set(); entries.add(file(sourceFile(source))); files.set(name, entries); }
-  const model = { result, view: normalized, context: { ...context }, scopeZone, scopeKey: key, sources, entities: [], properties: [], categories: [], dataset,
+  const metadata = prepareComparisonMetadata(result), { sources, files } = metadata;
+  const model = { result, view: normalized, context: { ...context }, scopeZone, scopeKey: key, metadata, sources, entities: [], properties: [], categories: [], dataset, propertyIDs: new Set(), seriesIDs: new Set(),
     fileKey(value) { const candidates = files.get(basename(value)); return candidates?.size === 1 ? [...candidates][0] : file(value); } };
   if (normalized === "comfort") addComfort(model);
   if (normalized === "zone_heat_flow") addHeatFlow(model);

@@ -203,6 +203,43 @@ payload copies, profiles and browser data are disposable investigation artifacts
 under ignored `.runtime/tmp/result-loading-benchmark`; no additional permanent
 benchmark or test files were introduced.
 
+### Reusing Simulation tabs and comparison metadata
+
+On 2026-10-29, native-clock headless Chrome replays compared `ede1c22` frontend
+assets with the result-view reuse changes at 1600 x 900. Both used the same
+555,486,157-byte compact annual Large Office / EnergyPlus 24.2 / Chicago result,
+partitioned through the production parts encoder and endpoint. The browser used
+the production loader, real tab handlers and two animation frames to confirm
+display. SQL reading, engine execution and result construction are excluded.
+These are single sequential local measurements, not latency guarantees.
+
+| Visible action | Previous | Reusing views/indexes |
+| --- | ---: | ---: |
+| First Energy Transfer | 24.005 s | 0.451 s |
+| First Zone Heat Flow | 31.280 s | 3.147 s |
+| First HVAC Loops | 2.063 s | 2.193 s |
+| First Thermal Comfort | 14.196 s | 0.865 s |
+| Eight fully hydrated tab switches | 52–276 ms | 19–41 ms |
+
+The old first Heat Flow and Comfort click handlers blocked for 14.053 s and
+13.297 s; the new handlers took 10.8 ms and 10.1 ms. Comparison preparation had
+repeated the entire output-plan lookup for every source and scope. Result-owned
+metadata indexes now resolve those catalogs once. Comfort reads raw shared
+columns without first expanding another source point-object array.
+
+Each replay fetched the same 296 resources / 555,914,814 bytes exactly once.
+All repeated switches already had zero network requests before this change;
+their remaining cost came from rebuilding controls, graphs and DOM. The new
+eight repeated switches retained the actual DOM identities, chart state and
+scroll. First HVAC timing still includes resource readiness and differed by
+one in-flight part at the step boundary; the complete byte totals were equal.
+Payload hash and timestamps stayed unchanged.
+
+After the interaction sequence, Chrome's reported JS heap was 1.556 GB before
+and 1.420 GB after. GC was not forced; these are neither retained-heap nor peak
+native process-memory measurements. Caches are owned by the current result;
+replacement releases mounted view owners and their observers/playback.
+
 ### Four-purpose reading with native controls
 
 On 2026-10-27, a preserved annual Large Office / EnergyPlus 24.2 / Chicago
@@ -342,6 +379,7 @@ output beneath repository `.runtime/`. Use `-count=1` when measuring.
 | [TestEnergyDriversSavedComparison](../cmd/semantic-idf/internal/simulation/energy_drivers_saved_replay_test.go) | `ENERGY_DRIVERS_REPLAY_COMPARE`, `_OUTPUT` | Compares existing artifacts without another SQL scan |
 | [TestSimulationResultTransportSavedReplay](../cmd/semantic-idf/internal/simulation/result_transport_replay_test.go) | `SIMULATION_TRANSPORT_REPLAY_DIR`, `_INPUT` | Same prefix plus `_OUTPUT`, `_COMPARE`; `_LEGACY=1` measures prior callback serialization |
 | [TestSimulationActualLargePayloadResponseAndViewsBrowser](../cmd/semantic-idf/internal/frontendchecks/simulation_progress_actual_payload_browser_test.go) | `SIMULATION_UI_BUNDLE_PATH`, `_INPUT` | Captured canonical v2 bundle with Zone Heat Flow; native-clock display timing through the real frontend |
+| [TestSimulationActualPartsTabSwitchBrowser](../cmd/semantic-idf/simulation_result_tabs_actual_browser_test.go) | `SIMULATION_TAB_REPLAY_PAYLOAD`, `_INPUT` | Complete compact result through production parts; `_SOURCE_OVERRIDES` selects baseline frontend assets, `_OUTPUT` saves small timing evidence, `_ROUNDS` controls repeated four-tab visits |
 
 For example, after configuring the matching environment variables:
 
@@ -355,7 +393,7 @@ snapshots verify hashes, sizes, timestamps and directory membership. A passing
 performance comparison does not approve physical design or regenerate expected
 native quantities. Ordinary tests retain their existing opt-in gates.
 
-The actual-payload browser test accepts a canonical v2 purpose bundle, not a
+The older actual-payload browser test accepts a canonical v2 purpose bundle, not a
 compact transfer envelope or the historical v1 comparison baseline. The regular
 [TestSimulationHTTPResultTransportBrowser](../cmd/semantic-idf/internal/frontendchecks/simulation_http_result_browser_test.go) covers production compact encoding,
 lazy decoding and negotiated HTTP behavior with a bounded fixture.

@@ -56,6 +56,23 @@ try {
  const nativeVertices=(trace,expected)=>{const vertices=drawn(trace);return vertices.length===expected.length&&vertices.every((point,index)=>close(point.x,expected[index].x)&&close(point.value,expected[index].value));};
  const points=values=>values.map((value,x)=>({x,value,label:'01/21 0'+(x+1)+':00:00'}));
  const metric=(name,unit,values,keyValue)=>({name,unit,keyValue,source:'eplusout.sql',reportingFrequency:'Hourly',min:-999,max:999,average:999,points:points(values)});
+ const {decodeSimulationResultTransfer:decode}=await import('/src/js/simulation-result-transport.js');
+ for(const values of [[.01,.02,.03,-999,-0],[-999,-999,-999,-999,-999],[]]){
+  const rows=values.length?[0,1,1,2,3]:[],labels=values.length?['01/21 01:00','01/21 02:00','01/21 02:00','01/21 03:00','01/21 04:00']:[];
+  const rawMetric={name:'Zone Air Humidity Ratio',unit:'kg/kg',reportingFrequency:'Hourly',average:3,points:rows.map((x,i)=>({x,label:labels[i],value:values[i]})),displayPoints:rows.map((x,i)=>({x,label:labels[i],value:9000+i}))};
+  const original={zones:[{zoneName:'Raw columns',metrics:[rawMetric]}],unmetHours:[]},expected=prepare(original);
+  const envelope={schema:'semantic-idf.simulation-transfer/v1',result:{zones:[{zoneName:'Raw columns',metrics:[{...rawMetric,points:null,displayPoints:null}]}],unmetHours:[]},timelines:[{x:rows,labels}],pointSets:[{timeline:0,values:values.slice()},{timeline:0,values:rows.map((_,i)=>9000+i)}],pointBindings:[{path:['zones',0,'metrics',0,'points'],data:0},{path:['zones',0,'metrics',0,'displayPoints'],data:1}]};
+  const decoded=decode(envelope),source=decoded.zones[0].metrics[0],prepared=prepare(decoded);
+  check(JSON.stringify(prepared)===JSON.stringify(expected),'Comfort column preparation changed raw units, duplicate gaps, unset observations or summary-only fallback');
+  check(typeof Object.getOwnPropertyDescriptor(source,'points').get==='function'&&typeof Object.getOwnPropertyDescriptor(source,'displayPoints').get==='function','Comfort preparation expanded transported point objects or accessed display values');
+  if(values.length&&values[0]!==-999)check(Object.is(prepared.zones[0].metrics[0].points.at(-1).value,-0),'Comfort column preparation lost negative zero');
+ }
+ {
+  const metric={name:'Zone Mean Air Temperature',unit:'C',points:null},timeline={x:[7,14],labels:['','invalid']};
+  const decoded=decode({schema:'semantic-idf.simulation-transfer/v1',result:{zones:[{zoneName:'Empty labels',metrics:[metric]}]},timelines:[timeline],pointSets:[{timeline:0,values:[20,22]}],pointBindings:[{path:['zones',0,'metrics',0,'points'],data:0}]});
+  const prepared=prepare(decoded).zones[0].metrics[0];
+  check(prepared.points.map(point=>point.label).join(',')==='7,invalid'&&prepared.points.map(point=>point.x).join(',')==='7,14'&&timeline.labels[0]===''&&typeof Object.getOwnPropertyDescriptor(metric,'points').get==='function','Comfort raw columns changed compact empty-label fallback, source timeline or lazy ownership');
+ }
  const zoneA={zoneName:'Zone A',metrics:[
   metric('Zone Mean Air Temperature','C',[20,null,24]),
   metric('Zone Thermostat Heating Setpoint Temperature','C',[19,19,19]),
@@ -192,6 +209,26 @@ try {
  const reused=comparison.prepareSimulationComparison(relevant,'zone_heat_flow',{...hfContext,simulationHeatFlowRangeStart:1,simulationHeatFlowFrameIndex:1});check(reused===hfModel&&reused.context.simulationHeatFlowFrameIndex===1&&comparison.simulationComparisonTrace(reused,heatProperty).points.length===2,'frame/range changes retained a stale cursor context or rebuilt unbounded metadata catalogs');
  const scoped={...relevant,purposeResults:{...relevant.purposeResults,comfort:{zones:[{zoneName:'ROOM',metrics:[fullMetric]},{zoneName:'OTHER',metrics:[{name:inside.name,unit:'C',source:'eplusout.sql',reportingFrequency:'Hourly',points:points([30,31,32])}]},{zoneName:'Building',metrics:[{name:inside.name,unit:'C',source:'eplusout.sql',reportingFrequency:'Hourly',points:points([40,41,42])}]}]}}},scopeUI={};comparison.selectedSimulationComparisonSeriesIDs(scoped,'comfort',scopeUI,roomScope);const otherModel=comparison.prepareSimulationComparison(scoped,'comfort',{simulationComfortZone:'OTHER'});comparison.normalizeSimulationComparison(otherModel,scopeUI);check(!otherModel.entities.some(entity=>entity.name==='ROOM')&&otherModel.properties.find(property=>property.id===scopeUI.rows[0].property)?.entityId===otherModel.entities.find(entity=>entity.name==='OTHER').id,'scope change retained an unrelated old Zone or failed to select its new related variable');
  const buildingModel=comparison.prepareSimulationComparison(scoped,'comfort',{simulationComfortZone:'__building__'}),buildingUI={};comparison.normalizeSimulationComparison(buildingModel,buildingUI);check(buildingModel.entities.every(entity=>entity.category==='environment')&&buildingUI.rows[0].property&&!buildingUI.rows[1].property,'Building without reported building observations silently selected a Zone or invented an aggregate');
+ // Metadata remains reusable across tabs and more scopes than the bounded
+ // presentation cache, without reading even one native observation getter.
+ let catalogReads=0;const catalogSources=Array.from({length:32},(_,index)=>Object.freeze(native('catalog-'+index,'ROOM '+index,'Catalog variable '+index,'C','Hourly',[0,1,2]))),catalogPlan=Array.from({length:160},(_,index)=>{
+  const declared={objectType:'Output:Variable',keyValue:'ROOM '+index,variableName:'Catalog variable '+index,reportingFrequency:'Hourly',purposeIds:['basic_energy','zone_heat_flow','comfort_check'],scopeZoneName:'ROOM '+index},entry={};
+  for(const key of Object.keys(declared))Object.defineProperty(entry,key,{enumerable:true,get(){catalogReads++;return declared[key];}});return Object.freeze(entry);
+ }),catalogResult=Object.freeze({series:Object.freeze(catalogSources),purposeRunPlan:Object.freeze({outputObjects:Object.freeze(catalogPlan)})});
+ const catalogFirst=comparison.prepareSimulationComparison(catalogResult,'comfort',{simulationComfortZone:'ROOM 0'}),firstCatalogReads=catalogReads;
+ check(catalogFirst.properties.some(property=>property.seriesId==='catalog-0')&&firstCatalogReads<=catalogPlan.length*8,'comparison metadata did not resolve its source or rescanned the full plan per native series');
+ for(let index=0;index<14;index++)for(const view of ['energy','zone_heat_flow','comfort'])comparison.selectedSimulationComparisonSeriesIDs(catalogResult,view,{}, {simulationComfortZone:'ROOM '+index,simulationHeatFlowSelectedZone:'ROOM '+index,simulationEnergyScopeKind:'zone',simulationEnergyZoneName:'ROOM '+index});
+ check(catalogReads===firstCatalogReads&&catalogSources.every(source=>reads[source.sourceId]===0),'tab/scope changes or presentation-cache eviction rebuilt immutable request metadata or materialized native observations');
+ {
+ const legacy={sourceId:'legacy-header',file:'legacy.sql',column:'Device:Part:Temperature [C](Hourly)',points:[]},wild={objectType:'Output:Variable',keyValue:'*',variableName:'Temperature',reportingFrequency:'Hourly',purposeIds:['basic_energy']},nested={...wild,keyValue:'Device',variableName:'Part:Temperature'},ambiguousHeaders={series:[legacy],purposeRunPlan:{outputObjects:[wild,nested]}};
+ check(!comparison.prepareSimulationComparison(ambiguousHeaders,'energy',{}).properties.some(property=>property.seriesId===legacy.sourceId),'indexed legacy header selected one of two valid colon suffixes');
+ const resolvedLegacy={series:[legacy],purposeRunPlan:{outputObjects:[wild]}},resolvedLegacyModel=comparison.prepareSimulationComparison(resolvedLegacy,'energy',{});
+ check(resolvedLegacyModel.entities.some(entity=>entity.name==='Device:Part'&&entity.properties.some(property=>property.seriesId===legacy.sourceId))&&!comparison.prepareSimulationComparison(ambiguousHeaders,'energy',{simulationEnergyScopeKind:'zone',simulationEnergyZoneName:'Device:Part'}).properties.length,'legacy colon-key resolution or result-owned ambiguity metadata changed across shared source objects');
+ const meter={sourceId:'legacy-meter',file:'legacy.sql',column:'Electricity:Facility [J](Monthly)',points:[],isMeter:true},fieldOnly={objectType:'Output:Meter',fields:[{value:'Electricity:Facility'},{value:'Monthly'}],purposeIds:['basic_energy']},meterModel=comparison.prepareSimulationComparison({series:[meter],purposeRunPlan:{outputObjects:[fieldOnly]}},'energy',{});
+ check(meterModel.properties.length===1&&meterModel.properties[0].seriesId===meter.sourceId&&meterModel.properties[0].frequency==='Monthly','field-only meter names/frequency changed in the shared metadata index');
+ const literalStar={series:[inside],purposeRunPlan:{outputObjects:[{...request(inside),keyValue:' * '}]}},caseAmbiguity={series:[legacy],purposeRunPlan:{outputObjects:[wild,{...wild,variableName:'temperature'}]}};
+ check(!comparison.prepareSimulationComparison(literalStar,'energy',{}).properties.length&&!comparison.prepareSimulationComparison(caseAmbiguity,'energy',{}).properties.length,'index broadened a literal key into wildcard matching or discarded native header ambiguity');
+ }
  check(JSON.stringify(Object.fromEntries(['weather','weather-rh','inside','unrelated'].map(id=>[id,nativeValues[id]])))===nativeBefore&&heatZone.observed[0].join(',')==='true,false,true','comparison mutated original native source observations/masks');
  document.body.dataset.comfortInspectionStatus='passed';document.getElementById('result').textContent='passed';
 }catch(error){document.body.dataset.comfortInspectionStatus='failed';document.getElementById('result').textContent=error.stack;}

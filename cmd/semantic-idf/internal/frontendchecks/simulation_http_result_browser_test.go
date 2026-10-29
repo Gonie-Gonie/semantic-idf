@@ -239,6 +239,9 @@ try{
  const ordinary={series:[{points:[]}]};check(decode(ordinary)===ordinary&&decode(null)===null,"ordinary results lost identity");
  const wire=()=>({schema:"semantic-idf.simulation-transfer/v1",result:{series:[{points:null},{points:null},{points:[],displayPoints:null}],purposeResults:{hvacLoops:[{components:[{series:[{points:null}]}]}]}},timelines:[{x:[9,1,9],labels:["","first","duplicate"]}],pointSets:[{timeline:0,values:[0,-3.25,-0]},{timeline:0,values:[4.125,7,8]}],pointBindings:[{path:["series",0,"points"],data:0},{path:["series",0,"displayPoints"],data:0},{path:["series",1,"points"],data:1},{path:["purposeResults","hvacLoops",0,"components",0,"series",0,"points"],data:0}]});
  const envelope=wire(),decoded=decode(envelope),descriptor=(owner,key)=>Object.getOwnPropertyDescriptor(owner,key);
+ const rawWire=wire();rawWire.pointBindings.find(binding=>binding.path.at(-1)==='displayPoints').data=1;
+ const rawDecoded=decode(rawWire),rawSeries=rawDecoded.series[0];
+ check(pointColumns(rawSeries).values[0]===4.125&&pointColumns(rawSeries,{display:false}).values[0]===0&&typeof descriptor(rawSeries,'points').get==='function'&&typeof descriptor(rawSeries,'displayPoints').get==='function','raw column access used display-converted values or materialized point objects');
  check(typeof descriptor(decoded.series[0],"points").get==="function"&&typeof descriptor(decoded.series[1],"points").get==="function","decoder eagerly materialized unselected series");
  const points=decoded.series[0].points;
  check(points.length===3&&points[0].x===9&&!Object.hasOwn(points[0],"label")&&points[1].x===1&&points[1].value===-3.25&&points[2].x===9&&Object.is(points[2].value,-0),"decoder changed zeros, signs, decimals, order, duplicate x or optional labels");

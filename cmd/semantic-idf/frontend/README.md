@@ -69,6 +69,13 @@
   unloaded values as missing; retries check run and selection identity. Replacing
   a result releases its queue, requests and worker. Exports explicitly load all
   parts before capturing the existing complete-result snapshot.
+  Visited Simulation tabs retain their existing DOM for the current result;
+  unchanged tab activation skips resource traversal and rendering, preserving
+  chart zoom and panel scroll. New results release those mounted owners, and
+  presentation or relevant control changes refresh the affected view.
+  Comparison source/request metadata is indexed once per immutable result,
+  separately from the bounded scope catalogs. Comfort reads shared raw columns
+  without expanding an additional source point-object array.
 - `src/js/auxiliary-panel.js`: the in-app Settings/Guide/Tools panel. Main stays
   mounted with its analysis and simulation state. Up to three frames are loaded
   lazily and retained, including drafts, manual routes and running batch tools.

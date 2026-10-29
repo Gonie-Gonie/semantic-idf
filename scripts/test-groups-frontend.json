@@ -6,6 +6,7 @@
       "defaultAreas": ["app"],
       "defaultTier": "fast",
       "rules": [
+        {"files": ["simulation_result_tabs_actual_browser_test.go"], "areas": ["simulation"], "tier": "browser"},
         {"files": ["settings_app_test.go"], "areas": ["settings", "storage"], "tier": "fast"},
         {"files": ["storage_app_test.go"], "areas": ["settings", "storage", "simulation", "input", "batch"], "tier": "fast"},
         {

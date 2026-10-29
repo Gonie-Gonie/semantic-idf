@@ -226,8 +226,11 @@ dependency declarations extend this policy without introducing another loader.
 Unloaded data is a pending dependency, not an empty result or a measured zero.
 Rendering resumes only for the current run and selection after its dependencies
 are ready. Replacing a result cancels its pending reads and worker work. Keep
-hidden panel contents unmounted and prepare reusable data indexes separately, so
-prefetching does not create invisible DOM or change the user's controls.
+unvisited panels unmounted during prefetch. Previously visited Simulation panels
+retain their DOM and chart state for the current result; returning to an unchanged
+panel only changes visibility. Invalidate a panel for changed result owners,
+presentation settings or relevant controls. Prepare reusable data indexes
+separately, so prefetching never creates invisible DOM or changes controls.
 
 Settings persist through the backend API in the local app data/config directory.
 Keep defaults and migration in `settings_app.go`, rather than duplicating them

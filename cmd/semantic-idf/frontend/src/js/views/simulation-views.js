@@ -84,6 +84,8 @@ let simulationResourceFocusRequest = null;
 let simulationResourceIntentGeneration = 0;
 const simulationPreparedOutputIndexes = new WeakSet();
 const simulationEnergySceneSlot = createEnergyPathSceneSlot();
+const simulationMountedResultViews = new Map();
+let simulationMountedResultOwner;
 const simulationEnergyPrimaryKeys = Object.keys(migrateEnergyPathState().primary);
 const simulationEnergyControls = Object.freeze({
   scope: { attribute: "data-simulation-energy-scope", key: "simulationEnergyScopeKind" },
@@ -91,6 +93,131 @@ const simulationEnergyControls = Object.freeze({
   period: { attribute: "data-simulation-energy-path-period", key: "simulationEnergyPeriod", values: ENERGY_PATH_PERIODS.map((period) => period.value) },
 });
 const legacyEnergyPresentation = Object.freeze({ signMode: "display", sankeyMode: "detailed", nodeLimit: 0 });
+
+function simulationResultViewHost(view) {
+  return { energy: elements.simulationEnergyDashboard, zone_heat_flow: elements.simulationHeatFlow,
+    hvac_loops: elements.simulationHVACLoopResults, comfort: elements.simulationComfortResults }[view];
+}
+
+// A single result owns at most the four already-visited panels. Their existing
+// DOM keeps chart viewports, disclosures and scroll; no observation is copied.
+function synchronizeSimulationMountedResult(result = state.simulationResult) {
+  if (state.simulationResult !== result || simulationMountedResultOwner === result) return;
+  for (const [view, mounted] of simulationMountedResultViews) {
+    if (view === "hvac_loops") disconnectHVACInspection(mounted.host);
+    mounted.host.replaceChildren();
+  }
+  simulationMountedResultViews.clear();
+  simulationMountedResultOwner = result;
+  simulationEnergySceneSlot.clear();
+  heatFlowRenderedContext = null;
+  if (heatFlowSpatialObserver && heatFlowSpatialObservedGrid) heatFlowSpatialObserver.unobserve(heatFlowSpatialObservedGrid);
+  heatFlowSpatialObservedGrid = null;
+  stopHeatFlowPlayback(false);
+  simulationSemanticBindings.clear();
+}
+
+function simulationComparisonMountState(view) {
+  const ui = state.simulationComparisons?.[view];
+  return [ui?.mode, ...(ui?.rows || []).slice(0, 8).flatMap(row => [row.entity, row.property])];
+}
+
+// Compare only immutable payload owners and small view controls. Never hash or
+// serialize the result, enumerate series observations, or expand lazy points.
+function simulationMountedViewState(view, result = state.simulationResult) {
+  const purpose = result?.purposeResults;
+  const common = [result, purpose, document.documentElement.lang, document.documentElement.dataset.theme,
+    document.documentElement.style.getPropertyValue("--graph-label-font-size"),
+    state.semanticProjection, state.reportAnalysisKey, state.lastAnalyzedKey];
+  switch (view) {
+    case "energy": {
+      const explanation = purpose?.energyExplanation;
+      return [...common, purpose?.energy, explanation,
+        state.report?.geometry, state.report?.profile, state.report?.hvac,
+        ...simulationEnergyPrimaryKeys.map(key => state[key]), state.simulationEnergySelection,
+        state.simulationEnergyChartFrequency, state.simulationEnergyDetailsOpen,
+        simulationEnergyDrawer.tab, simulationEnergyDrawer.stage, simulationEnergyDrawer.outputSource,
+        ...simulationComparisonMountState(view)];
+    }
+    case "zone_heat_flow":
+      return [...common, purpose?.zoneHeatFlow, result?.heatFlow, purpose?.thermalTopology,
+        state.report?.geometry, state.simulationHeatFlowSelectedZone, state.simulationHeatFlowStory,
+        state.simulationHeatFlowFrameIndex, state.simulationHeatFlowRangeStart, state.simulationHeatFlowRangeEnd,
+        state.simulationHeatFlowOverlay, state.simulationHeatFlowInspectorCollapsed,
+        ...simulationComparisonMountState(view)];
+    case "hvac_loops": {
+      const context = state.simulationHVACInspection;
+      const ui = context?.loops?.[context.selectedLoop];
+      return [...common, purpose?.hvacLoops, context, context?.selectedLoop, context?.frameX, context?.frameIndex,
+        ui, ui?.frameIndex, ui?.selectedNode, ui?.selectedComponent, ui?.runtimeSelected, ui?.mode,
+        ui?.logic?.profileID, ui?.logic?.window, ui?.logic?.cardID,
+        ...(ui?.rows || []).slice(0, 8).flatMap(row => [row.entity, row.property])];
+    }
+    case "comfort":
+      return [...common, purpose?.comfort, state.simulationComfortZone, ...simulationComparisonMountState(view)];
+    default:
+      return common;
+  }
+}
+
+function rememberSimulationMountedView(view, result = state.simulationResult) {
+  if (!result || result !== state.simulationResult) return;
+  synchronizeSimulationMountedResult(result);
+  const host = simulationResultViewHost(view);
+  if (!host?.firstElementChild) return;
+  const scroll = simulationMountedResultViews.get(view)?.scroll;
+  simulationMountedResultViews.set(view, { host, first: host.firstElementChild,
+    state: simulationMountedViewState(view, result), scroll });
+}
+
+function renderSimulationMountedView(view, result, render) {
+  const output = render();
+  rememberSimulationMountedView(view, result);
+  return output;
+}
+
+function reuseSimulationMountedView(view, result = state.simulationResult) {
+  if (!result || state.simulationRunning || simulationMountedResultOwner !== result) return false;
+  const mounted = simulationMountedResultViews.get(view);
+  if (!mounted || mounted.host !== simulationResultViewHost(view) || mounted.first !== mounted.host.firstElementChild) return false;
+  const current = simulationMountedViewState(view, result);
+  return current.length === mounted.state.length && current.every((value, index) => Object.is(value, mounted.state[index]));
+}
+
+function activateSimulationResultView(view) {
+  const pane = document.querySelector("#simulationPane > .simulation-pane");
+  const previous = simulationMountedResultViews.get(state.simulationActiveResultView);
+  if (pane && simulationMountedResultOwner === state.simulationResult && previous) {
+    previous.scroll = { top: pane.scrollTop, left: pane.scrollLeft };
+  }
+  simulationResourceIntentGeneration++;
+  state.simulationActiveResultView = view;
+  const scroll = simulationMountedResultViews.get(view)?.scroll;
+  const restoreScroll = () => {
+    if (pane && scroll) { pane.scrollTop = scroll.top; pane.scrollLeft = scroll.left; }
+  };
+  // A completed panel has already acquired its exact resources. Returning to it
+  // needs neither resource readiness traversal nor another graph/DOM build.
+  if (reuseSimulationMountedView(view)) {
+    elements.simulationResultTabs?.querySelectorAll("[data-simulation-result-view-button]").forEach(button => {
+      button.classList.toggle("active", button.dataset.simulationResultViewButton === view);
+    });
+    toggleSimulationResultSections();
+    restoreScroll();
+    if (view === "zone_heat_flow") scheduleHeatFlowSpatialArrows();
+    return true;
+  }
+  const result = state.simulationResult, intent = simulationResourceIntentGeneration;
+  const rendered = renderSimulation();
+  if (rendered?.then) {
+    rendered.then(() => {
+      if (state.simulationResult === result && state.simulationActiveResultView === view && simulationResourceIntentGeneration === intent) restoreScroll();
+    }, () => {});
+    return rendered;
+  }
+  restoreScroll();
+  return rendered;
+}
 
 function simulationResourceContext() {
   const scene = simulationEnergySceneSlot.peek();
@@ -128,6 +255,7 @@ function prepareSimulationNearbyResources(result, store) {
 // suspends at its resource boundary, retaining the current DOM until every
 // value the renderer needs is available. Empty, missing and not loaded differ.
 function withSimulationResources(render, result = state.simulationResult, view = state.simulationActiveResultView || "energy") {
+  synchronizeSimulationMountedResult(result);
   const store = simulationResultStore(result);
   if (state.simulationResult === result && simulationResourceOwner && simulationResourceOwner.result !== result) {
     simulationResourceOwner.dispose(); simulationResourceOwner = null;
@@ -165,7 +293,7 @@ function withSimulationResources(render, result = state.simulationResult, view =
       if (!current()) return false;
       // Deferred graph leaves preserve owner identity. Clear the mounted scene
       // only for the foreground retry; background arrivals never redraw it.
-      simulationEnergySceneSlot.clear();
+      if (view === "energy") simulationEnergySceneSlot.clear();
       const focused = document.activeElement;
       const focusID = focused?.id;
       const focusComparisonView = focused?.closest?.("[data-simulation-comparison-host]")?.dataset.simulationComparisonHost;
@@ -205,7 +333,10 @@ function simulationComparisonMarkup(result, view) {
 function renderSimulationComparisonHost(view) {
   return withSimulationResources(() => {
     const host = simulationComparisonHost(view)?.querySelector(`[data-simulation-comparison-host="${view}"]`);
-    if (host) host.innerHTML = renderSimulationComparison(state.simulationResult || {}, view, simulationComparisonUI(view), state);
+    if (host) {
+      host.innerHTML = renderSimulationComparison(state.simulationResult || {}, view, simulationComparisonUI(view), state);
+      rememberSimulationMountedView(view);
+    }
   }, state.simulationResult, view);
 }
 
@@ -220,6 +351,7 @@ function handleSimulationComparisonInput(event, view) {
   simulationResourceIntentGeneration++;
   try {
     handleSimulationComparisonEvent(event, host, state.simulationResult, view, simulationComparisonUI(view), state);
+    rememberSimulationMountedView(view);
   } catch (error) {
     if (!isPendingSimulationResource(error)) throw error;
     // The UI intent was committed before drawing suspended. Redraw that state
@@ -733,9 +865,7 @@ export function initializeSimulationControls() {
   });
   elements.simulationResultTabs?.querySelectorAll("[data-simulation-result-view-button]").forEach((button) => {
     button.addEventListener("click", () => {
-      simulationResourceIntentGeneration++;
-      state.simulationActiveResultView = button.dataset.simulationResultViewButton || "energy";
-      renderSimulation();
+      activateSimulationResultView(button.dataset.simulationResultViewButton || "energy");
     });
   });
   elements.simulationEnergyDashboard?.addEventListener("click", handleSimulationSeriesInspectClick);
@@ -1393,7 +1523,7 @@ export function renderSimulation() {
 
 function renderSimulationReady() {
   syncSimulationRunSetup(state.simulationResult);
-  simulationSemanticBindings.clear();
+  pruneSimulationSemanticBindings();
   setSimulationPreviewMode(false);
   renderSimulationEnvironment();
   syncSimulationPurposeInputsFromState();
@@ -1672,10 +1802,11 @@ function updateSimulationEnergyPanelReady(kind) {
   }
   if (kind === "details" && refreshInspector) updateEnergyPathSelection(elements.simulationEnergyDashboard, scene.path, state, options);
   scene.inspectorContext = context;
+  rememberSimulationMountedView("energy");
 }
 
 export function renderSimulationEnergyDashboard(result) {
-  return withSimulationResources(() => renderSimulationEnergyDashboardReady(result), result, "energy");
+  return withSimulationResources(() => renderSimulationMountedView("energy", result, () => renderSimulationEnergyDashboardReady(result)), result, "energy");
 }
 
 function renderSimulationEnergyDashboardReady(result) {
@@ -4128,7 +4259,7 @@ function simulationHVACInspectionContext(result = state.simulationResult) {
 }
 
 function renderSimulationHVACLoops(result) {
-  return withSimulationResources(() => renderSimulationHVACLoopsReady(result), result, "hvac_loops");
+  return withSimulationResources(() => renderSimulationMountedView("hvac_loops", result, () => renderSimulationHVACLoopsReady(result)), result, "hvac_loops");
 }
 
 function renderSimulationHVACLoopsReady(result) {
@@ -4191,7 +4322,7 @@ function renderSimulationComfortEmpty(message) {
 }
 
 function renderSimulationComfort(result) {
-  return withSimulationResources(() => renderSimulationComfortReady(result), result, "comfort");
+  return withSimulationResources(() => renderSimulationMountedView("comfort", result, () => renderSimulationComfortReady(result)), result, "comfort");
 }
 
 function renderSimulationComfortReady(result) {
@@ -5390,6 +5521,7 @@ function handleSimulationHVACResultsInput(event) {
   if (loop && handleHVACInspectionEvent(event, elements.simulationHVACLoopResults, loop, ui)) {
     state.simulationHVACFrameIndex = ui.frameIndex;
     if (event.target.matches("[data-simulation-hvac-frame]")) rememberHVACInspectionFrame(loop, context, ui);
+    rememberSimulationMountedView("hvac_loops");
   }
 }
 
@@ -5899,7 +6031,7 @@ function outputObjectIsMeter(objectType) {
 }
 
 function renderSimulationHeatFlow({ frameOnly = false } = {}) {
-  return withSimulationResources(() => renderSimulationHeatFlowReady({ frameOnly }), state.simulationResult, "zone_heat_flow");
+  return withSimulationResources(() => renderSimulationMountedView("zone_heat_flow", state.simulationResult, () => renderSimulationHeatFlowReady({ frameOnly })), state.simulationResult, "zone_heat_flow");
 }
 
 function renderSimulationHeatFlowReady({ frameOnly = false } = {}) {

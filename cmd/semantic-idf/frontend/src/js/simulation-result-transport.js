@@ -11,13 +11,13 @@ const invalidColumn = () => { throw new Error("Invalid simulation result transfe
 
 // Read shared columns without materializing an object for every observation.
 // Canonical results and already materialized sets retain their public arrays.
-export function simulationSeriesPointColumns(series, { timelineOnly = false } = {}) {
+export function simulationSeriesPointColumns(series, { timelineOnly = false, display = true } = {}) {
   const sources = pointSources.get(series);
   if (!sources?.points) return null;
   const raw = sources.points(timelineOnly);
   if (!raw) return null;
-  const display = sources.displayPoints?.(timelineOnly);
-  return display && display.rows.length === raw.rows.length ? display : raw;
+  const displayed = display && sources.displayPoints?.(timelineOnly);
+  return displayed && displayed.rows.length === raw.rows.length ? displayed : raw;
 }
 
 function validateColumnValues(kind, values, offset = 0, complete = true) {

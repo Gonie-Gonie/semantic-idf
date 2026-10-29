@@ -205,6 +205,17 @@ remain subject to their host's full-response limits. Parts bound individual
 transfers; they do not eliminate the memory cost of retaining and eventually
 using a complete result. See [performance.md](performance.md) for native evidence.
 
+For one result, each visited Simulation tab retains its mounted graphs and
+controls. An unchanged return switches visibility and restores panel scroll
+without another resource traversal, metadata rebuild or DOM replacement.
+Result/presentation/relevant-control changes invalidate that view; pending work
+still checks the latest run and intent. Replacing a result releases all four
+old panel owners, observers and playback. Unvisited panels stay unmounted.
+Raw observations remain shared by the result store. Comparison source/request
+indexes are prepared once per result, and Comfort reads compact raw columns
+without first expanding source point-object arrays. Missing data and source
+matching rules remain unchanged.
+
 ## Purpose planning
 
 [purpose.go](../cmd/semantic-idf/internal/simulation/purpose.go) defines

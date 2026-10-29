@@ -1,3 +1,5 @@
+import { simulationSeriesPointColumns } from "./simulation-result-transport.js";
+
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const token = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 const cache = new WeakMap();
@@ -38,26 +40,40 @@ function measurement(name, rawUnit) {
   return { kind, label, category, unit, factor };
 }
 
-function observations(points, factor) {
+function observations(metric, factor) {
   const byTime = new Map();
-  for (const point of points || []) {
-    if (!point || !finite(point.x)) continue;
-    const value = finite(point.value) && point.value > -999 ? point.value * factor : null;
+  const add = (x, label, rawValue) => {
+    if (!finite(x)) return;
+    const value = finite(rawValue) && rawValue > -999 ? rawValue * factor : null;
     // Ambiguous duplicate timestamps are gaps, not a silently chosen reading.
-    byTime.set(point.x, byTime.has(point.x) ? { ...byTime.get(point.x), value: null }
-      : { x: point.x, label: String(point.label ?? point.x), value });
+    byTime.set(x, byTime.has(x) ? { ...byTime.get(x), value: null }
+      : { x, label: String(label ?? x), value });
+  };
+  // Preserve raw units and the deferred source arrays. Preparing Comfort should
+  // not first expand another object graph for every transported observation.
+  const columns = simulationSeriesPointColumns(metric, { display: false });
+  let rawCount;
+  if (columns) {
+    rawCount = columns.rows.length;
+    // Compact point materialization omits empty labels; preserve its numeric
+    // fallback while leaving the shared timeline's empty string untouched.
+    for (let i = 0; i < rawCount; i++) add(columns.rows[i], columns.labels[i] || undefined, columns.values[i]);
+  } else {
+    const raw = metric.points || [];
+    rawCount = raw.length;
+    for (const point of raw) if (point) add(point.x, point.label, point.value);
   }
-  return [...byTime.values()].sort((a, b) => a.x - b.x);
+  return { points: [...byTime.values()].sort((a, b) => a.x - b.x), rawCount };
 }
 
-function summarize(points, metric, factor) {
+function summarize(points, metric, factor, rawCount) {
   let count = 0, total = 0, min = Infinity, max = -Infinity;
   for (const point of points) if (finite(point.value)) {
     count++; total += point.value; min = Math.min(min, point.value); max = Math.max(max, point.value);
   }
   if (count) return { count, average: total / count, min, max, total };
   // Old runs can include valid reported summaries without a time series.
-  if (!(metric.points || []).length && finite(metric.average)) return {
+  if (!rawCount && finite(metric.average)) return {
     count: 0, average: metric.average * factor,
     min: finite(metric.min) ? metric.min * factor : null,
     max: finite(metric.max) ? metric.max * factor : null, total: null,
@@ -74,9 +90,9 @@ function metricsFor(metrics, scope) {
     const id = `${scope}|${token(metric.name)}|${token(keyValue)}|${kind.unit}`;
     if (seen.has(id)) return [];
     seen.add(id);
-    const points = observations(metric.points, kind.factor);
+    const { points, rawCount } = observations(metric, kind.factor);
     return [{ ...kind, id, name: metric.name, keyValue, reportingFrequency: metric.reportingFrequency,
-      points, summary: summarize(points, metric, kind.factor) }];
+      points, summary: summarize(points, metric, kind.factor, rawCount) }];
   });
 }
 

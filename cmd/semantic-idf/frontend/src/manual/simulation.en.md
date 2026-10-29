@@ -116,6 +116,11 @@ aliases; their existence does not establish measured values.
 
 The reading preference is SQL, then CSV, then ESO.
 
+Returning to a visited result tab keeps its graphs, zoom and scroll for the same
+run. A first visit or a new Zone/loop selection can still wait for observations
+that have not arrived yet. Tabs share the completed result in memory; switching
+them does not rerun EnergyPlus or read the SQL database again.
+
 Independent result sections and HVAC loops can be prepared in parallel. This
 reduces waiting on multicore systems; the requested observations, reporting
 intervals and numerical calculations stay the same. Progress follows the section
