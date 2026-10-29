@@ -81,7 +81,9 @@ function measurement(name, rawUnit) {
   else if (kind === "humidity" && /kg.*\/kg|kg\/kg/i.test(unit)) { unit = "g/kg"; factor = 1000; }
   else if (kind === "enthalpy" && token(unit) === "j/kg") { unit = "kJ/kg"; factor = .001; }
   else if (!unit || ["dimensionless", "w/w"].includes(token(unit))) unit = "—";
-  return { kind, label, unit, factor };
+  const quantity = kind === "status" ? value.includes("part load ratio") ? "part_load_ratio"
+    : value.includes("cycling ratio") ? "cycling_ratio" : value.includes("runtime fraction") ? "runtime_fraction" : "operating_status" : undefined;
+  return { kind, quantity, label, unit, factor };
 }
 
 // Use the shared SQL/CSV row identity first. A secondary file can join the
@@ -284,11 +286,13 @@ export function hvacInspectionCustomTrace(model, property) {
   let interval = frequency === "Hourly" ? 1 : undefined;
   const points = rows.map((row, index) => {
     const entry = intervals?.length === rows.length ? intervals[index] : null;
-    const metadata = entry?.timeIndex === row && Number.isInteger(entry.environmentPeriodIndex) && entry.environmentPeriodIndex > 0
+    // Point rows are presentation ordinals. Native SQL TimeIndex remains a
+    // separate identity, aligned by offset in the verified source timeline.
+    const metadata = Number.isInteger(entry?.timeIndex) && entry.timeIndex > 0 && Number.isInteger(entry.environmentPeriodIndex) && entry.environmentPeriodIndex > 0
       && Number.isInteger(entry.simulationDays) && entry.simulationDays > 0 && finite(entry.intervalMinutes) && entry.intervalMinutes > 0
       && (entry.year === undefined || Number.isInteger(entry.year) && entry.year >= 0) ? entry : null;
     if (metadata) interval = interval === undefined ? metadata.intervalMinutes / 60 : Math.min(interval, metadata.intervalMinutes / 60);
-    const identity = metadata ? [metadata.environmentPeriodIndex, metadata.year || 0, metadata.simulationDays, row, metadata.intervalMinutes]
+    const identity = metadata ? [metadata.environmentPeriodIndex, metadata.year || 0, metadata.simulationDays, metadata.timeIndex, metadata.intervalMinutes]
       : frequency === "Hourly" ? [row, String(labels[index]), 60] : ["unverified", property.id, row];
     const value = finite(values[index]) && (property.kind !== "setpoint" || hasHVACTemperatureSetpoint(values[index])) ? values[index] * (native ? converted.factor : 1) : null;
     return { x: calendar ? coordinates[index] : row, label: String(labels[index]), value: finite(value) ? value : null,
@@ -310,7 +314,7 @@ export function hvacInspectionSnapshots(model, frameIndex, selection = {}) {
       : ["power", "cop", "status", "cooling", "heating", "heatTransfer"].includes(property.kind));
     const metrics = properties.map((property) => {
       const values = propertyValues(model, property);
-      return { id: property.kind, label: property.label, unit: property.unit, valueRange: property.valueRange,
+      return { id: property.kind, quantity: property.quantity, name: property.name, label: property.label, unit: property.unit, valueRange: property.valueRange,
         value: frame ? values.get(frame.x) ?? null : null };
     });
     if (entity.kind === "component") {

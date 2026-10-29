@@ -38,6 +38,9 @@ func TestVerificationUsesBoundedGoAndReleaseTimeouts(t *testing.T) {
 	if !strings.Contains(release, `"verify.ps1") -Full`) {
 		t.Fatal("release packaging must explicitly run full regression verification")
 	}
+	if !strings.Contains(release, `-Full -BuildOutputFilename "$OutputFilename.exe"`) {
+		t.Fatal("release verification must pin the packaged filename instead of inheriting a local build override")
+	}
 
 	workflow := readTestFile(t, "../../.github/workflows/release.yml")
 	if !strings.Contains(workflow, "timeout-minutes: 45") {

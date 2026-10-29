@@ -148,13 +148,20 @@ function metricValue(metric) {
 
 function renderMetricSymbol(metric) {
   if (metric.id === "setpoint") return 'T<tspan baseline-shift="sub" font-size="75%">set</tspan>';
-  return escapeHTML(({ temperature: "T", relativeHumidity: "RH", humidity: "w", flow: "ṁ", power: "P", cop: "COP", cooling: "Q̇c", heating: "Q̇h", heatTransfer: "Q̇", status: /part load/i.test(metric.label || "") ? "PLR" : "Run" })[metric.id] || metric.label || metric.id);
+  const quantity = { part_load_ratio: "PLR", cycling_ratio: "Cyc", runtime_fraction: "RTF", operating_status: "Op" }[metric.quantity];
+  return escapeHTML(quantity || ({ temperature: "T", relativeHumidity: "RH", humidity: "w", flow: "ṁ", power: "P", cop: "COP", cooling: "Q̇c", heating: "Q̇h", heatTransfer: "Q̇", status: "Op" })[metric.id] || metric.label || metric.id);
 }
 
 function renderMetricValue(metric) {
   if (!metric.setpoint) return escapeHTML(metricValue(metric));
   const number = (value) => value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `<tspan class="hvac-inspect-setpoint ${metric.setpoint.state}" data-hvac-setpoint-state="${metric.setpoint.state}">${number(metric.value)} ${escapeHTML(metric.setpoint.operator)}<tspan baseline-shift="sub" font-size="75%">set</tspan> ${number(metric.setpoint.value)}</tspan> ${escapeHTML(metric.unit || "")}`;
+}
+
+function metricDescription(metric) {
+  const title = metric.label || metric.id;
+  const source = metric.name && normalized(metric.name) !== normalized(title) ? ` (${metric.name})` : "";
+  return `${title}${source}: ${metricValue(metric)}`;
 }
 
 function fontKey() {
@@ -266,7 +273,7 @@ function observationRecords(loop, layout, nodes, components, sizing = true) {
 
 function shapeKey(nodes, components) {
   return JSON.stringify([getLanguage(), fontKey(), [...uniqueNodes(nodes), ...components].map((item) => [item.id, item.name, item.type, item.parentComponentName, item.parentComponentType,
-    (item.metrics || []).map((metric) => [metric.id, metric.label, metric.unit, metric.valueRange])])]);
+    (item.metrics || []).map((metric) => [metric.id, metric.quantity, metric.name, metric.label, metric.unit, metric.valueRange])])]);
 }
 
 export function buildHVACInspectionLayout({ loop, nodes = [], components = [] } = {}) {
@@ -298,7 +305,7 @@ function renderObservation(record, selectedNode, selectedComponent) {
   const active = item.active !== false && metrics.some((metric) => finite(metric.value) || metric.formattedValue != null);
   const id = item.id || item.name;
   const attr = kind === "node" ? "data-hvac-inspect-node" : "data-hvac-inspect-component";
-  const title = [item.name, record.parent ? `↳ ${record.parent}` : "", ...metrics.map((metric) => `${metric.label || metric.id}: ${metricValue(metric)}`)].filter(Boolean).join("\n");
+  const title = [item.name, record.parent ? `↳ ${record.parent}` : "", ...metrics.map(metricDescription)].filter(Boolean).join("\n");
   const statusLabel = status === "unknown" ? "—" : status ? label(status === "on" ? "simulation.hvacStatusOn" : "simulation.hvacStatusOff", status === "on" ? "On" : "Off") : "";
   const leaderPath = (record.leader || []).map((point, index) => `${index ? "L" : "M"}${point.x},${point.y}`).join(" ");
   return `<g class="hvac-inspect-vertex ${kind === "node" ? "node" : "equipment"} ${active ? "measured" : ""} ${selected ? "selected" : ""} ${escapeHTML(record.side)} anchored" ${attr}="${escapeHTML(id)}" data-hvac-inspect-topology-id="${escapeHTML(record.key)}" data-hvac-inspect-owner="${escapeHTML(anchor.ownerId || "")}" data-hvac-inspect-port-role="${escapeHTML(anchor.portRole || anchor.role || "")}" data-hvac-inspect-point-name="${escapeHTML(item.name)}" data-hvac-inspect-anchor-kind="${record.parent ? "parent" : "exact"}" role="button" tabindex="0" aria-pressed="${selected}" aria-label="${escapeHTML(title)}">
@@ -309,7 +316,7 @@ function renderObservation(record, selectedNode, selectedComponent) {
       <g class="hvac-inspect-info-content" transform="translate(12 20)">
       ${nameLines.map((line, index) => `<text class="hvac-inspect-point-label" x="0" y="${index * 16}">${escapeHTML(line)}</text>`).join("")}
       ${status ? `<text class="hvac-inspect-state ${status}" x="0" y="${nameLines.length * 16 + 4}">${escapeHTML(statusLabel)}</text>` : ""}
-      ${metrics.map((metric, index) => `<text class="hvac-inspect-metric" x="0" y="${nameLines.length * 16 + (status ? 18 : 0) + index * metricRowHeight + 4}" data-hvac-inspect-metric="${escapeHTML(metric.id || metric.label)}"><tspan class="hvac-inspect-metric-label" x="0">${renderMetricSymbol(metric)}</tspan><tspan class="hvac-inspect-metric-value" x="32">${renderMetricValue(metric)}</tspan></text>`).join("")}
+      ${metrics.map((metric, index) => `<text class="hvac-inspect-metric" x="0" y="${nameLines.length * 16 + (status ? 18 : 0) + index * metricRowHeight + 4}" data-hvac-inspect-metric="${escapeHTML(metric.id || metric.label)}"${metric.quantity ? ` data-hvac-inspect-metric-quantity="${escapeHTML(metric.quantity)}"` : ""}${metric.name ? ` data-hvac-inspect-metric-name="${escapeHTML(metric.name)}"` : ""}><tspan class="hvac-inspect-metric-label" x="0">${renderMetricSymbol(metric)}</tspan><tspan class="hvac-inspect-metric-value" x="32">${renderMetricValue(metric)}</tspan></text>`).join("")}
       </g>
     </g>
   </g>`;
@@ -357,7 +364,7 @@ export function updateHVACInspectionTopology(container, options = {}) {
     const active = item.active !== false && record.metrics.some((metric) => finite(metric.value) || metric.formattedValue != null);
     group.classList.toggle("selected", selected); group.classList.toggle("measured", active);
     group.setAttribute("aria-pressed", String(selected));
-    const title = [item.name, record.parent ? `\u21b3 ${record.parent}` : "", ...record.metrics.map((metric) => `${metric.label || metric.id}: ${metricValue(metric)}`)].filter(Boolean).join("\n");
+    const title = [item.name, record.parent ? `\u21b3 ${record.parent}` : "", ...record.metrics.map(metricDescription)].filter(Boolean).join("\n");
     group.setAttribute("aria-label", title); group.querySelector("title").textContent = title;
     const rows = [...group.querySelectorAll("[data-hvac-inspect-metric]")];
     record.metrics.forEach((metric, index) => { rows[index].querySelector(".hvac-inspect-metric-value").innerHTML = renderMetricValue(metric); });

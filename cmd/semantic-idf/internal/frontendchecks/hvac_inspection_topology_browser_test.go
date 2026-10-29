@@ -86,7 +86,7 @@ try {
  const {getLanguage,setLanguage}=await import('/src/js/i18n.js');
  const {renderHVACLoopDiagram,buildHVACLoopDiagramLayout:baseLayout}=await import('/src/js/views/hvac-views.js');
  const {renderHVACInspection:renderInspection}=await import('/src/js/views/hvac-inspection-view.js');
- const {prepareHVACInspection:prepare}=await import('/src/js/hvac-inspection-data.js');
+ const {prepareHVACInspection:prepare,hvacInspectionSnapshots:snapshots}=await import('/src/js/hvac-inspection-data.js');
  const equipment=(name,inlet,outlet,type='Pump:VariableSpeed')=>({objectType:type,objectName:name,inletNode:inlet,outletNode:outlet,exists:true});
  const loop={id:'plant-1',name:'Chilled water',type:'PlantLoop',supplySide:{inletNode:'Supply inlet',outletNode:'Supply outlet',branches:[
  {name:'Inlet branch',components:[equipment('Supply pump','Supply inlet','Splitter inlet')]},
@@ -234,6 +234,28 @@ try {
  const longNodes=['VAV_2_COOLCDEMAND INLET NODE','VAV_2_COOLCDEMAND OUTLET NODE','VAV_2_HEATCDEMAND INLET NODE','VAV_2_HEATCDEMAND OUTLET NODE'].map((name,index)=>({id:'long-node-'+index,name,metrics:nodes[0].metrics}));
  mount.innerHTML=render({loop,nodes:longNodes});check(!mount.querySelector('[data-hvac-inspect-node],.hvac-inspect-detached-label'),'other-loop port names were added by observation alone');checkAnnotationSpacing();
  mount.innerHTML=render({nodes,components});check(mount.querySelector('[data-hvac-inspect-topology-empty]')&&!mount.querySelector('svg'),'missing model topology generated guessed wiring');
+ const operatingSource={name:'Chiller labels',loopType:'PlantLoop',topology:loop,series:[],components:[{componentName:'Chiller A',componentType:'Chiller:Electric:EIR',series:[
+  ['Chiller Electricity Rate','W',20820],['Chiller COP','',8.69],['Chiller Part Load Ratio','',.20],['Chiller Cycling Ratio','',.41]
+ ].map(([name,unit,value])=>({file:'operating.sql',name,keyValue:'Chiller A',column:'Chiller A:'+name+' ['+unit+'](Hourly)',reportingFrequency:'Hourly',points:[{x:1,label:'01/01 01:00',value},{x:2,label:'01/01 02:00',value:0}]}))}]};
+ const labelLanguage=getLanguage();
+ for(const language of ['en','ko','ja']){
+  setLanguage(language);const model=prepare(operatingSource),first=snapshots(model,0),later=snapshots(model,1);
+  mount.innerHTML=render({loop,...first});
+  const chiller=mount.querySelector('[data-hvac-inspect-point-name="Chiller A"]'),plr=chiller?.querySelector('[data-hvac-inspect-metric-quantity="part_load_ratio"]'),cycling=chiller?.querySelector('[data-hvac-inspect-metric-quantity="cycling_ratio"]');
+  check(plr?.querySelector('.hvac-inspect-metric-label').textContent==='PLR'&&cycling?.querySelector('.hvac-inspect-metric-label').textContent==='Cyc','native PLR/cycling symbols depend on translated labels: '+language);
+  check(plr?.dataset.hvacInspectMetricName==='Chiller Part Load Ratio'&&cycling?.dataset.hvacInspectMetricName==='Chiller Cycling Ratio'&&plr.querySelector('.hvac-inspect-metric-value').textContent==='0.20'&&cycling.querySelector('.hvac-inspect-metric-value').textContent==='0.41','distinct same-id status observations lost native identity or numeric values');
+  check(chiller.querySelector('title').textContent.includes('Chiller Part Load Ratio')&&chiller.querySelector('title').textContent.includes('Chiller Cycling Ratio'),'compact status symbols lack their full native meaning on hover');
+  for(const row of [plr,cycling]){const symbol=row.querySelector('.hvac-inspect-metric-label'),value=row.querySelector('.hvac-inspect-metric-value');check(symbol.getBBox().x+symbol.getBBox().width<value.getBBox().x,'operating symbol overlaps the fixed numeric column');}
+  const before=frameGeometry();check(update(mount,{loop,...later}),'operating frame update unnecessarily replaced the SVG');
+  check(plr.isConnected&&cycling.isConnected&&plr.querySelector('.hvac-inspect-metric-value').textContent==='0.00'&&cycling.querySelector('.hvac-inspect-metric-value').textContent==='0.00'&&frameGeometry()===before,'same-id PLR and cycling rows overwrite each other or move during playback');
+  assertHVACInfoBoxes(mount,'localized operating symbols '+language);
+  const changed={...later,components:later.components.map(component=>({...component,metrics:component.metrics.map(metric=>metric.quantity==='part_load_ratio'?{...metric,quantity:'runtime_fraction',name:'Fan Runtime Fraction'}:metric)}))};
+  check(!update(mount,{loop,...changed}),'changed native operating quantity reused a stale label/schema');
+ }
+ setLanguage(labelLanguage);
+ const runtimeLoop={id:'runtime-fraction',name:'Cycling fan',type:'AirLoopHVAC',supplySide:{branches:[{components:[equipment('Cycling fan','Fan inlet','Fan outlet','Fan:OnOff')]}]},demandSide:{}};
+ mount.innerHTML=render({loop:runtimeLoop,components:[{id:'runtime-fan',name:'Cycling fan',type:'Fan:OnOff',status:'on',metrics:[{id:'status',quantity:'runtime_fraction',name:'Fan Runtime Fraction',label:'PLR',unit:'—',value:.5}]}]});
+ check(mount.querySelector('[data-hvac-inspect-metric-quantity="runtime_fraction"] .hvac-inspect-metric-label')?.textContent==='RTF','runtime fraction was inferred from a misleading display label');assertHVACInfoBoxes(mount,'runtime-fraction symbol');
  mount.innerHTML=render({loop,nodes,components,selectedNode:'inlet-point'});
  check(JSON.stringify(loop)===original,'inspection altered executed model topology');
  document.body.dataset.inspectionTopologyStatus='passed';document.getElementById('result').textContent='passed';

@@ -469,7 +469,7 @@ function New-ReleasePackage {
         [string]$OutputDir
     )
 
-    $verifyOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "verify.ps1") -Full
+    $verifyOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "verify.ps1") -Full -BuildOutputFilename "$OutputFilename.exe"
     $verifyExitCode = $LASTEXITCODE
     foreach ($line in $verifyOutput) {
         Write-Host $line

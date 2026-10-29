@@ -283,7 +283,13 @@ try{
  chooseLoop('SUPPLY LOOP');
  const installedJSON=JSON.stringify(state.simulationResult);
  check(hvac.querySelector('[data-simulation-hvac-loop]').options.length===2&&hvac.querySelector('[data-hvac-inspect-topology]'),'loop picker or executed topology missing');
- check(!hvac.querySelector('table, .simulation-hvac-node-card, .simulation-hvac-derived-grid')&&!hvac.textContent.includes('Fan Electricity Rate')&&!hvac.textContent.includes('System Node Temperature')&&!hvac.textContent.includes('eplusout.sql'),'HVAC result still lists tables or raw source descriptions');
+ const hvacVisible=hvac.cloneNode(true);
+ hvacVisible.querySelectorAll('svg title').forEach(title=>title.remove());
+ check(!hvac.querySelector('table, .simulation-hvac-node-card, .simulation-hvac-derived-grid')&&!hvacVisible.textContent.includes('Fan Electricity Rate')&&!hvacVisible.textContent.includes('System Node Temperature')&&!hvacVisible.textContent.includes('eplusout.sql'),'HVAC result still lists tables or visible raw source descriptions');
+ for(const [name,source] of [['SUPPLY OUTLET','System Node Temperature'],['SUPPLY FAN','Fan Electricity Rate']]){
+  const point=vertex(name);
+  check(point?.querySelector('title')?.textContent.includes(source)&&![...point.querySelectorAll('text')].some(text=>text.textContent.includes(source)),'native property name must remain in the hover title rather than visible topology text: '+source);
+ }
  check(vertex('SUPPLY OUTLET')&&vertex('SUPPLY FAN')&&!vertex('RETURN FAN'),'selected loop mixed another loop equipment');
  checkFrame(0,'01/21 01:00:00');
  check(metric('SUPPLY OUTLET','temperature')==='14.00 <set 16.00 °C'&&metric('SUPPLY OUTLET','flow')==='0.50 kg/s'&&metric('SUPPLY OUTLET','relativeHumidity')==='45.00 %','first topology frame lost exact node temperature/setpoint/flow/humidity values');

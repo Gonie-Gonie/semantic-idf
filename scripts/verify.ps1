@@ -5,11 +5,16 @@ param(
     [ValidateSet('frontend', 'backend')][string]$Layer,
     [switch]$Staged,
     [string]$BaseRef,
+    [string]$BuildOutputFilename = $env:SEMANTICIDF_VERIFY_OUTPUT,
     [ValidatePattern('^\d+(?:ns|us|\xB5s|ms|s|m|h)$')]
     [string]$GoTestTimeout = "20m"
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($BuildOutputFilename -and $BuildOutputFilename -cnotmatch '\A[A-Za-z0-9][A-Za-z0-9._-]*\.[eE][xX][eE]\z') {
+    throw "BuildOutputFilename must be an ASCII filename ending in .exe, without a directory path."
+}
 
 . "$PSScriptRoot\toolchain.ps1"
 
@@ -38,7 +43,12 @@ if ($Layer) { $testOptions.Layer = $Layer }
 $projectDir = Join-Path $paths.RepoRoot "cmd\semantic-idf"
 Push-Location $projectDir
 try {
-    & $paths.WailsExe build
+    if ($BuildOutputFilename) {
+        & $paths.WailsExe build -o $BuildOutputFilename
+    }
+    else {
+        & $paths.WailsExe build
+    }
     Assert-LastExitCode -Operation "wails build"
 }
 finally {

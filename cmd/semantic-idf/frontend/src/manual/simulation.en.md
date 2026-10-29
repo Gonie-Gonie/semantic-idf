@@ -548,6 +548,9 @@ operating quantities. The choices depend on the equipment's actual output suppor
 | Chiller | Supported PLR, Cycling ratio, reported COP, cooling output and energy, and electric power and energy. |
 
 PLR, Cycling ratio, and Runtime fraction retain their distinct reported meanings.
+The schematic labels these as `PLR`, `Cyc`, and `RTF`, respectively. Hover over
+the equipment values to see the original output names. These are separate
+quantities and can have different values at the same time.
 General fan and pump models do not report a universal operating PLR or total
 efficiency. Their flow and power measurements help examine part-load operation;
 flow fraction or power fraction is not relabeled as native PLR. Pump shaft

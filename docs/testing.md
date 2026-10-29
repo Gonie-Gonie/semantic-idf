@@ -123,10 +123,27 @@ Selection uses staged paths, while Go and Wails execute against the working tree
 Stage the complete related change before relying on the commit result. Review
 `test -Staged -Plan` when splitting a change across several commits.
 
+Keep a running app open by choosing a sibling executable for verification:
+
+```powershell
+.\dev.bat verify -BuildOutputFilename semantic-idf-v0.5.1-local.exe
+```
+
+The output must be an ASCII basename ending in `.exe`; it stays in `build/bin/`.
+For the pre-commit hook, set the process-scoped environment variable in the same
+terminal, then clear it after committing:
+
+```powershell
+$env:SEMANTICIDF_VERIFY_OUTPUT = 'semantic-idf-v0.5.1-local.exe'
+git commit -m 'Describe the change'
+$env:SEMANTICIDF_VERIFY_OUTPUT = $null
+```
+
 Release packaging always calls `verify -Full`. The GitHub Actions tag and manual
 release routes both use that packaging path, preserving the full regression
 check before a release executable is published. Feature/layer development
-filters do not weaken the release gate.
+filters do not weaken the release gate. Release verification explicitly builds
+the filename being packaged, overriding the local sibling-output preference.
 
 Some tests have existing opt-in environment variables or require local captures
 and an EnergyPlus installation. Full selection preserves those test-level gates;

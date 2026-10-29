@@ -561,6 +561,17 @@ Custom traces can independently use a source-proven Timestep counterpart with
 all its observations, even when the basic loop remains Hourly. Their cadence
 appears in choices and legends. Scatter joins include file, native time and
 reporting interval, so Hourly and Timestep endpoints are not silently paired.
+`SimulationPoint.x` is a presentation row ordinal and can differ from SQL
+`TimeIndex`. Verified native interval arrays align by observation offset, and
+Custom scatter identity uses the actual native `timeIndex`, together with file,
+cadence, environment, year, simulation day and interval duration. Never compare
+the native ID to the presentation ordinal as a validity test.
+
+Equipment snapshot metrics retain the raw output `name` and a stable `quantity`
+for status fractions. The schematic uses `PLR`, `Cyc` (Cycling ratio), `RTF`
+(Runtime fraction) and `Op` (operating status) independently of translated labels.
+These identities participate in layout caching; frame updates preserve separate
+values for multiple status-fraction rows.
 
 Power and per-interval energy retain separate kW/kWh labels, with boiler fuel
 input distinct from useful heating output and ancillary electricity. Efficiency

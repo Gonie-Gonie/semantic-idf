@@ -98,6 +98,20 @@ func TestHVACInspectionDataBrowser(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(fixtures)
 	})
+	nativeCapture := os.Getenv("HVAC_SCATTER_NATIVE_BUNDLE")
+	if nativeCapture != "" {
+		if _, err := os.Stat(nativeCapture); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mux.HandleFunc("/native-equipment-fixture", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if nativeCapture == "" {
+			_, _ = io.WriteString(w, "{}")
+			return
+		}
+		http.ServeFile(w, r, nativeCapture)
+	})
 	mux.Handle("/src/", http.StripPrefix("/src/", http.FileServer(http.Dir(repoPath("frontend/src")))))
 	mux.HandleFunc("/data", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -114,6 +128,12 @@ func TestHVACInspectionDataBrowser(t *testing.T) {
 			t.Fatalf("HVAC data alignment failed: %v\n%s", err, html.UnescapeString(message))
 		}
 		t.Fatalf("HVAC data alignment failed: %v\n%s", err, output)
+	}
+	if nativeCapture != "" {
+		if _, detail, ok := strings.Cut(string(output), `<pre id="result">`); ok {
+			message, _, _ := strings.Cut(detail, "</pre>")
+			t.Log(html.UnescapeString(message))
+		}
 	}
 }
 
@@ -616,6 +636,70 @@ try {
   const retained=prepare(captured),temperature=retained.entities.find(entity=>entity.kind==='node'&&entity.name===nativeTemp.keyValue)?.properties.find(property=>property.kind==='temperature');
   check(retained.reportingFrequency==='Hourly'&&retained.frames.length===3&&trace(retained,temperature).points.map(point=>point.value).join(',')==='17,18,19','partial Timestep counterpart discarded existing middle/last Hourly observation: '+missingHour);
  }
+ // These observations are copied from a native 24.2 two-day LargeOffice run.
+ // Presentation rows are rebased (51), while SQL interval identities remain
+ // original (2359). Requiring their equality rejected every PLR/COP pair.
+ const nativeOperatingFixture=boiler=>{
+  const rows=[51,52,196,584],labels=['07-21 00:10','07-21 00:20','07-21 08:30','07-22 05:10'];
+  const sqlRows=[2359,2360,2504,2892],days=[1,1,1,2],name=boiler?'HEATSYS1 BOILER':'COOLSYS1 CHILLER 1';
+  const objectName=boiler?'HeatSys1 Boiler':'CoolSys1 Chiller 1',objectType=boiler?'Boiler:HotWater':'Chiller:Electric:ReformulatedEIR',componentIndex=boiler?585:587,loopId=boiler?'plant:heatsys1':'plant:coolsys1';
+  const names=boiler?['Boiler Part Load Ratio','Boiler Efficiency']:['Chiller Part Load Ratio','Chiller COP'];
+  const values=boiler?[[0,0,0,3.734493533651071e-6],[0,0,0,.15600000000000003]]:[[0,0,.3953723261782503,.3801105855288277],[0,0,6.172102380243558,7.221135274795966]];
+  const source={objectIndex:componentIndex,objectType,objectName},nativeIntervals=sqlRows.map((timeIndex,index)=>({timeIndex,environmentPeriodIndex:3,intervalMinutes:10,simulationDays:days[index],year:2013}));
+  const native=names.map((variable,index)=>({sourceId:boiler?'sql-rdd-'+[3442,3444][index]:'sql-rdd-'+[3230,3315][index],file:'eplusout.sql',name:variable,keyValue:name,column:name+':'+variable+' [] (Zone Timestep)',reportingFrequency:'Zone Timestep',nativeIntervalsSourceId:'sql-rdd-2759',points:rows.map((x,offset)=>({x,label:labels[offset],value:values[index][offset]}))}));
+  const hourly=names.map((variable,index)=>({...native[index],sourceId:'hourly-'+index,reportingFrequency:'Hourly',column:name+':'+variable+' [] (Hourly)',points:[{x:57,label:'07-21 01:00',value:0},{x:64,label:'07-21 02:00',value:0}]}));hourly.forEach(series=>delete series.nativeIntervalsSourceId);
+  // A normal loop also contains Hourly node channels without control bindings.
+  // This keeps whole-loop promotion separate from the Custom numeric-column path.
+  const ordinary=series('System Node Temperature','C',[{x:57,label:'07-21 01:00',value:20},{x:64,label:'07-21 02:00',value:21}],'NATIVE LOOP INLET');
+  return {name:boiler?'HeatSys1':'CoolSys1',loopType:'PlantLoop',topology:{id:loopId},series:[ordinary],components:[{componentName:name,componentType:objectType,series:hourly}],operatingProfiles:[{componentIndex,loopId,parameterControl:{nodes:[{id:'equipment',code:'equipment_response',source}]}}],controlSignals:native.map((series,index)=>({id:'native-operating-'+index,componentIndex,loopId,graph:'equipment',role:'operating',domain:'continuous',source,keyValue:name,variableName:series.name,reportingFrequency:'Timestep',seriesId:series.sourceId,required:false,status:'collected'})),controlSeries:[{sourceId:'sql-rdd-2759',file:'eplusout.sql',name:'Schedule Value',keyValue:'ALWAYS_ON',column:'ALWAYS_ON:Schedule Value [] (Zone Timestep)',reportingFrequency:'Zone Timestep',points:rows.map((x,index)=>({x,label:labels[index],value:1})),nativeIntervals},...native]};
+ };
+ const nativeOperatingTraces=captured=>{const model=prepare(captured),properties=model.entities.find(entity=>entity.kind==='component').properties;return properties.map(property=>customTrace(model,property));};
+ const nativePairCount=traces=>{customMount.innerHTML=renderCustom({mode:'scatter',series:traces});return customMount.querySelectorAll('[data-hvac-chart-scatter] circle').length;};
+ const compactOperating=captured=>{
+  const packed=structuredClone(captured),envelope={schema:'semantic-idf.simulation-transfer/v1',result:{purposeResults:{hvacLoops:[packed]}},timelines:[],pointSets:[],pointBindings:[],columnSets:[],columnBindings:[]},timelines=new Map();
+  const pack=(series,path)=>{
+   const points=series.points,signature=JSON.stringify(points.map(point=>[point.x,point.label]));
+   let timeline=timelines.get(signature);if(timeline===undefined){timeline=envelope.timelines.length;timelines.set(signature,timeline);envelope.timelines.push({x:points.map(point=>point.x),labels:points.map(point=>point.label)});}
+   envelope.pointBindings.push({path:[...path,'points'],data:envelope.pointSets.length});envelope.pointSets.push({timeline,values:points.map(point=>point.value)});series.points=null;
+   if(series.nativeIntervals){envelope.columnBindings.push({path:[...path,'nativeIntervals'],data:envelope.columnSets.length});envelope.columnSets.push({kind:'nativeIntervals',values:series.nativeIntervals.flatMap(interval=>[interval.timeIndex,interval.environmentPeriodIndex,interval.intervalMinutes,interval.simulationDays,interval.year||0])});series.nativeIntervals=null;}
+  };
+  packed.components.forEach((component,index)=>component.series.forEach((series,offset)=>pack(series,['purposeResults','hvacLoops',0,'components',index,'series',offset])));
+  packed.controlSeries.forEach((series,index)=>pack(series,['purposeResults','hvacLoops',0,'controlSeries',index]));
+  return decodeRuntime(envelope,{deferData:true}).purposeResults.hvacLoops[0];
+ };
+ for(const boiler of [false,true]){
+  const captured=nativeOperatingFixture(boiler),before=JSON.stringify(captured),traces=nativeOperatingTraces(captured);
+  check(captured.controlSeries[1].points[0].x===51&&captured.controlSeries[0].nativeIntervals[0].timeIndex===2359,'native regression lost the actual rebased-row/SQL-TimeIndex distinction');
+  check(traces.every(trace=>trace.reportingFrequency==='Timestep'&&trace.points.length===4)&&nativePairCount(traces)===4,'native '+(boiler?'boiler PLR/efficiency':'chiller PLR/COP')+' observations failed despite identical source intervals');
+  check(traces[0].points.every((point,index)=>point.key===traces[1].points[index].key)&&traces[0].points[0].key.includes('2359'),'native scatter identity used presentation row instead of original SQL TimeIndex');
+  for(const [index,source]of captured.controlSeries.slice(1).entries())check(traces[index].points.every((point,offset)=>point.value===source.points[offset].value),'native zero or measured performance value changed during pairing');
+  check(JSON.stringify(captured)===before,'native pairing mutated source observations or interval aliases');
+  const compact=compactOperating(captured),compactTraces=nativeOperatingTraces(compact);
+  check(nativePairCount(compactTraces)===4&&compactTraces.every((trace,index)=>trace.points.every((point,offset)=>point.key===traces[index].points[offset].key&&point.value===traces[index].points[offset].value)),'columnar transfer lost native rebased-row interval identities or values');
+  check(compact.controlSeries.every(series=>typeof Object.getOwnPropertyDescriptor(series,'points').get==='function'),'native Custom pairing materialized canonical point objects instead of using shared numeric columns');
+  const rebased=structuredClone(captured),right=rebased.controlSeries[2];right.nativeIntervals=structuredClone(rebased.controlSeries[0].nativeIntervals);delete right.nativeIntervalsSourceId;right.points.forEach(point=>point.x+=1000);
+  check(nativePairCount(nativeOperatingTraces(rebased))===4,'different presentation rebasing prevented the same original SQL intervals from pairing');
+  for(const mismatch of ['native-time','environment','duration','file','missing-metadata']){
+   const wrong=structuredClone(captured),other=wrong.controlSeries[2];other.nativeIntervals=structuredClone(wrong.controlSeries[0].nativeIntervals);delete other.nativeIntervalsSourceId;
+   if(mismatch==='native-time')other.nativeIntervals.forEach(interval=>interval.timeIndex+=10000);
+   if(mismatch==='environment')other.nativeIntervals.forEach(interval=>interval.environmentPeriodIndex++);
+   if(mismatch==='duration')other.nativeIntervals.forEach(interval=>interval.intervalMinutes=5);
+   if(mismatch==='file')other.file='another-run.sql';
+   if(mismatch==='missing-metadata')delete other.nativeIntervals;
+   check(nativePairCount(nativeOperatingTraces(wrong))===0,'equal display times fabricated native pairs across '+mismatch);
+  }
+ }
+ const nativePairEvidence=[],nativeCapture=await(await fetch('/native-equipment-fixture')).json();
+ if(nativeCapture.hvacLoops?.length){
+  for(const [loopName,name,left,right]of [['CoolSys1','COOLSYS1 CHILLER 1','Chiller Part Load Ratio','Chiller COP'],['CoolSys1','COOLSYS1 CHILLER 2','Chiller Part Load Ratio','Chiller COP'],['HeatSys1','HEATSYS1 BOILER','Boiler Part Load Ratio','Boiler Efficiency']]){
+   const captured=nativeCapture.hvacLoops.find(loop=>loop.name===loopName),before=JSON.stringify(captured),model=prepare(captured),entity=model.entities.find(entity=>entity.name===name);
+   check(entity,'native capture lacks '+name);
+   const properties=[left,right].map(name=>entity.properties.find(property=>property.name===name));check(properties.every(Boolean),'native capture lacks operating properties for '+name);
+   const traces=properties.map(property=>customTrace(model,property)),expected=captured.controlSeries.find(series=>series.keyValue===name&&series.name===left).points.length,count=nativePairCount(traces);
+   check(expected===288&&count===expected&&traces.every(trace=>trace.points.length===expected),'complete native capture lost observed PLR/COP/efficiency pairs for '+name+': '+count+'/'+expected);
+   check(JSON.stringify(captured)===before,'complete native capture was mutated by inspection');nativePairEvidence.push({equipment:name,pairs:count});
+  }
+ }
  const {matchHVACRuntimeFrame:matchRuntimeFrame}=await import('/src/js/hvac-inspection-data.js'),promotionRuntime=prepareRuntime(promotion);
  check(matchRuntimeFrame(promotionRuntime,fallbackModel,0)===3,'same SQL row number was used across Hourly/Timestep axes');
  const noCommon={...fallbackModel,frames:[{...fallbackModel.frames[0],label:'01-01 02:00'}]};
@@ -639,6 +723,6 @@ try {
  setLanguage('ja');const japanese=prepare(loop);check(japanese!==korean&&japanese.language==='ja','non-Korean locale reused Korean presentation');
  setLanguage('en');const english=prepare(loop);check(english!==japanese&&english.language==='en','locale cache depends on a translated term instead of locale identity');
  check(JSON.stringify(loop)===original,'inspection mutated original result');
- document.body.dataset.hvacDataStatus='passed';document.getElementById('result').textContent='passed';
+ document.body.dataset.hvacDataStatus='passed';document.getElementById('result').textContent=nativePairEvidence.length?JSON.stringify({status:'passed',nativePairs:nativePairEvidence}):'passed';
 }catch(error){document.body.dataset.hvacDataStatus='failed';document.getElementById('result').textContent=error.stack;}
 </script>`
