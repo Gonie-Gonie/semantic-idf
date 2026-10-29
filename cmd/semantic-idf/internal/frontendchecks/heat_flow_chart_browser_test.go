@@ -75,8 +75,11 @@ try {
  check(new Set([...mount.querySelectorAll('svg')].map(svg=>svg.dataset.heatflowChartExtent)).size===1&&local.querySelector('svg').dataset.heatflowChartExtent==='50000','panels do not share exact numeric scale');
  for(const panel of mount.querySelectorAll('[data-heatflow-chart-panel]'))check(JSON.stringify([...panel.querySelectorAll('[data-heatflow-chart-tick="y"]')].map(item=>item.textContent))===JSON.stringify(['-50.00','-25.00','0.00','+25.00','+50.00']),'kW axis ticks do not show exactly two decimals and preserve signs, including zero');
  const internal=local.querySelector('[data-heatflow-category="internalConvective"]'),cooling=local.querySelector('[data-heatflow-category="systemAir"]');
- check(internal.getAttribute('d').startsWith('M174.4,132H182.4V82.848H174.4Z'),'positive observation glyph has incorrect zero/scale');
- check(cooling.getAttribute('d').startsWith('M174.4,132H182.4V179.232H174.4Z'),'negative observation glyph has incorrect zero/scale');
+ const firstPlot=local.querySelector('[data-heatflow-chart]'),plotLeft=Number(firstPlot.getAttribute('x')),plotTop=Number(firstPlot.getAttribute('y')),plotWidth=Number(firstPlot.getAttribute('width')),plotHeight=Number(firstPlot.getAttribute('height'));
+ const exactNumber=value=>String(Number(value.toFixed(6))),zero=plotTop+plotHeight/2,firstCenter=plotLeft+plotWidth/(2*dataset.frameCount),halfBar=Math.min(8,plotWidth/dataset.frameCount)/2;
+ const expectedFirstGlyph=value=>'M'+exactNumber(firstCenter-halfBar)+','+exactNumber(zero)+'H'+exactNumber(firstCenter+halfBar)+'V'+exactNumber(zero-value/50000*plotHeight/2)+'H'+exactNumber(firstCenter-halfBar)+'Z';
+ check(internal.getAttribute('d').startsWith(expectedFirstGlyph(25600)),'positive25600W observation glyph has incorrect zero/scale');
+ check(cooling.getAttribute('d').startsWith(expectedFirstGlyph(-24600)),'negative24600W observation glyph has incorrect zero/scale');
  check((internal.getAttribute('d').match(/M/g)||[]).length===3&&(cooling.getAttribute('d').match(/M/g)||[]).length===3,'missing group frame rendered as zero or unknown stack baseline');
  check(internal.dataset.heatflowObservedCount==='4'&&internal.dataset.heatflowObservedMin==='0','known zero discarded or null manufactured as observation');
  const storage=diagnostic.querySelector('[data-heatflow-diagnostic="airStorage"]'),storageGeometry=storage.getAttribute('d');
@@ -95,15 +98,15 @@ try {
    const tick=panel.querySelector('.heatflow-chart-tick'),axis=panel.querySelector('.heatflow-chart-axis-label');
    check(Math.abs(screenFont(tick)-Math.max(12,font))<.02&&Math.abs(screenFont(axis)-(Math.max(12,font)+1))<.02,'physical chart font does not follow Settings/readability floor at '+JSON.stringify({font,width,tick:screenFont(tick),axis:screenFont(axis)}));
    check(getComputedStyle(tick).fontFamily===inheritedFamily&&getComputedStyle(axis).fontFamily===inheritedFamily,'chart font differs from app family');
-   for(const label of panel.querySelectorAll('[data-heatflow-chart-tick]')){const box=label.getBBox();check(box.x>=0&&box.x+box.width<=760,'axis tick clips outside SVG at '+JSON.stringify({font,width,text:label.textContent,x:box.x,labelWidth:box.width}));}
+   for(const label of panel.querySelectorAll('[data-heatflow-chart-tick]')){const box=label.getBBox(),canvas=label.closest('svg').viewBox.baseVal;check(box.x>=0&&box.x+box.width<=canvas.width,'axis tick clips outside SVG at '+JSON.stringify({font,width,text:label.textContent,x:box.x,labelWidth:box.width}));}
    const xLabels=[...panel.querySelectorAll('[data-heatflow-chart-tick="x"]')].map(label=>label.getBoundingClientRect());
    check(xLabels[0].right<xLabels[1].left,'full endpoint timestamps overlap');
   }
   check(mount.scrollWidth===width,'chart overflow leaked outside panel at '+width);
   const localBox=local.getBoundingClientRect(),exchangeBox=exchange.getBoundingClientRect(),diagnosticBox=diagnostic.getBoundingClientRect();
-  if(font===11&&(width===1423||width===1600))check(Math.abs(localBox.top-exchangeBox.top)<.01&&diagnosticBox.top>localBox.bottom&&Math.abs(diagnosticBox.width-(localBox.width+exchangeBox.width+14))<.02,'default-font two-column layout does not give diagnostics a full separate row');
+  if(font===11&&(width===1423||width===1600))check(Math.abs(localBox.top-exchangeBox.top)<.01&&diagnosticBox.top>localBox.bottom&&Math.abs(diagnosticBox.width-localBox.width)<.02,'default-font two-column layout does not retain equal card widths across rows');
   if(font===18&&width===1423)check(exchangeBox.top>localBox.bottom&&diagnosticBox.top>exchangeBox.bottom,'large-font cards do not wrap into a full readable column');
-  if(font===18&&width===1800)check(Math.abs(localBox.top-exchangeBox.top)<.01&&diagnosticBox.top>localBox.bottom&&Math.abs(diagnosticBox.width-(localBox.width+exchangeBox.width+14))<.02,'large-font two-column layout does not give diagnostics a full separate row');
+  if(font===18&&width===1800)check(Math.abs(localBox.top-exchangeBox.top)<.01&&diagnosticBox.top>localBox.bottom&&Math.abs(diagnosticBox.width-localBox.width)<.02,'large-font two-column layout does not retain equal card widths across rows');
   if((font===11&&width===2000)||(font===18&&width===2800))check(Math.abs(localBox.top-exchangeBox.top)<.01&&Math.abs(localBox.top-diagnosticBox.top)<.01,'very wide layout does not show three readable chart cards');
   if(width===1423)for(const scroll of mount.querySelectorAll('.heatflow-chart-scroll'))check(scroll.scrollWidth===scroll.clientWidth,'1423px workspace requires horizontal chart scrolling at font '+font);
   check(local.querySelector('[data-heatflow-category="internalConvective"]')===originalPath&&originalPath.getAttribute('d')===originalGeometry,'font/layout update changed observations');
@@ -115,6 +118,7 @@ try {
  check(storage.getAttribute('d')===storageGeometry,'theme change altered numeric geometry');
  mount.innerHTML=render(dataset,zone,2);check(mount.querySelector('.heatflow-chart-missing')&&mount.querySelectorAll('[data-heatflow-chart-frame="2"]').length===3,'missing current observation status lost frame');
  mount.innerHTML=render(dataset,zone,3,{start:2,end:4});check([...mount.querySelectorAll('svg')].every(svg=>svg.dataset.heatflowChartStart==='2'&&svg.dataset.heatflowChartEnd==='4'),'requested visible range ignored');
+ check([...mount.querySelectorAll('svg')].every(svg=>svg.dataset.heatflowChartExtent==='50000'),'horizontal range zoom rescaled the full-history heat-flow Y axis');
  check(mount.querySelector('[data-heatflow-category="internalConvective"]').dataset.heatflowObservedMax==='100','range extrema include hidden frame');
  check(mount.querySelector('[data-heatflow-chart-legend="internalConvective"]').title.includes('0.125000 W'),'fractional source value rounded away');
  const irregular={...dataset,frameCount:4,labels:['01/01 01:00:00','01/01 02:00:00','01/01 08:00:00','01/01 09:00:00']},irregularZone={name:'Irregular',values:ids.map((_id,index)=>[1,1,1,1].map(value=>index===4?-value:value))};
@@ -133,7 +137,8 @@ try {
  const isolatedStorage=mount.querySelector('[data-heatflow-diagnostic="airStorage"]'),isolatedPath=isolatedStorage.getAttribute('d');
  check((isolatedPath.match(/h1L/g)||[]).length===2&&!isolatedPath.includes('l0,0'),'isolated diagnostic observations do not paint real short segments');
  check(isolatedStorage.getTotalLength()>=2,'isolated diagnostic glyphs have no paintable native SVG stroke length');
- check(isolatedPath.includes(',132h1L')&&isolatedStorage.dataset.heatflowObservedMin==='0'&&isolatedStorage.dataset.heatflowObservedCount==='2','reported zero diagnostic point is absent');
+ const isolatedPlot=isolatedStorage.closest('svg').querySelector('[data-heatflow-chart]'),zeroY=Number(isolatedPlot.getAttribute('y'))+Number(isolatedPlot.getAttribute('height'))/2;
+ check(isolatedPath.includes(','+zeroY+'h1L')&&isolatedStorage.dataset.heatflowObservedMin==='0'&&isolatedStorage.dataset.heatflowObservedCount==='2','reported zero diagnostic point is absent');
  check(mount.querySelector('[data-heatflow-chart-legend="airStorage"] strong').textContent==='0.00 kW','known-zero diagnostic legend does not display its current value');
  const designDay={...irregular,labels:['07/21 01:00:00','07/21 02:00:00','01/21 01:00:00','01/21 02:00:00']};mount.innerHTML=render(designDay,irregularZone,2);
  check([...mount.querySelectorAll('svg')].every(svg=>svg.dataset.heatflowChartTimeMode==='ordinal')&&mount.querySelector('.heatflow-chart-sequence-note')&&mount.textContent.includes('Recorded frame sequence'),'backward DesignDay timestamps were guessed/reordered into elapsed time');

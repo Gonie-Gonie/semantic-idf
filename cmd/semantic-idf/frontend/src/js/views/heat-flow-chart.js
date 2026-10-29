@@ -7,6 +7,7 @@ const number = (value) => String(Number(value.toFixed(6)));
 const copy = (key, fallback, parameters = {}) => t(`simulation.${key}`, parameters, fallback);
 const color = (category) => category.id === "airStorage" ? "var(--heatflow-storage-color)" : category.id === "deviation" ? "var(--heatflow-deviation-color)" : category.color || "var(--muted)";
 const layoutCache = new WeakMap();
+const extentCache = new WeakMap();
 const renderContexts = new WeakMap();
 const cacheLimit = 4;
 let renderSequence = 0;
@@ -24,25 +25,17 @@ export function renderHeatFlowStackChart(dataset, zoneSeries, frameIndex, { star
     { kind: "exchange", title: copy("heatFlowExchangeChart", "Boundary exchange") },
     { kind: "diagnostic", title: copy("heatFlowDiagnostics", "Storage and balance check · reported signs") },
   ];
-  let maxAbs = 1;
   const groups = groupDefinitions.map((group) => {
     const items = categories.filter((category) => heatFlowCategoryKind(category) === group.kind);
     const frames = [];
     for (let frame = start; frame <= end; frame++) {
       const values = items.map((category) => heatFlowCategoryValue(zoneSeries, category.index, frame));
       const complete = values.every(finite);
-      let positive = 0, negative = 0;
-      if (group.kind === "diagnostic") {
-        for (const value of values) if (finite(value)) maxAbs = Math.max(maxAbs, Math.abs(value));
-      } else if (complete) {
-        for (const value of values) value >= 0 ? positive += value : negative += value;
-        maxAbs = Math.max(maxAbs, positive, -negative);
-      }
       frames.push({ frame, values, complete });
     }
     return { ...group, items, frames };
   }).filter((group) => group.items.length);
-  const extent = niceExtent(maxAbs);
+  const extent = historyExtent(dataset, zoneSeries, groups);
   const unit = extent >= 1e6 ? "MW" : extent >= 1000 ? "kW" : "W";
   const divisor = unit === "MW" ? 1e6 : unit === "kW" ? 1000 : 1;
   const selected = finite(frameIndex) && frameIndex >= start && frameIndex <= end ? Math.floor(frameIndex) : null;
@@ -57,6 +50,33 @@ export function renderHeatFlowStackChart(dataset, zoneSeries, frameIndex, { star
     <div class="heatflow-chart-panels">${groups.map((group) => renderPanel(group, { zoneSeries, start, end, selected, extent, unit, divisor, label, layout })).join("")}</div>
     <p class="heatflow-chart-help">${escapeHTML(copy("heatFlowChartHelp", "Click the graph to select a time; scroll to zoom the time range."))}</p>
   </section>`;
+}
+
+// Zoom and time-range changes must only alter the horizontal axis. Use one
+// exact, full-history signed extent for the selected immutable zone; displayed
+// paths and their observation metadata still describe only the visible range.
+function historyExtent(dataset, zoneSeries, groups) {
+  let zones = extentCache.get(dataset);
+  if (!zones) { zones = new WeakMap(); extentCache.set(dataset, zones); }
+  if (zones.has(zoneSeries)) return zones.get(zoneSeries);
+  const { start, end } = normalizedRange(dataset);
+  let maxAbs = 1;
+  for (const group of groups) {
+    for (let frame = start; frame <= end; frame++) {
+      let positive = 0, negative = 0, complete = true;
+      for (const category of group.items) {
+        const value = heatFlowCategoryValue(zoneSeries, category.index, frame);
+        if (!finite(value)) { complete = false; continue; }
+        if (group.kind === "diagnostic") maxAbs = Math.max(maxAbs, Math.abs(value));
+        else if (value >= 0) positive += value;
+        else negative += value;
+      }
+      if (group.kind !== "diagnostic" && complete) maxAbs = Math.max(maxAbs, positive, -negative);
+    }
+  }
+  const extent = niceExtent(maxAbs);
+  zones.set(zoneSeries, extent);
+  return extent;
 }
 
 /** Update the selected observation without replacing static SVG paths or axes.
@@ -121,7 +141,7 @@ function rememberRenderContext(dataset, context) {
 }
 
 function renderPanel(group, { zoneSeries, start, end, selected, extent, unit, divisor, label, layout }) {
-  const width = 760, height = 300, left = 116, right = 20, top = 36, bottom = 72;
+  const width = 1000, height = 340, left = 112, right = 42, top = 44, bottom = 81;
   const plotWidth = width - left - right, plotHeight = height - top - bottom;
   const yZero = top + plotHeight / 2;
   const y = (value) => yZero - value / extent * plotHeight / 2;
@@ -172,13 +192,13 @@ function renderPanel(group, { zoneSeries, start, end, selected, extent, unit, di
   }).join("")}</div>`;
   return `<div class="heatflow-chart-panel" data-heatflow-chart-panel="${group.kind}"><h5>${escapeHTML(group.title)}</h5>
     <div class="heatflow-chart-scroll"><svg class="heatflow-stack-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(aria)}" data-heatflow-chart-start="${start}" data-heatflow-chart-end="${end}" data-heatflow-chart-extent="${extent}" data-heatflow-chart-time-mode="${layout.elapsed ? "elapsed" : "ordinal"}"><title>${escapeHTML(aria)}</title>
-      ${ticks}<text class="heatflow-chart-axis-label" x="${left}" y="18">${escapeHTML(copy("heatFlowChartAxis", "Heat flow ({unit})", { unit }))}</text>
+      ${ticks}<text class="heatflow-chart-axis-label" x="${left}" y="30">${escapeHTML(copy("heatFlowChartAxis", "Heat flow ({unit})", { unit }))}</text>
       ${marks}<line class="heatflow-chart-axis" x1="${left}" x2="${left}" y1="${top}" y2="${height - bottom}"/>
       <line class="heatflow-cursor" data-heatflow-chart-frame="${selected ?? ""}" x1="${number(cursorX)}" x2="${number(cursorX)}" y1="${top}" y2="${height - bottom}"${selected == null ? ' style="display:none"' : ""}/>
       <rect class="heatflow-chart-hit" x="${left}" y="${top}" width="${plotWidth}" height="${plotHeight}" data-heatflow-chart="1"></rect>
-      <text class="heatflow-chart-tick" data-heatflow-chart-tick="x" x="${number(x(start))}" y="${height - bottom + 28}" text-anchor="${start === end ? "middle" : "start"}">${escapeHTML(layout.elapsed ? label(start) : `#${start + 1}`)}</text>
-      ${end !== start ? `<text class="heatflow-chart-tick" data-heatflow-chart-tick="x" x="${number(x(end))}" y="${height - bottom + 28}" text-anchor="end">${escapeHTML(layout.elapsed ? label(end) : `#${end + 1}`)}</text>` : ""}
-      <text class="heatflow-chart-axis-label" x="${left + plotWidth / 2}" y="${height - 8}" text-anchor="middle">${escapeHTML(layout.elapsed ? copy("hvacChartDateTime", "Date & time") : copy("heatFlowRecordedFrameSequence", "Recorded frame sequence"))}</text>
+      <text class="heatflow-chart-tick" data-heatflow-chart-tick="x" x="${number(x(start))}" y="${height - bottom + 25}" text-anchor="${start === end ? "middle" : "start"}">${escapeHTML(layout.elapsed ? label(start) : `#${start + 1}`)}</text>
+      ${end !== start ? `<text class="heatflow-chart-tick" data-heatflow-chart-tick="x" x="${number(x(end))}" y="${height - bottom + 25}" text-anchor="end">${escapeHTML(layout.elapsed ? label(end) : `#${end + 1}`)}</text>` : ""}
+      <text class="heatflow-chart-axis-label" x="${left + plotWidth / 2}" y="${height - 16}" text-anchor="middle">${escapeHTML(layout.elapsed ? copy("hvacChartDateTime", "Date & time") : copy("heatFlowRecordedFrameSequence", "Recorded frame sequence"))}</text>
     </svg></div>${legend}</div>`;
 }
 

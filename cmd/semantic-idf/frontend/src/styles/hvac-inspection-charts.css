@@ -11,12 +11,13 @@
   padding: 12px;
   background: var(--surface);
   font-family: inherit;
+  box-sizing: border-box;
 }
 
-.hvac-inspection-chart h4 { margin: 0 0 8px; font-size: 15px; font-weight: 650; line-height: 1.4; }
-.hvac-chart-scroll { min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; container-type: inline-size; }
+.hvac-inspection-chart h4 { margin: 0 0 8px; font-size: var(--simulation-chart-title-font-size); font-weight: 650; line-height: 1.4; }
+.hvac-chart-scroll { min-width: 0; width: 100%; max-width: var(--simulation-chart-max-width); margin-inline: auto; overflow-x: auto; overscroll-behavior-inline: contain; container-type: inline-size; }
 .hvac-chart-svg {
-  --hvac-chart-min-width: max(560px, calc(var(--graph-label-font-size, 11px) * 50));
+  --hvac-chart-min-width: var(--simulation-chart-min-width);
   display: block;
   width: 100%;
   min-width: var(--hvac-chart-min-width);
@@ -26,8 +27,8 @@
 }
 .hvac-chart-grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 3; opacity: .56; vector-effect: non-scaling-stroke; }
 .hvac-chart-axis { stroke: var(--muted); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
-.hvac-chart-tick { fill: var(--muted); font-size: calc(var(--graph-label-font-size, 11px) * 1.4); font-weight: 400; font-variant-numeric: tabular-nums; }
-.hvac-chart-axis-label { fill: var(--muted); font-size: calc((var(--graph-label-font-size, 11px) + 1px) * 1.4); font-weight: 600; }
+.hvac-chart-tick { fill: var(--muted); font-size: calc(var(--simulation-chart-font-size) * 1.4); font-weight: 400; font-variant-numeric: tabular-nums; }
+.hvac-chart-axis-label { fill: var(--muted); font-size: calc((var(--simulation-chart-font-size) + 1px) * 1.4); font-weight: 600; }
 .hvac-chart-line { stroke: var(--hvac-chart-color); stroke-width: 2; fill: none; vector-effect: non-scaling-stroke; }
 .hvac-chart-point { fill: var(--hvac-chart-color); }
 .hvac-chart-histogram-bin { fill: var(--hvac-chart-color); fill-opacity: .2; }
@@ -36,8 +37,8 @@
 .hvac-chart-scatter-point { opacity: .78; }
 .hvac-chart-point.is-frame { stroke: var(--ink); stroke-width: 2; opacity: 1; vector-effect: non-scaling-stroke; }
 .hvac-chart-frame { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 5 4; pointer-events: none; vector-effect: non-scaling-stroke; }
-.hvac-chart-frame-label { fill: var(--ink); font-size: calc(var(--graph-label-font-size, 11px) * 1.4); font-weight: 400; paint-order: stroke; stroke: var(--surface); stroke-width: 4; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.hvac-chart-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; padding: 4px 0 0; font-size: calc(var(--graph-label-font-size, 11px) + 1px); line-height: 1.4; color: var(--muted); }
+.hvac-chart-frame-label { fill: var(--ink); font-size: calc(var(--simulation-chart-font-size) * 1.4); font-weight: 400; paint-order: stroke; stroke: var(--surface); stroke-width: 4; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.hvac-chart-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; padding: 8px 0 0; font-size: var(--simulation-chart-font-size); line-height: 1.4; color: var(--muted); }
 .hvac-chart-legend > span { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .hvac-chart-legend [data-hvac-chart-legend] { cursor: default; border-radius: 3px; }
 .hvac-chart-legend [data-hvac-chart-legend]:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
@@ -48,26 +49,19 @@
 .hvac-chart-legend i { width: 18px; height: 3px; flex: 0 0 18px; border-radius: 2px; background: var(--hvac-chart-color); }
 .hvac-chart-legend.is-vertical { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 6px 24px; max-height: 190px; overflow-y: auto; }
 .hvac-chart-legend.is-vertical > span { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 7px; }
-.hvac-chart-legend.is-vertical > span > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hvac-chart-legend.is-vertical > span > span { overflow-wrap: anywhere; }
 .hvac-inspection-chart-empty { padding: 32px 12px; color: var(--muted); text-align: center; }
 
-/* SVG geometry scales to fit the panel; its labels keep the same physical
-   font size as Profile. Older engines retain the inherited-font fallback. */
+/* SVG geometry scales to fit the panel; labels retain the configured physical
+   size and the common Simulation readability floor. */
 @supports (font-size: calc(11px * (1000px / 1000px))) {
   .hvac-chart-svg { --hvac-chart-font-scale: calc(1000px / max(var(--hvac-chart-min-width), 100cqw)); }
-  .hvac-chart-tick, .hvac-chart-frame-label { font-size: calc(var(--graph-label-font-size, 11px) * var(--hvac-chart-font-scale)); }
-  .hvac-chart-axis-label { font-size: calc((var(--graph-label-font-size, 11px) + 1px) * var(--hvac-chart-font-scale)); }
+  .hvac-chart-tick, .hvac-chart-frame-label { font-size: calc(var(--simulation-chart-font-size) * var(--hvac-chart-font-scale)); }
+  .hvac-chart-axis-label { font-size: calc((var(--simulation-chart-font-size) + 1px) * var(--hvac-chart-font-scale)); }
 }
 
-/* Node plots use extra space for neighbouring metric groups. Cap their
-   plotting viewport so SVG proportions and the configured label size remain
-   intact instead of turning a wide inspection panel into a tall chart. */
-.hvac-inspection-basic .hvac-chart-scroll,
-.hvac-inspection-custom .hvac-chart-scroll {
-  width: 100%;
-  max-width: 1000px;
-  margin-inline: auto;
-}
+/* Every result plot uses the same bounded viewport; spare window width adds
+   columns or margins without making one chart disproportionately tall. */
 
 :root[data-theme="dark"] .hvac-inspection-chart {
   --hvac-chart-blue: #86b1ed;
@@ -96,7 +90,7 @@
 .hvac-runtime-heading > div:first-child { flex: 1 1 220px; min-width: 0; }
 .hvac-runtime-heading h3 { margin: 0 0 5px; font-size: 16px; overflow-wrap: anywhere; }
 .hvac-runtime-heading > div:first-child > span { font-size: 12px; color: var(--muted); }
-.hvac-runtime-heading select { max-width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; font-size: 12px; }
+.hvac-runtime-heading select { max-width: 100%; min-height: var(--control-height); padding: 0 9px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--control); color: var(--ink); font: inherit; font-size: 12px; }
 [data-hvac-runtime-states] { display: flex; flex-wrap: wrap; gap: 8px; }
 .hvac-runtime-state { padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; color: var(--muted); font-size: 12px; }
 .hvac-runtime-state.is-allowed { color: var(--teal-dark); }
@@ -155,8 +149,9 @@
 .hvac-runtime-decision-reading small { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .hvac-runtime-decision-reading b { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .hvac-runtime-logic .hvac-parameter-flow-hint:has([data-hvac-flow-description][hidden]) { display: none; }
-[data-hvac-runtime-history] { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 500px), 1fr)); }
+[data-hvac-runtime-history] { display: grid; gap: var(--simulation-chart-gap); grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--simulation-chart-card-min-width)), 1fr)); }
 .hvac-runtime-history-group { min-width: 0; }
+.hvac-runtime-history-group > h4 { font-size: var(--simulation-chart-title-font-size); }
 .hvac-runtime-trace-toggles { gap: 6px; }
 .hvac-runtime-trace-toggles label { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1 1 220px; padding: 7px 9px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; }
 .hvac-runtime-trace-toggles label.related { border-color: var(--teal); }

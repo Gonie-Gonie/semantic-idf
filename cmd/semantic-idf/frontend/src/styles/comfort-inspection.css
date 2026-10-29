@@ -2,7 +2,7 @@
 .comfort-inspection [data-comfort-inspect-content] { min-width: 0; }
 .comfort-inspection-toolbar { display: flex; align-items: center; gap: 16px; padding: 4px 0; }
 .comfort-inspection-toolbar label { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 13px; }
-.comfort-inspection-toolbar select { min-width: 220px; max-width: 100%; color: var(--ink); }
+.comfort-inspection-toolbar select { min-width: 220px; max-width: 100%; min-height: var(--control-height); border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--control); color: var(--ink); padding: 0 9px; font: inherit; font-size: 12px; }
 .comfort-inspection-indicators { min-width: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(210px, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; padding-bottom: 4px; overflow-x: auto; }
 .comfort-inspection-indicator { min-width: 0; display: grid; grid-template-rows: minmax(2.9em, 1fr) auto auto; padding: 15px 16px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
 .comfort-inspection-indicator-label { min-height: 2.9em; color: var(--muted); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
@@ -10,8 +10,9 @@
 .comfort-inspection-indicator-value strong { font-size: 25px; line-height: 1.2; font-weight: 650; letter-spacing: -.025em; }
 .comfort-inspection-indicator-value > span { color: var(--muted); font-size: 13px; }
 .comfort-inspection-indicator-note { min-height: calc(2.9em + 3px); display: grid; align-content: start; gap: 3px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; line-height: 1.45; }
-.comfort-inspection-charts { display: grid; gap: 16px; min-width: 0; }
-.comfort-inspection-charts h4 { margin: 0 0 12px; font-size: 15px; }
+.comfort-inspection-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--simulation-chart-card-min-width)), 1fr)); align-items: stretch; gap: var(--simulation-chart-gap); min-width: 0; }
+.comfort-inspection-charts > [data-comfort-inspect-chart] { min-width: 0; }
+.comfort-inspection-charts h4 { margin: 0 0 12px; font-size: var(--simulation-chart-title-font-size); }
 .comfort-inspection-empty { padding: 32px 20px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); text-align: center; }
 .comfort-inspection-report { margin: 20px 0 32px; }
 .comfort-inspection-report > h3 { margin: 0; }

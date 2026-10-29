@@ -504,15 +504,22 @@ density. Check the reporting cadence in the legend when comparing variables
 sampled at different intervals. Hover or focus a legend entry to highlight that
 distribution.
 
-## HVAC comparison charts {#hvac-charts}
+## Result charts {#hvac-charts}
 
 The basic charts show node flow, temperature, and humidity in one to three
 columns as panel width allows. Their drawing height is bounded so a wide
 window adds useful chart space without magnifying the entire SVG. Use the per-node
 controls to compare selected traces. Y ranges and Auto reset apply independently
-to different units. HVAC and Thermal Comfort plots use the app font and the graph
-label size in Settings. Larger labels keep a readable chart width; narrow
-panes scroll horizontally.
+to different units. Charts in Energy Transfer, Zone Heat Flow, HVAC Loops and
+Thermal Comfort share the app font, title hierarchy, spacing and column-width
+rules. Labels use the graph size in Settings with a 12 px readability minimum.
+Wider panels add columns; narrower panels reduce the column count and retain
+horizontal scrolling inside plots when needed.
+Scroll over a time-based chart to zoom its X axis around the pointer. Y limits
+stay unchanged, including the full-history heat-flow scale for the selected
+zone. Double-click to restore the complete time range. Zoom redraws the actual
+observations in that window; gaps and known zeroes remain distinct. Scatter and
+histogram charts keep their property and distribution axes.
 HVAC time-series use plain lines without sample-point markers. The vertical
 current-frame cursor remains. Hover or focus a legend entry to emphasize its
 trace and dim the other traces in that chart.

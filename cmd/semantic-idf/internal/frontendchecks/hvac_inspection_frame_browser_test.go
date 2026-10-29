@@ -2,13 +2,13 @@ package frontendchecks
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -272,14 +272,8 @@ func TestHVACInspectionSharedFrameActualAppBrowser(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	output, err := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--virtual-time-budget=10000", "--user-data-dir="+t.TempDir(), "--dump-dom", server.URL+"/src/frame.html").CombinedOutput()
-	if err != nil || !strings.Contains(string(output), `data-hvac-frame-status="passed"`) {
-		if _, detail, ok := strings.Cut(string(output), `<pre id="hvac-frame-result" hidden="">`); ok {
-			message, _, _ := strings.Cut(detail, "</pre>")
-			t.Fatalf("HVAC shared frame: %v\n%s", err, message)
-		}
-		t.Fatalf("HVAC shared frame: %v\n%s", err, output)
-	}
+	browser := epath201FreshBrowser(t, ctx, chrome)
+	simulationBrowserReady(t, ctx, browser, server.URL+"/src/frame.html", "hvacFrameStatus", "hvac-frame-result")
 	if directory := os.Getenv("HVAC_RUNTIME_CAPTURE_DIR"); directory != "" {
 		if err := os.MkdirAll(directory, 0755); err != nil {
 			t.Fatal(err)
@@ -300,18 +294,61 @@ func TestHVACInspectionSharedFrameActualAppBrowser(t *testing.T) {
 			if filter := os.Getenv("HVAC_RUNTIME_CAPTURE_FILTER"); filter != "" && !strings.Contains(","+filter+",", ","+capture.name+",") {
 				continue
 			}
-			path, err := filepath.Abs(filepath.Join(directory, capture.name))
-			if err != nil {
-				t.Fatal(err)
-			}
-			captureContext, stop := context.WithTimeout(context.Background(), 30*time.Second)
-			output, err := exec.CommandContext(captureContext, chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--virtual-time-budget=10000", "--force-device-scale-factor=1", "--window-size="+capture.viewport, "--user-data-dir="+t.TempDir(), "--screenshot="+path, server.URL+"/src/frame.html"+capture.query).CombinedOutput()
-			stop()
-			if err != nil {
-				t.Fatalf("runtime HVAC capture %s failed: %v\n%s", capture.name, err, output)
-			}
-			t.Logf("runtime HVAC visual review: %s", path)
+			t.Run("capture/"+capture.name, func(t *testing.T) {
+				path, err := filepath.Abs(filepath.Join(directory, capture.name))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var width, height int
+				if _, err := fmt.Sscanf(capture.viewport, "%d,%d", &width, &height); err != nil {
+					t.Fatal(err)
+				}
+				captureContext, stop := context.WithTimeout(context.Background(), 30*time.Second)
+				defer stop()
+				captureBrowser := epath201FreshBrowser(t, captureContext, chrome)
+				captureBrowser.call("Emulation.setDeviceMetricsOverride", map[string]any{"width": width, "height": height, "deviceScaleFactor": 1, "mobile": false}, nil)
+				simulationBrowserReady(t, captureContext, captureBrowser, server.URL+"/src/frame.html"+capture.query, "hvacFrameStatus", "hvac-frame-result")
+				simulationBrowserScreenshot(t, captureBrowser, path)
+				t.Logf("runtime HVAC visual review: %s", path)
+			})
 		}
+	}
+}
+
+// RAF-driven production interactions must finish in an active browser. Chrome's
+// dump-dom virtual-time budget may expire with the module still awaiting RAF.
+func simulationBrowserReady(t *testing.T, ctx context.Context, browser *epath201Browser, url, statusField, evidenceID string) {
+	t.Helper()
+	browser.call("Page.navigate", map[string]any{"url": url}, nil)
+	for {
+		status := string(browser.evaluate(fmt.Sprintf(`document.body?.dataset[%q]`, statusField)))
+		if status == `"passed"` {
+			return
+		}
+		if status == `"failed"` {
+			t.Fatalf("simulation browser %s: %s", status, browser.evaluate(fmt.Sprintf(`document.getElementById(%q)?.textContent`, evidenceID)))
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("simulation browser did not report within its deadline; last status %s (%s)", status, evidenceID)
+		case <-time.After(25 * time.Millisecond):
+		}
+	}
+}
+
+func simulationBrowserScreenshot(t *testing.T, browser *epath201Browser, path string) {
+	t.Helper()
+	browser.evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`)
+	var screenshot struct {
+		Data string `json:"data"`
+	}
+	browser.call("Page.captureScreenshot", map[string]any{"format": "png", "fromSurface": true, "captureBeyondViewport": false}, &screenshot)
+	data, err := base64.StdEncoding.DecodeString(screenshot.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -451,6 +488,29 @@ try{
   legend.dispatchEvent(new PointerEvent('pointerout',{bubbles:true,relatedTarget:section}));check(!section.dataset.hvacAvailabilityHighlight&&!section.querySelector('.hvac-runtime-patch.is-muted,.hvac-runtime-patch.is-highlighted'),'Availability legend leave retained dimmed or highlighted patches');
  };
  for(const group of ['allowed','blocked','no_action','cycle_on'])availabilityHover(group,patch=>patch.classList.contains('is-'+group));
+ const availabilitySection=stack(),availabilityRows=[...availabilitySection.querySelectorAll('[data-hvac-runtime-availability-row]')],availabilitySVGs=availabilityRows.map(row=>row.querySelector('svg')),availabilityGroups=availabilityRows.map(row=>row.querySelector('[data-hvac-runtime-patches]'));
+ const availabilityRange=()=>[Number(stack().dataset.hvacAvailabilityLow),Number(stack().dataset.hvacAvailabilityHigh)],fullAvailabilityRange=availabilityRange(),availabilityLabels=()=>[stack().querySelector('[data-hvac-availability-start]').textContent,stack().querySelector('[data-hvac-availability-end]').textContent],fullAvailabilityLabels=availabilityLabels();
+ const availabilitySettle=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+ const untouchedSVGs=[...nodeCharts.querySelectorAll('svg.hvac-chart-svg'),...runtimePanel().querySelectorAll('[data-hvac-runtime-history] svg.hvac-chart-svg')],untouchedPaths=untouchedSVGs.map(svg=>[...svg.querySelectorAll('path.hvac-chart-line')].map(path=>path.getAttribute('d')));
+ const availabilityGeometry=()=>availabilityGroups.map(group=>group.innerHTML),availabilityBefore=availabilityGeometry(),availabilityCursor=()=>Number(availabilitySVGs[0].querySelector('[data-hvac-runtime-cursor]').getAttribute('x1'));
+ const availabilityTime=fullAvailabilityRange[0]+availabilityCursor()/1000*(fullAvailabilityRange[1]-fullAvailabilityRange[0]),availabilityPointer=.4,availabilityRect=availabilitySVGs[0].getBoundingClientRect(),availabilityWheel=new WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY:-180,clientX:availabilityRect.left+availabilityRect.width*availabilityPointer,clientY:availabilityRect.top+availabilityRect.height/2});
+ availabilitySVGs[0].dispatchEvent(availabilityWheel);await availabilitySettle();
+ const zoomAvailabilityRange=availabilityRange(),zoomAvailabilitySpan=zoomAvailabilityRange[1]-zoomAvailabilityRange[0],actualAvailabilityPointer=(availabilityWheel.clientX-availabilityRect.left)/availabilityRect.width,availabilityAnchor=fullAvailabilityRange[0]+actualAvailabilityPointer*(fullAvailabilityRange[1]-fullAvailabilityRange[0]);
+ check(availabilityWheel.defaultPrevented&&stack()===availabilitySection&&zoomAvailabilitySpan<fullAvailabilityRange[1]-fullAvailabilityRange[0]&&Math.abs(zoomAvailabilityRange[0]+actualAvailabilityPointer*zoomAvailabilitySpan-availabilityAnchor)<1e-7,'Availability wheel did not narrow its shared horizontal window about the pointer');
+ check(availabilityLabels().every((label,index)=>label!==fullAvailabilityLabels[index])&&availabilityGeometry().some((geometry,index)=>geometry!==availabilityBefore[index]),'Availability zoom left stale axis labels or patch geometry');
+ const sharedAvailabilityViewport=time=>{
+  const visible=time>=zoomAvailabilityRange[0]&&time<=zoomAvailabilityRange[1],expected=(time-zoomAvailabilityRange[0])/zoomAvailabilitySpan*1000;
+  return availabilityRows.every((row,index)=>{
+   const cursor=row.querySelector('[data-hvac-runtime-cursor]'),aligned=cursor&&(visible?cursor.style.display!=='none'&&Math.abs(Number(cursor.getAttribute('x1'))-expected)<1e-6&&Math.abs(Number(cursor.getAttribute('x2'))-expected)<1e-6:cursor.style.display==='none');
+   return row.querySelector('svg')===availabilitySVGs[index]&&row.querySelector('[data-hvac-runtime-patches]')===availabilityGroups[index]&&aligned&&[...row.querySelectorAll('.hvac-runtime-patch')].every(patch=>Number(patch.getAttribute('x'))>=-1e-7&&Number(patch.getAttribute('x'))+Number(patch.getAttribute('width'))<=1000+1e-7);
+  });
+ };
+ check(sharedAvailabilityViewport(availabilityTime),'Availability input/final rows do not share clipped patches and the current-frame cursor after zoom');
+ const availabilityZoomGeometry=availabilityGeometry();step(1);
+ check(label()==='01-01 02:00'&&availabilityRange().every((value,index)=>Math.abs(value-zoomAvailabilityRange[index])<1e-7)&&sharedAvailabilityViewport(availabilityTime+1)&&availabilityGeometry().every((geometry,index)=>geometry===availabilityZoomGeometry[index]),'frame step reset Availability zoom, shifted its rows independently or redrew patches');
+ step(-1);availabilitySVGs[0].dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true}));await availabilitySettle();
+ check(label()==='01-01 01:00'&&availabilityRange().every((value,index)=>Math.abs(value-fullAvailabilityRange[index])<1e-7)&&availabilityLabels().every((label,index)=>label===fullAvailabilityLabels[index])&&availabilityGeometry().every((geometry,index)=>geometry===availabilityBefore[index]),'Availability reset did not restore its exact full time window and patch geometry');
+ check(untouchedSVGs.every((svg,index)=>svg.isConnected&&JSON.stringify([...svg.querySelectorAll('path.hvac-chart-line')].map(path=>path.getAttribute('d')))===JSON.stringify(untouchedPaths[index])),'Availability zoom/frame/reset rebuilt or changed unrelated node and signal graph geometry');
  const fanControlCard=()=>[...host.querySelectorAll('.hvac-parameter-flow-stage.controls [data-hvac-flow-card]')].find(card=>card.querySelector('strong')?.textContent==='Match airflow');
  check(fanControlCard()&&!fanControlCard().querySelector('[data-hvac-runtime-card-value]'),'fan controller borrowed unrelated temperature');
  step(1);check(label()==='01-01 02:00'&&finalRow()?.dataset.state==='blocked'&&stack().querySelector('[data-kind="schedule"][data-decisive="true"]'),'next frame button did not update the OFF schedule and its deciding condition together');

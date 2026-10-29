@@ -37,6 +37,12 @@
   `hvac-inspection-histogram.js` counts complete selected observations for these
   comparisons and HVAC Custom graphs, with common bins per display unit and
   independent unit axes stacked beneath one overlaid plot.
+  `time-series-chart.js` owns delegated horizontal wheel zoom and double-click
+  reset for temporal plots. Renderers redraw the selected source window and
+  retain full-period Y limits; current-frame updates retain the viewport. Mounted
+  SVGs weakly own their render callbacks, while abandoned string registrations
+  have a bounded pending cache. Result cards share the Simulation chart font,
+  width and grid tokens rather than individual window breakpoints.
 - `src/js/simulation-progress.js`: measured work, approximate remaining-time
   presentation, HTTP progress polling and response-byte progress. Unknown totals
   remain indeterminate; legacy stage-count percentages are not displayed as time.

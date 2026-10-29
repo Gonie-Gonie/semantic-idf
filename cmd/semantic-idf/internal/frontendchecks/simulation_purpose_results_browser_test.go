@@ -89,26 +89,36 @@ func TestSimulationRunInspectHVACAndComfortBrowser(t *testing.T) {
 		if len(result.Failures) != 0 {
 			t.Fatalf("Run & Inspect purpose results: %s", strings.Join(result.Failures, "\n"))
 		}
-		directory, captures := os.Getenv("HVAC_INSPECTION_SCREENSHOT_DIR"), []string{"topology", "graphs"}
-		if comparisonDirectory := os.Getenv("SIMULATION_COMPARISON_SCREENSHOT_DIR"); comparisonDirectory != "" {
-			directory, captures = comparisonDirectory, []string{"comparison"}
+		var captures []struct{ directory, view string }
+		if directory := os.Getenv("HVAC_INSPECTION_SCREENSHOT_DIR"); directory != "" {
+			for _, view := range []string{"topology", "graphs"} {
+				captures = append(captures, struct{ directory, view string }{directory, view})
+			}
 		}
-		if directory != "" {
-			for _, capture := range captures {
-				filename := "hvac-inspection-" + capture + ".png"
-				if capture == "comparison" {
+		if directory := os.Getenv("SIMULATION_COMPARISON_SCREENSHOT_DIR"); directory != "" {
+			captures = append(captures, struct{ directory, view string }{directory, "comparison"})
+		}
+		for _, capture := range captures {
+			t.Run("capture/"+capture.view, func(t *testing.T) {
+				if err := os.MkdirAll(capture.directory, 0755); err != nil {
+					t.Fatal(err)
+				}
+				filename := "hvac-inspection-" + capture.view + ".png"
+				if capture.view == "comparison" {
 					filename = "simulation-comparison-comfort.png"
 				}
-				path, err := filepath.Abs(filepath.Join(directory, filename))
+				path, err := filepath.Abs(filepath.Join(capture.directory, filename))
 				if err != nil {
 					t.Fatal(err)
 				}
-				shot, err := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--force-device-scale-factor=1", "--window-size=1600,1100", "--virtual-time-budget=10000", "--user-data-dir="+t.TempDir(), "--screenshot="+path, server.URL+"/src/purpose-results.html?manual=1&capture="+capture).CombinedOutput()
-				if err != nil {
-					t.Fatalf("HVAC inspection screenshot: %v\n%s", err, shot)
-				}
+				captureContext, stop := context.WithTimeout(context.Background(), 30*time.Second)
+				defer stop()
+				captureBrowser := epath201FreshBrowser(t, captureContext, chrome)
+				captureBrowser.call("Emulation.setDeviceMetricsOverride", map[string]any{"width": 1600, "height": 1100, "deviceScaleFactor": 1, "mobile": false}, nil)
+				simulationBrowserReady(t, captureContext, captureBrowser, server.URL+"/src/purpose-results.html?manual=1&capture="+capture.view, "purposeResultsStatus", "purpose-results-evidence")
+				simulationBrowserScreenshot(t, captureBrowser, path)
 				t.Log("Actual-app screenshot: " + path)
-			}
+			})
 		}
 	case <-ctx.Done():
 		stop()
@@ -224,12 +234,49 @@ const simulationPurposeResultsBrowserHTML = `<pre id="purpose-results-evidence" 
 const failures=[],evidence=[];
 const check=(condition,message)=>{if(!condition)failures.push(message);};
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
+const settlePlot=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+const temporalRange=svg=>[Number(svg.dataset.timeSeriesLow),Number(svg.dataset.timeSeriesHigh)];
+const exerciseTimeWheel=async(host,label)=>{
+ const svg=host?.querySelector('svg[data-time-series-chart]');
+ check(Boolean(svg),label+' has no managed temporal chart');if(!svg)return;
+ const original=temporalRange(svg),extent=[Number(svg.dataset.timeSeriesExtentLow),Number(svg.dataset.timeSeriesExtentHigh)];
+ const y=()=>JSON.stringify([...svg.querySelectorAll('[data-hvac-chart-y-low],[data-energy-path-chart-y-min]')].map(axis=>[axis.dataset.hvacChartYLow,axis.dataset.hvacChartYHigh,axis.dataset.energyPathChartYMin,axis.dataset.energyPathChartYMax,axis.textContent]));
+ const yBefore=JSON.stringify([svg.dataset.energyPathChartYMin,svg.dataset.energyPathChartYMax,y()]),height=svg.getBoundingClientRect().height,ratio=.35;
+ const wheel=deltaY=>{const rect=svg.getBoundingClientRect(),box=svg.viewBox.baseVal,event=new WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY,clientX:rect.left+(Number(svg.dataset.timeSeriesPlotLeft)+Number(svg.dataset.timeSeriesPlotWidth)*ratio)/box.width*rect.width,clientY:rect.top+rect.height*.4});svg.dispatchEvent(event);return event;};
+ const event=wheel(-180),pointerBox=svg.getBoundingClientRect(),pointerRatio=((event.clientX-pointerBox.left)/pointerBox.width*svg.viewBox.baseVal.width-Number(svg.dataset.timeSeriesPlotLeft))/Number(svg.dataset.timeSeriesPlotWidth);await settlePlot();
+ const zoomed=temporalRange(svg);
+ check(event.defaultPrevented&&host.contains(svg)&&zoomed[1]-zoomed[0]<original[1]-original[0],label+' native wheel was not delegated to the temporal X axis');
+ check(Math.abs(zoomed[0]+pointerRatio*(zoomed[1]-zoomed[0])-(original[0]+pointerRatio*(original[1]-original[0])))<1e-7,label+' native wheel did not retain the time under the pointer');
+ check(JSON.stringify([svg.dataset.energyPathChartYMin,svg.dataset.energyPathChartYMax,y()])===yBefore&&Math.abs(svg.getBoundingClientRect().height-height)<.01,label+' temporal zoom changed Y values/extent or plotting height');
+ svg.dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true}));await settlePlot();
+ check(temporalRange(svg).every((value,index)=>Math.abs(value-extent[index])<1e-7),label+' temporal reset did not restore the full extent');
+};
+const inspectResponsiveGrid=async(grid,label)=>{
+ check(Boolean(grid),label+' graph grid is missing');if(!grid)return;
+ const originalStyle=grid.getAttribute('style'),fontBefore=document.documentElement.style.getPropertyValue('--graph-label-font-size'),cards=[...grid.children];
+ try{
+  for(const font of[12,18])for(const [width,regularColumns,largeColumns]of[[350,1,1],[1400,2,1],[2600,3,2]]){
+   document.documentElement.style.setProperty('--graph-label-font-size',font+'px');grid.style.width=width+'px';await settlePlot();
+   const boxes=cards.map(card=>card.getBoundingClientRect()),columns=boxes.filter(box=>Math.abs(box.top-boxes[0].top)<.5).length,expected=Math.min(cards.length,font===18?largeColumns:regularColumns);
+   check(columns===expected,label+' has inconsistent responsive columns at '+JSON.stringify({font,width,columns,expected}));
+   check(boxes.every(box=>Math.abs(box.width-boxes[0].width)<.5)&&grid.scrollWidth<=grid.clientWidth+1,label+' changed orphan card width or leaked outside its graph container');
+   for(const card of cards){
+    const svg=card.querySelector('svg.hvac-chart-svg,svg.heatflow-stack-chart');if(!svg)continue;
+    const box=svg.getBoundingClientRect(),tick=svg.querySelector('.hvac-chart-tick,.heatflow-chart-tick'),matrix=tick?.getScreenCTM();
+    check(box.width<=1000.1&&Math.abs(box.height/box.width-.34)<.001,label+' graph proportions/maximum size differ from other Simulation panels');
+    check(tick&&matrix&&Math.abs(parseFloat(getComputedStyle(tick).fontSize)*matrix.a-Math.max(12,font))<.05&&getComputedStyle(tick).fontFamily===getComputedStyle(document.body).fontFamily,label+' resized graph font differs from the shared physical size/family');
+   }
+  }
+ }finally{if(originalStyle===null)grid.removeAttribute('style');else grid.setAttribute('style',originalStyle);if(fontBefore)document.documentElement.style.setProperty('--graph-label-font-size',fontBefore);else document.documentElement.style.removeProperty('--graph-label-font-size');await settlePlot();}
+};
 try{
  for(let n=0;document.body.dataset.epath142Status!=="manual"&&n<200;n++)await new Promise(resolve=>setTimeout(resolve,10));
  if(document.body.dataset.epath142Status!=="manual")throw Error("actual fixture not ready: "+document.getElementById("epath142-result")?.textContent);
  const {state}=await import("/src/js/state.js"),i18n=await import("/src/js/i18n.js");
  i18n.setLanguage("en");
  const original=state.simulationResult,originalJSON=JSON.stringify(original),requests=[];
+ const energyHost=document.getElementById('simulationEnergyDashboard'),energyNode=energyHost.querySelector('[data-energy-path-layout-node]');
+ energyNode?.click();await settlePlot();await exerciseTimeWheel(energyHost,'Energy Transfer component');
  const selectedHVACLoop={id:'fixture-supply-loop',type:'AirLoopHVAC',name:'SUPPLY LOOP',supplySide:{branches:[{components:[{objectType:'Fan:ConstantVolume',objectName:'SUPPLY FAN',objectIndex:4}]}]}};
  state.report={...state.report,hvac:{...state.report?.hvac,loops:[selectedHVACLoop]}};
  state.activeHVACLoopId=selectedHVACLoop.id;state.activeHVACGraphKey='component:4';
@@ -460,6 +507,20 @@ try{
  tab('comfort').click();await tick();check(JSON.stringify(state.simulationComparisons.comfort.rows)===comfortComparisonRows&&comparison('comfort').querySelectorAll('[data-hvac-chart-series]').length===2,'switching purpose tabs lost Comfort comparison choices or mixed Heat Flow selections');
  check(JSON.stringify(state.simulationResult)===installedJSON,'Comfort zone/line rendering mutated exact returned metric metadata or observations');
  check(JSON.stringify(original)===originalJSON,"Run or purpose tabs mutated previous result");
+ tab('hvac_loops').click();await settlePlot();chooseLoop('SUPPLY LOOP');
+ await exerciseTimeWheel(basic('temperature'),'HVAC node');
+ change('[data-hvac-inspect-mode]','line');await exerciseTimeWheel(custom(),'HVAC custom');
+ await inspectResponsiveGrid(hvac.querySelector('[data-hvac-inspect-basic-charts]'),'HVAC node');
+ tab('zone_heat_flow').click();await settlePlot();
+ comparisonChange('zone_heat_flow','[data-simulation-comparison-mode]','line');
+ await exerciseTimeWheel(comparison('zone_heat_flow'),'Zone Heat Flow comparison');
+ await inspectResponsiveGrid(heatFlow.querySelector('.heatflow-chart-panels'),'Zone Heat Flow history');
+ tab('comfort').click();await settlePlot();
+ await exerciseTimeWheel(comfortChart('temperature'),'Thermal Comfort');
+ await exerciseTimeWheel(comparison('comfort'),'Thermal Comfort comparison');
+ await inspectResponsiveGrid(comfort.querySelector('.comfort-inspection-charts'),'Thermal Comfort');
+ check(JSON.stringify(state.simulationResult)===installedJSON&&JSON.stringify(original)===originalJSON,'temporal zoom/reset or responsive layout changed native or previous run observations');
+ evidence.push('Energy Transfer, HVAC node/custom, Zone Heat Flow comparison and Thermal Comfort use pointer-anchored X-only wheel zoom and full-extent reset. Actual result graph grids retain equal card widths, bounded 1000x340 plot proportions and shared physical fonts at narrow/medium/wide container widths with regular and large app fonts. Native results remain unchanged.');
  const capture=new URLSearchParams(location.search).get('capture');
  if(capture){
   if(capture==='comparison'){tab('comfort').click();comparison('comfort').scrollIntoView({block:'center'});}

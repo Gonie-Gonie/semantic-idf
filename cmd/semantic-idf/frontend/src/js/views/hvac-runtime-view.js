@@ -7,10 +7,12 @@ import { buildHVACControlExpressions } from "../hvac-control-expressions.js";
 import { renderHVACParameterFlow, connectHVACParameterFlow } from "./hvac-parameter-flow-view.js";
 import { renderHVACOnOffFlow, connectHVACOnOffFlow } from "./hvac-onoff-flow-view.js";
 import { renderHVACInspectionChart, updateHVACInspectionChartFrame } from "../hvac-inspection-charts.js";
+import { zoomTimeSeriesRange } from "../time-series-chart.js";
 
 const safe = escapeHTML, finite = (value) => typeof value === "number" && Number.isFinite(value);
 const copy = (key, fallback) => t(`simulation.hvacRuntime${key}`, {}, fallback);
 const connections = new WeakMap(), flowModels = new WeakMap();
+const availabilityContexts = new WeakMap();
 const stateNames = { allowed: "Available", blocked: "Unavailable", no_action: "NoAction", force_off: "ForceOff", cycle_on: "CycleOn", zone_fans_only: "Zone fans only", active: "Activity reported", inactive: "No activity reported", error: "Data acquisition error" };
 const stateName = (state) => copy("State." + state, stateNames[state] || state);
 const number = (value, unit = "") => finite(value) ? value.toLocaleString(undefined, { minimumFractionDigits: ["kW", "K"].includes(unit) ? 2 : 0, maximumFractionDigits: unit === "kg/s" ? 4 : 2 }) + (unit && unit !== "—" ? " " + unit : "") : "—";
@@ -115,8 +117,35 @@ function statusHeader(data) {
   return `<span class="hvac-runtime-state is-${safe(state)}" data-hvac-runtime-permission="${safe(state)}">${safe(stateName(state))}</span>${stack.activity ? `<span class="hvac-runtime-state" data-hvac-runtime-activity="${safe(stack.activity.current.state)}">${safe(stack.activity.current.label)}</span>` : ""}`;
 }
 
-function patches(points, frames, interval, prefix) {
-  const low = frames[0]?.startX ?? (frames[0]?.x ?? 0) - interval, high = frames.at(-1)?.endX ?? frames.at(-1)?.x ?? low + 1, span = high - low || 1;
+function availabilityView(data) {
+  const { model, logic, profile, frames } = data;
+  const low = frames[0]?.startX ?? (frames[0]?.x ?? 0) - (model.interval || 1);
+  const high = frames.at(-1)?.endX ?? frames.at(-1)?.x ?? low + 1;
+  const key = JSON.stringify([profile.id, logic.window, frames[0]?.key, frames.at(-1)?.key]);
+  let contexts = availabilityContexts.get(model);
+  if (!contexts) { contexts = new WeakMap(); availabilityContexts.set(model, contexts); }
+  const range = logic.availabilityRange;
+  if (contexts.get(logic) !== key || !finite(range?.low) || !finite(range?.high) || range.high <= range.low
+    || range.low < low - 1e-7 || range.high > high + 1e-7) logic.availabilityRange = { low, high };
+  else logic.availabilityRange = { low: Math.max(low, range.low), high: Math.min(high, range.high) };
+  contexts.set(logic, key);
+  return { ...logic.availabilityRange, extent: [low, high] };
+}
+
+function availabilityAxisLabel(data, value, end = false) {
+  if (!data.model.calendarValid) {
+    const frame = data.frames[Math.max(0, Math.min(data.frames.length - 1, Math.round(value)))];
+    return frame?.label || "";
+  }
+  const date = new Date(Math.round(value * 3600000));
+  const midnight = end && !date.getUTCHours() && !date.getUTCMinutes() && !date.getUTCSeconds() && !date.getUTCMilliseconds();
+  if (midnight) date.setUTCDate(date.getUTCDate() - 1);
+  const padded = (number) => String(number).padStart(2, "0");
+  return `${padded(date.getUTCMonth() + 1)}-${padded(date.getUTCDate())} ${midnight ? "24" : padded(date.getUTCHours())}:${padded(date.getUTCMinutes())}`;
+}
+
+function patches(points, range, interval, prefix) {
+  const { low, high } = range, span = high - low || 1;
   const ranges = [];
   for (const point of points) {
     const start = Math.max(0, ((point.startX ?? point.x - interval) - low) / span * 1000);
@@ -200,11 +229,11 @@ export function handleHVACAvailabilityLegendEvent(event, container) {
 }
 
 function availability(data) {
-  const { stack, frames, model } = data, overrides = availabilityOverrides(data);
-  return `<section data-hvac-runtime-availability><h4>${safe(copy("AvailabilityStack", "Availability"))}</h4><div class="hvac-runtime-stack">${stack.rows.map((row, index) => {
+  const { stack, model } = data, overrides = availabilityOverrides(data), range = availabilityView(data);
+  return `<section data-hvac-runtime-availability data-hvac-availability-low="${range.low}" data-hvac-availability-high="${range.high}"><h4>${safe(copy("AvailabilityStack", "Availability"))}</h4><div class="hvac-runtime-stack">${stack.rows.map((row, index) => {
     const prefix = "hvac-status-" + data.profile.id + "-" + index;
-    return `<article class="hvac-runtime-stack-row ${row.kind === "permission" ? "final" : ""}${row.decisive ? " decisive" : ""}" data-hvac-runtime-availability-row="${safe(row.id)}" data-kind="${safe(row.kind)}" data-state="${safe(row.current.state)}" data-decisive="${row.decisive}"><div class="hvac-runtime-stack-label"><span title="${safe(row.owner)}">${safe(row.owner)}</span><strong title="${safe(row.label)}">${safe(row.label)}</strong><span data-hvac-runtime-override-wrap>${overrideBadge(row, overrides)}</span></div><svg viewBox="0 0 1000 28" preserveAspectRatio="none" role="img" aria-label="${safe(row.label)}"><defs><pattern id="${prefix}-error" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="var(--red)" opacity=".3"/><path d="M-1,1 L1,-1 M0,6 L6,0 M5,7 L7,5" stroke="var(--red)" stroke-width="1.5"/></pattern></defs>${patches(row.points, frames, model.interval || 1, prefix)}<line data-hvac-runtime-cursor x1="0" x2="0" y1="1" y2="27"/></svg><span data-hvac-runtime-current="${safe(row.id)}">${safe(row.current.label)}</span></article>`;
-  }).join("")}<div class="hvac-runtime-stack-axis"><span></span><div><span>${safe(frames[0]?.label || "")}</span><span>${safe(frames.at(-1)?.label || "")}</span></div><span></span></div></div>${availabilityLegend()}</section>`;
+    return `<article class="hvac-runtime-stack-row ${row.kind === "permission" ? "final" : ""}${row.decisive ? " decisive" : ""}" data-hvac-runtime-availability-row="${safe(row.id)}" data-kind="${safe(row.kind)}" data-state="${safe(row.current.state)}" data-decisive="${row.decisive}"><div class="hvac-runtime-stack-label"><span title="${safe(row.owner)}">${safe(row.owner)}</span><strong title="${safe(row.label)}">${safe(row.label)}</strong><span data-hvac-runtime-override-wrap>${overrideBadge(row, overrides)}</span></div><svg viewBox="0 0 1000 28" preserveAspectRatio="none" role="img" aria-label="${safe(row.label)}"><defs><pattern id="${prefix}-error" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="var(--red)" opacity=".3"/><path d="M-1,1 L1,-1 M0,6 L6,0 M5,7 L7,5" stroke="var(--red)" stroke-width="1.5"/></pattern></defs><g data-hvac-runtime-patches>${patches(row.points, range, model.interval || 1, prefix)}</g><line data-hvac-runtime-cursor x1="0" x2="0" y1="1" y2="27"/></svg><span data-hvac-runtime-current="${safe(row.id)}">${safe(row.current.label)}</span></article>`;
+  }).join("")}<div class="hvac-runtime-stack-axis"><span></span><div><span data-hvac-availability-start>${safe(availabilityAxisLabel(data, range.low))}</span><span data-hvac-availability-end>${safe(availabilityAxisLabel(data, range.high, true))}</span></div><span></span></div></div>${availabilityLegend()}</section>`;
 }
 
 function onOff(data) {
@@ -302,6 +331,30 @@ function flowValues(mount, data) {
   }
 }
 
+function availabilityCursor(section, data) {
+  if (!section) return;
+  const range = availabilityView(data), { low, high } = range;
+  section.dataset.hvacAvailabilityLow = low; section.dataset.hvacAvailabilityHigh = high;
+  section.querySelector("[data-hvac-availability-start]").textContent = availabilityAxisLabel(data, low);
+  section.querySelector("[data-hvac-availability-end]").textContent = availabilityAxisLabel(data, high, true);
+  const visible = finite(data.frameX) && data.frameX >= low && data.frameX <= high;
+  for (const cursor of section.querySelectorAll("[data-hvac-runtime-cursor]")) {
+    cursor.style.display = visible ? "" : "none";
+    const x = visible ? (data.frameX - low) / (high - low || 1) * 1000 : 0;
+    cursor.setAttribute("x1", x); cursor.setAttribute("x2", x);
+  }
+}
+
+function paintAvailabilityWindow(section, data) {
+  const range = availabilityView(data);
+  data.stack.rows.forEach((row, index) => {
+    const element = section.querySelector('[data-hvac-runtime-availability-row="' + CSS.escape(row.id) + '"]');
+    const marks = element?.querySelector("[data-hvac-runtime-patches]");
+    if (marks) marks.innerHTML = patches(row.points, range, data.model.interval || 1, "hvac-status-" + data.profile.id + "-" + index);
+  });
+  availabilityCursor(section, data); paintAvailabilityLegend(section);
+}
+
 function synchronize(mount, data) {
   mount.querySelector("[data-hvac-runtime-states]").innerHTML = statusHeader(data);
   mount.querySelector("[data-hvac-runtime-diagnostic]").innerHTML = diagnostic(data.snapshot);
@@ -322,13 +375,7 @@ function synchronize(mount, data) {
     element.querySelector("[data-hvac-runtime-current]").textContent = row.current.label;
     element.querySelector("[data-hvac-runtime-override-wrap]").innerHTML = overrideBadge(row, overrides);
   }
-  const low = data.frames[0]?.startX ?? (data.frames[0]?.x ?? 0) - (data.model.interval || 1), high = data.frames.at(-1)?.endX ?? data.frames.at(-1)?.x ?? low + 1;
-  const visible = finite(data.frameX) && data.frameX >= low && data.frameX <= high;
-  for (const cursor of mount.querySelectorAll("[data-hvac-runtime-cursor]")) {
-    cursor.style.display = visible ? "" : "none";
-    const x = visible ? (data.frameX - low) / (high - low || 1) * 1000 : 0;
-    cursor.setAttribute("x1", x); cursor.setAttribute("x2", x);
-  }
+  availabilityCursor(mount.querySelector("[data-hvac-runtime-availability]"), data);
   flowValues(mount, data); updateHVACInspectionChartFrame(mount, data.frameX);
   paintAvailabilityLegend(mount.querySelector("[data-hvac-runtime-availability]"));
 }
@@ -346,7 +393,41 @@ export function connectHVACRuntimeInspection(container, loop, ui, inspection) {
   synchronize(container.querySelector("[data-hvac-runtime]"), data);
   const disconnectControl = connectHVACParameterFlow(mount);
   const disconnectOnOff = connectHVACOnOffFlow(container.querySelector("[data-hvac-runtime-onoff]"));
-  connections.set(container, () => { disconnectControl(); disconnectOnOff(); });
+  const availabilityMount = container.querySelector("[data-hvac-runtime-availability]");
+  let availabilityRAF = null;
+  const availabilityEvent = (event) => {
+    const svg = event.target.closest?.(".hvac-runtime-stack-row svg");
+    if (!svg || !availabilityMount?.contains(svg)) return;
+    const current = context(loop, ui, inspection);
+    if (!current?.frames.length) return;
+    const range = availabilityView(current);
+    if (event.type === "dblclick") current.logic.availabilityRange = { low: range.extent[0], high: range.extent[1] };
+    else {
+      const delta = event.deltaY || event.deltaX || 0;
+      if (!delta) return;
+      const rect = svg.getBoundingClientRect(), ratio = (event.clientX - rect.left) / Math.max(1, rect.width);
+      const pixels = delta * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1);
+      const minimum = (current.stack.rows[0]?.points || []).reduce((span, point) => {
+        const width = point.endX - point.startX;
+        return finite(width) && width > 1e-7 ? Math.min(span, width) : span;
+      }, range.extent[1] - range.extent[0]);
+      current.logic.availabilityRange = zoomTimeSeriesRange(range, range.extent, ratio, pixels, minimum);
+    }
+    event.preventDefault(); event.stopPropagation();
+    if (availabilityRAF === null) availabilityRAF = requestAnimationFrame(() => {
+      availabilityRAF = null;
+      const current = context(loop, ui, inspection);
+      if (availabilityMount.isConnected && current) paintAvailabilityWindow(availabilityMount, current);
+    });
+  };
+  availabilityMount?.addEventListener("wheel", availabilityEvent, { passive: false });
+  availabilityMount?.addEventListener("dblclick", availabilityEvent);
+  connections.set(container, () => {
+    disconnectControl(); disconnectOnOff();
+    availabilityMount?.removeEventListener("wheel", availabilityEvent);
+    availabilityMount?.removeEventListener("dblclick", availabilityEvent);
+    if (availabilityRAF !== null) cancelAnimationFrame(availabilityRAF);
+  });
 }
 
 export function updateHVACRuntimeInspection(container, loop, ui, inspection) {

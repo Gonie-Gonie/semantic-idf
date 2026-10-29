@@ -13,7 +13,7 @@ import (
 )
 
 func TestHVACInspectionChartsBrowser(t *testing.T) {
-	for _, path := range []string{"frontend/src/js/hvac-inspection-charts.js", "frontend/src/styles/hvac-inspection-charts.css", "frontend/src/styles/base.css", "frontend/src/styles/profile.css", "frontend/src/styles/simulation.css"} {
+	for _, path := range []string{"frontend/src/js/hvac-inspection-charts.js", "frontend/src/js/time-series-chart.js", "frontend/src/styles/hvac-inspection-charts.css", "frontend/src/styles/base.css", "frontend/src/styles/profile.css", "frontend/src/styles/simulation.css"} {
 		_ = readTestFile(t, path)
 	}
 	if testing.Short() {
@@ -103,11 +103,13 @@ const hvacInspectionChartsHTML = `<!doctype html><html><head><meta name="viewpor
 const check=(value,message)=>{if(!value)throw new Error(message);};
 try {
  const {renderHVACInspectionChart:renderChart,updateHVACInspectionChartFrame:updateFrame,handleHVACChartLegendEvent:legendEvent}=await import('/src/js/hvac-inspection-charts.js');
+ const {handleTimeSeriesChartEvent:timeEvent}=await import('/src/js/time-series-chart.js');
  const render=options=>renderChart({...options,markers:false});
  const mount=document.getElementById('mount');
  for(const type of ['pointerover','pointerout','focusin','focusout'])mount.addEventListener(type,event=>legendEvent(event,mount));
+ for(const type of ['wheel','dblclick'])mount.addEventListener(type,event=>timeEvent(event,mount),{passive:false});
  const drawn=group=>[...group.querySelector('path').getAttribute('d').matchAll(/([ML])([^,\s]+),([^\s]+)/g)].map(match=>({command:match[1],x:Number(match[2]),y:Number(match[3])}));
- const yAt=(value,axis='left')=>{const node=mount.querySelector('[data-hvac-chart-axis="'+axis+'"]'),low=Number(node.dataset.hvacChartYLow),high=Number(node.dataset.hvacChartYHigh);return 44+(high-value)/(high-low)*215;};
+ const yAt=(value,axis='left')=>{const node=mount.querySelector('[data-hvac-chart-axis="'+axis+'"]'),cursor=mount.querySelector('[data-hvac-chart-frame]'),low=Number(node.dataset.hvacChartYLow),high=Number(node.dataset.hvacChartYHigh),top=Number(cursor.getAttribute('y1')),bottom=Number(cursor.getAttribute('y2'));return top+(high-value)/(high-low)*(bottom-top);};
  const point=(x,value,label='Hour '+x)=>({x,value,label});
  const flow={id:'flow',label:'Supply node · Flow rate',axisLabel:'Flow rate',unit:'kg/s',interval:1,points:[point(0,0),point(1,2),point(2,null),point(3,4),point(4,Infinity),point(5,3),point(8,1)]};
  const temp={id:'temperature',label:'Supply node · Temperature',axisLabel:'Temperature',unit:'°C',points:[point(0,10),point(1,20),point(2,25),point(3,30),point(5,32),point(8,35)]};
@@ -145,16 +147,19 @@ try {
  const inheritedFamily=getComputedStyle(document.body).fontFamily;
  check(getComputedStyle(mount.querySelector('.hvac-chart-tick')).fontFamily===inheritedFamily&&getComputedStyle(mount.querySelector('.hvac-chart-axis-label')).fontFamily===inheritedFamily,'HVAC tick/title font overrides the app family');
  const screenFont=element=>parseFloat(getComputedStyle(element).fontSize)*element.getScreenCTM().a;
- check(Math.abs(screenFont(mount.querySelector('.hvac-chart-tick'))-parseFloat(getComputedStyle(document.querySelector('.profile-axis-tick')).fontSize))<.02,'HVAC physical tick font does not match Profile at default panel width');
- check(Math.abs(screenFont(mount.querySelector('.hvac-chart-tick'))-screenFont(document.querySelector('.simulation-axis')))<.02,'HVAC and Simulation default physical tick font differ');
+ check(Math.abs(screenFont(mount.querySelector('.hvac-chart-tick'))-Math.max(12,parseFloat(getComputedStyle(document.querySelector('.profile-axis-tick')).fontSize)))<.02,'Simulation tick font does not retain the shared readability floor and configured app font');
+ check(Math.abs(screenFont(mount.querySelector('.hvac-chart-tick'))-Math.max(12,screenFont(document.querySelector('.simulation-axis'))))<.02,'HVAC tick font differs from the shared Simulation readability floor');
  check(getComputedStyle(mount.querySelector('.hvac-chart-tick')).fontWeight==='400'&&getComputedStyle(mount.querySelector('.hvac-chart-axis-label')).fontWeight==='600','tick/title hierarchy changed');
- const appearance=[];
+ const appearance=[],headingSizes=new Map();
  for(const font of [11,18])for(const width of [350,720,1100]){
   document.documentElement.style.setProperty('--graph-label-font-size',font+'px');mount.style.width=width+'px';
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
   const tick=mount.querySelector('.hvac-chart-tick'),axis=mount.querySelector('.hvac-chart-axis-label'),legend=mount.querySelector('.hvac-chart-legend'),svg=mount.querySelector('svg');
-  check(Math.abs(screenFont(tick)-font)<.02&&Math.abs(screenFont(axis)-(font+1))<.02,'resized/configured SVG font differs from app setting at '+JSON.stringify({font,width,tick:screenFont(tick),axis:screenFont(axis)}));
-  check(parseFloat(getComputedStyle(legend).fontSize)===font+1&&getComputedStyle(legend).fontFamily===inheritedFamily,'legend does not share inherited font/settings');
+  check(Math.abs(screenFont(tick)-Math.max(12,font))<.02&&Math.abs(screenFont(axis)-(Math.max(12,font)+1))<.02,'resized/configured SVG font differs from the shared Simulation floor/setting at '+JSON.stringify({font,width,tick:screenFont(tick),axis:screenFont(axis)}));
+  check(parseFloat(getComputedStyle(legend).fontSize)===Math.max(12,font)&&getComputedStyle(legend).fontFamily===inheritedFamily,'legend does not share the Simulation tick font/settings');
+  const heading=getComputedStyle(mount.querySelector('h4')),headingSize=parseFloat(heading.fontSize);
+  check(headingSize>=Math.max(15,screenFont(axis)+.5)&&heading.fontFamily===inheritedFamily&&Number(heading.fontWeight)>Number(getComputedStyle(axis).fontWeight),'chart heading does not retain its shared typography hierarchy above configured axis text');
+  if(headingSizes.has(font))check(Math.abs(headingSize-headingSizes.get(font))<.02,'chart heading font changes with window width');else headingSizes.set(font,headingSize);
   check(mount.querySelector('svg')===originalSVG&&flowGroup.querySelector('path')===originalPath&&originalPath.getAttribute('d')===path,'font/width change rebuilt or altered data geometry');
   check(mount.scrollWidth===width,'chart scroller leaked outside panel at '+width);
   for(const label of mount.querySelectorAll('[data-hvac-chart-tick="left"], [data-hvac-chart-tick="right"], [data-hvac-chart-tick="x"]')){const box=label.getBBox();check(box.x>=0&&box.x+box.width<=1000,'configured tick clips outside SVG at '+JSON.stringify({font,width,text:label.textContent,box:{x:box.x,width:box.width}}));}
@@ -221,6 +226,60 @@ try {
  const replacementLegend=mount.querySelector('[data-hvac-chart-legend]');replacementLegend.focus();
  check(mount.querySelector('[data-hvac-chart-series]').classList.contains('is-highlighted'),'replaced chart lost stable-host legend delegation');replacementLegend.blur();
  check(!mount.querySelector('.is-highlighted,.is-muted'),'replaced chart retained stale legend state');
+ const waitPlot=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+ const timeSVG=()=>mount.querySelector('svg[data-time-series-chart]');
+ const timeRange=svg=>[Number(svg.dataset.timeSeriesLow),Number(svg.dataset.timeSeriesHigh)];
+ const yEvidence=svg=>JSON.stringify([...svg.querySelectorAll('[data-hvac-chart-y-low]')].map(axis=>[axis.dataset.hvacChartUnit,axis.dataset.hvacChartYLow,axis.dataset.hvacChartYHigh,axis.textContent]));
+ const wheel=(svg,deltaY,ratio=.3,extra={})=>{
+  const rect=svg.getBoundingClientRect(),view=svg.viewBox.baseVal,left=Number(svg.dataset.timeSeriesPlotLeft??svg.dataset.hvacChartPlotLeft??view.width*.12),width=Number(svg.dataset.timeSeriesPlotWidth??svg.dataset.hvacChartPlotWidth??view.width*.76);
+  const event=new WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY,clientX:rect.left+(left+width*ratio)/view.width*rect.width,clientY:rect.top+rect.height*.4,...extra});
+  svg.dispatchEvent(event);return event;
+ };
+ const timeLabelBounds=svg=>{
+  const left=Number(svg.dataset.hvacChartPlotLeft),right=left+Number(svg.dataset.hvacChartPlotWidth),ticks=[...svg.querySelectorAll('[data-hvac-chart-tick="x"]')];
+  for(const tick of ticks){const box=tick.getBBox(),style=getComputedStyle(tick);check(box.x>=left-.1&&box.x+box.width<=right+.1,'zoomed observed timestamp extends outside its actual plot bounds '+JSON.stringify({text:tick.textContent,left,right,box:{x:box.x,width:box.width},anchor:tick.getAttribute('text-anchor'),x:tick.getAttribute('x'),range:[svg.dataset.hvacChartDomainLow,svg.dataset.hvacChartDomainHigh],font:{family:style.fontFamily,size:style.fontSize,weight:style.fontWeight,screenSize:screenFont(tick)},rootFamily:getComputedStyle(document.documentElement).fontFamily,bodyFamily:getComputedStyle(document.body).fontFamily}));}
+  const boxes=ticks.map(tick=>tick.getBoundingClientRect());check(boxes.every((box,index)=>!index||boxes[index-1].right+2<=box.left),'zoomed clustered timestamp labels overlap across an actual time gap');
+  return ticks;
+ };
+ for(const count of[2,3]){
+  const clustered={...flow,points:[...Array.from({length:count},(_,x)=>point(x,x+1,'01/01 0'+(x+1)+':00:00')),point(744,4,'02/01 01:00:00')]},nativeCluster=JSON.stringify(clustered);
+  mount.innerHTML=render({series:[clustered],frameKey:0});const svg=timeSVG(),fullScale=yEvidence(svg);
+  wheel(svg,-360,0);await waitPlot();
+  const ticks=timeLabelBounds(svg);
+  check(timeRange(svg)[1]<744&&ticks.length===1&&ticks[0].getAttribute('text-anchor')==='start','two/three densely clustered observations were forced into overlapping endpoint labels after left-edge zoom');
+  check(yEvidence(svg)===fullScale&&JSON.stringify(clustered)===nativeCluster,'sparse timestamp label layout changed Y scale or original observations');
+ }
+ const edgeSeries={...flow,points:[point(0,1,'01/01 01:00:00'),point(1,2,'01/01 02:00:00'),point(744,4,'02/01 01:00:00')]};
+ for(const [range,anchor]of[[[.25,334],'start'],[[410,744],'end']]){
+  mount.innerHTML=render({series:[edgeSeries],xRange:range,interactive:false});const svg=mount.querySelector('svg'),ticks=timeLabelBounds(svg);
+  check(ticks.length===1&&ticks[0].getAttribute('text-anchor')===anchor,'single observed timestamp near a viewport edge was centered outside the plot');
+ }
+ const zoomSeries=[{...flow,points:Array.from({length:25},(_,x)=>point(x,x===24?900:1+x%4))},{...temp,points:Array.from({length:25},(_,x)=>point(x,20+x/2))}],zoomJSON=JSON.stringify(zoomSeries);
+ mount.innerHTML=render({series:zoomSeries,frameKey:24});
+ const fullSVG=timeSVG(),fullRange=timeRange(fullSVG),fullY=yEvidence(fullSVG),fullHeight=fullSVG.getBoundingClientRect().height;
+ check(fullSVG&&fullRange[0]===0&&fullRange[1]===24,'line graph did not expose its actual complete temporal extent');
+ const zoomEvent=wheel(fullSVG,-360),zoomRect=fullSVG.getBoundingClientRect(),zoomRatio=((zoomEvent.clientX-zoomRect.left)/zoomRect.width*fullSVG.viewBox.baseVal.width-Number(fullSVG.dataset.timeSeriesPlotLeft))/Number(fullSVG.dataset.timeSeriesPlotWidth),anchored=fullRange[0]+zoomRatio*(fullRange[1]-fullRange[0]);
+ await waitPlot();
+ const zoomed=timeSVG(),zoomRange=timeRange(zoomed);
+ check(zoomEvent.defaultPrevented&&zoomed===fullSVG&&zoomRange[1]-zoomRange[0]<24&&Math.abs(zoomRange[0]+zoomRatio*(zoomRange[1]-zoomRange[0])-anchored)<1e-7,'wheel did not zoom time about the pointer while retaining its SVG');
+ check(yEvidence(zoomed)===fullY&&Math.abs(zoomed.getBoundingClientRect().height-fullHeight)<.01,'time zoom changed either Y scale, axis labels or graph height');
+ check(zoomed.querySelector('[data-hvac-chart-frame-marker]').style.display==='none','frame outside the zoomed range was clamped onto the visible window');
+ const current=(zoomRange[0]+zoomRange[1])/2;
+ updateFrame(mount,current);
+ const inView=zoomed.querySelector('[data-hvac-chart-frame]'),expectedX=Number(zoomed.dataset.hvacChartPlotLeft)+(current-zoomRange[0])/(zoomRange[1]-zoomRange[0])*Number(zoomed.dataset.hvacChartPlotWidth);
+ check(Math.abs(Number(inView.getAttribute('x1'))-expectedX)<1e-7&&zoomed.querySelector('[data-hvac-chart-frame-marker]').style.display==='','frame-only update ignored the visible temporal window');
+ for(let step=0;step<5;step++){wheel(timeSVG(),-10000,.5,{deltaMode:1});await waitPlot();}
+ const minimum=timeRange(timeSVG());
+ check(minimum.every(Number.isFinite)&&Math.abs(minimum[1]-minimum[0]-1)<1e-7&&yEvidence(timeSVG())===fullY,'line-mode wheel minimum lost its native cadence, finite range or full-history Y extent');
+ for(let step=0;step<5;step++){wheel(timeSVG(),10000,.98,{ctrlKey:true});await waitPlot();}
+ check(timeRange(timeSVG()).every((value,index)=>Math.abs(value-fullRange[index])<1e-7)&&yEvidence(timeSVG())===fullY,'zoom-out exceeded or failed to restore the actual extent, or changed the Y axis');
+ wheel(timeSVG(),-240,.7);await waitPlot();timeSVG().dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true}));await waitPlot();
+ check(timeRange(timeSVG()).every((value,index)=>Math.abs(value-fullRange[index])<1e-7)&&Number(timeSVG().dataset.timeSeriesFrame)===current,'reset did not restore the complete temporal extent while retaining the latest frame');
+ check(JSON.stringify(zoomSeries)===zoomJSON,'time zoom or reset changed native observations');
+ mount.innerHTML=render({series:[flow,temp],mode:'scatter'});
+ const unmanagedScatter=mount.querySelector('svg'),scatterHTML=unmanagedScatter.innerHTML,scatterWheel=wheel(unmanagedScatter,-240);
+ await waitPlot();
+ check(!scatterWheel.defaultPrevented&&!unmanagedScatter.hasAttribute('data-time-series-chart')&&unmanagedScatter.innerHTML===scatterHTML,'time-axis wheel handling consumed or changed a scatter value axis');
  const histogramSeries=[
   {id:'indoor',label:'Office · Air temperature',unit:'°C',points:[-5,0,5,10,null,Infinity,NaN].map((value,x)=>point(x,value))},
   {id:'outdoor',label:'Environment · Outdoor temperature',unit:'°C',points:[-5,10,10,10].map((value,x)=>point(x,value))},
@@ -236,6 +295,8 @@ try {
  check(mount.querySelectorAll('svg').length===1&&mount.querySelectorAll('[data-hvac-inspection-chart="histogram"]').length===1,'histogram split variables into separate plotting panels');
  check(!mount.querySelector('circle,[data-hvac-chart-frame-marker],[data-hvac-chart-frame]'),'histogram restored markers or misrepresented a time cursor on a value axis');
  const histogramSVG=mount.querySelector('svg'),histogramGroups=[...mount.querySelectorAll('[data-hvac-chart-series]')],histogramAxes=[...mount.querySelectorAll('[data-hvac-chart-histogram-axis]')];
+ const histogramWheel=wheel(histogramSVG,-240),histogramWheelHTML=histogramSVG.innerHTML;await waitPlot();
+ check(!histogramWheel.defaultPrevented&&!histogramSVG.hasAttribute('data-time-series-chart')&&histogramSVG.innerHTML===histogramWheelHTML,'time-axis wheel handling consumed or changed histogram value axes');
  check(histogramGroups.length===4&&histogramAxes.length===3,'histogram rejected a third unit or gave same-unit variables different axes');
  for(const group of histogramGroups){
   const values=histogramValues.get(group.dataset.hvacChartSeries),rectangles=bins(group),total=count(group);
@@ -264,7 +325,7 @@ try {
  for(const font of [11,18])for(const width of [350,720,1100]){
   document.documentElement.style.setProperty('--graph-label-font-size',font+'px');mount.style.width=width+'px';await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
   const viewport=histogramSVG.viewBox.baseVal;
-  check(mount.scrollWidth===width&&Math.abs(screenFont(mount.querySelector('.hvac-chart-tick'))-font)<.02,'histogram font or horizontal containment differs from other result charts');
+  check(mount.scrollWidth===width&&Math.abs(screenFont(mount.querySelector('.hvac-chart-tick'))-Math.max(12,font))<.02,'histogram font or horizontal containment differs from other result charts');
   for(const axis of histogramAxes){
    for(const label of axis.querySelectorAll('text')){const box=label.getBBox();check(box.x>=viewport.x-.1&&box.x+box.width<=viewport.x+viewport.width+.1&&box.y+box.height<=viewport.height+.1,'stacked histogram axis clips configured labels outside SVG');}
    const ticks=[...axis.querySelectorAll('[data-hvac-chart-tick="x"]')].map(label=>label.getBoundingClientRect());

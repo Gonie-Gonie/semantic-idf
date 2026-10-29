@@ -1,3 +1,13 @@
+/* Result charts retain readable physical labels and share the same card grid. */
+:root {
+  --simulation-chart-font-size: max(12px, var(--graph-label-font-size, 11px));
+  --simulation-chart-title-font-size: max(15px, calc(var(--simulation-chart-font-size) + 2px));
+  --simulation-chart-min-width: max(560px, calc(var(--simulation-chart-font-size) * 48));
+  --simulation-chart-card-min-width: calc(var(--simulation-chart-min-width) + 26px);
+  --simulation-chart-max-width: 1000px;
+  --simulation-chart-gap: 16px;
+}
+
 .simulation-pane {
   display: flex;
   min-height: 0;
@@ -1903,8 +1913,8 @@
 }
 
 .energy-path-component-chart {
-  --energy-path-chart-font-size: max(12px, var(--graph-label-font-size, 11px));
-  --energy-path-chart-min-width: max(560px, calc(var(--energy-path-chart-font-size) * 50));
+  --energy-path-chart-font-size: var(--simulation-chart-font-size);
+  --energy-path-chart-min-width: var(--simulation-chart-min-width);
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius, 8px);
@@ -1913,10 +1923,6 @@
   font-family: inherit;
   font-size: 13px;
   line-height: 1.42;
-}
-
-.energy-path-component-chart[data-energy-path-chart-mode="monthly"] {
-  --energy-path-chart-min-width: max(640px, calc(var(--energy-path-chart-font-size) * 55));
 }
 
 .energy-path-component-chart > header {
@@ -1937,9 +1943,9 @@
   overflow-wrap: anywhere;
 }
 
-.energy-path-component-chart select { flex: 0 0 auto; max-width: 100%; min-height: 30px; font-size: 12px; }
-.energy-path-chart-plot { min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; container-type: inline-size; }
-.energy-path-chart-plot svg { display: block; width: 100%; min-width: var(--energy-path-chart-min-width); height: auto; overflow: visible; font-family: inherit; }
+.energy-path-component-chart select { flex: 0 0 auto; max-width: 100%; min-height: var(--control-height); border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--control); color: var(--ink); padding: 0 9px; font: inherit; font-size: 12px; }
+.energy-path-chart-plot { min-width: 0; width: 100%; max-width: var(--simulation-chart-max-width); margin-inline: auto; overflow-x: auto; overscroll-behavior-inline: contain; container-type: inline-size; }
+.energy-path-chart-plot > svg { display: block; width: 100%; min-width: var(--energy-path-chart-min-width); height: auto; overflow: visible; font-family: inherit; }
 .energy-path-chart-grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 3; opacity: .56; vector-effect: non-scaling-stroke; }
 .energy-path-chart-axis { stroke: var(--muted); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
 .energy-path-chart-tick { fill: var(--muted); font-size: calc(var(--energy-path-chart-font-size) * 1.67); font-weight: 400; font-variant-numeric: tabular-nums; }
@@ -1953,7 +1959,7 @@
 .energy-path-chart-color-3 { --chart-color: var(--green); }
 .energy-path-chart-color-4 { --chart-color: var(--red); }
 .energy-path-chart-color-5 { --chart-color: var(--selection-hidden); }
-.energy-path-chart-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; padding-top: 4px; font-size: var(--energy-path-chart-font-size); line-height: 1.4; color: var(--muted); }
+.energy-path-chart-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; padding-top: 8px; font-size: var(--energy-path-chart-font-size); line-height: 1.4; color: var(--muted); }
 .energy-path-chart-legend > span { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .energy-path-chart-legend i { flex: 0 0 12px; width: 12px; height: 8px; border-radius: 1px; background: var(--chart-color); }
 .energy-path-chart-empty { padding: 32px 12px; color: var(--muted); font-size: 13px; line-height: 1.5; text-align: center; }
@@ -1961,7 +1967,7 @@
 /* Keep graph labels at their configured screen size as the 1000-unit SVG fits
    the card. Each mode reserves enough physical width for its time labels. */
 @supports (font-size: calc(11px * (1000px / 1000px))) {
-  .energy-path-chart-plot svg { --energy-path-chart-font-scale: calc(1000px / max(var(--energy-path-chart-min-width), 100cqw)); }
+  .energy-path-chart-plot > svg { --energy-path-chart-font-scale: calc(1000px / max(var(--energy-path-chart-min-width), 100cqw)); }
   .energy-path-chart-tick { font-size: calc(var(--energy-path-chart-font-size) * var(--energy-path-chart-font-scale)); }
   .energy-path-chart-axis-label { font-size: calc((var(--energy-path-chart-font-size) + 1px) * var(--energy-path-chart-font-scale)); }
 }

@@ -3,6 +3,7 @@ import { escapeHTML } from "./state.js";
 import { energyPathDisplayUnit, formatEnergyPathDisplayValue } from "./energy-path-display.js";
 import { energyPathHeatDirection, energyPathGrossHeatValue } from "./energy-path-driver-presentation.js";
 import { energyPathInputDriverHeatReference } from "./energy-path-context.js";
+import { observedTimeTicks, registerTimeSeriesChart, timeSeriesWindowPoints } from "./time-series-chart.js";
 
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const copy = (key, fallback, values = {}) => t(`simulation.energyPathChart${key}`, values, fallback);
@@ -410,8 +411,8 @@ function chartRatioOutlierLimit(points) {
   return magnitudes.filter((value) => value <= limit).length >= 2 ? limit : Infinity;
 }
 
-function renderPlot(series, frequency, display, boundaryInput = false, ratio = false) {
-  const width = 1000, height = 340, right = 42, top = 52, bottom = 81;
+function renderPlot(series, frequency, display, boundaryInput = false, ratio = false, { xRange, interactive = true } = {}) {
+  const width = 1000, height = 340, right = 42, top = 44, bottom = 81;
   const traces = series.map((trace) => ({ ...trace, points: trace.points || [] }));
   // Both thermal and site traces are canonical kWh, divided by one scope area.
   const points = traces.flatMap((trace) => trace.points).filter((point) => finite(point.value));
@@ -432,7 +433,10 @@ function renderPlot(series, frequency, display, boundaryInput = false, ratio = f
   const left = Math.max(112, ...yTicks.map((tick) => Math.ceil(chartLabelWidth(tick.label) + 18)));
   const plotWidth = width - left - right, plotHeight = height - top - bottom;
   const allX = traces.flatMap((trace) => trace.points).map((point) => point.x).filter(finite);
-  const xMin = frequency === "monthly" ? -.5 : allX.reduce((value, next) => Math.min(value, next), Infinity), xMax = frequency === "monthly" ? 11.5 : allX.reduce((value, next) => Math.max(value, next), -Infinity);
+  const extent = frequency === "monthly" ? [-.5, 11.5] : [allX.reduce((value, next) => Math.min(value, next), Infinity), allX.reduce((value, next) => Math.max(value, next), -Infinity)];
+  const [xMin, xMax] = Array.isArray(xRange) && xRange.length === 2 && xRange.every(finite) && xRange[1] > xRange[0] ? xRange : extent;
+  const interaction = interactive ? registerTimeSeriesChart({ extent, range: [xMin, xMax], minSpan: frequency === "monthly" ? 2 : 1, plotLeft: left, plotWidth,
+    render: (range) => renderPlot(series, frequency, display, boundaryInput, ratio, { xRange: range, interactive: false }) }) : "";
   const x = (value) => xMax > xMin ? left + (value - xMin) / (xMax - xMin) * plotWidth : left + plotWidth / 2;
   const y = (value) => top + (high - value) / (high - low) * plotHeight;
   const baseline = y(0);
@@ -440,22 +444,22 @@ function renderPlot(series, frequency, display, boundaryInput = false, ratio = f
     const position = y(tick.value);
     return `<line class="energy-path-chart-grid" x1="${left}" y1="${position}" x2="${width - right}" y2="${position}"/><text class="energy-path-chart-tick" data-energy-path-chart-tick="y" x="${left - 10}" y="${position + 5}" text-anchor="end">${escapeHTML(tick.label)}<title>${escapeHTML(tick.fullLabel)}</title></text>`;
   }).join("");
-  const visiblePoints = traces[0]?.points || [];
-  const ticks = frequency === "monthly" ? visiblePoints : hourlyChartTicks(visiblePoints, x);
-  const labels = ticks.map((point, index) => {
-    const anchor = frequency === "monthly" || ticks.length < 2 ? "middle" : index === 0 ? "start" : index === ticks.length - 1 ? "end" : "middle";
-    return `<line class="energy-path-chart-grid" x1="${x(point.x)}" y1="${top}" x2="${x(point.x)}" y2="${height - bottom}"/><text class="energy-path-chart-tick" data-energy-path-chart-tick="x" x="${x(point.x)}" y="${height - bottom + 27}" text-anchor="${anchor}">${escapeHTML(point.label)}</text>`;
+  const visiblePoints = (traces[0]?.points || []).filter((point) => point.x >= xMin && point.x <= xMax);
+  const ticks = frequency === "monthly" ? visiblePoints : observedTimeTicks(visiblePoints, { x, plotLeft: left, plotWidth, measure: chartLabelWidth });
+  const labels = ticks.map((point) => {
+    const anchor = frequency === "monthly" ? "middle" : point.anchor;
+    return `<line class="energy-path-chart-grid" x1="${x(point.x)}" y1="${top}" x2="${x(point.x)}" y2="${height - bottom}"/><text class="energy-path-chart-tick" data-energy-path-chart-tick="x" x="${frequency === "monthly" ? x(point.x) : point.labelX}" y="${height - bottom + 25}" text-anchor="${anchor}">${escapeHTML(point.label)}</text>`;
   }).join("");
   const marks = traces.map((trace, traceIndex) => {
     const color = traceIndex % 6;
     const title = (point) => `${point.label} · ${trace.label}: ${ratio ? chartRatioValue(point.value) : formatEnergyPathDisplayValue(point.value, trace.unit || "kWh", display)}` +
       (ratio ? ` · ${point.fromLabel || copy("From", "From")}: ${chartTooltipEnergyValue(point.fromValue, point.fromUnit, display)} · ${point.toLabel || copy("To", "To")}: ${chartTooltipEnergyValue(point.toValue, point.toUnit, display)}` : "");
     if (frequency === "monthly" && !ratio) {
-      const barWidth = plotWidth / 12 * .68 / traces.length;
-      return trace.points.filter((point) => finite(point.value)).map((point) => `<rect class="energy-path-chart-mark energy-path-chart-color-${color}" data-energy-path-chart-${ratio ? "ratio" : "value"}="${point.value}" x="${x(point.x) - barWidth * traces.length / 2 + traceIndex * barWidth}" y="${Math.min(y(point.value), baseline)}" width="${barWidth}" height="${Math.max(1, Math.abs(y(point.value) - baseline))}" tabindex="0"><title>${escapeHTML(title(point))}</title></rect>`).join("");
+      const barWidth = plotWidth / Math.max(1, xMax - xMin) * .68 / traces.length;
+      return trace.points.filter((point) => finite(point.value) && point.x >= xMin - .5 && point.x <= xMax + .5).map((point) => `<rect class="energy-path-chart-mark energy-path-chart-color-${color}" data-energy-path-chart-${ratio ? "ratio" : "value"}="${point.value}" x="${x(point.x) - barWidth * traces.length / 2 + traceIndex * barWidth}" y="${Math.min(y(point.value), baseline)}" width="${barWidth}" height="${Math.max(1, Math.abs(y(point.value) - baseline))}" tabindex="0"><title>${escapeHTML(title(point))}</title></rect>`).join("");
     }
     let previous = null;
-    const drawn = hourlyPlotPoints(trace.points, Math.max(48, Math.floor(2400 / traces.length)));
+    const drawn = hourlyPlotPoints(timeSeriesWindowPoints(trace.points, [xMin, xMax]), Math.max(48, Math.floor(2400 / traces.length)));
     const path = drawn.map((point) => {
       if (!finite(point.value) || isOutlier(point)) { previous = null; return ""; }
       const command = previous !== null && point.segment === previous ? "L" : "M";
@@ -478,9 +482,9 @@ function renderPlot(series, frequency, display, boundaryInput = false, ratio = f
   const scaleNote = outliers.length ? `<small class="energy-path-chart-note" data-energy-path-chart-scale-note>${escapeHTML(copy("OutlierNote", "Linear axis · ≈ marks values >10× the median magnitude. Original values are preserved."))}</small><div class="energy-path-chart-outlier-summary" data-energy-path-chart-outlier-summary>${escapeHTML(copy("OffScale", "Off scale"))}: ${outliers.map((point) => escapeHTML(`${point.label}: ${chartRatioValue(point.value)}`)).join(" · ")}</div>` : "";
   const gapNote = ratio && traces.some((trace) => trace.points.some((point) => !finite(point.value))) ? `<small class="energy-path-chart-note" data-energy-path-chart-gap-note>${escapeHTML(copy("GapNote", "× marks an unavailable ratio, not zero. Hover or focus each mark for its reason."))}</small>` : "";
   const denominatorNote = outliers.length && traces[0]?.ratioKind === "coefficient_of_performance" ? `<small class="energy-path-chart-note" data-energy-path-chart-denominator-note>${escapeHTML(copy("SmallDenominatorNote", "A very small equipment-energy denominator can produce a large ratio. This delivered-load/equipment-energy comparison is not the equipment's rated COP; separately shown fan/pump energy is excluded."))}</small>` : "";
-  return `<div class="energy-path-chart-plot"><svg viewBox="0 0 ${width} ${height}" data-energy-path-chart-scale="linear" data-energy-path-chart-y-min="${low}" data-energy-path-chart-y-max="${high}" role="img" aria-label="${escapeHTML(copy(frequency === "hourly" ? "Hourly" : "Monthly", frequency === "hourly" ? "Hourly" : "Monthly"))}">
-    <text class="energy-path-chart-axis-label" data-energy-path-chart-axis="y" x="${left}" y="40">${escapeHTML(ratio ? traces[0]?.label || copy("Ratio", "From / to ratio") : `${boundaryInput ? copy("Boundary", "Reported boundary energy") : frequency === "hourly" ? copy("Measured", "Measured energy") : copy("Component", "Component energy")} (${energyPathDisplayUnit("kWh", display)})`)}</text>
-    <text class="energy-path-chart-axis-label" data-energy-path-chart-axis="x" x="${left + plotWidth / 2}" y="${height - 16}" text-anchor="middle">${escapeHTML(frequency === "hourly" ? copy("DateHour", "Date & hour") : copy("Month", "Month"))}</text>${grid}${labels}<line class="energy-path-chart-axis" x1="${left}" x2="${width - right}" y1="${baseline}" y2="${baseline}"/>${marks}
+  return `<div class="energy-path-chart-plot"><svg viewBox="0 0 ${width} ${height}" ${interaction} data-energy-path-chart-scale="linear" data-energy-path-chart-y-min="${low}" data-energy-path-chart-y-max="${high}" role="img" aria-label="${escapeHTML(copy(frequency === "hourly" ? "Hourly" : "Monthly", frequency === "hourly" ? "Hourly" : "Monthly"))}">
+    <text class="energy-path-chart-axis-label" data-energy-path-chart-axis="y" x="${left}" y="30">${escapeHTML(ratio ? traces[0]?.label || copy("Ratio", "From / to ratio") : `${boundaryInput ? copy("Boundary", "Reported boundary energy") : frequency === "hourly" ? copy("Measured", "Measured energy") : copy("Component", "Component energy")} (${energyPathDisplayUnit("kWh", display)})`)}</text>
+    <text class="energy-path-chart-axis-label" data-energy-path-chart-axis="x" x="${left + plotWidth / 2}" y="${height - 16}" text-anchor="middle">${escapeHTML(frequency === "hourly" ? copy("DateHour", "Date & hour") : copy("Month", "Month"))}</text>${grid}${labels}<line class="energy-path-chart-axis" x1="${left}" x2="${width - right}" y1="${baseline}" y2="${baseline}"/><svg data-energy-path-chart-clipped-marks x="${left}" y="0" width="${plotWidth}" height="${height}" viewBox="${left} 0 ${plotWidth} ${height}" overflow="hidden">${marks}</svg>
   </svg></div>${scaleNote}${gapNote}${denominatorNote}${traces.length > 1 || frequency === "hourly" ? `<div class="energy-path-chart-legend">${traces.map((trace, index) => `<span><i class="energy-path-chart-color-${index % 6}"></i>${escapeHTML(trace.label)}</span>`).join("")}</div>` : ""}`;
 }
 
@@ -491,22 +495,6 @@ function chartLabelWidth(label) {
   if (!chartLabelContext) return String(label).length * 13;
   chartLabelContext.font = `34px ${getComputedStyle(document.documentElement).fontFamily}`;
   return chartLabelContext.measureText(String(label)).width;
-}
-
-function hourlyChartTicks(points, x) {
-  if (points.length < 3) return points;
-  const first = points[0], last = points.at(-1), result = [first];
-  const candidates = points.filter((_, index) => index > 0 && index < points.length - 1 && index % Math.max(1, Math.floor(points.length / 4)) === 0);
-  let previousRight = x(first.x) + chartLabelWidth(first.label);
-  const lastLeft = x(last.x) - chartLabelWidth(last.label);
-  for (const point of candidates) {
-    const position = x(point.x), halfWidth = chartLabelWidth(point.label) / 2;
-    if (position - halfWidth < previousRight + 10 || position + halfWidth > lastLeft - 10) continue;
-    result.push(point);
-    previousRight = position + halfWidth;
-  }
-  result.push(last);
-  return result;
 }
 
 // Bound SVG geometry while preserving observed extrema and real missing-hour gaps.

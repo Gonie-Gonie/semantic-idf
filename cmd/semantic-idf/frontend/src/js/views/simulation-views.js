@@ -34,6 +34,7 @@ import { resolveEnergyPathOutputRequest, energyPathOutputRequestKey, prepareEner
 import { hvacInspectionLoopKey, hvacInspectionSharedFrame, rememberHVACInspectionFrame } from "../hvac-inspection-data.js";
 import { renderHVACInspection, handleHVACInspectionEvent, connectHVACInspection, disconnectHVACInspection } from "./hvac-inspection-view.js";
 import { handleHVACChartLegendEvent } from "../hvac-inspection-charts.js";
+import { connectTimeSeriesCharts, zoomTimeSeriesRange } from "../time-series-chart.js";
 import { handleHVACAvailabilityLegendEvent } from "./hvac-runtime-view.js";
 import { renderComfortInspection, handleComfortInspectionEvent, renderComfortInspectionReport } from "./comfort-inspection-view.js";
 import { prepareSimulationComparison, selectedSimulationComparisonSeriesIDs } from "../simulation-comparison-data.js";
@@ -721,6 +722,7 @@ function simulationNavigationLoopEntityID(loopType = "", loopName = "") {
 
 export function initializeSimulationControls() {
   configureSimulationPanelNavigation();
+  for (const host of new Set([elements.simulationEnergyDashboard, elements.simulationHeatFlow, elements.simulationHVACLoopResults, elements.simulationComfortResults])) connectTimeSeriesCharts(host);
   state.simulationHeatFlowInspectorCollapsed = readHeatFlowInspectorCollapsed();
   elements.simulationPurposeInputs?.forEach((input) => {
     input.checked = state.simulationSelectedPurposes.includes(input.dataset.simulationPurpose);
@@ -6667,30 +6669,12 @@ function zoomHeatFlowRange(event, dataset, chartTarget = event.currentTarget) {
     panHeatFlowRange(event, dataset, currentSize);
     return;
   }
-  const nextSize = event.deltaY < 0
-    ? Math.max(4, Math.ceil(currentSize * 0.7))
-    : Math.min(frameCount, Math.ceil(currentSize / 0.7));
-  if (nextSize >= frameCount) {
-    state.simulationHeatFlowRangeStart = 0;
-    state.simulationHeatFlowRangeEnd = -1;
-    normalizeHeatFlowFrameRange(frameCount);
-    renderSimulationHeatFlow();
-    return;
-  }
   const rect = chartTarget.getBoundingClientRect();
   const ratio = clampNumber((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1);
   const center = heatFlowChartFrameFromRatio(dataset, { start, end }, ratio);
-  let nextStart = Math.round(center - nextSize * ratio);
-  let nextEnd = nextStart + nextSize - 1;
-  if (nextStart < 0) {
-    nextEnd -= nextStart;
-    nextStart = 0;
-  }
-  if (nextEnd > frameCount - 1) {
-    const overflow = nextEnd - (frameCount - 1);
-    nextStart = Math.max(0, nextStart - overflow);
-    nextEnd = frameCount - 1;
-  }
+  const delta = (event.deltaY || event.deltaX || 0) * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1);
+  const range = zoomTimeSeriesRange({ low: start, high: end }, [0, frameCount - 1], (center - start) / Math.max(1, end - start), delta, 1);
+  const nextStart = Math.max(0, Math.round(range.low)), nextEnd = Math.min(frameCount - 1, Math.round(range.high));
   state.simulationHeatFlowRangeStart = nextStart;
   state.simulationHeatFlowRangeEnd = nextEnd;
   state.simulationHeatFlowFrameIndex = clampNumber(state.simulationHeatFlowFrameIndex, nextStart, nextEnd);

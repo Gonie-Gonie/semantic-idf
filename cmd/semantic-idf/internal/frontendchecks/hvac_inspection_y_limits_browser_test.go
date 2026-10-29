@@ -74,7 +74,7 @@ try{
    const svg=card.querySelector('.hvac-chart-svg'),scroll=card.querySelector('.hvac-chart-scroll');
    check(rect(svg).height<=340.1&&rect(scroll).width<=1000.1,'wide node SVG became an oversized tall plot at '+width);
    check(rect(card).width<=width&&rect(scroll).left>=rect(card).left-.1&&rect(scroll).right<=rect(card).right+.1&&getComputedStyle(scroll).overflowX==='auto','node plot lost its contained horizontal scrolling at '+width);
-   check(Math.abs(screenFont(svg.querySelector('.hvac-chart-tick'))-11)<.05,'responsive node plot changed physical label size at '+width);
+   check(Math.abs(screenFont(svg.querySelector('.hvac-chart-tick'))-12)<.05,'responsive node plot changed its readable physical label size at '+width);
   }
   check(rect(mount.querySelector('[data-hvac-inspect-custom-chart] .hvac-chart-svg')).height<=340.1,'custom node plot grew without a useful height bound at '+width);
   check(plot('flow').querySelector('svg')===originalNodeSVG&&plot('flow').querySelector('path')===originalNodePath&&originalNodePath.getAttribute('d')===originalNodeGeometry&&input('flow','kg/s','high')===originalNodeHandle,'resizing rebuilt a node plot or changed source geometry/controls');

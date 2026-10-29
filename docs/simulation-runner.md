@@ -525,8 +525,24 @@ The result HVAC view retains the default loop schematic, node controls/charts
 and custom plots. Equipment selection opens its availability stack and control
 sequence inline. One bottom Frame control drives the loop and equipment values.
 The node chart grid uses one to three columns as width allows, with a bounded
-SVG viewport height and the existing font-size floor. Resizing preserves node
+SVG viewport height and a shared 12 px minimum label size. Resizing preserves node
 selections, limits, legend behavior and the mounted chart/frame controls.
+Energy component plots, Heat Flow history, HVAC and Comfort use the same
+1000 × 340 regular plot geometry, physical font hierarchy, card spacing and
+container-driven grid width rules. Enlarging the graph font also increases the
+minimum readable column width; incomplete final rows keep the same card widths.
+Multi-unit histograms retain the extra height needed for their stacked axes.
+`time-series-chart.js` owns horizontal wheel zoom and full-extent double-click
+reset. Its bounded pending definitions transfer to weakly owned mounted SVGs;
+redraws reuse full observations, sample only the selected geometry window and
+retain boundary neighbours, missing intervals and known zeroes. Y axes and
+outlier thresholds use the complete selected source period, including Heat
+Flow's cached full-history zone extent. Frame-only updates keep the viewport
+and hide a cursor outside it. Availability zoom clips all permission rows to
+one shared visual window without changing its control/history source frames.
+Observed-time ticks use actual viewport positions and measured label widths,
+including one or two observations beside a long gap. Inward label alignment
+reserves glyph overhang without moving the observations or their grid lines.
 Equipment also has a separate On / Off panel reusing the executed expression
 graph. It keeps permission, observed demand/dispatch inputs and actual response
 separate, rather than equating positive loop demand with individual operation.

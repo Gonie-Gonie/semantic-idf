@@ -80,6 +80,7 @@ const tick=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFr
 try {
  const {energyPathMonthlyChartSeries:monthly,energyPathHourlyChartSeries:hourlyModel,energyPathLinkRatioChartSeries:ratioModel,renderEnergyPathComponentChart:render}=await import('/src/js/energy-path-chart.js');
  const {energyPathConversionRatio:validateRatio}=await import('/src/js/views/energy-path-view.js');
+ const {connectTimeSeriesCharts}=await import('/src/js/time-series-chart.js');
  const {setLanguage}=await import('/src/js/i18n.js');setLanguage('en');
  const hourlyLabels=['01-01 01:00','01-01 02:00','02-01 01:00'];
  const hourly=(item,sources,state={},labels=hourlyLabels)=>hourlyModel(item,sources,state,labels);
@@ -195,6 +196,31 @@ try {
  const measuredMonths=smallDenominatorMonths.map(trace=>({...trace,points:measuredRatios.map((value,x)=>({x,label:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][x],value:trace.id==='fromValue'?value:1,ratioKind:actualRatio.kind}))}));
  mount.innerHTML=render({item:pair,kind:'link',monthly:measuredMonths,display,conversionRatio:actualRatio});
  check([...mount.querySelectorAll('[data-energy-path-chart-ratio]')].map(mark=>Number(mark.dataset.energyPathChartRatio)).join(',')===measuredRatios.join(',')&&[...mount.querySelectorAll('[data-energy-path-chart-outlier]')].map(mark=>mark.dataset.energyPathChartRatio).join(',')==='488.79,18503'&&mount.querySelector('[data-energy-path-chart-panel="ratio"] svg')?.dataset.energyPathChartYMax==='145.97','actual monthly COP pattern lost its chronological observations or failed to exclude only the two spikes from the linear axis range');
+ connectTimeSeriesCharts(mount);
+ const wheelZoom=async svg=>{const box=svg.getBoundingClientRect(),event=new WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY:-360,clientX:box.left+box.width/2});svg.dispatchEvent(event);await tick();check(event.defaultPrevented,'time-series wheel escaped to page scrolling');};
+ const ratioSVG=mount.querySelector('[data-energy-path-chart-panel="ratio"] svg'),quantitySVG=mount.querySelector('[data-energy-path-chart-panel="quantities"] svg'),summary=mount.querySelector('.energy-path-chart-quantities'),monthLegend=mount.querySelector('.energy-path-chart-legend'),nativeMonths=JSON.stringify(measuredMonths);
+ const ratioY=[ratioSVG.dataset.energyPathChartYMin,ratioSVG.dataset.energyPathChartYMax],quantityRange=[quantitySVG.dataset.timeSeriesLow,quantitySVG.dataset.timeSeriesHigh],ratioDomain=[ratioSVG.dataset.timeSeriesLow,ratioSVG.dataset.timeSeriesHigh];
+ await wheelZoom(ratioSVG);
+ check(mount.querySelector('[data-energy-path-chart-panel="ratio"] svg')===ratioSVG&&Number(ratioSVG.dataset.timeSeriesHigh)-Number(ratioSVG.dataset.timeSeriesLow)<12,'monthly wheel zoom replaced the SVG or failed to narrow its time axis');
+ check(JSON.stringify([ratioSVG.dataset.energyPathChartYMin,ratioSVG.dataset.energyPathChartYMax])===JSON.stringify(ratioY)&&ratioY[1]==='145.97','monthly wheel zoom changed the fixed linear Y range or reclassified off-scale COP observations');
+ check(JSON.stringify([quantitySVG.dataset.timeSeriesLow,quantitySVG.dataset.timeSeriesHigh])===JSON.stringify(quantityRange)&&mount.querySelector('.energy-path-chart-quantities')===summary&&mount.querySelector('.energy-path-chart-legend')===monthLegend&&JSON.stringify(measuredMonths)===nativeMonths,'monthly zoom changed its sibling chart, full summary, legend or original observations');
+ ratioSVG.dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true}));await tick();
+ check(JSON.stringify([ratioSVG.dataset.timeSeriesLow,ratioSVG.dataset.timeSeriesHigh])===JSON.stringify(ratioDomain),'monthly double-click did not restore the original horizontal extent');
+ const zoomHours=[{id:'native',label:'Reported cooling',unit:'kWh',points:Array.from({length:24},(_,x)=>({x,label:'01-01 '+String(x+1).padStart(2,'0')+':00',value:x===0?100:x===12?null:x%6}))}],nativeHoursJSON=JSON.stringify(zoomHours);
+ mount.innerHTML=render({item:pair,frequency:'hourly',hourly:zoomHours,display});await tick();
+ const hourlySVG=mount.querySelector('svg[data-time-series-chart]'),hourlyY=[hourlySVG.dataset.energyPathChartYMin,hourlySVG.dataset.energyPathChartYMax],hourlyLegend=mount.querySelector('.energy-path-chart-legend');
+ await wheelZoom(hourlySVG);
+ check(Number(hourlySVG.dataset.timeSeriesHigh)-Number(hourlySVG.dataset.timeSeriesLow)<23&&JSON.stringify([hourlySVG.dataset.energyPathChartYMin,hourlySVG.dataset.energyPathChartYMax])===JSON.stringify(hourlyY),'hourly wheel zoom changed Y bounds when the peak left the horizontal viewport');
+ check((hourlySVG.querySelector('.energy-path-chart-line').getAttribute('d').match(/M/g)||[]).length===2&&mount.querySelector('.energy-path-chart-legend')===hourlyLegend&&JSON.stringify(zoomHours)===nativeHoursJSON,'hourly zoom filled a true missing-value gap, replaced the legend or changed native observations');
+ for(const count of[2,3]){
+  const clustered=[{id:'sparse-native',label:'Reported hourly energy',unit:'kWh',points:[...Array.from({length:count},(_,x)=>({x,label:'01-01 0'+(x+1)+':00',value:x+1})),{x:744,label:'02-01 01:00',value:4}]}],nativeCluster=JSON.stringify(clustered);
+  mount.innerHTML=render({item:pair,frequency:'hourly',hourly:clustered,display});await tick();const svg=mount.querySelector('svg[data-time-series-chart]'),beforeY=[svg.dataset.energyPathChartYMin,svg.dataset.energyPathChartYMax],box=svg.getBoundingClientRect(),view=svg.viewBox.baseVal;
+  const left=Number(svg.dataset.timeSeriesPlotLeft),width=Number(svg.dataset.timeSeriesPlotWidth),event=new WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY:-360,clientX:box.left+left/view.width*box.width});
+  svg.dispatchEvent(event);await tick();const ticks=[...svg.querySelectorAll('[data-energy-path-chart-tick="x"]')];
+  check(event.defaultPrevented&&Number(svg.dataset.timeSeriesHigh)<744&&ticks.length===1&&ticks[0].getAttribute('text-anchor')==='start','Energy hourly time labels overlap when zoom exposes two/three clustered observations beside a month-long gap');
+  for(const label of ticks){const bounds=label.getBBox();check(bounds.x>=left-.1&&bounds.x+bounds.width<=left+width+.1,'Energy hourly sparse timestamp clips outside the visible plot');}
+  check(JSON.stringify([svg.dataset.energyPathChartYMin,svg.dataset.energyPathChartYMax])===JSON.stringify(beforeY)&&JSON.stringify(clustered)===nativeCluster,'Energy sparse label layout rescaled Y or changed original observations');
+ }
  mount.innerHTML=render({item:references,kind:'link',monthly:referenceMonths,display,conversionRatio:actualRatio});
  check(mount.querySelector('[data-energy-path-reference-note]')?.textContent.includes('not a conversion efficiency')&&mount.querySelector('[data-energy-path-chart-panel="ratio"] h4')?.textContent==='Reference quantity ratio','reference relation ratio lacks physical-boundary explanation');
  mount.innerHTML=render({item:pair,kind:'link',frequency:'hourly',hourly:hours,display,conversionRatio:actualRatio});
@@ -208,7 +234,7 @@ try {
   const ticks=[...svg.querySelectorAll('[data-energy-path-chart-tick="x"]')].map(text=>text.getBoundingClientRect());
   check(ticks.every((box,index)=>!index||ticks[index-1].right+2<=box.left),'component chart date/month labels overlap '+label);}
  };
- for(const frequency of['monthly','hourly'])for(const [language,theme,font,width]of[['en','light',11,320],['ko','dark',12,740],['en','light',12,500],['en','dark',18,350],['ko','light',18,1423]]){
+ for(const frequency of['monthly','hourly'])for(const [language,theme,font,width]of[['en','light',11,320],['ko','dark',12,740],['en','light',12,500],['en','dark',18,350],['ko','light',18,1423],['en','dark',12,1423],['ko','light',18,2400]]){
   setLanguage(language);mount.innerHTML=render({item:conversion,kind:'link',frequency,monthly:links,hourly:appearanceHours,display});
   const mark=mount.querySelector('[data-energy-path-chart-value]'),geometry=markGeometry();document.documentElement.dataset.theme=theme;document.documentElement.style.setProperty('--graph-label-font-size',font+'px');mount.style.width=width+'px';await tick();
   const panel=mount.querySelector('[data-energy-path-component-chart]'),plot=panel.querySelector('.energy-path-chart-plot'),family=getComputedStyle(document.body).fontFamily,caption=panel.querySelector('header strong'),control=panel.querySelector('select'),legend=panel.querySelector('.energy-path-chart-legend');
@@ -220,7 +246,8 @@ try {
   boundsCheck(JSON.stringify({frequency,language,theme,font,width}));
   check(frequency!=='monthly'||panel.querySelector('[data-energy-path-chart-panel="quantities"]').querySelectorAll('[data-energy-path-chart-tick="x"]').length===12,'monthly appearance correction discarded original month labels');
   const quantityPanel=panel.querySelector('[data-energy-path-chart-panel="quantities"]'),ratioPanel=panel.querySelector('[data-energy-path-chart-panel="ratio"]');
-  check(ratioPanel&&(width>=740?Math.abs(quantityPanel.getBoundingClientRect().top-ratioPanel.getBoundingClientRect().top)<1:ratioPanel.getBoundingClientRect().top>=quantityPanel.getBoundingClientRect().bottom),'relation plots do not use responsive two-panel layout '+JSON.stringify({frequency,width}));
+  const twoColumns=width>=2400||font<=12&&width>=1423;
+  check(ratioPanel&&(twoColumns?Math.abs(quantityPanel.getBoundingClientRect().top-ratioPanel.getBoundingClientRect().top)<1:ratioPanel.getBoundingClientRect().top>=quantityPanel.getBoundingClientRect().bottom),'relation plots do not wrap at a readable width for the configured font '+JSON.stringify({frequency,width,font}));
   appearance.push({frequency,language,theme,font,width});
  }
  const largeMonthly=links.map(trace=>({...trace,points:trace.points.map(point=>({...point,value:point.value===null?null:point.value*1000000}))}));
