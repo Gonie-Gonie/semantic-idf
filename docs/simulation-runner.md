@@ -22,6 +22,29 @@ the expanded equipment. A pre-existing stale expanded file cannot become the
 executed model. Template epJSON receives an actionable IDF-conversion error;
 ordinary IDF/epJSON execution is unchanged.
 
+Execution status and diagnostic severity are separate. A zero process exit,
+an explicit native ERR `EnergyPlus Completed Successfully` footer and no Fatal
+remain `succeeded` even when nonfatal Severe diagnostics are present. Their
+counts, messages and original files remain intact; `error` stays empty and the
+terminal progress/manifest/batch status agree. Process/startup errors, nonzero
+exits and Fatal diagnostics override completion. Severe without native completion
+remains failed. The existing zero-exit compatibility path without ERR is retained.
+Numerical acceptance and clean-capture replay gates are separate quality checks;
+this status correction does not relax their zero-Severe requirements.
+
+Completed runs with Severe show a warning-colored completion count and **Run
+diagnostics**, including the same hover/context as failures. They still reach
+100% after result installation. The app does not change convergence tolerances,
+warmup limits, weather or model fields to suppress a native diagnostic.
+
+The default Large Office Seoul/Busan captures on 2026-10-29 have byte-identical
+executed IDF inputs and the same 24.2 engine. A controlled copy changing only the
+RunPeriod end to January 2 reproduced exit 0/native successful completion in both:
+Seoul reported one warmup Severe (`PERIMETER_MID_ZN_3`, minimum-temperature
+comparison 0.22 C versus 0.20 C tolerance after 25 days); Busan reported none.
+The annual Seoul capture predates the result-parallelism and tab-cache changes.
+Source captures, EPWs and engine hashes/sizes/timestamps were unchanged.
+
 Failed results retain the existing wire shape. `error` contains a bounded native
 Severe/Fatal cause when available, with process-output/startup-error fallback;
 `exitCode` keeps the process status. `err.issues` retains bounded continuation
@@ -31,7 +54,7 @@ run files are not rewritten. The top status and single/batch Simulation views
 share diagnostic hover text and an escaped, keyboard-accessible disclosure with
 native messages and run context. Status timing/language refreshes preserve the
 diagnostics; subsequent status/run changes clear them. App cleanup protects the
-current failed result directory through the existing storage reference contract.
+current result directory through the existing storage reference contract.
 
 | API | Role |
 | --- | --- |

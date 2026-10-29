@@ -678,6 +678,14 @@ in their original wording. The on-screen messages are bounded; the ERR file in
 the run directory retains the complete engine log. A new run clears the previous
 failure disclosure.
 
+A run that exits normally and explicitly completes successfully can still have
+Severe diagnostics, for example warmup convergence under the selected weather.
+It is shown as **Simulation complete** with its Warning/Severe counts and a
+warning color. Open **Run diagnostics** or hover over the status to review the
+native messages. This is completion evidence, not a guarantee of numerical
+convergence. Fatal errors and abnormal process exits remain failures. The app
+preserves the model's warmup limits and convergence tolerances.
+
 Review ERR severity and the completion state together. Warnings can identify
 unavailable requests or modeling concerns. Severe/Fatal issues and incomplete
 execution require attention before using quantities as a complete experiment.

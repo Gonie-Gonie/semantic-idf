@@ -5,6 +5,18 @@ export function isSimulationFailure(result) {
     || result.status !== "succeeded" && result.error));
 }
 
+export function hasSimulationDiagnostics(result) {
+  return isSimulationFailure(result) || Boolean(result?.status === "succeeded" && result.err?.severe > 0);
+}
+
+export function simulationResultSummary(result) {
+  if (result?.status !== "succeeded") return simulationFailureSummary(result);
+  const warnings = result.err?.warnings || 0, severe = result.err?.severe || 0;
+  return severe > 0
+    ? t("simulation.completeWithSevere", { warnings, severe }, "Simulation complete ({warnings} warnings · {severe} Severe)")
+    : t("simulation.complete", { warnings }, `Simulation complete (${warnings} warnings)`);
+}
+
 const text = (value) => String(value ?? "").trim();
 const firstLine = (value) => text(value).split(/\r?\n/).find((line) => line.trim())?.trim() || "";
 const seriousIssues = (result) => (result?.err?.issues || []).filter((issue) => /^(severe|fatal)$/i.test(issue.severity || ""));
@@ -28,9 +40,9 @@ export function simulationFailureSummary(result) {
 
 // Preserve native wording, paths and continuation lines. The disclosure and
 // hover use the same evidence, including older runs with only exit status.
-export function simulationFailureDetails(result) {
-  if (!isSimulationFailure(result)) return "";
-  const details = [simulationFailureSummary(result)];
+export function simulationDiagnosticDetails(result) {
+  if (!hasSimulationDiagnostics(result)) return "";
+  const details = [simulationResultSummary(result)];
   const field = (label, value) => { if (text(value)) details.push(`${label}: ${text(value)}`); };
   field(t("common.input", {}, "Input"), result.inputPath || result.filename);
   field("EnergyPlus", result.energyPlusVersion);
@@ -55,9 +67,25 @@ export function simulationFailureDetails(result) {
   return details.join("\n");
 }
 
+export function simulationFailureDetails(result) {
+  return isSimulationFailure(result) ? simulationDiagnosticDetails(result) : "";
+}
+
+export function simulationDiagnosticHover(result) {
+  const details = simulationDiagnosticDetails(result);
+  return details.length > 3500 ? `${details.slice(0, 3499)}…` : details;
+}
+
 export function simulationFailureHover(result) {
   const details = simulationFailureDetails(result);
   return details.length > 3500 ? `${details.slice(0, 3499)}…` : details;
+}
+
+export function renderSimulationDiagnosticDetails(result, escapeHTML) {
+  const details = simulationDiagnosticDetails(result);
+  const label = isSimulationFailure(result) ? t("simulation.failureDetails", {}, "Failure details")
+    : t("simulation.diagnosticDetails", {}, "Run diagnostics");
+  return details ? `<details class="simulation-failure-diagnostics"><summary>${escapeHTML(label)}</summary><pre tabindex="0">${escapeHTML(details)}</pre></details>` : "";
 }
 
 export function renderSimulationFailureDetails(result, escapeHTML) {

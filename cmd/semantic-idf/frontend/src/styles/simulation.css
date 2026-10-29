@@ -671,6 +671,11 @@
   text-align: left;
 }
 
+.simulation-progress-card.has-run-diagnostics #simulationStatus,
+.tool-table .simulation-completed-with-diagnostics {
+  color: var(--amber);
+}
+
 .simulation-failure-diagnostics > summary {
   width: fit-content;
   color: var(--amber);

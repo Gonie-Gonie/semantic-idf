@@ -2083,6 +2083,8 @@ export default Object.freeze({
   "simulation.blockedGraph": "실행 조건을 충족하면 그래프를 표시할 수 있습니다.",
   "simulation.blockedMeta": "실행 조건을 확인하세요",
   "simulation.complete": "Simulation 완료 (경고 {warnings}개)",
+  "simulation.completeWithSevere": "Simulation 완료 (경고 {warnings}개 · Severe {severe}개)",
+  "simulation.diagnosticDetails": "실행 진단",
   "simulation.csvFiles": "CSV 파일",
   "simulation.carrier": "Carrier",
   "simulation.energyPlusBlockedTitle": "EnergyPlus가 설정되지 않았습니다",

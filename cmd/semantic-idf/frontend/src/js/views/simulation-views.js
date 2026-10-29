@@ -42,7 +42,7 @@ import { renderSimulationComparison, handleSimulationComparisonEvent, updateSimu
 import { decodeSimulationResultTransfer, simulationResultTransferMediaType } from "../simulation-result-transport.js";
 import { loadSimulationResultParts, simulationResultStore, simulationResultPartsMediaType, isPendingSimulationResource } from "../simulation-result-parts.js";
 import { createSimulationProgress, readSimulationJSONResponse } from "../simulation-progress.js";
-import { isSimulationFailure, simulationFailureSummary, simulationFailureDetails, simulationFailureHover, renderSimulationFailureDetails } from "../simulation-diagnostics.js";
+import { isSimulationFailure, hasSimulationDiagnostics, simulationResultSummary, simulationFailureSummary, simulationDiagnosticDetails, simulationFailureHover, simulationDiagnosticHover, renderSimulationDiagnosticDetails } from "../simulation-diagnostics.js";
 import { heatFlowBalance, heatFlowPresentationExtents, heatFlowPresentationRatio, heatFlowCategoryKind, heatFlowCategoryLabel, heatFlowCategoryValue as heatFlowObservedValue,
   heatFlowZoneTemperature as heatFlowObservedTemperature, formatHeatFlowWatts, heatFlowExactWatts, heatFlowFrameTime } from "../heat-flow-data.js";
 import { renderHeatFlowStackChart, updateHeatFlowStackChart, heatFlowChartFrameFromRatio } from "./heat-flow-chart.js";
@@ -5737,20 +5737,21 @@ function recommendedEnergyPlusInstallPath(installs, currentPath) {
 }
 
 function renderSimulationProgress() {
-  const failure = !state.simulationRunning && (state.simulationProgress?.failure || state.simulationResult);
-  const diagnostic = simulationFailureDetails(failure);
+  const diagnosticResult = !state.simulationRunning && (state.simulationProgress?.failure || state.simulationResult);
+  const diagnostic = simulationDiagnosticDetails(diagnosticResult);
   const card = elements.simulationProgressBar?.closest(".simulation-progress-card");
   if (card) {
+    card.classList.toggle("has-run-diagnostics", Boolean(diagnostic && !isSimulationFailure(diagnosticResult) && state.simulationProgress?.phase === "complete"));
     let host = card.querySelector("[data-simulation-failure]");
     if (!host && diagnostic) { host = document.createElement("div"); host.dataset.simulationFailure = ""; card.append(host); }
     if (host) {
-      const markup = renderSimulationFailureDetails(failure, escapeHTML);
+      const markup = renderSimulationDiagnosticDetails(diagnosticResult, escapeHTML);
       if (simulationFailureMarkup.get(host) !== markup) { host.innerHTML = markup; simulationFailureMarkup.set(host, markup); }
       host.hidden = !diagnostic;
     }
   }
   if (elements.simulationStatus) {
-    elements.simulationStatus.title = simulationFailureHover(failure);
+    elements.simulationStatus.title = simulationDiagnosticHover(diagnosticResult);
     if (diagnostic) elements.simulationStatus.setAttribute("tabindex", "0");
     else elements.simulationStatus.removeAttribute("tabindex");
   }
@@ -5769,7 +5770,7 @@ function renderSimulationProgress() {
   }
   simulationProgressUI.render();
   if (diagnostic && elements.simulationStatus) {
-    elements.simulationStatus.title = simulationFailureHover(failure);
+    elements.simulationStatus.title = simulationDiagnosticHover(diagnosticResult);
     elements.simulationStatus.setAttribute("tabindex", "0");
   } else elements.simulationStatus?.removeAttribute("tabindex");
 }
@@ -7986,8 +7987,8 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
   if (state.simulationActiveRunID !== runID || state.simulationResult !== result) return result;
   state.simulationProgress = { runId: runID, phase: "complete", percent: 100, message: simulationDoneMessage(result), status: result.status };
   updateSimulationProgressUI();
-  if (!silent || isSimulationFailure(result)) setStatus(() => simulationDoneMessage(result), result.status === "succeeded" ? "ok" : "warn", {
-    details: isSimulationFailure(result) ? () => simulationFailureHover(result) : null,
+  if (!silent || hasSimulationDiagnostics(result)) setStatus(() => simulationDoneMessage(result), result.status === "succeeded" && !hasSimulationDiagnostics(result) ? "ok" : "warn", {
+    details: hasSimulationDiagnostics(result) ? () => simulationDiagnosticHover(result) : null,
   });
   return result;
 }
@@ -8083,7 +8084,7 @@ async function fetchSimulationJSON(endpoint, payload) {
       await store.ensure(state.simulationActiveResultView || "energy", simulationResourceContext());
       // Status and native diagnostics also have consumers outside the view
       // render gate. Their bounded evidence must be ready before publication.
-      await store.read(() => { simulationDoneMessage(decoded); simulationFailureDetails(decoded); });
+      await store.read(() => { simulationDoneMessage(decoded); simulationDiagnosticDetails(decoded); });
     }
     catch (error) { store.dispose(); throw error; }
   }
@@ -8164,10 +8165,7 @@ function statusText(status) {
 }
 
 function simulationDoneMessage(result) {
-  if (result?.status === "succeeded") {
-    return t("simulation.complete", { warnings: result.err?.warnings || 0 }, `Simulation complete (${result.err?.warnings || 0} warnings)`);
-  }
-  return simulationFailureSummary(result);
+  return simulationResultSummary(result);
 }
 
 function formatNumber(value) {

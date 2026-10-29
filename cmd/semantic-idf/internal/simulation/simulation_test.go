@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -98,6 +99,87 @@ EnergyPlus Terminated--Fatal Error Detected. 1 Warning; 1 Severe Errors; Elapsed
 		result, err := RunSimulation(SimulationRunRequest{RunID: "native-failure", Text: "Version,24.2;", Filename: "source.idf", OutputDirectory: directory, EnergyPlusExecutablePath: executable}, func(item SimulationProgress) { terminal = item }, SimulationSettings{})
 		if err != nil || result == nil || result.Status != "failed" || result.ExitCode != 1 || !strings.Contains(result.Error, "Missing Schedule") || terminal.Message != result.Error || result.ERR.Fatal != 1 {
 			t.Fatalf("runner lost native failure: result=%#v progress=%#v err=%v", result, terminal, err)
+		}
+	})
+
+	t.Run("runner completion retains nonfatal diagnostics", func(t *testing.T) {
+		executable, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		const severe = "** Warning ** Native warning.\n** Severe ** CheckWarmupConvergence: Loads Initialization, Zone=OFFICE did not converge after 25 warmup days.\n** ~~~ ** Native load difference and tolerance remain available.\n"
+		const completed = "EnergyPlus Completed Successfully-- 1 Warning; 1 Severe Errors; Elapsed Time=00hr 00min 01.00sec\n"
+		for _, item := range []struct {
+			name, native, status string
+			exitCode             int
+			completed            bool
+		}{
+			{"completed severe", severe + completed, "succeeded", 0, true},
+			{"incomplete severe", severe, "failed", 0, false},
+			{"fatal overrides completion", severe + "** Fatal ** Simulation terminated.\n" + completed, "failed", 0, true},
+			{"exit failure overrides completion", severe + completed, "failed", 1, true},
+			{"clean completion", "EnergyPlus Completed Successfully\n", "succeeded", 0, true},
+			{"legacy zero exit without ERR", "", "succeeded", 0, false},
+			{"native padded footer and case", severe + " \t************* eNeRgYpLuS cOmPlEtEd SuCcEsSfUlLy-- 1 Severe Errors\n", "succeeded", 0, true},
+			{"plain terminal punctuation", severe + "EnergyPlus Completed Successfully.\n", "succeeded", 0, true},
+			{"quoted completion diagnostic", severe + "** Warning ** Object Name=\"EnergyPlus Completed Successfully\"\n** ~~~ ** The object is unresolved.\n", "failed", 0, false},
+			{"quoted standalone completion", severe + "\"EnergyPlus Completed Successfully\"\n", "failed", 0, false},
+			{"completion marker prefix collision", severe + "EnergyPlus Completed SuccessfullyNamedObject\n", "failed", 0, false},
+			{"completion sentence is not footer", severe + "EnergyPlus Completed Successfully is an object name.\n", "failed", 0, false},
+		} {
+			t.Run(item.name, func(t *testing.T) {
+				t.Setenv("SEMANTIC_IDF_TEST_PURPOSE_ENGINE", "1")
+				t.Setenv("SEMANTIC_IDF_TEST_ENGINE_EXIT_CODE", strconv.Itoa(item.exitCode))
+				directory := t.TempDir()
+				errPath := filepath.Join(directory, "eplusout.err")
+				wantERR := ERRSummary{}
+				if item.native != "" {
+					if err := os.WriteFile(errPath, []byte(item.native), 0o644); err != nil {
+						t.Fatal(err)
+					}
+					wantERR = parseERRFile(errPath)
+				}
+				if wantERR.Completed != item.completed {
+					t.Fatalf("completion marker accepted diagnostic text or rejected a native footer: completed=%t, want %t", wantERR.Completed, item.completed)
+				}
+				var terminal SimulationProgress
+				result, err := RunSimulation(SimulationRunRequest{
+					RunID: "native-completion", Text: "Version,24.2;", Filename: "source.idf",
+					OutputDirectory: directory, EnergyPlusExecutablePath: executable,
+				}, func(progress SimulationProgress) { terminal = progress }, SimulationSettings{})
+				if err != nil || result == nil || result.Status != item.status || result.ExitCode != item.exitCode {
+					t.Fatalf("native completion status: result=%#v err=%v", result, err)
+				}
+				gotJSON, _ := json.Marshal(result.ERR)
+				wantJSON, _ := json.Marshal(wantERR)
+				if string(gotJSON) != string(wantJSON) {
+					t.Fatalf("completion classification changed native counts or diagnostic evidence: %s != %s", gotJSON, wantJSON)
+				}
+				if terminal.Phase != "complete" || terminal.Status != item.status || terminal.Message != simulationCompletionMessage(result) {
+					t.Fatalf("terminal progress disagrees with completed result: %+v / %#v", terminal, result)
+				}
+				if item.status == "succeeded" {
+					if result.Error != "" || (wantERR.Severe > 0 && !strings.Contains(terminal.Message, "1 Severe")) {
+						t.Fatalf("completed diagnostics became a failure or disappeared: error=%q message=%q", result.Error, terminal.Message)
+					}
+				} else if result.Error == "" {
+					t.Fatal("failed native execution lost its cause")
+				}
+				manifestBytes, err := os.ReadFile(filepath.Join(directory, "semantic-idf-run.json"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var manifest SimulationRunManifest
+				if err := json.Unmarshal(manifestBytes, &manifest); err != nil || manifest.Status != item.status {
+					t.Fatalf("manifest changed completion classification: %+v / %v", manifest, err)
+				}
+				if item.native != "" {
+					after, err := os.ReadFile(errPath)
+					if err != nil || string(after) != item.native {
+						t.Fatal("completion classification rewrote the original ERR", err)
+					}
+				}
+			})
 		}
 	})
 

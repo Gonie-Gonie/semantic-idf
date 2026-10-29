@@ -1241,6 +1241,8 @@ export default Object.freeze({
   "simulation.blockedGraph": "Graph output is unavailable until the run can start.",
   "simulation.blockedMeta": "Run requirements need attention",
   "simulation.complete": "Simulation complete ({warnings} warnings)",
+  "simulation.completeWithSevere": "Simulation complete ({warnings} warnings · {severe} Severe)",
+  "simulation.diagnosticDetails": "Run diagnostics",
   "simulation.csvFiles": "CSV files",
   "simulation.carrier": "Carrier",
   "simulation.energyPlusBlockedTitle": "EnergyPlus is not configured",

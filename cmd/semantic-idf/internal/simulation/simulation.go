@@ -877,11 +877,14 @@ func runSimulationWithConcurrency(request SimulationRunRequest, progress func(Si
 		})
 		result.PurposeResults = &bundle
 	}
-	if result.Error != "" || result.ExitCode != 0 || result.ERR.Fatal > 0 || result.ERR.Severe > 0 {
+	// EnergyPlus can report nonfatal runtime Severe diagnostics and still
+	// explicitly complete successfully. Keep those diagnostics intact without
+	// treating them as process failure; exit/startup errors and Fatal still win.
+	if result.Error != "" || result.ExitCode != 0 || result.ERR.Fatal > 0 || (result.ERR.Severe > 0 && !result.ERR.Completed) {
 		result.Status = "failed"
 		result.Error = simulationFailureMessage(result)
 	} else {
-		result.Status = "succeeded"
+		result.Status, result.Error = "succeeded", ""
 	}
 	finishSimulationResult(result, started)
 	writeSimulationRunManifest(result, request)
@@ -1201,6 +1204,9 @@ func simulationUsesReadVarsESO(request SimulationRunRequest) bool {
 
 func simulationCompletionMessage(result *SimulationRunResult) string {
 	if result.Status == "succeeded" {
+		if result.ERR.Severe > 0 {
+			return fmt.Sprintf("Simulation complete: %d warnings; %d Severe diagnostics", result.ERR.Warnings, result.ERR.Severe)
+		}
 		return fmt.Sprintf("Simulation complete: %d warnings", result.ERR.Warnings)
 	}
 	if result.Error != "" {
@@ -1643,8 +1649,7 @@ func parseERRFile(path string) ERRSummary {
 	for scanner.Scan() {
 		lineNo++
 		line := strings.TrimSpace(scanner.Text())
-		lower := strings.ToLower(line)
-		if strings.Contains(lower, "energyplus completed successfully") {
+		if isEnergyPlusCompletionFooter(line) {
 			summary.Completed = true
 		}
 		severity, message := errLineSeverityAndMessage(line)
@@ -1676,6 +1681,19 @@ func parseERRFile(path string) ERRSummary {
 	}
 	summary.Total = summary.Warnings + summary.Severe + summary.Fatal
 	return summary
+}
+
+func isEnergyPlusCompletionFooter(line string) bool {
+	// Native ERR footers have an optional leading asterisk ruler and a "--"
+	// summary. Also retain the plain completion message used by older engines
+	// and no-op fixtures. Quoted object names or diagnostic text are not proof.
+	const marker = "energyplus completed successfully"
+	line = strings.ToLower(strings.TrimLeft(strings.TrimSpace(line), "* \t"))
+	if !strings.HasPrefix(line, marker) {
+		return false
+	}
+	tail := strings.TrimSpace(line[len(marker):])
+	return tail == "" || tail == "." || strings.HasPrefix(tail, "--")
 }
 
 func errLineSeverityAndMessage(line string) (string, string) {
